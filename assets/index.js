@@ -7,35 +7,3 @@ k){case "grid":c.showLoader();m("users/self/media/recent",{access_token:h,count:
 c.hideLoader();c.$content.empty();c.$content.append('<div class="inst__images clearfix"></div>');q(a,b);c.$moreButton.on("click",function(a){var b=$(this).attr("data-max-id");window.mbrAppCore||(a.preventDefault(),c.showLoader(),m("users/self/media/recent",{access_token:h,count:e*p,max_id:b}).done(function(a,b){q(a,b);c.hideLoader()}).fail(d))})}).fail(d);break;case "slider":c.showLoader(),m("users/self/media/recent",{access_token:h,count:3*f}).then(function(a,b){var d=b?b:null;c.hideLoader();c.$content.empty();
 c.$content.append('<div class="inst__images"></div>');for(var e=0,k=a.length;e<k;e++)c.$content.find(".inst__images").append(n(a[e],g));var l=c.$content.find(".inst__images");l.on("init, setPosition",function(a){a=$(this).find(".inst-card");var c=a.css("width");a.css("height",c);return!0});l.slick({infinite:!1,slidesToShow:Number.parseInt(f),slidesToScroll:Number.parseInt(f),arrows:!0,slide:".slide",responsive:[{breakpoint:800,settings:{slidesToShow:2,slidesToScroll:2,arrows:!1}},{breakpoint:500,
 settings:{slidesToShow:1,slidesToScroll:1,arrows:!1}}]});l.on("afterChange",function(a,b,e){e+ +f>=b.slideCount&&d&&(c.showLoader(),m("users/self/media/recent",{access_token:h,count:2*f,max_id:d}).then(function(a,b){var e=[];c.hideLoader();for(var f=0,h=a.length;f<h;f++)e.push(n(a[f],g));l.slick("slickAdd",e.join("\n"));l.find(".slick-arrow").remove();l.slick("reinit");d=b?b:null}))})}).fail(d)}}})});
-let deferredPrompt;
-
-window.addEventListener('beforeinstallprompt', (e) => {
-  // Stash the event so it can be triggered later.
-  deferredPrompt = e;
-  ...
-});
-window.addEventListener('beforeinstallprompt', (e) => {
-  // Stash the event so it can be triggered later.
-  deferredPrompt = e;
-  // Update UI notify the user they can add to home screen
-  showInstallPromotion();
-});
-btnAdd.addEventListener('click', (e) => {
-  // hide our user interface that shows our A2HS button
-  btnAdd.style.display = 'none';
-  // Show the prompt
-  deferredPrompt.prompt();
-  // Wait for the user to respond to the prompt
-  deferredPrompt.userChoice
-    .then((choiceResult) => {
-      if (choiceResult.outcome === 'accepted') {
-        console.log('User accepted the A2HS prompt');
-      } else {
-        console.log('User dismissed the A2HS prompt');
-      }
-      deferredPrompt = null;
-    });
-});
-window.addEventListener('appinstalled', (evt) => {
-  console.log('a2hs installed');
-});
