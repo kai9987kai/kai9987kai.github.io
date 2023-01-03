@@ -12,7 +12,6 @@
 // extension for browsers or native application
 // without getting a written permission first.
 //
-document.body.style.backgroundColor = 'white';
 
 (function () {
 
