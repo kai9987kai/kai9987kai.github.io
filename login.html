@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Login Page</title>
+  </head>
+  <body>
+    <form id="login-form">
+      <label>Email:</label>
+      <input type="email" id="email" required>
+      <label>Password:</label>
+      <input type="password" id="password" required>
+      <button type="submit">Login</button>
+    </form>
+    <form id="signup-form">
+      <label>Name:</label>
+      <input type="text" id="name" required>
+      <label>Email:</label>
+      <input type="email" id="email" required>
+      <label>Password:</label>
+      <input type="password" id="password" required>
+      <button type="submit">Sign Up</button>
+    </form>
+
+    <script src="https://cdn.jsdelivr.net/npm/faunadb@2.11.0/faunadb.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bcryptjs@2.4.3/dist/bcrypt.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/jsonwebtoken@8.5.1/index.js"></script>
+    <script>
+        const faunadb = require('faunadb');
+        const q = faunadb.query;
+        const client = new faunadb.Client({ secret: 'fnAE7TWrekAA1IXI_Zq5EoBYfEhjKMxAarQug2XJ' });
+        var bcrypt = require('bcryptjs');
+        var jwt = require('jsonwebtoken');
+        async function login(email, password) {
+          try {
+            // Check if user exists
+            const user = await client.query(
+              q.Get(
+                q.Match(
+                  q.Index('users_by_email'),
+                  email
+                )
+              )
+            );
+
+            // Verify password
+            const isValidPassword = await bcrypt.compare(password, user.password);
+
+            if (!isValidPassword) {
+              throw new Error('Invalid password');
+            }
+
+            // Generate JWT
+            const token = jwt.sign({ userId: user.id }, 'secret', { expiresIn: '1d' });
+
+            return { token };
+          } catch (error) {
+            throw error;
+          }
+        }
+        // listen for form submit event
+        document.getElementById('login-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const email = document.getElementById('email').value;
+            const password = document.getElementById('password').value;
+            try {
+                const { token } = await login(email, password);
+                console.log('Token:', token);
+                // Store the token in local storage
+                localStorage.setItem('token', token);
+                // Redirect to dashboard
+                window.location.href = '/dashboard.html';
+            } catch (error
+) {
+console.error(error);
+alert('Invalid email or password');
+}
+});
+    async function signup(name, email, password) {
+        try {
+            // Hash the password
+            const hashedPassword = await bcrypt.hash(password, 10);
+            // Create the user
+            const user = await client.query(
+                q.Create(q.Collection('users'), {
+                    data: {
+                        name,
+                        email,
+                        password: hashedPassword
+                    }
+                })
+            );
+
+            // Generate JWT
+            const token = jwt.sign({ userId: user.id }, 'secret', { expiresIn: '1d' });
+
+            return { token };
+        } catch (error) {
+            throw error;
+        }
+    }
+
+    // listen for form submit event
+    document.getElementById('signup-form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const name = document.getElementById('name').value;
+        const email = document.getElementById('email').value;
+        const password = document.getElementById('password').value;
+        try {
+            const { token } = await signup(name, email, password);
+            console.log('Token:', token);
+            // Store the token in local storage
+            localStorage.setItem('token', token);
+            // Redirect to dashboard
+            window.location.href = '/dashboard.html';
+        } catch (error) {
+            console.error(error);
+            alert('An error occurred while signing up. Please try again.');
+        }
+    });
+</script>
+ </body>
+</html>
