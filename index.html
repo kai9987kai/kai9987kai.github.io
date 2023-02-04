@@ -1024,11 +1024,9 @@ e=d.getElementsByTagName(s)[0];e.parentNode.insertBefore(i, e);
   }
 </style>
 <script src="https://cdn.jsdelivr.net/npm/faunadb@latest/dist/faunadb.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/bcryptjs@2.4.3/dist/bcrypt.min.js"></script>
+     
 <script>
-  const faunadb = require('faunadb');
-
-  const bcrypt = require('bcryptjs');
-
   const faunadb = window.faunadb;
   const q = faunadb.query;
   const client = new faunadb.Client({
@@ -1039,6 +1037,7 @@ e=d.getElementsByTagName(s)[0];e.parentNode.insertBefore(i, e);
   async function signUp() {
     const email = document.getElementById("email").value;
     const password = document.getElementById("password").value;
+    const hashedPassword = await bcrypt.hash(password, 10);
 
     try {
       const result = await client.query(
@@ -1047,7 +1046,7 @@ e=d.getElementsByTagName(s)[0];e.parentNode.insertBefore(i, e);
           {
             data: {
               email: email,
-              password: password
+              password: hashedPassword
             }
           }
         )
@@ -1060,36 +1059,39 @@ e=d.getElementsByTagName(s)[0];e.parentNode.insertBefore(i, e);
     }
   }
 
-async function login(email, password) {
-  try {
-    const result = await client.query(
-      q.Get(
-        q.Match(
-          q.Index('users_by_email'), email
+  async function login() {
+    const email = document.getElementById("email").value;
+    const password = document.getElementById("password").value;
+
+    try {
+      const result = await client.query(
+        q.Get(
+          q.Match(
+            q.Index('users_by_email'), email
+          )
         )
-      )
-    );
+      );
 
-    if (!result) {
-      throw new Error('User not found');
+      if (!result) {
+        throw new Error('User not found');
+      }
+
+      const user = result.data;
+
+      // Check if the provided password matches the hashed password stored in the database
+      if (await bcrypt.compare(password, user.password)) {
+        // Return the user object if the password is correct
+        alert('Login successful');
+        return user;
+      } else {
+        throw new Error('Incorrect password');
+      }
+    } catch (error) {
+      console.error(error);
+      alert(error.message);
+      throw error;
     }
-
-    const user = result.data;
-
-    // Check if the provided password matches the hashed password stored in the database
-    if (await bcrypt.compare(password, user.password)) {
-      // Return the user object if the password is correct
-      alert('Login successful');
-      return user;
-    } else {
-      throw new Error('Incorrect password');
-    }
-  } catch (error) {
-    console.error(error);
-    alert(error.message);
-    throw error;
   }
-}
    
 </script>
       <button type="button" onclick="showLoginPopup()">Login</button>
@@ -1119,11 +1121,7 @@ function hideLoginPopup() {
   popup.style.display = "none";
 }
 
-let loginBtn = document.getElementById("loginBtn");
-loginBtn.addEventListener("click", showLoginPopup);
 
-let closeBtn = document.getElementById("closeBtn");
-closeBtn.addEventListener("click", hideLoginPopup);
 </script>
 
 <button type="button" onclick="showSignUpPopup()">Sign Up</button>
