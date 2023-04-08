@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="UTF-8">
+    <title>Display Characters</title>
+    <style>
+      #character-display {
+        font-size: 72px;
+        font-family: Arial;
+        font-weight: bold;
+        color: red;
+        text-align: center;
+        margin-top: 50px;
+      }
+      #custom-symbol {
+        font-size: 72px;
+        font-family: Arial;
+        font-weight: bold;
+        color: blue;
+        text-align: center;
+        margin-top: 50px;
+      }
+      #data-display {
+        margin-top: 50px;
+        border: 1px solid black;
+        padding: 10px;
+      }
+      #raw-data-display {
+        margin-top: 50px;
+        border: 1px solid black;
+        padding: 10px;
+        height: 200px;
+        overflow: auto;
+      }
+    </style>
+    <script>
+      // open IndexedDB database
+      var dbPromise = window.indexedDB.open("character-db", 1);
+
+      dbPromise.onupgradeneeded = function(event) {
+        var db = event.target.result;
+        var objectStore = db.createObjectStore("characters", { keyPath: "id", autoIncrement: true });
+        objectStore.createIndex("character", "character", { unique: false });
+        objectStore.createIndex("symbol", "symbol", { unique: false });
+      }
+
+      function displayCharacter() {
+        var character = document.getElementById("character").value;
+        var symbol = document.getElementById("symbol").value;
+        var characterDisplay = document.getElementById("character-display");
+        var customSymbolDisplay = document.getElementById("custom-symbol");
+        characterDisplay.innerText = character;
+        customSymbolDisplay.innerText = symbol;
+        var weight = 1 - Math.abs("A".charCodeAt(0) - character.toUpperCase().charCodeAt(0)) / 25;
+        characterDisplay.style.opacity = weight;
+        // store data in IndexedDB
+        dbPromise.then(function(db) {
+          var tx = db.transaction("characters", "readwrite");
+          var store = tx.objectStore("characters");
+          var data = { character: character, symbol: symbol };
+          store.add(data);
+          return tx.complete;
+        });
+        // display stored data in data-display element
+        var dataDisplay = document.getElementById("data-display");
+        dataDisplay.innerHTML = "";
+        dbPromise.then(function(db) {
+          var tx = db.transaction("characters", "readonly");
+          var store = tx.objectStore("characters");
+          return store.openCursor();
+        }).then(function(cursor) {
+          if (!cursor) return;
+          var data = cursor.value;
+          var dataElement = document.createElement("div");
+          dataElement.innerText = "Character: " + data.character + ", Symbol: " + data.symbol;
+          dataDisplay.appendChild(dataElement);
+          return cursor.continue().then(arguments.callee);
+        });
+        // process uploaded text document
+        var fileInput = document.getElementById("document-input");
+        var file = fileInput.files[0];
+        var reader = new FileReader();
+        reader.onload = function(event) {
+          var text = event.target.result;
+          var regex = new RegExp(character, "gi");
+          var matches = text.match(regex) || [];
+          var hierarchy = buildHierarchy(matches, symbol);
+          console.log(hierarchy);
+          // display last known part of data set as pixels in canvas
+          var canvas = document.getElementById("canvas-display");
+          var ctx = canvas.getContext("2d");
+          var
+      imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      var lastKnownPart = matches[matches.length-1];
+      for (var i = 0; i < lastKnownPart.length; i++) {
+        var x = i * 4;
+        var y = 0;
+        var r = 255 - imgData.data[x];
+        var g = 255 - imgData.data[x + 1];
+        var b = 255 - imgData.data[x + 2];
+        var a = 255;
+        if (lastKnownPart[i].toUpperCase() === character.toUpperCase()) {
+          r = 255;
+        }
+        imgData.data[x] = r;
+        imgData.data[x + 1] = g;
+        imgData.data[x + 2] = b;
+        imgData.data[x + 3] = a;
+      }
+      ctx.putImageData(imgData, 0, 0);
+      // invert data selection and sort using bubble sort
+      var invertedMatches = matches.slice().reverse();
+      for (var i = 0; i < invertedMatches.length; i++) {
+        var invertedSymbol = symbol.repeat(i + 1);
+        hierarchy = insertNode(hierarchy, invertedMatches[i], invertedSymbol);
+      }
+      bubbleSort(hierarchy);
+      console.log(hierarchy);
+      // display raw data in raw-data-display element
+      var rawDataDisplay = document.getElementById("raw-data-display");
+      rawDataDisplay.innerText = JSON.stringify(hierarchy, null, 2);
+      // enable download button
+      var downloadButton = document.getElementById("download-button");
+      downloadButton.removeAttribute("disabled");
+    }
+    reader.readAsText(file);
+  }
+
+  function buildHierarchy(matches, symbol) {
+    var root = { name: "root", children: [] };
+    matches.forEach(match => {
+      var currentNode = root;
+      for (var i = 0; i < match.length; i++) {
+        var character = match[i];
+        var childNode = currentNode.children.find(child => child.name === character);
+        if (!childNode) {
+          childNode = { name: character, count: 0, children: [] };
+          currentNode.children.push(childNode);
+        }
+        childNode.count++;
+        currentNode = childNode;
+      }
+      var leafNode = { name: symbol, count: 1 };
+      currentNode.children.push(leafNode);
+    });
+    return root;
+  }
+
+  function insertNode(node, characters, symbol) {
+    if (!node) {
+      node = { name: "root", children: [] };
+    }
+    var currentNode = node;
+    for (var i = 0; i < characters.length; i++) {
+      var character = characters[i];
+      var childNode = currentNode.children.find(child => child.name === character);
+      if (!childNode) {
+        childNode = { name: character, count: 0, children: [] };
+        currentNode.children.push(childNode);
+      }
+      childNode.count++;
+      currentNode = childNode;
+    }
+    var leafNode = { name: symbol, count: 1 };
+    currentNode.children.push(leafNode);
+    return node;
+  }
+
+  function bubbleSort(node) {
+    var children = node.children;
+    var n = children.length;
+    for (var i = 0; i < n - 1; i++) {
+      for (var j = 0; j < n - i - 1; j++) {
+        if (children[j].count < children[j+1].count) {
+          var temp = children[j];
+          children[j] = children[j+1];
+          children[j+1] = temp;
+        }
+      }
+           children.forEach(child => {
+          bubbleSort(child);
+        });
+      }
+
+      function downloadData() {
+        // download stored data as JSON file
+        dbPromise.then(function(db) {
+          var tx = db.transaction("characters", "readonly");
+          var store = tx.objectStore("characters");
+          return store.getAll();
+        }).then(function(data) {
+          var json = JSON.stringify(data, null, 2);
+          var blob = new Blob([json], { type: "application/json" });
+          var url = URL.createObjectURL(blob);
+          var link = document.createElement("a");
+          link.href = url;
+          link.download = "character-data.json";
+          link.click();
+        });
+      }
+    </script>
+  </head>
+  <body>
+    <h1>Display Characters</h1>
+    <form>
+      <label for="character">Enter a character:</label>
+      <input type="text" id="character" name="character">
+      <br>
+      <label for="symbol">Select a custom symbol:</label>
+      <select id="symbol" name="symbol">
+        <option value="❤️">❤️</option>
+        <option value="✨">✨</option>
+        <option value="⚡">⚡</option>
+        <option value="🌈">🌈</option>
+      </select>
+      <br>
+      <label for="document-input">Upload a text document:</label>
+      <input type="file" id="document-input" name="document-input">
+      <br>
+      <button type="button" onclick="displayCharacter()">Display</button>
+      <button type="button" id="download-button" disabled onclick="downloadData()">Download Data</button>
+    </form>
+    <div id="character-display"></div>
+    <div id="custom-symbol"></div>
+    <canvas id="canvas" width="400" height="100"></canvas>
+    <div id="data-display"></div>
+    <pre id="raw-data-display"></pre>
+  </body>
+</html>
+```
+
+In this updated version of the code, a raw data viewer is added below the canvas element, which displays the raw data processed by the script in a JSON format. Additionally, a download button is added, which allows the user to download all the stored data in a JSON file.
+
+The `insertNode` function is updated to allow for an optional `node` parameter, which allows for inserting a node at a specific position in the tree.
+
+Overall, this script allows the user to enter a character and a custom symbol, upload a text document for processing, and displays the processed data as a hierarchical tree structure. The processed data can be displayed visually in a canvas element, and the raw data can be viewed and downloaded.
