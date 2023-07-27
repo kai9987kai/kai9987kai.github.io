@@ -13,11 +13,23 @@
       width: 100%;
       height: 100%;
     }
+    
+    #exportButton {
+      position: fixed;
+      bottom: 20px;
+      left: 20px;
+      padding: 10px;
+      background-color: #4CAF50;
+      color: white;
+      border: none;
+      cursor: pointer;
+    }
   </style>
   <script src="https://threejs.org/build/three.js"></script>
 </head>
 <body>
   <div id="canvas"></div>
+  <button id="exportButton">Export OBJ</button>
   <script>
     var scene = new THREE.Scene();
     var camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
@@ -28,12 +40,11 @@
 
     var geometry = new THREE.PlaneGeometry(20, 20, 20, 20);
 
-    // Update vertices
     var positions = geometry.attributes.position.array;
     for (var i = 2; i < positions.length; i += 3) {
-      positions[i] += Math.random() * 2; // adjust z-coordinate
+      positions[i] += Math.random() * 2;
     }
-    geometry.attributes.position.needsUpdate = true; // notify Three.js to update these changes
+    geometry.attributes.position.needsUpdate = true;
 
     var material = new THREE.MeshBasicMaterial({ color: 0x00ff00, wireframe: true });
     var terrain = new THREE.Mesh(geometry, material);
@@ -44,10 +55,115 @@
 
     var animate = function () {
       requestAnimationFrame(animate);
+      terrain.rotation.x += 0.01;
+      terrain.rotation.y += 0.01;
       renderer.render(scene, camera);
     };
 
     animate();
+
+    // OBJExporter from THREE.js examples
+    var OBJExporter = function () { };
+
+    OBJExporter.prototype = {
+      constructor: OBJExporter,
+
+      parse: function (object) {
+        var output = '';
+        var indexVertex = 0;
+        var indexVertexUvs = 0;
+        var indexNormals = 0;
+        var vertex = new THREE.Vector3();
+        var normal = new THREE.Vector3();
+        var uv = new THREE.Vector2();
+
+        object.traverse(function (child) {
+          if (child.isMesh) {
+            var index = 0;
+            var geometry = child.geometry;
+            var material = child.material;
+
+            if (geometry.isGeometry) {
+              geometry = new THREE.BufferGeometry().setFromObject(child);
+            }
+
+            if (geometry.isBufferGeometry) {
+              var vertices = geometry.getAttribute('position');
+              var normals = geometry.getAttribute('normal');
+              var uvs = geometry.getAttribute('uv');
+              var faceVertexUvs = geometry.faceVertexUvs[0];
+              output += 'o ' + child.name + '\n';
+
+              if (geometry.index) {
+                var indices = geometry.index;
+                for (var i = 0, l = indices.count; i < l; i++) {
+                  vertex.x = vertices.getX(indices.getX(i));
+                  vertex.y = vertices.getY(indices.getX(i));
+                  vertex.z = vertices.getZ(indices.getX(i));
+                  vertex.applyMatrix4(child.matrixWorld);
+                  output += 'v ' + vertex.x + ' ' + vertex.y + ' ' + vertex.z + '\n';
+                  indexVertex++;
+                  if (normals !== undefined) {
+                    normal.x = normals.getX(indices.getX(i));
+                    normal.y = normals.getY(indices.getX(i));
+                    normal.z = normals.getZ(indices.getX(i));
+                    normal.transformDirection(child.matrixWorld);
+                    output += 'vn ' + normal.x + ' ' + normal.y + ' ' + normal.z + '\n';
+                    indexNormals++;
+                  }
+                  if (uvs !== undefined) {
+                    uv.x = uvs.getX(indices.getX(i));
+                    uv.y = uvs.getY(indices.getX(i));
+                    output += 'vt ' + uv.x + ' ' + uv.y + '\n';
+                    indexVertexUvs++;
+                  }
+                }
+              } else {
+                for (var i = 0, l = vertices.count; i < l; i++) {
+                  vertex.x = vertices.getX(i);
+                  vertex.y = vertices.getY(i);
+                  vertex.z = vertices.getZ(i);
+                  vertex.applyMatrix4(child.matrixWorld);
+                  output += 'v ' + vertex.x + ' ' + vertex.y + ' ' + vertex.z + '\n';
+                  indexVertex++;
+                  if (normals !== undefined) {
+                    normal.x = normals.getX(i);
+                    normal.y = normals.getY(i);
+                    normal.z = normals.getZ(i);
+                    normal.transformDirection(child.matrixWorld);
+                    output += 'vn ' + normal.x + ' ' + normal.y + ' ' + normal.z + '\n';
+                    indexNormals++;
+                  }
+                  if (uvs !== undefined) {
+                    uv.x = uvs.getX(i);
+                    uv.y = uvs.getY(i);
+                    output += 'vt ' + uv.x + ' ' + uv.y + '\n';
+                    indexVertexUvs++;
+                  }
+                }
+              }
+            }
+          }
+        });
+
+        return output;
+      }
+    };
+
+    // Export as OBJ
+    document.getElementById('exportButton').addEventListener('click', function () {
+      var exporter = new OBJExporter();
+      var result = exporter.parse(terrain);
+      var blob = new Blob([result], { type: 'text/plain' });
+      var url = URL.createObjectURL(blob);
+
+      var link = document.createElement('a');
+      link.href = url;
+      link.download = 'terrain.obj';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    });
   </script>
 </body>
 </html>
