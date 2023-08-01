@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html>
+<head>
+<style>
+body {
+  font-family: Arial, sans-serif;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  height: 100vh;
+  background-color: #f0f0f0;
+}
+
+.container {
+  text-align: center;
+}
+
+h1 {
+  color: #333;
+}
+
+p {
+  color: #666;
+  line-height: 1.6;
+  margin-bottom: 30px;
+}
+
+button {
+  padding: 10px 20px;
+  margin: 10px;
+  font-size: 16px;
+}
+
+.slider {
+  width: 300px;
+  margin: 20px auto;
+}
+</style>
+</head>
+<body>
+
+<div class="container">
+
+
+ 
+ 
+ 
+ <h1>Shepard Tone, Beat, and White Noise Generator</h1>
+  <p>This tool generates a Shepard tone, a basic 4/4 beat, and white noise. Use the controls to adjust the volume, speed, and base frequency of the Shepard tone, the volume and tempo of the beat, and the volume of the white noise. You can also randomize these properties and toggle the Shepard tone and the white noise. Shepard tone may take a min to start.</p>
+  
+  
+  
+  
+  <button onclick="startTone()">Start Shepard Tone</button>
+  <button onclick="stopTone()">Stop Shepard Tone</button>
+  <button onclick="startBeat()">Start Beats</button>
+  <button onclick="stopBeat()">Stop Beats</button>
+  <button onclick="randomize()">Randomize Properties</button>
+  <button onclick="toggleNoise()">Toggle White Noise</button>
+  <div class="slider">
+    <label for="volume">Volume (Shepard Tone):</label>
+    <input type="range" id="volume" name="volume" min="0" max="1" step="0.01" value="0.5">
+  </div>
+  <div class="slider">
+    <label for="speed">Speed (Shepard Tone):</label>
+    <input type="range" id="speed" name="speed" min="1" max="20" value="10">
+  </div>
+  <div class="slider">
+    <label for="baseFrequency">Base Frequency (Shepard Tone):</label>
+    <input type="range" id="baseFrequency" name="baseFrequency" min="20" max="200" value="55">
+  </div>
+  <div class="slider">
+    <label for="beatVolume">Volume (Beat):</label>
+    <input type="range" id="beatVolume" name="beatVolume" min="0" max="1" step="0.01" value="0.5">
+  </div>
+  <div class="slider">
+    <label for="tempo">Tempo (Beat):</label>
+    <input type="range" id="tempo" name="tempo" min="200" max="2000" step="100" value="500">
+  </div>
+  <div class="slider">
+    <label for="beatFrequency">Base Frequency (Beat):</label>
+    <input type="range" id="beatFrequency" name="beatFrequency" min="20" max="200" value="100">
+  </div>
+  <div class="slider">
+    <label for="noiseVolume">Volume (White Noise):</label>
+    <input type="range" id="noiseVolume" name="noiseVolume" min="0" max="1" step="0.01" value="0.5">
+  </div>
+</div>
+
+<script>
+var audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+var oscillatorNodes = [];
+var gainNodes = [];
+var beatIntervalId;
+var toneIntervalId;
+var noiseSource;
+var noiseEnabled = false;
+
+function startTone() {
+    stopTone();
+    toneIntervalId = setInterval(function() {
+        for (var i = 0; i < 10; ++i) {
+            createShepardTone(document.getElementById("baseFrequency").value * Math.pow(2, i));
+        }
+    }, document.getElementById("speed").value * 1000);
+}
+
+function stopTone() {
+    oscillatorNodes.forEach(function (node) {
+        node.stop();
+    });
+    clearInterval(toneIntervalId);
+    oscillatorNodes = [];
+    gainNodes = [];
+}
+
+function startBeat() {
+    stopBeat();
+    beatIntervalId = setInterval(createBeat, document.getElementById("tempo").value); 
+}
+
+function stopBeat() {
+    oscillatorNodes.forEach(function (node) {
+        node.stop();
+    });
+    clearInterval(beatIntervalId);
+    oscillatorNodes = [];
+    gainNodes = [];
+}
+
+function randomize() {
+    // Randomize the properties
+    document.getElementById("volume").value = Math.random();
+    document.getElementById("speed").value = Math.floor(Math.random() * 20) + 1;
+    document.getElementById("baseFrequency").value = Math.floor(Math.random() * 180) + 20;
+    document.getElementById("beatVolume").value = Math.random();
+    document.getElementById("tempo").value = Math.floor(Math.random() * 1800) + 200;
+    document.getElementById("beatFrequency").value = Math.floor(Math.random() * 180) + 20;
+    document.getElementById("noiseVolume").value = Math.random();
+    clearInterval(beatIntervalId);
+    beatIntervalId = setInterval(createBeat, document.getElementById("tempo").value);
+}
+
+function toggleNoise() {
+    if (noiseEnabled) {
+        // Stop the white noise
+        noiseSource.stop();
+        noiseSource = null;
+        noiseEnabled = false;
+    } else {
+        // Start the white noise
+        noiseSource = audioCtx.createBufferSource();
+        var buffer = audioCtx.createBuffer(1, audioCtx.sampleRate * 5, audioCtx.sampleRate);
+        var data = buffer.getChannelData(0);
+        for (var i = 0; i < buffer.length; i++) {
+            data[i] = Math.random() * 2 - 1;
+        }
+        noiseSource.buffer = buffer;
+        noiseSource.loop = true;
+        noiseSource.connect(audioCtx.destination);
+        noiseSource.start();
+        noiseEnabled = true;
+    }
+}
+
+function createShepardTone(frequency) {
+    var gainNode = audioCtx.createGain();
+    var oscillatorNode = audioCtx.createOscillator();
+
+    gainNode.gain.value = 0.01;
+
+    oscillatorNode.frequency.value = frequency;
+    oscillatorNode.type = "sine";
+
+    oscillatorNode.connect(gainNode);
+    gainNode.connect(audioCtx.destination);
+
+    var time = audioCtx.currentTime;
+    var duration = document.getElementById("speed").value;
+
+    gainNode.gain.setValueAtTime(0.01, time);
+    gainNode.gain.linearRampToValueAtTime(document.getElementById("volume").value, time + duration / 2);
+    gainNode.gain.linearRampToValueAtTime(0.01, time + duration);
+
+    oscillatorNode.start(time);
+    oscillatorNode.stop(time + duration);
+
+    oscillatorNode.onended = function () {
+        createShepardTone(frequency);
+    };
+
+    oscillatorNodes.push(oscillatorNode);
+    gainNodes.push(gainNode);
+}
+
+function createBeat() {
+    var now = audioCtx.currentTime;
+
+    // Create two oscillators: one for the bass drum (low frequency) and one for the snare drum (high frequency)
+    var bassOscillator = audioCtx.createOscillator();
+    var snareOscillator = audioCtx.createOscillator();
+
+    // The bass drum hits on the first beat of each measure, the snare drum on the remaining beats
+    bassOscillator.frequency.value = (now % 2 === 0) ? document.getElementById("beatFrequency").value : 300;
+    snareOscillator.frequency.value = (now % 2 === 0) ? 300 : document.getElementById("beatFrequency").value;
+
+    // Create gain nodes for volume control
+    var bassGainNode = audioCtx.createGain();
+    var snareGainNode = audioCtx.createGain();
+
+    bassGainNode.gain.value = document.getElementById("beatVolume").value;
+    snareGainNode.gain.value = document.getElementById("beatVolume").value;
+
+    // Connect the oscillators to the gain nodes
+    bassOscillator.connect(bassGainNode);
+    snareOscillator.connect(snareGainNode);
+
+    // Connect the gain nodes to the audio context
+    bassGainNode.connect(audioCtx.destination);
+    snareGainNode.connect(audioCtx.destination);
+
+    // Start the oscillators now
+    bassOscillator.start(now);
+    snareOscillator.start(now);
+
+    // Stop the oscillators after a short duration to simulate a drum hit
+    bassOscillator.stop(now + 0.1);
+    snareOscillator.stop(now + 0.1);
+
+    // Add the oscillators to the global arrays so they can be stopped later
+    oscillatorNodes.push(bassOscillator);
+    oscillatorNodes.push(snareOscillator);
+}
+</script>
+
+</body>
+</html>
