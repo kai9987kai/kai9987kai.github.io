@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bot Simulation with Neural Networks</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            text-align: center;
+            background-color: #f4f4f4;
+        }
+        canvas {
+            border: 1px solid #333;
+            display: block;
+            margin: 20px auto;
+        }
+    </style>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.0/p5.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/synaptic/1.1.4/synaptic.js"></script>
+</head>
+<body>
+    <h1>Neural Network Bots on Canvas</h1>
+    <p>Watch the bots move based on their neural network decisions.</p>
+
+    <script>
+        const botCount = 10;
+        let bots = [];
+        let workers = [];
+
+        function setup() {
+            createCanvas(400, 400);
+
+            // Create bots and corresponding workers
+            for (let i = 0; i < botCount; i++) {
+                bots.push(new Bot(random(width), random(height)));
+                const worker = new Worker(URL.createObjectURL(new Blob([workerCode], { type: 'application/javascript' })));
+                workers.push(worker);
+
+                worker.onmessage = function(event) {
+                    bots[i].applyDecision(event.data);
+                };
+            }
+        }
+
+        function draw() {
+            background(220);
+
+            // Update and display bots
+            for (let i = 0; i < bots.length; i++) {
+                const bot = bots[i];
+                bot.think();
+                bot.update();
+                bot.display();
+            }
+        }
+
+        class Bot {
+            constructor(x, y) {
+                this.position = createVector(x, y);
+                this.velocity = createVector(0, 0);
+            }
+
+            think() {
+                const input = [this.position.x / width, this.position.y / height];
+                workers[bots.indexOf(this)].postMessage(input);
+            }
+
+            applyDecision(output) {
+                this.velocity.x = map(output[0], 0, 1, -1, 1);
+                this.velocity.y = map(output[1], 0, 1, -1, 1);
+            }
+
+            update() {
+                this.position.add(this.velocity);
+                this.position.x = constrain(this.position.x, 0, width);
+                this.position.y = constrain(this.position.y, 0, height);
+            }
+
+            display() {
+                fill(100, 150, 250);
+                ellipse(this.position.x, this.position.y, 20, 20);
+            }
+        }
+
+        const workerCode = `
+            importScripts('https://cdnjs.cloudflare.com/ajax/libs/synaptic/1.1.4/synaptic.js');
+
+            const brain = new synaptic.Architect.Perceptron(2, 3, 2);
+
+            onmessage = function(event) {
+                const input = event.data;
+                const output = brain.activate(input);
+                postMessage(output);
+            };
+        `;
+    </script>
+</body>
+</html>
