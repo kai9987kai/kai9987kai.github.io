@@ -59,7 +59,6 @@
         </div>
         <div class="tool">
             <input type="text" id="buttonText" placeholder="Button Text">
-            <input type="text" id="buttonLink" placeholder="Button Link">
             <button onclick="addButton()">Add Button</button>
         </div>
         <div class="tool">
@@ -67,24 +66,40 @@
             <button onclick="addImage()">Add Image</button>
         </div>
         <div id="workspace"></div>
-        <button onclick="generateCode()">Generate HTML Code</button>
+        <button onclick="generateCode()">Generate Standalone HTML</button>
+        <button onclick="deleteSelectedElement()">Delete Selected Element</button>
+        <button onclick="deselectElement()">Back</button>
         <pre id="codeOutput"></pre>
     </div>
 
     <script>
+        let selectedElement = null;
+
         function makeDraggable(element) {
+            element.onclick = function(event) {
+                if (selectedElement) {
+                    selectedElement.classList.remove('selected');
+                }
+                selectedElement = element;
+                selectedElement.classList.add('selected');
+                event.stopPropagation();
+            };
+
             element.onmousedown = function(event) {
                 event.preventDefault();
                 let shiftX = event.clientX - element.getBoundingClientRect().left;
                 let shiftY = event.clientY - element.getBoundingClientRect().top;
+
+                document.getElementById('workspace').appendChild(element);
                 element.style.position = 'absolute';
                 element.style.zIndex = 1000;
-                document.body.append(element);
 
                 function moveAt(pageX, pageY) {
-                    element.style.left = pageX - shiftX + 'px';
-                    element.style.top = pageY - shiftY + 'px';
+                    element.style.left = (pageX - shiftX - workspace.offsetLeft) + 'px';
+                    element.style.top = (pageY - shiftY - workspace.offsetTop) + 'px';
                 }
+
+                moveAt(event.pageX, event.pageY);
 
                 function onMouseMove(event) {
                     moveAt(event.pageX, event.pageY);
@@ -96,6 +111,7 @@
                     element.onmouseup = null;
                 };
             };
+
             element.ondragstart = function() {
                 return false;
             };
@@ -112,10 +128,8 @@
 
         function addButton() {
             var text = document.getElementById('buttonText').value;
-            var link = document.getElementById('buttonLink').value;
             var button = document.createElement('button');
             button.textContent = text;
-            button.onclick = function() { window.open(link, '_blank'); };
             button.className = 'draggable';
             document.getElementById('workspace').appendChild(button);
             makeDraggable(button);
@@ -132,8 +146,62 @@
 
         function generateCode() {
             var workspace = document.getElementById('workspace');
-            document.getElementById('codeOutput').textContent = workspace.innerHTML;
+            var elements = workspace.querySelectorAll('.draggable');
+            var htmlCode = `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Generated Page</title>
+    <style>
+        body, html {
+            font-family: 'Arial', sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #eaeaea;
         }
+        .draggable {
+            position: absolute;
+        }
+        /* Additional styles can be added here */
+    </style>
+</head>
+<body>
+`;
+
+            elements.forEach(function(el) {
+                var outerHTML = el.outerHTML;
+                var style = el.getAttribute('style');
+                var newEl = document.createElement('div');
+                newEl.innerHTML = outerHTML;
+                newEl.firstChild.setAttribute('style', style);
+                htmlCode += newEl.innerHTML + '\n';
+            });
+
+            htmlCode += `</body>\n</html>`;
+            document.getElementById('codeOutput').textContent = htmlCode;
+        }
+
+        function deleteSelectedElement() {
+            if (selectedElement) {
+                selectedElement.remove();
+                selectedElement = null;
+            }
+        }
+
+        function deselectElement() {
+            if (selectedElement) {
+                selectedElement.classList.remove('selected');
+                selectedElement = null;
+            }
+        }
+
+        document.body.addEventListener('click', function() {
+            if (selectedElement) {
+                selectedElement.classList.remove('selected');
+                selectedElement = null;
+            }
+        }, true);
     </script>
 </body>
 </html>
