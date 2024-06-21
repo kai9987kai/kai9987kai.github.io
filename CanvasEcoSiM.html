@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Advanced Ecosystem Simulation with Enhanced Features</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.0/p5.js"></script>
+    <style>
+        body { margin: 0; display: flex; justify-content: center; align-items: center; height: 100vh; }
+        canvas { border: 1px solid black; }
+        #statsPanel { 
+            position: absolute; 
+            top: 10px; 
+            left: 10px; 
+            background: rgba(255, 255, 255, 0.8); 
+            padding: 10px; 
+            border-radius: 5px; 
+            display: none; 
+        }
+    </style>
+</head>
+<body>
+    <div id="statsPanel"></div>
+    <script>
+        const CANVAS_SIZE = 600;
+        const INITIAL_PREY = 30;
+        const INITIAL_PREDATORS = 10;
+        const INITIAL_PLANTS = 80;
+        const GRID_SIZE = 20;
+        const EDGE_ZONE = 50;
+
+        let prey = [];
+        let predators = [];
+        let plants = [];
+        let terrain;
+        let weather = { type: 'sunny', energyModifier: 1.0 };
+        let showStats = false;
+
+        function setup() {
+            createCanvas(CANVAS_SIZE, CANVAS_SIZE);
+            terrain = new Terrain(GRID_SIZE);
+            for (let i = 0; i < INITIAL_PREY; i++) {
+                prey.push(new Creature(terrain.getRandomLandPosition(), 'prey'));
+            }
+            for (let i = 0; i < INITIAL_PREDATORS; i++) {
+                predators.push(new Creature(terrain.getRandomLandPosition(), 'predator'));
+            }
+            for (let i = 0; i < INITIAL_PLANTS; i++) {
+                plants.push(new Plant(terrain.getRandomLandPosition()));
+            }
+
+            let toggleButton = createButton('Toggle Stats');
+            toggleButton.position(10, height + 10);
+            toggleButton.mousePressed(toggleStats);
+        }
+
+        function draw() {
+            background(220);
+            updateWeather();
+            
+            terrain.display();
+
+            for (let plant of plants) {
+                plant.grow();
+                plant.display();
+            }
+
+            updateCreatures(prey);
+            updateCreatures(predators);
+
+            handleReproduction();
+            addNewPlants();
+
+            if (showStats) {
+                updateStats();
+            }
+        }
+
+        function updateCreatures(creatures) {
+            for (let i = creatures.length - 1; i >= 0; i--) {
+                creatures[i].update();
+                creatures[i].display();
+                if (creatures[i].energy <= 0) {
+                    creatures.splice(i, 1);
+                }
+            }
+        }
+
+        function handleReproduction() {
+            // Prey reproduction
+            if (random(1) < 0.05 && prey.length < 150) {
+                let parent = random(prey);
+                if (parent.energy > 60) {
+                    prey.push(parent.reproduce());
+                    parent.energy -= 30;
+                }
+            }
+
+            // Predator reproduction
+            if (random(1) < 0.03 && predators.length < 75) {
+                let parent = random(predators);
+                if (parent.energy > 70) {
+                    predators.push(parent.reproduce());
+                    parent.energy -= 35;
+                }
+            }
+        }
+
+        function addNewPlants() {
+            if (random(1) < 0.1 && plants.length < 200) {
+                plants.push(new Plant(terrain.getRandomLandPosition()));
+            }
+        }
+
+        function updateWeather() {
+            if (frameCount % 600 === 0) {
+                let r = random(1);
+                if (r < 0.5) {
+                    weather = { type: 'sunny', energyModifier: 1.0 };
+                } else if (r < 0.8) {
+                    weather = { type: 'rainy', energyModifier: 1.2 };
+                } else {
+                    weather = { type: 'stormy', energyModifier: 0.8 };
+                }
+            }
+
+            fill(0);
+            textSize(16);
+            text(`Weather: ${weather.type}`, 10, height - 10);
+        }
+
+        function toggleStats() {
+            showStats = !showStats;
+            let statsPanel = document.getElementById('statsPanel');
+            statsPanel.style.display = showStats ? 'block' : 'none';
+        }
+
+        function updateStats() {
+            let statsPanel = document.getElementById('statsPanel');
+            let avgPreyEnergy = prey.reduce((sum, c) => sum + c.energy, 0) / prey.length || 0;
+            let avgPredatorEnergy = predators.reduce((sum, c) => sum + c.energy, 0) / predators.length || 0;
+            let avgPlantSize = plants.reduce((sum, p) => sum + p.size, 0) / plants.length || 0;
+
+            statsPanel.innerHTML = `
+                <h3>Ecosystem Stats</h3>
+                <p>Prey: ${prey.length} (Avg Energy: ${avgPreyEnergy.toFixed(2)})</p>
+                <p>Predators: ${predators.length} (Avg Energy: ${avgPredatorEnergy.toFixed(2)})</p>
+                <p>Plants: ${plants.length} (Avg Size: ${avgPlantSize.toFixed(2)})</p>
+                <p>Weather: ${weather.type} (Energy Modifier: ${weather.energyModifier})</p>
+            `;
+        }
+
+        class Terrain {
+            constructor(gridSize) {
+                this.gridSize = gridSize;
+                this.grid = [];
+                for (let x = 0; x < width / gridSize; x++) {
+                    this.grid[x] = [];
+                    for (let y = 0; y < height / gridSize; y++) {
+                        this.grid[x][y] = random() < 0.7 ? 'land' : 'water';
+                    }
+                }
+            }
+
+            display() {
+                for (let x = 0; x < this.grid.length; x++) {
+                    for (let y = 0; y < this.grid[x].length; y++) {
+                        fill(this.grid[x][y] === 'land' ? color(150, 100, 50) : color(100, 150, 255));
+                        rect(x * this.gridSize, y * this.gridSize, this.gridSize, this.gridSize);
+                    }
+                }
+            }
+
+            getRandomLandPosition() {
+                let x, y;
+                do {
+                    x = floor(random(this.grid.length));
+                    y = floor(random(this.grid[0].length));
+                } while (this.grid[x][y] !== 'land');
+                return createVector(x * this.gridSize + this.gridSize / 2, y * this.gridSize + this.gridSize / 2);
+            }
+
+            isLand(x, y) {
+                let gridX = floor(x / this.gridSize);
+                let gridY = floor(y / this.gridSize);
+                return this.grid[gridX] && this.grid[gridX][gridY] === 'land';
+            }
+        }
+
+        class Creature {
+            constructor(position, type, genes) {
+                this.position = position || createVector(random(width), random(height));
+                this.velocity = p5.Vector.random2D();
+                this.acceleration = createVector();
+                this.energy = 100;
+                this.type = type;
+                
+                this.genes = genes || {
+                    size: random(5, 15),
+                    speed: random(1, 3),
+                    senseRadius: random(50, 150),
+                    color: type === 'predator' ? [255, 0, 0] : [random(255), random(255), random(255)]
+                };
+                
+                this.lastDecisionTime = 0;
+                this.decisionInterval = 30;
+            }
+
+            update() {
+                this.position.add(this.velocity);
+                this.velocity.add(this.acceleration);
+                this.velocity.limit(this.genes.speed);
+                this.acceleration.mult(0);
+
+                this.handleEdgeBehavior();
+
+                this.energy -= 0.1 * weather.energyModifier;
+                if (!terrain.isLand(this.position.x, this.position.y)) {
+                    this.energy -= 0.2 * weather.energyModifier;
+                }
+                
+                if (frameCount - this.lastDecisionTime > this.decisionInterval) {
+                    this.makeDecision();
+                    this.lastDecisionTime = frameCount;
+                }
+            }
+
+            handleEdgeBehavior() {
+                let edgeForce = createVector(0, 0);
+                
+                if (this.position.x < EDGE_ZONE) edgeForce.add(createVector(1, 0));
+                if (this.position.x > width - EDGE_ZONE) edgeForce.add(createVector(-1, 0));
+                if (this.position.y < EDGE_ZONE) edgeForce.add(createVector(0, 1));
+                if (this.position.y > height - EDGE_ZONE) edgeForce.add(createVector(0, -1));
+                
+                if (edgeForce.mag() > 0) {
+                    edgeForce.setMag(0.3);
+                    this.applyForce(edgeForce);
+                    this.energy -= 0.1;  // Additional energy cost for being near the edge
+                }
+
+                this.position.x = constrain(this.position.x, 0, width);
+                this.position.y = constrain(this.position.y, 0, height);
+            }
+
+            makeDecision() {
+                let closestFood = this.findClosestFood();
+                if (closestFood) {
+                    let direction = p5.Vector.sub(closestFood.position, this.position);
+                    direction.normalize();
+                    direction.mult(0.1);
+                    this.applyForce(direction);
+
+                    let distance = p5.Vector.dist(this.position, closestFood.position);
+                    if (distance < this.genes.size && closestFood.size > 0) {
+                        if (this.type === 'prey') {
+                            this.energy += closestFood.eat(10);
+                        } else if (this.type === 'predator') {
+                            this.energy += closestFood.energy / 2;
+                            prey.splice(prey.indexOf(closestFood), 1);
+                        }
+                    }
+                } else {
+                    this.applyForce(p5.Vector.random2D().mult(0.1));
+                }
+            }
+
+            findClosestFood() {
+                let closestFood = null;
+                let closestDist = Infinity;
+                let foodSource = this.type === 'prey' ? plants : prey;
+                
+                for (let food of foodSource) {
+                    let d = p5.Vector.dist(this.position, food.position);
+                    if (d < closestDist && d < this.genes.senseRadius) {
+                        closestDist = d;
+                        closestFood = food;
+                    }
+                }
+                return closestFood;
+            }
+
+            applyForce(force) {
+                this.acceleration.add(force);
+            }
+
+            display() {
+                push();
+                translate(this.position.x, this.position.y);
+                rotate(this.velocity.heading());
+                fill(this.genes.color);
+                triangle(-this.genes.size, -this.genes.size/2, -this.genes.size, this.genes.size/2, this.genes.size, 0);
+                pop();
+                fill(0);
+                textSize(8);
+                textAlign(CENTER);
+                text(floor(this.energy), this.position.x, this.position.y);
+            }
+
+            reproduce() {
+                let newGenes = Object.assign({}, this.genes);
+                if (random(1) < 0.1) {
+                    newGenes.size *= random(0.9, 1.1);
+                    newGenes.speed *= random(0.9, 1.1);
+                    newGenes.senseRadius *= random(0.9, 1.1);
+                }
+                return new Creature(this.position.copy(), this.type, newGenes);
+            }
+        }
+
+        class Plant {
+            constructor(position) {
+                this.position = position || createVector(random(width), random(height));
+                this.size = random(5, 15);
+            }
+
+            grow() {
+                this.size += 0.05;
+            }
+
+            eat(amount) {
+                let eaten = min(amount, this.size);
+                this.size -= eaten;
+                return eaten * 10;
+            }
+
+            display() {
+                fill(0, 255, 0);
+                ellipse(this.position.x, this.position.y, this.size);
+            }
+        }
+    </script>
+</body>
+</html>
