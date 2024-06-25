@@ -7,49 +7,114 @@
     <style>
         body {
             display: flex;
+            flex-direction: column;
             justify-content: center;
             align-items: center;
             height: 100vh;
             margin: 0;
             background-color: #000;
             font-family: Arial, sans-serif;
+            color: white;
         }
         #gameCanvas {
             border: 2px solid #333;
             border-radius: 10px;
             box-shadow: 0 0 10px rgba(0,0,0,0.3);
         }
+        #difficultySelector {
+            margin-top: 20px;
+            display: flex;
+            gap: 10px;
+        }
+        .difficulty-btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 5px;
+            background-color: #3498db;
+            color: white;
+            font-size: 16px;
+            cursor: pointer;
+            transition: background-color 0.3s, transform 0.1s;
+        }
+        .difficulty-btn:hover {
+            background-color: #2980b9;
+        }
+        .difficulty-btn.active {
+            background-color: #e74c3c;
+            transform: scale(1.05);
+        }
     </style>
 </head>
 <body>
     <canvas id="gameCanvas" width="320" height="480"></canvas>
+    <div id="difficultySelector">
+        <button class="difficulty-btn active" data-difficulty="easy">Easy</button>
+        <button class="difficulty-btn" data-difficulty="medium">Medium</button>
+        <button class="difficulty-btn" data-difficulty="hard">Hard</button>
+    </div>
     <script>
         const canvas = document.getElementById('gameCanvas');
         const ctx = canvas.getContext('2d');
+        const difficultyButtons = document.querySelectorAll('.difficulty-btn');
 
-        // Chicken
+        // Game parameters
         let chickenY = canvas.height / 2;
         let chickenVelocity = 0;
         const chickenSize = 30;
-        const gravity = 0.5;
-        const jumpStrength = -10;
+        let gravity = 0.5;
+        let jumpStrength = -10;
         let chickenRotation = 0;
 
-        // Pipes
         let pipes = [];
-        const pipeWidth = 60;
-        const pipeGap = 150;
-        const pipeSpeed = 2;
+        let pipeWidth = 60;
+        let pipeGap = 150;
+        let pipeSpeed = 2;
+        let pipeSpawnInterval = 1500;
 
-        // Game state
         let score = 0;
         let gameOver = false;
+        let gameLoop;
+        let pipeInterval;
 
         // Background
         let time = 0;
         const colorSpeed = 0.02;
         const waveSpeed = 0.05;
         const waveAmplitude = 20;
+
+        // Difficulty settings
+        const difficulties = {
+            easy: { gravity: 0.5, jumpStrength: -10, pipeSpeed: 2, pipeGap: 150, pipeSpawnInterval: 1500 },
+            medium: { gravity: 0.6, jumpStrength: -10, pipeSpeed: 3, pipeGap: 140, pipeSpawnInterval: 1300 },
+            hard: { gravity: 0.7, jumpStrength: -10, pipeSpeed: 4, pipeGap: 130, pipeSpawnInterval: 1100 }
+        };
+
+        let currentDifficulty = 'easy';
+
+        function setDifficulty(difficulty) {
+            currentDifficulty = difficulty;
+            const settings = difficulties[difficulty];
+            gravity = settings.gravity;
+            jumpStrength = settings.jumpStrength;
+            pipeSpeed = settings.pipeSpeed;
+            pipeGap = settings.pipeGap;
+            pipeSpawnInterval = settings.pipeSpawnInterval;
+
+            difficultyButtons.forEach(btn => {
+                btn.classList.remove('active');
+                if (btn.dataset.difficulty === difficulty) {
+                    btn.classList.add('active');
+                }
+            });
+
+            resetGame();
+        }
+
+        difficultyButtons.forEach(btn => {
+            btn.addEventListener('click', () => {
+                setDifficulty(btn.dataset.difficulty);
+            });
+        });
 
         function drawBackground() {
             const gradient = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
@@ -160,16 +225,6 @@
         }
 
         function updatePipes() {
-            if (pipes.length === 0 || pipes[pipes.length - 1].x < canvas.width - 200) {
-                const pipeY = Math.random() * (canvas.height - pipeGap - 100) + 50;
-                pipes.push({
-                    x: canvas.width,
-                    top: pipeY,
-                    bottom: pipeY + pipeGap,
-                    passed: false
-                });
-            }
-
             pipes.forEach(pipe => {
                 pipe.x -= pipeSpeed;
 
@@ -190,7 +245,17 @@
             pipes = pipes.filter(pipe => pipe.x + pipeWidth > 0);
         }
 
-        function gameLoop() {
+        function spawnPipe() {
+            const pipeY = Math.random() * (canvas.height - pipeGap - 100) + 50;
+            pipes.push({
+                x: canvas.width,
+                top: pipeY,
+                bottom: pipeY + pipeGap,
+                passed: false
+            });
+        }
+
+        function gameLoopFunction() {
             ctx.clearRect(0, 0, canvas.width, canvas.height);
 
             time += 0.016; // Assume 60 FPS
@@ -215,18 +280,33 @@
                 ctx.fillText(`Final Score: ${score}`, canvas.width / 2 - 60, canvas.height / 2 + 40);
                 ctx.fillText('Click to restart', canvas.width / 2 - 70, canvas.height / 2 + 80);
             } else {
-                requestAnimationFrame(gameLoop);
+                requestAnimationFrame(gameLoopFunction);
             }
+        }
+
+        function startGame() {
+            gameLoop = requestAnimationFrame(gameLoopFunction);
+            pipeInterval = setInterval(spawnPipe, pipeSpawnInterval);
+        }
+
+        function stopGame() {
+            cancelAnimationFrame(gameLoop);
+            clearInterval(pipeInterval);
+        }
+
+        function resetGame() {
+            stopGame();
+            chickenY = canvas.height / 2;
+            chickenVelocity = 0;
+            pipes = [];
+            score = 0;
+            gameOver = false;
+            startGame();
         }
 
         function jump() {
             if (gameOver) {
-                chickenY = canvas.height / 2;
-                chickenVelocity = 0;
-                pipes = [];
-                score = 0;
-                gameOver = false;
-                gameLoop();
+                resetGame();
             } else {
                 chickenVelocity = jumpStrength;
             }
@@ -240,7 +320,8 @@
             }
         });
 
-        gameLoop();
+        // Initial game start
+        setDifficulty('easy');
     </script>
 </body>
 </html>
