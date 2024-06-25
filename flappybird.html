@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Flappy Chicken</title>
+    <style>
+        body {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            background-color: #000;
+            font-family: Arial, sans-serif;
+        }
+        #gameCanvas {
+            border: 2px solid #333;
+            border-radius: 10px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.3);
+        }
+    </style>
+</head>
+<body>
+    <canvas id="gameCanvas" width="320" height="480"></canvas>
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        // Chicken
+        let chickenY = canvas.height / 2;
+        let chickenVelocity = 0;
+        const chickenSize = 30;
+        const gravity = 0.5;
+        const jumpStrength = -10;
+        let chickenRotation = 0;
+
+        // Pipes
+        let pipes = [];
+        const pipeWidth = 60;
+        const pipeGap = 150;
+        const pipeSpeed = 2;
+
+        // Game state
+        let score = 0;
+        let gameOver = false;
+
+        // Background
+        let time = 0;
+        const colorSpeed = 0.02;
+        const waveSpeed = 0.05;
+        const waveAmplitude = 20;
+
+        function drawBackground() {
+            const gradient = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
+            gradient.addColorStop(0, `hsl(${(time * colorSpeed * 100) % 360}, 100%, 50%)`);
+            gradient.addColorStop(1, `hsl(${((time * colorSpeed * 100) + 180) % 360}, 100%, 50%)`);
+            
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            ctx.beginPath();
+            for (let x = 0; x < canvas.width; x++) {
+                const y = Math.sin((x * 0.02) + (time * waveSpeed)) * waveAmplitude + canvas.height / 2;
+                ctx.lineTo(x, y);
+            }
+            ctx.lineTo(canvas.width, canvas.height);
+            ctx.lineTo(0, canvas.height);
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.2)';
+            ctx.fill();
+        }
+
+        function drawChicken() {
+            ctx.save();
+            ctx.translate(50 + chickenSize / 2, chickenY + chickenSize / 2);
+            ctx.rotate(chickenRotation);
+
+            // Body
+            ctx.fillStyle = '#f1c40f';
+            ctx.beginPath();
+            ctx.ellipse(0, 0, chickenSize / 2, chickenSize / 3, 0, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Wing
+            ctx.fillStyle = '#f39c12';
+            ctx.beginPath();
+            ctx.ellipse(-5, 5, chickenSize / 4, chickenSize / 6, Math.PI / 4, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Head
+            ctx.fillStyle = '#f1c40f';
+            ctx.beginPath();
+            ctx.arc(chickenSize / 3, -chickenSize / 4, chickenSize / 4, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Eye
+            ctx.fillStyle = 'white';
+            ctx.beginPath();
+            ctx.arc(chickenSize / 2, -chickenSize / 4, chickenSize / 10, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = 'black';
+            ctx.beginPath();
+            ctx.arc(chickenSize / 2, -chickenSize / 4, chickenSize / 20, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Beak
+            ctx.fillStyle = '#e67e22';
+            ctx.beginPath();
+            ctx.moveTo(chickenSize / 2, -chickenSize / 6);
+            ctx.lineTo(chickenSize, -chickenSize / 8);
+            ctx.lineTo(chickenSize / 2, 0);
+            ctx.fill();
+
+            ctx.restore();
+        }
+
+        function drawPipes() {
+            pipes.forEach(pipe => {
+                // Lower pipe
+                ctx.fillStyle = '#2ecc71';
+                ctx.beginPath();
+                ctx.moveTo(pipe.x, pipe.bottom);
+                ctx.lineTo(pipe.x + pipeWidth, pipe.bottom);
+                ctx.lineTo(pipe.x + pipeWidth - 10, pipe.bottom + 20);
+                ctx.lineTo(pipe.x + 10, pipe.bottom + 20);
+                ctx.closePath();
+                ctx.fill();
+                ctx.fillRect(pipe.x + 10, pipe.bottom + 20, pipeWidth - 20, canvas.height - pipe.bottom - 20);
+
+                // Upper pipe
+                ctx.beginPath();
+                ctx.moveTo(pipe.x, pipe.top);
+                ctx.lineTo(pipe.x + pipeWidth, pipe.top);
+                ctx.lineTo(pipe.x + pipeWidth - 10, pipe.top - 20);
+                ctx.lineTo(pipe.x + 10, pipe.top - 20);
+                ctx.closePath();
+                ctx.fill();
+                ctx.fillRect(pipe.x + 10, 0, pipeWidth - 20, pipe.top - 20);
+            });
+        }
+
+        function drawScore() {
+            ctx.fillStyle = 'white';
+            ctx.strokeStyle = 'black';
+            ctx.lineWidth = 3;
+            ctx.font = 'bold 24px Arial';
+            ctx.strokeText(`Score: ${score}`, 10, 30);
+            ctx.fillText(`Score: ${score}`, 10, 30);
+        }
+
+        function updateChicken() {
+            chickenVelocity += gravity;
+            chickenY += chickenVelocity;
+            chickenRotation = Math.min(Math.PI / 6, Math.max(-Math.PI / 6, chickenVelocity * 0.1));
+
+            if (chickenY + chickenSize > canvas.height) {
+                chickenY = canvas.height - chickenSize;
+                gameOver = true;
+            }
+        }
+
+        function updatePipes() {
+            if (pipes.length === 0 || pipes[pipes.length - 1].x < canvas.width - 200) {
+                const pipeY = Math.random() * (canvas.height - pipeGap - 100) + 50;
+                pipes.push({
+                    x: canvas.width,
+                    top: pipeY,
+                    bottom: pipeY + pipeGap,
+                    passed: false
+                });
+            }
+
+            pipes.forEach(pipe => {
+                pipe.x -= pipeSpeed;
+
+                // Check if the chicken has passed the pipe
+                if (!pipe.passed && pipe.x + pipeWidth < 50) {
+                    pipe.passed = true;
+                    score++;
+                }
+
+                // Check for collision
+                if (pipe.x < 50 + chickenSize && pipe.x + pipeWidth > 50 &&
+                    (chickenY < pipe.top || chickenY + chickenSize > pipe.bottom)) {
+                    gameOver = true;
+                }
+            });
+
+            // Remove pipes that have gone off screen
+            pipes = pipes.filter(pipe => pipe.x + pipeWidth > 0);
+        }
+
+        function gameLoop() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            time += 0.016; // Assume 60 FPS
+            drawBackground();
+
+            if (!gameOver) {
+                updateChicken();
+                updatePipes();
+            }
+
+            drawPipes();
+            drawChicken();
+            drawScore();
+
+            if (gameOver) {
+                ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                ctx.fillStyle = 'white';
+                ctx.font = 'bold 48px Arial';
+                ctx.fillText('Game Over', canvas.width / 2 - 100, canvas.height / 2);
+                ctx.font = '24px Arial';
+                ctx.fillText(`Final Score: ${score}`, canvas.width / 2 - 60, canvas.height / 2 + 40);
+                ctx.fillText('Click to restart', canvas.width / 2 - 70, canvas.height / 2 + 80);
+            } else {
+                requestAnimationFrame(gameLoop);
+            }
+        }
+
+        function jump() {
+            if (gameOver) {
+                chickenY = canvas.height / 2;
+                chickenVelocity = 0;
+                pipes = [];
+                score = 0;
+                gameOver = false;
+                gameLoop();
+            } else {
+                chickenVelocity = jumpStrength;
+            }
+        }
+
+        canvas.addEventListener('click', jump);
+        document.addEventListener('keydown', (e) => {
+            if (e.code === 'Space' || e.code === 'ArrowUp') {
+                jump();
+                e.preventDefault(); // Prevent scrolling when using spacebar
+            }
+        });
+
+        gameLoop();
+    </script>
+</body>
+</html>
