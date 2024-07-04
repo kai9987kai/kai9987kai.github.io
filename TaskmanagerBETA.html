@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Enhanced System Specs Dashboard</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.7.1/chart.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/animejs/3.2.1/anime.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f0f0f0;
+            color: #333;
+        }
+        .dashboard {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+        }
+        .card {
+            background-color: #fff;
+            border-radius: 10px;
+            padding: 20px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            transition: transform 0.3s ease;
+        }
+        .card:hover {
+            transform: translateY(-5px);
+        }
+        h2 {
+            margin-top: 0;
+            color: #2c3e50;
+        }
+        #userAgent, #ipInfo, #cookieInfo {
+            word-break: break-all;
+        }
+        canvas {
+            max-width: 100%;
+        }
+        #cookieForm {
+            margin-top: 10px;
+        }
+        #cookieForm input {
+            margin-right: 5px;
+            margin-bottom: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div class="dashboard">
+        <div class="card">
+            <h2>System Specs</h2>
+            <div id="systemSpecs"></div>
+        </div>
+        <div class="card">
+            <h2>CPU Usage</h2>
+            <canvas id="cpuChart"></canvas>
+        </div>
+        <div class="card">
+            <h2>Memory Usage</h2>
+            <canvas id="memoryChart"></canvas>
+        </div>
+        <div class="card">
+            <h2>IP Information</h2>
+            <div id="ipInfo"></div>
+        </div>
+        <div class="card">
+            <h2>Cookie Information</h2>
+            <div id="cookieInfo"></div>
+            <form id="cookieForm">
+                <input type="text" id="cookieName" placeholder="Cookie Name" required>
+                <input type="text" id="cookieValue" placeholder="Cookie Value" required>
+                <input type="number" id="cookieExpiration" placeholder="Expiration (days)" required>
+                <button type="submit">Set Cookie</button>
+            </form>
+        </div>
+        <div class="card">
+            <h2>User Agent</h2>
+            <div id="userAgent"></div>
+        </div>
+        <div class="card">
+            <h2>Website States</h2>
+            <div id="websiteStates"></div>
+        </div>
+    </div>
+
+    <script>
+        // System Specs
+        const systemSpecs = {
+            Platform: navigator.platform,
+            'Operating System': navigator.platform.includes('Win') ? 'Windows' : navigator.platform.includes('Mac') ? 'macOS' : navigator.platform.includes('Linux') ? 'Linux' : 'Unknown',
+            Language: navigator.language,
+            'CPU Cores': navigator.hardwareConcurrency || 'Unknown',
+            'Screen Resolution': `${window.screen.width}x${window.screen.height}`,
+            'Color Depth': `${window.screen.colorDepth}-bit`,
+            'GPU': 'Detecting...',
+            'Estimated RAM': 'Calculating...'
+        };
+
+        const specsContainer = document.getElementById("systemSpecs");
+        Object.entries(systemSpecs).forEach(([key, value]) => {
+            const specElement = document.createElement("p");
+            specElement.innerHTML = `<strong>${key}:</strong> <span id="${key.toLowerCase().replace(/\s+/g, '')}Spec">${value}</span>`;
+            specsContainer.appendChild(specElement);
+        });
+
+        // Detect GPU
+        const canvas = document.createElement('canvas');
+        const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
+        if (gl) {
+            const debugInfo = gl.getExtension('WEBGL_debug_renderer_info');
+            const renderer = gl.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL);
+            document.getElementById('gpuSpec').textContent = renderer;
+        } else {
+            document.getElementById('gpuSpec').textContent = 'Not available';
+        }
+
+        // Estimate RAM
+        function estimateRAM() {
+            if ('memory' in navigator) {
+                const ramGB = Math.round(navigator.deviceMemory);
+                document.getElementById('estimatedramSpec').textContent = `${ramGB} GB`;
+            } else if ('hardwareConcurrency' in navigator) {
+                // Rough estimation based on CPU cores
+                const estimatedGB = navigator.hardwareConcurrency * 2;
+                document.getElementById('estimatedramSpec').textContent = `~${estimatedGB} GB (estimated)`;
+            } else {
+                document.getElementById('estimatedramSpec').textContent = 'Unable to estimate';
+            }
+        }
+        estimateRAM();
+
+        // Animate system specs
+        anime({
+            targets: '#systemSpecs p',
+            translateX: [50, 0],
+            opacity: [0, 1],
+            delay: anime.stagger(100)
+        });
+
+        // CPU Usage Chart
+        const cpuCtx = document.getElementById('cpuChart').getContext('2d');
+        const cpuChart = new Chart(cpuCtx, {
+            type: 'line',
+            data: {
+                labels: [],
+                datasets: [{
+                    label: 'CPU Usage %',
+                    data: [],
+                    borderColor: 'rgb(75, 192, 192)',
+                    tension: 0.1
+                }]
+            },
+            options: {
+                responsive: true,
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        max: 100
+                    }
+                }
+            }
+        });
+
+        // Memory Usage Chart
+        const memoryCtx = document.getElementById('memoryChart').getContext('2d');
+        const memoryChart = new Chart(memoryCtx, {
+            type: 'doughnut',
+            data: {
+                labels: ['Used', 'Free'],
+                datasets: [{
+                    data: [0, 100],
+                    backgroundColor: [
+                        'rgba(255, 99, 132, 0.5)',
+                        'rgba(75, 192, 192, 0.5)'
+                    ]
+                }]
+            },
+            options: {
+                responsive: true,
+                plugins: {
+                    title: {
+                        display: true,
+                        text: 'Estimated Memory Usage'
+                    }
+                }
+            }
+        });
+
+        // IP Information
+        const ipInfoContainer = document.getElementById("ipInfo");
+        fetch('https://ipapi.co/json/')
+            .then(response => response.json())
+            .then(data => {
+                const ipInfo = {
+                    'IP Address': data.ip,
+                    'City': data.city,
+                    'Region': data.region,
+                    'Country': data.country_name,
+                    'ISP': data.org
+                };
+                Object.entries(ipInfo).forEach(([key, value]) => {
+                    const infoElement = document.createElement("p");
+                    infoElement.innerHTML = `<strong>${key}:</strong> ${value}`;
+                    ipInfoContainer.appendChild(infoElement);
+                });
+            })
+            .catch(error => {
+                ipInfoContainer.innerHTML = '<p>Error fetching IP information.</p>';
+                console.error('Error:', error);
+            });
+
+        // Enhanced Cookie Information
+        function updateCookieInfo() {
+            const cookieInfoContainer = document.getElementById("cookieInfo");
+            cookieInfoContainer.innerHTML = '';
+            const cookies = document.cookie.split(';');
+            if (cookies.length === 1 && cookies[0] === "") {
+                cookieInfoContainer.innerHTML = '<p>No cookies found.</p>';
+            } else {
+                cookies.forEach(cookie => {
+                    const [name, value] = cookie.trim().split('=');
+                    const cookieElement = document.createElement("p");
+                    cookieElement.innerHTML = `<strong>${name}:</strong> ${value} 
+                        <button onclick="deleteCookie('${name}')">Delete</button>`;
+                    cookieInfoContainer.appendChild(cookieElement);
+                });
+            }
+        }
+
+        function setCookie(name, value, days) {
+            const expires = new Date(Date.now() + days * 24 * 60 * 60 * 1000).toUTCString();
+            document.cookie = `${name}=${value}; expires=${expires}; path=/`;
+            updateCookieInfo();
+        }
+
+        function deleteCookie(name) {
+            document.cookie = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;`;
+            updateCookieInfo();
+        }
+
+        // Add event listener for cookie form
+        document.getElementById('cookieForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            const name = document.getElementById('cookieName').value;
+            const value = document.getElementById('cookieValue').value;
+            const days = parseInt(document.getElementById('cookieExpiration').value);
+            setCookie(name, value, days);
+            this.reset();
+        });
+
+        // User Agent
+        const userAgentElement = document.getElementById("userAgent");
+        userAgentElement.textContent = navigator.userAgent;
+
+        // Website States
+        const websiteStates = {
+            "Page Load Time": "0 ms",
+            "Network Type": "Unknown",
+            "Online Status": "Unknown"
+        };
+
+        const statesContainer = document.getElementById("websiteStates");
+        Object.entries(websiteStates).forEach(([key, value]) => {
+            const stateElement = document.createElement("p");
+            stateElement.innerHTML = `<strong>${key}:</strong> <span id="${key.replace(/\s+/g, '')}State">${value}</span>`;
+            statesContainer.appendChild(stateElement);
+        });
+
+        // Update real-time data
+        function updateData() {
+            // Update CPU usage (simulated)
+            const cpuUsage = Math.floor(Math.random() * 100);
+            cpuChart.data.labels.push(new Date().toLocaleTimeString());
+            cpuChart.data.datasets[0].data.push(cpuUsage);
+            if (cpuChart.data.labels.length > 10) {
+                cpuChart.data.labels.shift();
+                cpuChart.data.datasets[0].data.shift();
+            }
+            cpuChart.update();
+
+            // Update Memory usage (estimated)
+            const usedMemory = Math.floor(Math.random() * 70) + 30; // Simulated: 30-100%
+            memoryChart.data.datasets[0].data = [usedMemory, 100 - usedMemory];
+            memoryChart.update();
+
+            // Update Website States
+            const pageLoadTime = Math.round(performance.now());
+            document.getElementById("PageLoadTimeState").textContent = `${pageLoadTime} ms`;
+
+            if (navigator.connection) {
+                document.getElementById("NetworkTypeState").textContent = navigator.connection.effectiveType || "Unknown";
+            }
+
+            document.getElementById("OnlineStatusState").textContent = navigator.onLine ? "Online" : "Offline";
+
+            // Update cookie information
+            updateCookieInfo();
+        }
+
+        // Update data every 2 seconds
+        setInterval(updateData, 2000);
+
+        // Initial update
+        updateData();
+
+        // Listen for online/offline events
+        window.addEventListener('online', () => document.getElementById("OnlineStatusState").textContent = "Online");
+        window.addEventListener('offline', () => document.getElementById("OnlineStatusState").textContent = "Offline");
+
+        // Calculate page load time
+        window.addEventListener('load', () => {
+            const loadTime = window.performance.timing.domContentLoadedEventEnd - window.performance.timing.navigationStart;
+            document.getElementById("PageLoadTimeState").textContent = `${loadTime} ms`;
+        });
+    </script>
+</body>
+</html>
