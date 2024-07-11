@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Scrolling Neural Network Animation Generator</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            background-color: #1a1a1a;
+            font-family: Arial, sans-serif;
+            overflow: hidden;
+        }
+        #animationCanvas {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 200%;  /* Double width for scrolling effect */
+            height: 100%;
+            z-index: 1;
+        }
+        #controls {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 1000;
+        }
+        button {
+            background-color: #4CAF50;
+            border: none;
+            color: white;
+            padding: 15px 32px;
+            text-align: center;
+            text-decoration: none;
+            display: inline-block;
+            font-size: 16px;
+            margin: 4px 2px;
+            cursor: pointer;
+            transition: all 0.3s;
+            border-radius: 5px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        button:hover {
+            background-color: #45a049;
+            transform: scale(1.05);
+        }
+        .shape {
+            position: absolute;
+            transition: all 0.5s;
+        }
+        @keyframes rotate {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+        @keyframes pulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.1); }
+            100% { transform: scale(1); }
+        }
+    </style>
+</head>
+<body>
+    <div id="animationCanvas"></div>
+    <div id="controls">
+        <button id="toggleAnimation">Start Animation</button>
+    </div>
+    <script>
+        class RNN {
+            constructor(inputSize, hiddenSize, outputSize) {
+                this.hiddenSize = hiddenSize;
+                this.Wxh = this.randomMatrix(hiddenSize, inputSize);
+                this.Whh = this.randomMatrix(hiddenSize, hiddenSize);
+                this.Why = this.randomMatrix(outputSize, hiddenSize);
+                this.bh = this.randomMatrix(hiddenSize, 1);
+                this.by = this.randomMatrix(outputSize, 1);
+            }
+
+            randomMatrix(rows, cols) {
+                return Array.from({ length: rows }, () =>
+                    Array.from({ length: cols }, () => Math.random() * 2 - 1)
+                );
+            }
+
+            forward(x, h) {
+                const newH = this.tanh(this.add(
+                    this.add(this.multiply(this.Wxh, x), this.multiply(this.Whh, h)),
+                    this.bh
+                ));
+                const y = this.add(this.multiply(this.Why, newH), this.by);
+                return [y, newH];
+            }
+
+            multiply(a, b) {
+                const result = Array(a.length).fill().map(() => Array(b[0].length).fill(0));
+                return result.map((row, i) =>
+                    row.map((_, j) =>
+                        a[i].reduce((sum, elm, k) => sum + elm * b[k][j], 0)
+                    )
+                );
+            }
+
+            add(a, b) {
+                return a.map((row, i) => row.map((val, j) => val + b[i][j]));
+            }
+
+            tanh(x) {
+                return x.map(row => row.map(val => Math.tanh(val)));
+            }
+        }
+
+        const canvas = document.getElementById('animationCanvas');
+        const toggleBtn = document.getElementById('toggleAnimation');
+
+        const inputSize = 4;
+        const hiddenSize = 16;
+        const outputSize = 20;
+        let rnn = new RNN(inputSize, hiddenSize, outputSize);
+
+        let isRunning = false;
+        let animationId;
+        let h = Array(hiddenSize).fill().map(() => [Math.random() * 2 - 1]);
+        let shapes = [];
+        let scrollPosition = 0;
+        const scrollSpeed = 0.5;  // pixels per frame
+
+        function generateAnimation() {
+            const x = Array(inputSize).fill().map(() => [Math.random() * 2 - 1]);
+            [output, h] = rnn.forward(x, h);
+            
+            createNewShape(output);
+            moveAndFadeShapes();
+
+            if (isRunning) {
+                animationId = requestAnimationFrame(generateAnimation);
+            }
+        }
+
+        function createNewShape(output) {
+            const [r, g, b] = output.slice(1, 4).map(v => Math.floor((v[0] + 1) * 127.5));
+            const x1 = window.innerWidth + (output[4][0] + 1) * window.innerWidth / 2;
+            const y1 = (output[5][0] + 1) * window.innerHeight / 2;
+            const size = Math.abs(output[6][0]) * 200 + 20;
+            const shape = Math.floor((output[7][0] + 1) * 1.5);
+            const animation = Math.floor((output[8][0] + 1) * 1.5);
+            const duration = Math.abs(output[9][0]) * 5 + 1;
+            const delay = Math.abs(output[10][0]) * 2;
+            const opacity = Math.abs(output[11][0]) * 0.5 + 0.1;
+            const borderRadius = Math.abs(output[12][0]) * 50;
+            const rotateAngle = output[13][0] * 360;
+            const scaleX = Math.abs(output[14][0]) + 0.5;
+            const scaleY = Math.abs(output[15][0]) + 0.5;
+            const skewX = output[16][0] * 45;
+
+            const shapeElement = document.createElement('div');
+            shapeElement.classList.add('shape');
+            shapeElement.style.left = `${x1}px`;
+            shapeElement.style.top = `${y1}px`;
+            shapeElement.style.backgroundColor = `rgb(${r},${g},${b})`;
+            shapeElement.style.opacity = opacity;
+
+            if (shape === 0) {
+                shapeElement.style.width = `${size}px`;
+                shapeElement.style.height = `${size}px`;
+                shapeElement.style.borderRadius = '50%';
+            } else if (shape === 1) {
+                shapeElement.style.width = `${size}px`;
+                shapeElement.style.height = `${size}px`;
+                shapeElement.style.borderRadius = `${borderRadius}px`;
+            } else {
+                shapeElement.style.width = '0';
+                shapeElement.style.height = '0';
+                shapeElement.style.borderLeft = `${size / 2}px solid transparent`;
+                shapeElement.style.borderRight = `${size / 2}px solid transparent`;
+                shapeElement.style.borderBottom = `${size}px solid rgb(${r},${g},${b})`;
+                shapeElement.style.backgroundColor = 'transparent';
+            }
+
+            let animationString = '';
+            if (animation === 0) {
+                animationString = `rotate ${duration}s linear infinite`;
+            } else if (animation === 1) {
+                animationString = `pulse ${duration}s ease-in-out infinite`;
+            }
+
+            shapeElement.style.animation = animationString;
+            shapeElement.style.animationDelay = `${delay}s`;
+            shapeElement.style.transform = `rotate(${rotateAngle}deg) scale(${scaleX}, ${scaleY}) skew(${skewX}deg)`;
+
+            canvas.appendChild(shapeElement);
+            shapes.push(shapeElement);
+        }
+
+        function moveAndFadeShapes() {
+            scrollPosition += scrollSpeed;
+            canvas.style.transform = `translateX(-${scrollPosition}px)`;
+
+            shapes.forEach((shape, index) => {
+                const rect = shape.getBoundingClientRect();
+                const shapeRight = rect.right - scrollPosition;
+
+                if (shapeRight < 0) {
+                    shape.remove();
+                    shapes.splice(index, 1);
+                } else if (shapeRight < window.innerWidth) {
+                    const opacity = parseFloat(shape.style.opacity);
+                    shape.style.opacity = Math.max(0, opacity - 0.005).toString();
+                }
+            });
+
+            // Reset scroll position when it exceeds window width
+            if (scrollPosition >= window.innerWidth) {
+                scrollPosition = 0;
+                canvas.style.transform = `translateX(0px)`;
+            }
+        }
+
+        function toggleAnimation() {
+            isRunning = !isRunning;
+            if (isRunning) {
+                toggleBtn.textContent = 'Stop Animation';
+                rnn = new RNN(inputSize, hiddenSize, outputSize);
+                h = Array(hiddenSize).fill().map(() => [Math.random() * 2 - 1]);
+                generateAnimation();
+            } else {
+                toggleBtn.textContent = 'Start Animation';
+                cancelAnimationFrame(animationId);
+            }
+        }
+
+        toggleBtn.addEventListener('click', toggleAnimation);
+    </script>
+</body>
+</html>
