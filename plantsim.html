@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Enhanced Plant Growth Simulation</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f0f0f0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px;
+        }
+        h1 {
+            color: #2c3e50;
+        }
+        #simulation-area {
+            width: 500px;
+            height: 300px;
+            border: 2px solid #34495e;
+            position: relative;
+            background-color: #8B4513;
+            overflow: hidden;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        .plant {
+            position: absolute;
+            bottom: 0;
+            transition: all 0.5s;
+        }
+        .plant-body {
+            background-color: #4CAF50;
+            width: 100%;
+            height: 100%;
+            border-radius: 50% 50% 0 0;
+            position: relative;
+            overflow: hidden;
+        }
+        .leaf {
+            position: absolute;
+            background-color: #45a049;
+            width: 40%;
+            height: 40%;
+            border-radius: 50%;
+        }
+        .leaf:nth-child(1) { top: 20%; left: -10%; }
+        .leaf:nth-child(2) { top: 20%; right: -10%; }
+        .soil-spot {
+            width: 50px;
+            height: 20px;
+            position: absolute;
+            bottom: 0;
+            background-color: #6d4c41;
+            border: 1px solid #4e342e;
+            box-sizing: border-box;
+        }
+        .info-display {
+            background-color: #ecf0f1;
+            padding: 10px;
+            border-radius: 5px;
+            margin: 10px 0;
+            width: 100%;
+            max-width: 500px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+        .controls {
+            display: flex;
+            justify-content: space-between;
+            width: 100%;
+            max-width: 500px;
+            margin-bottom: 10px;
+        }
+        button {
+            background-color: #3498db;
+            color: white;
+            border: none;
+            padding: 10px 15px;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+        button:hover {
+            background-color: #2980b9;
+        }
+        input[type="range"] {
+            width: 100%;
+            margin: 10px 0;
+        }
+        .speed-control {
+            display: flex;
+            justify-content: space-between;
+            width: 100%;
+            max-width: 500px;
+            margin-top: 10px;
+        }
+        .speed-btn {
+            flex: 1;
+            margin: 0 5px;
+        }
+        @keyframes sway {
+            0% { transform: rotate(0deg); }
+            50% { transform: rotate(5deg); }
+            100% { transform: rotate(0deg); }
+        }
+    </style>
+</head>
+<body>
+    <h1>Enhanced Plant Growth Simulation</h1>
+    <div class="info-display">
+        <div id="weather-display">Weather: Sunny</div>
+        <div id="seeds-display">Seeds: 5</div>
+        <div id="nutrients-display">Nutrients: 50%</div>
+    </div>
+    <div class="controls">
+        <button id="plant-btn">Plant</button>
+        <button id="harvest-btn">Harvest</button>
+    </div>
+    <div>
+        <label for="nutrients-slider">Nutrients:</label>
+        <input type="range" id="nutrients-slider" min="0" max="100" value="50">
+    </div>
+    <div id="simulation-area"></div>
+    <div class="speed-control">
+        <button class="speed-btn" id="speed-1x">1x Speed</button>
+        <button class="speed-btn" id="speed-2x">2x Speed</button>
+        <button class="speed-btn" id="speed-10x">10x Speed</button>
+    </div>
+
+    <script>
+        const simulationArea = document.getElementById('simulation-area');
+        const weatherDisplay = document.getElementById('weather-display');
+        const seedsDisplay = document.getElementById('seeds-display');
+        const nutrientsDisplay = document.getElementById('nutrients-display');
+        const plantBtn = document.getElementById('plant-btn');
+        const harvestBtn = document.getElementById('harvest-btn');
+        const nutrientsSlider = document.getElementById('nutrients-slider');
+        const speedButtons = document.querySelectorAll('.speed-btn');
+
+        let weather = 'sunny';
+        let seeds = 5;
+        let nutrients = 50;
+        let plants = [];
+        const soilSpots = 10;
+        let simulationSpeed = 1;
+        let simulationInterval;
+
+        function createSoilSpots() {
+            for (let i = 0; i < soilSpots; i++) {
+                const spot = document.createElement('div');
+                spot.className = 'soil-spot';
+                spot.style.left = `${i * 50}px`;
+                simulationArea.appendChild(spot);
+            }
+        }
+
+        function Plant(x) {
+            this.element = document.createElement('div');
+            this.element.className = 'plant';
+            this.element.style.left = `${x}px`;
+            this.width = 10;
+            this.height = 20;
+            this.health = 100;
+            this.hunger = 0;
+            this.mature = false;
+            this.seeds = 0;
+            this.genes = {
+                growthRate: Math.random() * 0.5 + 0.5,
+                nutrientEfficiency: Math.random() * 0.5 + 0.5,
+                weatherResistance: Math.random() * 0.5 + 0.5,
+            };
+            
+            const plantBody = document.createElement('div');
+            plantBody.className = 'plant-body';
+            for (let i = 0; i < 2; i++) {
+                const leaf = document.createElement('div');
+                leaf.className = 'leaf';
+                plantBody.appendChild(leaf);
+            }
+            this.element.appendChild(plantBody);
+            
+            simulationArea.appendChild(this.element);
+            this.update();
+        }
+
+        Plant.prototype.update = function() {
+            this.element.style.width = `${this.width}px`;
+            this.element.style.height = `${this.height}px`;
+            const healthColor = Math.floor((this.health / 100) * 255);
+            this.element.querySelector('.plant-body').style.backgroundColor = `rgb(${255 - healthColor}, ${healthColor}, 0)`;
+            this.element.style.animation = weather === 'windy' ? 'sway 2s ease-in-out infinite' : 'none';
+        }
+
+        Plant.prototype.grow = function() {
+            const weatherEffect = weather === 'sunny' ? 1 : weather === 'cloudy' ? 0.7 : 0.4;
+            const growthRate = this.genes.growthRate * (nutrients / 100) * 0.2 * weatherEffect * simulationSpeed;
+            this.width += growthRate;
+            this.height += growthRate * 2;
+            this.hunger += (0.5 - (this.genes.nutrientEfficiency * (nutrients / 100) * 0.3)) * simulationSpeed;
+            this.health -= this.hunger > 50 ? (this.hunger - 50) * 0.1 * simulationSpeed : 0;
+            this.health -= weather === 'rainy' ? (1 - this.genes.weatherResistance) * 0.1 * simulationSpeed : 0;
+            this.health = Math.max(0, Math.min(100, this.health));
+
+            if (this.width > 50 && !this.mature) {
+                this.mature = true;
+                this.seeds = Math.floor(Math.random() * 5) + 1;
+            }
+
+            this.update();
+        }
+
+        function updateDisplay() {
+            weatherDisplay.textContent = `Weather: ${weather}`;
+            seedsDisplay.textContent = `Seeds: ${seeds}`;
+            nutrientsDisplay.textContent = `Nutrients: ${nutrients}%`;
+        }
+
+        function changeWeather() {
+            const weathers = ['sunny', 'cloudy', 'rainy', 'windy'];
+            weather = weathers[Math.floor(Math.random() * weathers.length)];
+            updateDisplay();
+        }
+
+        function plantSeed() {
+            if (seeds > 0 && plants.length < soilSpots) {
+                const x = plants.length * 50;
+                plants.push(new Plant(x));
+                seeds--;
+                updateDisplay();
+            }
+        }
+
+        function harvestPlant() {
+            const maturePlants = plants.filter(p => p.mature);
+            if (maturePlants.length > 0) {
+                const plant = maturePlants[0];
+                seeds += plant.seeds;
+                simulationArea.removeChild(plant.element);
+                plants = plants.filter(p => p !== plant);
+                updateDisplay();
+            }
+        }
+
+        function setSimulationSpeed(speed) {
+            simulationSpeed = speed;
+            clearInterval(simulationInterval);
+            simulationInterval = setInterval(() => {
+                plants.forEach(plant => plant.grow());
+                if (Math.random() < 0.05 * simulationSpeed) changeWeather();
+            }, 1000 / simulationSpeed);
+        }
+
+        plantBtn.addEventListener('click', plantSeed);
+        harvestBtn.addEventListener('click', harvestPlant);
+        nutrientsSlider.addEventListener('input', function() {
+            nutrients = this.value;
+            updateDisplay();
+        });
+
+        speedButtons.forEach(button => {
+            button.addEventListener('click', function() {
+                const speed = parseInt(this.id.split('-')[1]);
+                setSimulationSpeed(speed === 10 ? 10 : speed);
+                speedButtons.forEach(btn => btn.style.backgroundColor = '#3498db');
+                this.style.backgroundColor = '#e74c3c';
+            });
+        });
+
+        createSoilSpots();
+        updateDisplay();
+        setSimulationSpeed(1);
+    </script>
+</body>
+</html>
