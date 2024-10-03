@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>neural network based texture generation </title>
+    <style>
+        body { margin: 0; overflow: hidden; }
+        canvas { display: block; }
+    </style>
+</head>
+<body>
+    <!-- The 3D canvas will be injected here -->
+
+    <!-- Include Three.js Library via CDN -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <!-- Include TensorFlow.js Library via CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@3.9.0/dist/tf.min.js"></script>
+
+    <!-- Custom Script -->
+    <script>
+        // Initialize scene, camera, and renderer
+        const scene = new THREE.Scene();
+
+        const camera = new THREE.PerspectiveCamera(
+            75,
+            window.innerWidth / window.innerHeight,
+            0.1,
+            1000
+        );
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        camera.position.z = 5;
+
+        // Add lighting to the scene
+        const ambientLight = new THREE.AmbientLight(0x404040, 2); // Soft white light
+        scene.add(ambientLight);
+
+        const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
+        directionalLight.position.set(5, 10, 7.5);
+        scene.add(directionalLight);
+
+        // Load an environment map for reflections
+        const loader = new THREE.CubeTextureLoader();
+        const environmentMap = loader.load([
+            'https://threejs.org/examples/textures/cube/Bridge2/posx.jpg',
+            'https://threejs.org/examples/textures/cube/Bridge2/negx.jpg',
+            'https://threejs.org/examples/textures/cube/Bridge2/posy.jpg',
+            'https://threejs.org/examples/textures/cube/Bridge2/negy.jpg',
+            'https://threejs.org/examples/textures/cube/Bridge2/posz.jpg',
+            'https://threejs.org/examples/textures/cube/Bridge2/negz.jpg'
+        ]);
+
+        scene.background = environmentMap;
+
+        // Define geometries
+        const geometries = [
+            new THREE.BoxGeometry(),
+            new THREE.SphereGeometry(),
+            new THREE.ConeGeometry(),
+            new THREE.CylinderGeometry(),
+            new THREE.TorusGeometry(),
+            new THREE.TorusKnotGeometry(),
+            new THREE.DodecahedronGeometry(),
+            new THREE.IcosahedronGeometry()
+        ];
+
+        // Random geometry
+        const randomGeometry = geometries[Math.floor(Math.random() * geometries.length)];
+
+        // Define a simple neural network model for texture generation
+        function createTextureModel() {
+            const model = tf.sequential();
+
+            // Input layer (latent space vector)
+            model.add(tf.layers.dense({ inputShape: [100], units: 256, activation: 'relu' }));
+            model.add(tf.layers.dense({ units: 512, activation: 'relu' }));
+            model.add(tf.layers.dense({ units: 1024, activation: 'relu' }));
+            model.add(tf.layers.dense({ units: 64 * 64 * 3, activation: 'sigmoid' }));
+            model.add(tf.layers.reshape({ targetShape: [64, 64, 3] }));
+
+            return model;
+        }
+
+        const textureModel = createTextureModel();
+
+        // Generate a random latent vector
+        function generateLatentVector() {
+            return tf.randomNormal([1, 100]);
+        }
+
+        // Generate texture using the model
+        async function generateTexture() {
+            const latentVector = generateLatentVector();
+            const textureOutput = textureModel.predict(latentVector);
+
+            // Convert tensor to image data
+            const textureData = await textureOutput.array();
+
+            // Create an ImageData object
+            const canvas = document.createElement('canvas');
+            canvas.width = 64;
+            canvas.height = 64;
+            const ctx = canvas.getContext('2d');
+            const imageData = ctx.createImageData(64, 64);
+
+            // Flatten the texture data and map it to RGBA values
+            const data = textureData[0];
+            for (let i = 0; i < data.length; i++) {
+                for (let j = 0; j < data[i].length; j++) {
+                    const pixelIndex = (i * 64 + j) * 4;
+                    imageData.data[pixelIndex] = data[i][j][0] * 255;     // Red
+                    imageData.data[pixelIndex + 1] = data[i][j][1] * 255; // Green
+                    imageData.data[pixelIndex + 2] = data[i][j][2] * 255; // Blue
+                    imageData.data[pixelIndex + 3] = 255;                 // Alpha
+                }
+            }
+
+            ctx.putImageData(imageData, 0, 0);
+
+            // Create a texture from the canvas
+            const texture = new THREE.CanvasTexture(canvas);
+
+            return texture;
+        }
+
+        // Main function to initialize everything
+        async function init() {
+            // Generate the texture using the neural network
+            const texture = await generateTexture();
+
+            // Create material using the AI-generated texture
+            const material = new THREE.MeshStandardMaterial({
+                map: texture,
+                metalness: 0.7,
+                roughness: 0.2,
+                envMap: environmentMap,
+                // Add normal map for lighting effects
+                normalMap: texture,
+                normalScale: new THREE.Vector2(0.5, 0.5)
+            });
+
+            // Randomize material color
+            material.color = new THREE.Color(Math.random(), Math.random(), Math.random());
+
+            // Create a mesh with the random geometry and material
+            const mesh = new THREE.Mesh(randomGeometry, material);
+
+            // Add the mesh to the scene
+            scene.add(mesh);
+
+            // Animation loop
+            function animate() {
+                requestAnimationFrame(animate);
+                mesh.rotation.x += 0.005;
+                mesh.rotation.y += 0.01;
+                renderer.render(scene, camera);
+            }
+            animate();
+        }
+
+        init();
+
+        // Handle window resize
+        window.addEventListener('resize', onWindowResize, false);
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+    </script>
+</body>
+</html>
