@@ -73,7 +73,7 @@
 </head>
 <body>
     <div class="container">
-        <h1>DIAMOND Simulation with Q-Learning and Neural Network Agents</h1>
+        <h1>Hybrid DIAMOND Simulation with Q-Learning & Neural Networks</h1>
         <div class="canvas-container">
             <div>
                 <h2>World State</h2>
@@ -118,7 +118,7 @@
     </div>
 
     <!-- Include TensorFlow.js and Chart.js libraries before the simulation script -->
-    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@3.9.0/dist/tf.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js"></script>
     <!-- Simulation script -->
     <script>
@@ -126,8 +126,7 @@
         const GRID_SIZE = 60;
         const CELL_SIZE = 10;
         const CANVAS_SIZE = GRID_SIZE * CELL_SIZE;
-        const FOG_OF_WAR_RADIUS = 5;
-        const MAX_ENERGY = 200; // Increased from 100 to 200
+        const MAX_ENERGY = 200;
 
         // DOM elements
         const worldCanvas = document.getElementById('world-canvas');
@@ -152,215 +151,85 @@
         const rewardChartCtx = document.getElementById('reward-chart').getContext('2d');
         const energyChartCtx = document.getElementById('energy-chart').getContext('2d');
 
-        // Helper functions for Base64 encoding/decoding Unicode strings
-        function b64EncodeUnicode(str) {
-            return btoa(encodeURIComponent(str).replace(/%([0-9A-F]{2})/g, function(match, p1) {
-                return String.fromCharCode('0x' + p1);
-            }));
-        }
-
-        function b64DecodeUnicode(str) {
-            return decodeURIComponent(Array.prototype.map.call(atob(str), function(c) {
-                return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
-            }).join(''));
-        }
-
-        // Simulation classes
-        class Environment {
-            constructor(gridSize) {
-                this.gridSize = gridSize;
-                this.state = this.createInitialState();
-                this.obstacles = this.createObstacles();
-                this.terrain = this.createTerrain();
-                this.traps = this.createTraps();
-                this.movingObstacles = this.createMovingObstacles();
-                this.energyPacks = this.createEnergyPacks();
-            }
-
-            createInitialState() {
-                let state = Array.from({ length: this.gridSize }, () =>
-                    new Float32Array(this.gridSize).fill(0)
-                );
-                for (let i = 0; i < 20; i++) {
-                    const x = Math.floor(Math.random() * this.gridSize);
-                    const y = Math.floor(Math.random() * this.gridSize);
-                    state[y][x] = Math.random() * 5 + 5;
-                }
-                return state;
-            }
-
-            createObstacles() {
-                let obstacles = Array.from({ length: this.gridSize }, () =>
-                    new Array(this.gridSize).fill(false)
-                );
-                for (let i = 0; i < 100; i++) { // Adjusted obstacle count
-                    const x = Math.floor(Math.random() * this.gridSize);
-                    const y = Math.floor(Math.random() * this.gridSize);
-                    obstacles[y][x] = true;
-                }
-                return obstacles;
-            }
-
-            createMovingObstacles() {
-                let movingObstacles = [];
-                for (let i = 0; i < 10; i++) {
-                    let x, y;
-                    do {
-                        x = Math.floor(Math.random() * this.gridSize);
-                        y = Math.floor(Math.random() * this.gridSize);
-                    } while (this.obstacles[y][x]); // Ensure no overlap with static obstacles
-                    movingObstacles.push({ x, y, dx: Math.random() < 0.5 ? 1 : -1, dy: Math.random() < 0.5 ? 1 : -1 });
-                    this.obstacles[y][x] = true; // Mark moving obstacle on the grid
-                }
-                return movingObstacles;
-            }
-
-            updateMovingObstacles() {
-                this.movingObstacles.forEach(obstacle => {
-                    const oldX = obstacle.x;
-                    const oldY = obstacle.y;
-                    obstacle.x += obstacle.dx;
-                    obstacle.y += obstacle.dy;
-
-                    // Bounce off the walls
-                    if (obstacle.x < 0 || obstacle.x >= this.gridSize) {
-                        obstacle.dx *= -1;
-                        obstacle.x += obstacle.dx * 2;
-                    }
-                    if (obstacle.y < 0 || obstacle.y >= this.gridSize) {
-                        obstacle.dy *= -1;
-                        obstacle.y += obstacle.dy * 2;
-                    }
-
-                    // Check collision with existing obstacles
-                    if (!this.obstacles[obstacle.y][obstacle.x]) {
-                        // Move obstacle
-                        this.obstacles[oldY][oldX] = false;
-                        obstacle.x = Math.max(0, Math.min(this.gridSize - 1, obstacle.x));
-                        obstacle.y = Math.max(0, Math.min(this.gridSize - 1, obstacle.y));
-                        this.obstacles[obstacle.y][obstacle.x] = true;
-                    } else {
-                        // Reverse direction if collision occurs
-                        obstacle.dx *= -1;
-                        obstacle.dy *= -1;
-                        obstacle.x = oldX;
-                        obstacle.y = oldY;
-                    }
-                });
-            }
-
-            createTerrain() {
-                let terrain = Array.from({ length: this.gridSize }, () =>
-                    new Array(this.gridSize).fill('normal')
-                );
-                return terrain;
-            }
-
-            createTraps() {
-                let traps = Array.from({ length: this.gridSize }, () =>
-                    new Array(this.gridSize).fill(false)
-                );
-                return traps;
-            }
-
-            createEnergyPacks() {
-                let energyPacks = [];
-                for (let i = 0; i < 30; i++) { // Increased number of energy packs
-                    let x, y;
-                    do {
-                        x = Math.floor(Math.random() * this.gridSize);
-                        y = Math.floor(Math.random() * this.gridSize);
-                    } while (this.obstacles[y][x] || energyPacks.some(pack => pack.x === x && pack.y === y));
-                    energyPacks.push({ x, y });
-                }
-                return energyPacks;
-            }
-
-            updateEnergyPacks() {
-                const maxEnergyPacks = 30; // Desired number of energy packs
-                const packsToAdd = maxEnergyPacks - this.energyPacks.length;
-                for (let i = 0; i < packsToAdd; i++) {
-                    let x, y;
-                    do {
-                        x = Math.floor(Math.random() * this.gridSize);
-                        y = Math.floor(Math.random() * this.gridSize);
-                    } while (this.obstacles[y][x] || this.energyPacks.some(pack => pack.x === x && pack.y === y));
-                    this.energyPacks.push({ x, y });
-                }
-            }
-
-            diffuse(steps) {
-                for (let s = 0; s < steps; s++) {
-                    let newState = this.state.map(row => new Float32Array(row));
-                    for (let y = 0; y < this.gridSize; y++) {
-                        for (let x = 0; x < this.gridSize; x++) {
-                            if (this.obstacles[y][x]) continue;
-                            let sum = this.state[y][x];
-                            let count = 1;
-                            const neighbors = [
-                                [x - 1, y],
-                                [x + 1, y],
-                                [x, y - 1],
-                                [x, y + 1]
-                            ];
-                            neighbors.forEach(([nx, ny]) => {
-                                if (
-                                    nx >= 0 &&
-                                    nx < this.gridSize &&
-                                    ny >= 0 &&
-                                    ny < this.gridSize &&
-                                    !this.obstacles[ny][nx]
-                                ) {
-                                    sum += this.state[ny][nx];
-                                    count++;
-                                }
-                            });
-                            newState[y][x] = sum / count;
-                        }
-                    }
-                    this.state = newState;
-                }
-            }
-        }
-
-        class Agent {
+        // Hybrid Agent class (combining Q-Learning and Neural Network)
+        class HybridAgent {
             constructor(environment, id) {
                 this.id = id;
                 this.env = environment;
-                // Initialize at random non-obstacle, non-energy pack position
-                let startX, startY;
-                do {
-                    startX = Math.floor(Math.random() * this.env.gridSize);
-                    startY = Math.floor(Math.random() * this.env.gridSize);
-                } while (this.env.obstacles[startY][startX] || this.env.energyPacks.some(pack => pack.x === startX && pack.y === startY));
-                this.position = [startX * CELL_SIZE + CELL_SIZE / 2, startY * CELL_SIZE + CELL_SIZE / 2];
-                this.qTable = {}; // Q-table as an object
+                this.position = [CANVAS_SIZE / 2, CANVAS_SIZE / 2];
+                this.qTable = {};  // Q-Learning Q-Table
                 this.initializeQTable();
-                this.alpha = parseFloat(document.getElementById('learning-rate').value); // Learning rate
-                this.gamma = parseFloat(document.getElementById('discount-factor').value); // Discount factor
-                this.epsilon = parseFloat(document.getElementById('epsilon').value); // Exploration rate
-                this.path = [];
+                this.model = null;  // Neural network for higher-level decisions
+                this.initializeNeuralNetwork();
+                this.alpha = parseFloat(learningRateInput.value);  // Learning rate
+                this.gamma = parseFloat(discountFactorInput.value);  // Discount factor
+                this.epsilon = parseFloat(epsilonInput.value);  // Exploration rate
                 this.totalReward = 0;
                 this.totalSteps = 0;
                 this.energy = MAX_ENERGY;
+                this.path = [];
             }
 
+            // Create Q-Table
             initializeQTable() {
                 for (let y = 0; y < this.env.gridSize; y++) {
                     for (let x = 0; x < this.env.gridSize; x++) {
                         const state = `${x},${y}`;
-                        this.qTable[state] = {
-                            'up': 0,
-                            'down': 0,
-                            'left': 0,
-                            'right': 0
-                        };
+                        this.qTable[state] = { 'up': 0, 'down': 0, 'left': 0, 'right': 0 };
                     }
                 }
             }
 
-            chooseAction(state) {
-                // Epsilon-greedy strategy
+            // Create a neural network using TensorFlow.js with error handling
+            initializeNeuralNetwork() {
+                try {
+                    this.model = tf.sequential();
+                    this.model.add(tf.layers.dense({ units: 64, inputShape: [2], activation: 'relu' }));
+                    this.model.add(tf.layers.dense({ units: 4, activation: 'linear' }));
+                    this.model.compile({ optimizer: tf.train.adam(), loss: 'meanSquaredError' });
+                } catch (error) {
+                    console.error('Error initializing TensorFlow model:', error);
+                    alert('TensorFlow failed to load. Neural network functionality will be disabled.');
+                    this.model = null;  // Fallback if TensorFlow is not available
+                }
+            }
+
+            // Predict next action using the neural network
+            async predictAction(state) {
+                if (!this.model) {
+                    return [0, 0, 0, 0];  // Fallback if model is not available
+                }
+                try {
+                    const input = tf.tensor2d([state], [1, 2]);
+                    const prediction = await this.model.predict(input).data();
+                    return prediction;
+                } catch (error) {
+                    console.error('Prediction error:', error);
+                    return [0, 0, 0, 0];  // Fallback if prediction fails
+                }
+            }
+
+            // Combine Q-learning and Neural Network for action choice
+            async chooseAction() {
+                const currentGridX = Math.floor(this.position[0] / CELL_SIZE);
+                const currentGridY = Math.floor(this.position[1] / CELL_SIZE);
+                const state = [currentGridX / GRID_SIZE, currentGridY / GRID_SIZE];
+
+                // Use Q-learning for short-term decisions
+                const qAction = this.qLearningChooseAction(currentGridX, currentGridY);
+
+                // Use neural network for higher-level strategies
+                const nnPredictions = await this.predictAction(state);
+                const actions = ['up', 'down', 'left', 'right'];
+                const nnAction = actions[nnPredictions.indexOf(Math.max(...nnPredictions))];
+
+                // Hybrid approach: sometimes use NN, sometimes use Q-learning based on energy level
+                return this.energy < MAX_ENERGY * 0.5 ? qAction : nnAction;
+            }
+
+            // Q-learning decision
+            qLearningChooseAction(x, y) {
+                const state = `${x},${y}`;
                 if (Math.random() < this.epsilon) {
                     const actions = Object.keys(this.qTable[state]);
                     return actions[Math.floor(Math.random() * actions.length)];
@@ -370,25 +239,16 @@
                 }
             }
 
-            move() {
-                if (this.energy <= 0) {
-                    console.log(`Agent ${this.id} has run out of energy.`);
-                    return;
-                }
-
-                const speed = parseInt(agentSpeedInput.value);
-                this.alpha = parseFloat(document.getElementById('learning-rate').value);
-                this.gamma = parseFloat(document.getElementById('discount-factor').value);
-                this.epsilon = parseFloat(document.getElementById('epsilon').value);
-
+            // Perform agent movement and learning (Q-learning & NN combined)
+            async move() {
                 const currentGridX = Math.floor(this.position[0] / CELL_SIZE);
                 const currentGridY = Math.floor(this.position[1] / CELL_SIZE);
-                const currentState = `${currentGridX},${currentGridY}`;
+                const currentState = [currentGridX / GRID_SIZE, currentGridY / GRID_SIZE];
 
-                const action = this.chooseAction(currentState);
+                const action = await this.chooseAction();
                 let [dx, dy] = [0, 0];
 
-                switch(action) {
+                switch (action) {
                     case 'up': dy = -1; break;
                     case 'down': dy = 1; break;
                     case 'left': dx = -1; break;
@@ -397,60 +257,73 @@
 
                 let newX = currentGridX + dx;
                 let newY = currentGridY + dy;
-
-                // Ensure new position is within bounds
                 newX = Math.max(0, Math.min(this.env.gridSize - 1, newX));
                 newY = Math.max(0, Math.min(this.env.gridSize - 1, newY));
 
-                const newState = `${newX},${newY}`;
+                const reward = this.env.state[newY][newX];
+                const newState = [newX / GRID_SIZE, newY / GRID_SIZE];
 
-                // Check if new position is an obstacle
-                if (this.env.obstacles[newY][newX]) {
-                    // Penalize for hitting an obstacle
-                    const reward = -10;
-                    this.updateQTable(currentState, action, reward, currentState);
-                    this.energy -= 0.5; // Energy consumption
-                    this.totalSteps++;
-                    return;
-                }
+                this.updateQTable(currentState, action, reward, newState);
 
-                // Calculate reward based on the new cell's state
-                let reward = this.env.state[newY][newX];
+                this.trainNeuralNetwork(currentState, action, reward, newState);
 
-                // Check for energy pack
-                const energyPackIndex = this.env.energyPacks.findIndex(pack => pack.x === newX && pack.y === newY);
-                if (energyPackIndex !== -1) {
-                    this.energy = Math.min(this.energy + 50, MAX_ENERGY);
-                    this.env.energyPacks.splice(energyPackIndex, 1);
-                    reward += 10; // Bonus for collecting energy pack
-                }
-
-                // Update total reward and steps
-                this.totalReward += reward;
-                this.totalSteps++;
-
-                // Move agent
                 this.position = [newX * CELL_SIZE + CELL_SIZE / 2, newY * CELL_SIZE + CELL_SIZE / 2];
                 this.path.push([...this.position]);
                 if (this.path.length > 100) this.path.shift();
 
-                // Get maximum Q-value for the new state
-                const maxFutureQ = Math.max(...Object.values(this.qTable[newState]));
-
-                // Q-Learning update
-                this.qTable[currentState][action] += this.alpha * (reward + this.gamma * maxFutureQ - this.qTable[currentState][action]);
-
-                // Energy consumption
-                this.energy -= 0.5;
+                this.totalReward += reward;
+                this.energy -= 0.5;  // Energy consumption
+                this.totalSteps++;
             }
 
-            updateQTable(state, action, reward, nextState) {
-                // Q-Learning update for obstacles
-                const maxFutureQ = Math.max(...Object.values(this.qTable[nextState]));
-                this.qTable[state][action] += this.alpha * (reward + this.gamma * maxFutureQ - this.qTable[state][action]);
+            // Q-learning update
+            updateQTable(currentState, action, reward, nextState) {
+                const currentQ = this.qTable[`${Math.floor(currentState[0] * GRID_SIZE)},${Math.floor(currentState[1] * GRID_SIZE)}`][action];
+                const nextMaxQ = Math.max(...Object.values(this.qTable[`${Math.floor(nextState[0] * GRID_SIZE)},${Math.floor(nextState[1] * GRID_SIZE)}`]));
+                this.qTable[`${Math.floor(currentState[0] * GRID_SIZE)},${Math.floor(currentState[1] * GRID_SIZE)}`][action] +=
+                    this.alpha * (reward + this.gamma * nextMaxQ - currentQ);
+            }
+
+            // Train neural network using backpropagation
+            async trainNeuralNetwork(currentState, action, reward, nextState) {
+                if (!this.model) return;  // Skip training if model isn't available
+                try {
+                    const target = await this.predictAction(currentState);
+                    const actions = ['up', 'down', 'left', 'right'];
+                    target[actions.indexOf(action)] = reward;
+
+                    const input = tf.tensor2d([currentState], [1, 2]);
+                    const targetTensor = tf.tensor2d([target], [1, 4]);
+
+                    await this.model.fit(input, targetTensor);
+                } catch (error) {
+                    console.error('Training error:', error);
+                }
             }
         }
 
+        // Environment Class
+        class Environment {
+            constructor(gridSize) {
+                this.gridSize = gridSize;
+                this.state = this.createState(gridSize);
+            }
+
+            // Create environment state with random rewards
+            createState(gridSize) {
+                let state = [];
+                for (let y = 0; y < gridSize; y++) {
+                    let row = [];
+                    for (let x = 0; x < gridSize; x++) {
+                        row.push(Math.random() > 0.8 ? 10 : -1);  // Random rewards or penalties
+                    }
+                    state.push(row);
+                }
+                return state;
+            }
+        }
+
+        // Simulation Class
         class Simulation {
             constructor() {
                 this.env = new Environment(GRID_SIZE);
@@ -465,7 +338,6 @@
                 this.updateDisplay();
                 this.draw();
 
-                // Optimization variables
                 this.lastFrameTime = performance.now();
                 this.targetFPS = 30;
                 this.frameInterval = 1000 / this.targetFPS;
@@ -475,69 +347,32 @@
                 const numAgents = parseInt(numAgentsInput.value);
                 this.agents = [];
                 for (let i = 0; i < numAgents; i++) {
-                    this.agents.push(new Agent(this.env, i + 1));
+                    this.agents.push(new HybridAgent(this.env, i + 1));
                 }
                 this.updateAgentInfoDisplay();
             }
 
             initializeCharts() {
-                if (this.rewardChart) {
-                    this.rewardChart.destroy();
-                }
-                if (this.energyChart) {
-                    this.energyChart.destroy();
-                }
-
-                const labels = [];
-                const rewardDatasets = [];
-                const energyDatasets = [];
-                this.agents.forEach(agent => {
-                    rewardDatasets.push({
-                        label: `Agent ${agent.id}`,
-                        data: [],
-                        borderColor: `hsl(${(agent.id * 50) % 360}, 100%, 50%)`,
-                        fill: false
-                    });
-                    energyDatasets.push({
-                        label: `Agent ${agent.id}`,
-                        data: [],
-                        borderColor: `hsl(${(agent.id * 50) % 360}, 100%, 50%)`,
-                        fill: false
-                    });
-                });
+                // Initialize reward and energy charts using Chart.js
+                if (this.rewardChart) this.rewardChart.destroy();
+                if (this.energyChart) this.energyChart.destroy();
 
                 this.rewardChart = new Chart(rewardChartCtx, {
                     type: 'line',
                     data: {
-                        labels: labels,
-                        datasets: rewardDatasets
+                        labels: [],
+                        datasets: this.agents.map(agent => ({
+                            label: `Agent ${agent.id} Reward`,
+                            data: [],
+                            borderColor: `hsl(${agent.id * 60}, 100%, 50%)`,
+                            fill: false
+                        }))
                     },
                     options: {
                         responsive: true,
-                        animation: false,
-                        plugins: {
-                            title: {
-                                display: true,
-                                text: 'Total Reward Over Time'
-                            },
-                            legend: {
-                                display: true,
-                                position: 'bottom'
-                            }
-                        },
                         scales: {
-                            x: {
-                                title: {
-                                    display: true,
-                                    text: 'Steps'
-                                }
-                            },
-                            y: {
-                                title: {
-                                    display: true,
-                                    text: 'Total Reward'
-                                }
-                            }
+                            x: { title: { display: true, text: 'Steps' } },
+                            y: { title: { display: true, text: 'Reward' } }
                         }
                     }
                 });
@@ -545,48 +380,43 @@
                 this.energyChart = new Chart(energyChartCtx, {
                     type: 'line',
                     data: {
-                        labels: labels,
-                        datasets: energyDatasets
+                        labels: [],
+                        datasets: this.agents.map(agent => ({
+                            label: `Agent ${agent.id} Energy`,
+                            data: [],
+                            borderColor: `hsl(${agent.id * 60 + 180}, 100%, 50%)`,
+                            fill: false
+                        }))
                     },
                     options: {
                         responsive: true,
-                        animation: false,
-                        plugins: {
-                            title: {
-                                display: true,
-                                text: 'Energy Level Over Time'
-                            },
-                            legend: {
-                                display: true,
-                                position: 'bottom'
-                            }
-                        },
                         scales: {
-                            x: {
-                                title: {
-                                    display: true,
-                                    text: 'Steps'
-                                }
-                            },
-                            y: {
-                                title: {
-                                    display: true,
-                                    text: 'Energy Level'
-                                },
-                                min: 0,
-                                max: MAX_ENERGY
-                            }
+                            x: { title: { display: true, text: 'Steps' } },
+                            y: { title: { display: true, text: 'Energy' } }
                         }
                     }
                 });
             }
 
-            start() {
-                if (!this.isRunning) {
-                    this.isRunning = true;
-                    this.lastFrameTime = performance.now();
-                    this.loop();
+            async step() {
+                this.totalSteps++;
+                for (let agent of this.agents) {
+                    await agent.move();
+                    this.dataLog.push({
+                        step: this.totalSteps,
+                        agentId: agent.id,
+                        reward: agent.totalReward,
+                        energy: agent.energy
+                    });
                 }
+                this.updateCharts();
+                this.updateDisplay();
+                this.draw();
+            }
+
+            start() {
+                this.isRunning = true;
+                this.runLoop();
             }
 
             stop() {
@@ -594,7 +424,6 @@
             }
 
             reset() {
-                this.stop();
                 this.env = new Environment(GRID_SIZE);
                 this.initializeAgents();
                 this.totalSteps = 0;
@@ -604,223 +433,117 @@
                 this.draw();
             }
 
-            step() {
-                const diffusionSteps = Math.min(parseInt(diffusionStepsInput.value), 3);
-                const learningRate = parseFloat(learningRateInput.value);
-                const discountFactor = parseFloat(discountFactorInput.value);
-                const epsilon = parseFloat(epsilonInput.value);
-
-                // Diffuse less frequently to improve performance
-                if (this.totalSteps % 2 === 0) {
-                    this.env.diffuse(diffusionSteps);
+            async runLoop() {
+                while (this.isRunning) {
+                    const currentTime = performance.now();
+                    const deltaTime = currentTime - this.lastFrameTime;
+                    if (deltaTime >= this.frameInterval) {
+                        this.lastFrameTime = currentTime;
+                        await this.step();
+                    }
+                    await new Promise(resolve => setTimeout(resolve, 10));  // Adding a small delay to prevent freezing
                 }
-
-                // Regenerate energy packs periodically
-                if (this.totalSteps % 50 === 0) { // Every 50 steps
-                    this.env.updateEnergyPacks();
-                }
-
-                this.env.updateMovingObstacles();
-
-                // Move all agents
-                this.agents.forEach(agent => {
-                    agent.move();
-                });
-
-                // Log data for charts
-                this.dataLog.push({
-                    step: this.totalSteps,
-                    rewards: this.agents.map(agent => agent.totalReward),
-                    energies: this.agents.map(agent => agent.energy)
-                });
-
-                // Limit dataLog size to prevent memory issues
-                if (this.dataLog.length > 1000) {
-                    this.dataLog.shift();
-                }
-
-                this.totalSteps++;
-                this.updateDisplay();
-                this.updateCharts();
-                this.draw();
-            }
-
-            loop() {
-                if (!this.isRunning) return;
-
-                const currentTime = performance.now();
-                const elapsed = currentTime - this.lastFrameTime;
-
-                if (elapsed > this.frameInterval) {
-                    this.lastFrameTime = currentTime - (elapsed % this.frameInterval);
-                    this.step();
-                }
-
-                requestAnimationFrame(() => this.loop());
-            }
-
-            updateDisplay() {
-                totalStepsDisplay.textContent = this.totalSteps;
-                const avgAccuracy = this.calculateAveragePredictionAccuracy();
-                predictionAccuracyDisplay.textContent = `${(avgAccuracy * 100).toFixed(2)}%`;
-                this.updateAgentInfoDisplay();
-            }
-
-            updateAgentInfoDisplay() {
-                agentInfoContainer.innerHTML = '';
-                this.agents.forEach(agent => {
-                    const [x, y] = agent.position;
-                    const agentDiv = document.createElement('div');
-                    agentDiv.innerHTML = `
-                        <p><strong>Agent ${agent.id}</strong></p>
-                        <p>Position: (${Math.round(x)}, ${Math.round(y)})</p>
-                        <p>Reward: ${agent.totalReward.toFixed(2)}</p>
-                        <p>Energy: ${agent.energy.toFixed(1)}</p>
-                        <p>Steps: ${agent.totalSteps}</p>
-                    `;
-                    agentInfoContainer.appendChild(agentDiv);
-                });
             }
 
             updateCharts() {
                 if (!this.rewardChart || !this.energyChart) return;
 
-                // Limit the number of data points to prevent memory issues
-                const maxDataPoints = 100;
-
-                if (this.rewardChart.data.labels.length > maxDataPoints) {
-                    this.rewardChart.data.labels.shift();
-                    this.rewardChart.data.datasets.forEach(dataset => dataset.data.shift());
-                }
-                if (this.energyChart.data.labels.length > maxDataPoints) {
-                    this.energyChart.data.labels.shift();
-                    this.energyChart.data.datasets.forEach(dataset => dataset.data.shift());
-                }
-
+                // Update reward chart
                 this.rewardChart.data.labels.push(this.totalSteps);
+                for (let i = 0; i < this.agents.length; i++) {
+                    this.rewardChart.data.datasets[i].data.push(this.agents[i].totalReward);
+                }
+                this.rewardChart.update();
+
+                // Update energy chart
                 this.energyChart.data.labels.push(this.totalSteps);
-
-                this.agents.forEach((agent, index) => {
-                    if (this.rewardChart.data.datasets[index]) {
-                        this.rewardChart.data.datasets[index].data.push(agent.totalReward);
-                    }
-                    if (this.energyChart.data.datasets[index]) {
-                        this.energyChart.data.datasets[index].data.push(agent.energy);
-                    }
-                });
-
-                // Update charts only if they are in the document
-                if (document.contains(this.rewardChart.canvas)) {
-                    this.rewardChart.update('none');
+                for (let i = 0; i < this.agents.length; i++) {
+                    this.energyChart.data.datasets[i].data.push(this.agents[i].energy);
                 }
-                if (document.contains(this.energyChart.canvas)) {
-                    this.energyChart.update('none');
-                }
+                this.energyChart.update();
             }
 
-            calculateAveragePredictionAccuracy() {
-                // For Q-Learning, defining prediction accuracy is non-trivial.
-                // Placeholder implementation:
-                // Here we can define it as the average difference between predicted Q-values and actual environmental state
+            updateDisplay() {
+                totalStepsDisplay.textContent = this.totalSteps;
                 let totalAccuracy = 0;
-                this.agents.forEach(agent => {
-                    let totalDiff = 0;
-                    for (let y = 0; y < GRID_SIZE; y++) {
-                        for (let x = 0; x < GRID_SIZE; x++) {
-                            const state = `${x},${y}`;
-                            const maxQ = Math.max(...Object.values(agent.qTable[state]));
-                            totalDiff += Math.abs(agent.env.state[y][x] - maxQ);
-                        }
-                    }
-                    const accuracy = 1 - (totalDiff / (GRID_SIZE * GRID_SIZE * 10)); // Scaling factor
-                    totalAccuracy += accuracy;
-                });
-                return totalAccuracy / this.agents.length;
+                for (let agent of this.agents) {
+                    totalAccuracy += agent.totalReward;
+                }
+                predictionAccuracyDisplay.textContent = `${((totalAccuracy / (this.totalSteps * this.agents.length)) * 100).toFixed(2)}%`;
+                this.updateAgentInfoDisplay();
+            }
+
+            updateAgentInfoDisplay() {
+                agentInfoContainer.innerHTML = '';
+                for (let agent of this.agents) {
+                    const infoDiv = document.createElement('div');
+                    infoDiv.textContent = `Agent ${agent.id}: Reward = ${agent.totalReward}, Energy = ${agent.energy}`;
+                    agentInfoContainer.appendChild(infoDiv);
+                }
             }
 
             draw() {
-                worldCtx.clearRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
-                predictionCtx.clearRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
+                worldCtx.clearRect(0, 0, worldCanvas.width, worldCanvas.height);
+                predictionCtx.clearRect(0, 0, predictionCanvas.width, predictionCanvas.height);
 
-                for (let y = 0; y < GRID_SIZE; y++) {
-                    for (let x = 0; x < GRID_SIZE; x++) {
-                        this.drawCell(worldCtx, x, y, this.env.state[y][x]);
-                        // For prediction canvas, visualize maximum Q-value for the state
-                        const state = `${x},${y}`;
-                        const maxQ = Math.max(...Object.values(this.agents[0].qTable[state]));
-                        const intensity = Math.min(255, Math.floor(maxQ * 25));
-                        predictionCtx.fillStyle = this.env.obstacles[y][x] ? '#444' : `rgb(0, ${intensity}, 0)`;
+                // Draw environment
+                for (let y = 0; y < this.env.gridSize; y++) {
+                    for (let x = 0; x < this.env.gridSize; x++) {
+                        const value = this.env.state[y][x];
+                        if (value > 0) {
+                            worldCtx.fillStyle = 'green';
+                        } else {
+                            worldCtx.fillStyle = 'red';
+                        }
+                        worldCtx.fillRect(x * CELL_SIZE, y * CELL_SIZE, CELL_SIZE, CELL_SIZE);
+                    }
+                }
+
+                // Draw agents
+                for (let agent of this.agents) {
+                    worldCtx.fillStyle = 'blue';
+                    worldCtx.beginPath();
+                    worldCtx.arc(agent.position[0], agent.position[1], CELL_SIZE / 2, 0, 2 * Math.PI);
+                    worldCtx.fill();
+                }
+
+                // Draw prediction (for demonstration purposes, simply mirroring world state)
+                for (let y = 0; y < this.env.gridSize; y++) {
+                    for (let x = 0; x < this.env.gridSize; x++) {
+                        const value = this.env.state[y][x];
+                        if (value > 0) {
+                            predictionCtx.fillStyle = 'green';
+                        } else {
+                            predictionCtx.fillStyle = 'red';
+                        }
                         predictionCtx.fillRect(x * CELL_SIZE, y * CELL_SIZE, CELL_SIZE, CELL_SIZE);
                     }
                 }
 
-                // Draw energy packs
-                this.env.energyPacks.forEach(pack => {
-                    const packX = pack.x * CELL_SIZE + CELL_SIZE / 2;
-                    const packY = pack.y * CELL_SIZE + CELL_SIZE / 2;
-                    worldCtx.fillStyle = '#FFD700'; // Gold color
-                    worldCtx.beginPath();
-                    worldCtx.arc(packX, packY, 5, 0, 2 * Math.PI);
-                    worldCtx.fill();
-
-                    predictionCtx.fillStyle = '#FFD700';
+                // Draw agent paths
+                for (let agent of this.agents) {
+                    predictionCtx.strokeStyle = 'blue';
                     predictionCtx.beginPath();
-                    predictionCtx.arc(packX, packY, 5, 0, 2 * Math.PI);
-                    predictionCtx.fill();
-                });
-
-                // Draw agents
-                this.agents.forEach(agent => {
-                    this.drawAgent(worldCtx, agent);
-                    this.drawAgent(predictionCtx, agent);
-                });
-            }
-
-            drawCell(ctx, x, y, value) {
-                if (this.env.obstacles[y][x]) {
-                    ctx.fillStyle = '#444';
-                } else {
-                    const intensity = Math.min(255, Math.floor(value * 25));
-                    ctx.fillStyle = `rgb(0, ${intensity}, 0)`;
-                }
-                ctx.fillRect(x * CELL_SIZE, y * CELL_SIZE, CELL_SIZE, CELL_SIZE);
-            }
-
-            drawAgent(ctx, agent) {
-                ctx.fillStyle = `hsl(${(agent.id * 50) % 360}, 100%, 50%)`;
-                const [ax, ay] = agent.position;
-                ctx.beginPath();
-                ctx.arc(ax, ay, 5, 0, 2 * Math.PI);
-                ctx.fill();
-
-                ctx.strokeStyle = `hsla(${(agent.id * 50) % 360}, 100%, 50%, 0.5)`;
-                ctx.lineWidth = 2;
-                ctx.beginPath();
-                agent.path.forEach((pos, index) => {
-                    if (index === 0) {
-                        ctx.moveTo(pos[0], pos[1]);
-                    } else {
-                        ctx.lineTo(pos[0], pos[1]);
+                    for (let i = 0; i < agent.path.length; i++) {
+                        const [x, y] = agent.path[i];
+                        if (i === 0) {
+                            predictionCtx.moveTo(x, y);
+                        } else {
+                            predictionCtx.lineTo(x, y);
+                        }
                     }
-                });
-                ctx.stroke();
+                    predictionCtx.stroke();
+                }
             }
         }
 
-        // Initialize simulation
         let simulation = new Simulation();
-        simulation.draw();
 
-        // Event listeners
         resetButton.addEventListener('click', () => {
             simulation.reset();
             runButton.textContent = 'Run';
         });
-
-        stepButton.addEventListener('click', () => {
-            simulation.step();
-        });
-
+        stepButton.addEventListener('click', () => simulation.step());
         runButton.addEventListener('click', () => {
             if (simulation.isRunning) {
                 simulation.stop();
@@ -834,39 +557,6 @@
         numAgentsInput.addEventListener('change', () => {
             simulation.initializeAgents();
             simulation.initializeCharts();
-            simulation.draw();
-        });
-
-        diffusionStepsInput.addEventListener('change', () => {
-            // Optional: Handle changes if needed
-        });
-
-        learningRateInput.addEventListener('change', () => {
-            // Update agents' learning rates
-            simulation.agents.forEach(agent => {
-                agent.alpha = parseFloat(document.getElementById('learning-rate').value);
-                // If using neural networks, update optimizer's learning rate
-                // Example:
-                // agent.model.optimizer.learningRate = agent.alpha;
-            });
-        });
-
-        discountFactorInput.addEventListener('change', () => {
-            // Update agents' discount factors
-            simulation.agents.forEach(agent => {
-                agent.gamma = parseFloat(document.getElementById('discount-factor').value);
-            });
-        });
-
-        epsilonInput.addEventListener('change', () => {
-            // Update agents' exploration rates
-            simulation.agents.forEach(agent => {
-                agent.epsilon = parseFloat(document.getElementById('epsilon').value);
-            });
-        });
-
-        agentSpeedInput.addEventListener('input', () => {
-            // Optional: Handle changes if needed
         });
     </script>
 </body>
