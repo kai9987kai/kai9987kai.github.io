@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Optimized DIAMOND Simulation with Neural Network Agents</title>
+    <title>DIAMOND Simulation with Q-Learning and Neural Network Agents</title>
     <style>
         /* Styles for the simulation */
         body {
@@ -73,7 +73,7 @@
 </head>
 <body>
     <div class="container">
-        <h1>Optimized DIAMOND Simulation with Neural Network Agents</h1>
+        <h1>DIAMOND Simulation with Q-Learning and Neural Network Agents</h1>
         <div class="canvas-container">
             <div>
                 <h2>World State</h2>
@@ -90,8 +90,12 @@
             <button id="run-button">Run</button>
             <label for="diffusion-steps">Diffusion Steps:</label>
             <input type="number" id="diffusion-steps" value="1" min="1" max="3">
-            <label for="learning-rate">Learning Rate:</label>
+            <label for="learning-rate">Learning Rate (α):</label>
             <input type="number" id="learning-rate" value="0.1" min="0.01" max="1" step="0.01">
+            <label for="discount-factor">Discount Factor (γ):</label>
+            <input type="number" id="discount-factor" value="0.9" min="0.1" max="1" step="0.1">
+            <label for="epsilon">Exploration Rate (ε):</label>
+            <input type="number" id="epsilon" value="0.1" min="0" max="1" step="0.05">
             <div class="slider-label">
                 <label for="agent-speed">Agent Speed:</label>
                 <input type="range" id="agent-speed" value="5" min="1" max="10">
@@ -113,7 +117,8 @@
         </div>
     </div>
 
-    <!-- Include Chart.js library before the simulation script -->
+    <!-- Include TensorFlow.js and Chart.js libraries before the simulation script -->
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@3.9.0/dist/tf.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js"></script>
     <!-- Simulation script -->
     <script>
@@ -135,6 +140,8 @@
         const runButton = document.getElementById('run-button');
         const diffusionStepsInput = document.getElementById('diffusion-steps');
         const learningRateInput = document.getElementById('learning-rate');
+        const discountFactorInput = document.getElementById('discount-factor');
+        const epsilonInput = document.getElementById('epsilon');
         const agentSpeedInput = document.getElementById('agent-speed');
         const numAgentsInput = document.getElementById('num-agents');
 
@@ -197,9 +204,13 @@
             createMovingObstacles() {
                 let movingObstacles = [];
                 for (let i = 0; i < 10; i++) {
-                    const x = Math.floor(Math.random() * this.gridSize);
-                    const y = Math.floor(Math.random() * this.gridSize);
+                    let x, y;
+                    do {
+                        x = Math.floor(Math.random() * this.gridSize);
+                        y = Math.floor(Math.random() * this.gridSize);
+                    } while (this.obstacles[y][x]); // Ensure no overlap with static obstacles
                     movingObstacles.push({ x, y, dx: Math.random() < 0.5 ? 1 : -1, dy: Math.random() < 0.5 ? 1 : -1 });
+                    this.obstacles[y][x] = true; // Mark moving obstacle on the grid
                 }
                 return movingObstacles;
             }
@@ -211,6 +222,7 @@
                     obstacle.x += obstacle.dx;
                     obstacle.y += obstacle.dy;
 
+                    // Bounce off the walls
                     if (obstacle.x < 0 || obstacle.x >= this.gridSize) {
                         obstacle.dx *= -1;
                         obstacle.x += obstacle.dx * 2;
@@ -220,11 +232,12 @@
                         obstacle.y += obstacle.dy * 2;
                     }
 
-                    // Remove old obstacle
-                    this.obstacles[oldY][oldX] = false;
-
-                    // Check for collision at new position
+                    // Check collision with existing obstacles
                     if (!this.obstacles[obstacle.y][obstacle.x]) {
+                        // Move obstacle
+                        this.obstacles[oldY][oldX] = false;
+                        obstacle.x = Math.max(0, Math.min(this.gridSize - 1, obstacle.x));
+                        obstacle.y = Math.max(0, Math.min(this.gridSize - 1, obstacle.y));
                         this.obstacles[obstacle.y][obstacle.x] = true;
                     } else {
                         // Reverse direction if collision occurs
@@ -253,11 +266,12 @@
             createEnergyPacks() {
                 let energyPacks = [];
                 for (let i = 0; i < 30; i++) { // Increased number of energy packs
-                    const x = Math.floor(Math.random() * this.gridSize);
-                    const y = Math.floor(Math.random() * this.gridSize);
-                    if (!this.obstacles[y][x]) {
-                        energyPacks.push({ x, y });
-                    }
+                    let x, y;
+                    do {
+                        x = Math.floor(Math.random() * this.gridSize);
+                        y = Math.floor(Math.random() * this.gridSize);
+                    } while (this.obstacles[y][x] || energyPacks.some(pack => pack.x === x && pack.y === y));
+                    energyPacks.push({ x, y });
                 }
                 return energyPacks;
             }
@@ -266,11 +280,12 @@
                 const maxEnergyPacks = 30; // Desired number of energy packs
                 const packsToAdd = maxEnergyPacks - this.energyPacks.length;
                 for (let i = 0; i < packsToAdd; i++) {
-                    const x = Math.floor(Math.random() * this.gridSize);
-                    const y = Math.floor(Math.random() * this.gridSize);
-                    if (!this.obstacles[y][x] && !this.energyPacks.some(pack => pack.x === x && pack.y === y)) {
-                        this.energyPacks.push({ x, y });
-                    }
+                    let x, y;
+                    do {
+                        x = Math.floor(Math.random() * this.gridSize);
+                        y = Math.floor(Math.random() * this.gridSize);
+                    } while (this.obstacles[y][x] || this.energyPacks.some(pack => pack.x === x && pack.y === y));
+                    this.energyPacks.push({ x, y });
                 }
             }
 
@@ -312,18 +327,47 @@
             constructor(environment, id) {
                 this.id = id;
                 this.env = environment;
-                // Initialize at random non-obstacle position
+                // Initialize at random non-obstacle, non-energy pack position
                 let startX, startY;
                 do {
                     startX = Math.floor(Math.random() * this.env.gridSize);
                     startY = Math.floor(Math.random() * this.env.gridSize);
                 } while (this.env.obstacles[startY][startX] || this.env.energyPacks.some(pack => pack.x === startX && pack.y === startY));
                 this.position = [startX * CELL_SIZE + CELL_SIZE / 2, startY * CELL_SIZE + CELL_SIZE / 2];
-                this.predictionState = this.env.createInitialState();
+                this.qTable = {}; // Q-table as an object
+                this.initializeQTable();
+                this.alpha = parseFloat(document.getElementById('learning-rate').value); // Learning rate
+                this.gamma = parseFloat(document.getElementById('discount-factor').value); // Discount factor
+                this.epsilon = parseFloat(document.getElementById('epsilon').value); // Exploration rate
                 this.path = [];
                 this.totalReward = 0;
                 this.totalSteps = 0;
                 this.energy = MAX_ENERGY;
+            }
+
+            initializeQTable() {
+                for (let y = 0; y < this.env.gridSize; y++) {
+                    for (let x = 0; x < this.env.gridSize; x++) {
+                        const state = `${x},${y}`;
+                        this.qTable[state] = {
+                            'up': 0,
+                            'down': 0,
+                            'left': 0,
+                            'right': 0
+                        };
+                    }
+                }
+            }
+
+            chooseAction(state) {
+                // Epsilon-greedy strategy
+                if (Math.random() < this.epsilon) {
+                    const actions = Object.keys(this.qTable[state]);
+                    return actions[Math.floor(Math.random() * actions.length)];
+                } else {
+                    const actions = this.qTable[state];
+                    return Object.keys(actions).reduce((a, b) => actions[a] > actions[b] ? a : b);
+                }
             }
 
             move() {
@@ -333,94 +377,77 @@
                 }
 
                 const speed = parseInt(agentSpeedInput.value);
-                let dx = 0, dy = 0;
+                this.alpha = parseFloat(document.getElementById('learning-rate').value);
+                this.gamma = parseFloat(document.getElementById('discount-factor').value);
+                this.epsilon = parseFloat(document.getElementById('epsilon').value);
 
-                [dx, dy] = this.combinedStrategyMove(speed);
+                const currentGridX = Math.floor(this.position[0] / CELL_SIZE);
+                const currentGridY = Math.floor(this.position[1] / CELL_SIZE);
+                const currentState = `${currentGridX},${currentGridY}`;
 
-                let newX = this.position[0] + dx;
-                let newY = this.position[1] + dy;
+                const action = this.chooseAction(currentState);
+                let [dx, dy] = [0, 0];
+
+                switch(action) {
+                    case 'up': dy = -1; break;
+                    case 'down': dy = 1; break;
+                    case 'left': dx = -1; break;
+                    case 'right': dx = 1; break;
+                }
+
+                let newX = currentGridX + dx;
+                let newY = currentGridY + dy;
 
                 // Ensure new position is within bounds
-                newX = Math.max(0, Math.min(CANVAS_SIZE - 1, newX));
-                newY = Math.max(0, Math.min(CANVAS_SIZE - 1, newY));
+                newX = Math.max(0, Math.min(this.env.gridSize - 1, newX));
+                newY = Math.max(0, Math.min(this.env.gridSize - 1, newY));
 
-                const gridX = Math.floor(newX / CELL_SIZE);
-                const gridY = Math.floor(newY / CELL_SIZE);
-                if (!this.env.obstacles[gridY][gridX]) {
-                    this.position = [newX, newY];
-                    this.path.push([...this.position]);
-                    if (this.path.length > 100) {
-                        this.path.shift();
-                    }
-                } else {
-                    // Optional: Handle collision (e.g., stop movement or choose a different direction)
+                const newState = `${newX},${newY}`;
+
+                // Check if new position is an obstacle
+                if (this.env.obstacles[newY][newX]) {
+                    // Penalize for hitting an obstacle
+                    const reward = -10;
+                    this.updateQTable(currentState, action, reward, currentState);
+                    this.energy -= 0.5; // Energy consumption
+                    this.totalSteps++;
+                    return;
                 }
 
-                this.energy -= 0.5; // Reduced energy consumption
-            }
+                // Calculate reward based on the new cell's state
+                let reward = this.env.state[newY][newX];
 
-            combinedStrategyMove(speed) {
-                if (this.energy < MAX_ENERGY * 0.5) {
-                    return this.moveTowardsEnergyPack(speed);
-                } else {
-                    return this.randomMove(speed);
-                }
-            }
-
-            moveTowardsEnergyPack(speed) {
-                const x = Math.floor(this.position[0] / CELL_SIZE);
-                const y = Math.floor(this.position[1] / CELL_SIZE);
-                let closestPack = null;
-                let minDistance = Infinity;
-
-                this.env.energyPacks.forEach(pack => {
-                    const distance = Math.abs(pack.x - x) + Math.abs(pack.y - y);
-                    if (distance < minDistance) {
-                        minDistance = distance;
-                        closestPack = pack;
-                    }
-                });
-
-                if (closestPack) {
-                    const dx = Math.sign(closestPack.x - x);
-                    const dy = Math.sign(closestPack.y - y);
-                    return [dx * CELL_SIZE, dy * CELL_SIZE];
-                } else {
-                    return this.randomMove(speed);
-                }
-            }
-
-            randomMove(speed) {
-                const angle = Math.random() * 2 * Math.PI;
-                const dx = Math.cos(angle) * speed;
-                const dy = Math.sin(angle) * speed;
-                return [dx, dy];
-            }
-
-            updatePrediction(learningRate) {
-                const x = Math.floor(this.position[0] / CELL_SIZE);
-                const y = Math.floor(this.position[1] / CELL_SIZE);
-
-                const observedReward = this.getCellReward(x, y);
-                this.predictionState[y][x] += learningRate * (observedReward - this.predictionState[y][x]);
-            }
-
-            getCellReward(x, y) {
-                let reward = this.env.state[y][x];
-                const energyPackIndex = this.env.energyPacks.findIndex(pack => pack.x === x && pack.y === y);
+                // Check for energy pack
+                const energyPackIndex = this.env.energyPacks.findIndex(pack => pack.x === newX && pack.y === newY);
                 if (energyPackIndex !== -1) {
                     this.energy = Math.min(this.energy + 50, MAX_ENERGY);
                     this.env.energyPacks.splice(energyPackIndex, 1);
-                    console.log(`Agent ${this.id} picked up an energy pack.`);
+                    reward += 10; // Bonus for collecting energy pack
                 }
-                return reward;
+
+                // Update total reward and steps
+                this.totalReward += reward;
+                this.totalSteps++;
+
+                // Move agent
+                this.position = [newX * CELL_SIZE + CELL_SIZE / 2, newY * CELL_SIZE + CELL_SIZE / 2];
+                this.path.push([...this.position]);
+                if (this.path.length > 100) this.path.shift();
+
+                // Get maximum Q-value for the new state
+                const maxFutureQ = Math.max(...Object.values(this.qTable[newState]));
+
+                // Q-Learning update
+                this.qTable[currentState][action] += this.alpha * (reward + this.gamma * maxFutureQ - this.qTable[currentState][action]);
+
+                // Energy consumption
+                this.energy -= 0.5;
             }
 
-            getReward() {
-                const x = Math.floor(this.position[0] / CELL_SIZE);
-                const y = Math.floor(this.position[1] / CELL_SIZE);
-                const reward = this.env.state[y][x];
-                return reward;
+            updateQTable(state, action, reward, nextState) {
+                // Q-Learning update for obstacles
+                const maxFutureQ = Math.max(...Object.values(this.qTable[nextState]));
+                this.qTable[state][action] += this.alpha * (reward + this.gamma * maxFutureQ - this.qTable[state][action]);
             }
         }
 
@@ -580,6 +607,8 @@
             step() {
                 const diffusionSteps = Math.min(parseInt(diffusionStepsInput.value), 3);
                 const learningRate = parseFloat(learningRateInput.value);
+                const discountFactor = parseFloat(discountFactorInput.value);
+                const epsilon = parseFloat(epsilonInput.value);
 
                 // Diffuse less frequently to improve performance
                 if (this.totalSteps % 2 === 0) {
@@ -593,26 +622,21 @@
 
                 this.env.updateMovingObstacles();
 
+                // Move all agents
                 this.agents.forEach(agent => {
                     agent.move();
-                    agent.updatePrediction(learningRate);
+                });
 
-                    const reward = agent.getReward();
-                    agent.totalReward += reward;
-                    agent.totalSteps++;
-
-                    this.dataLog.push({
-                        agentId: agent.id,
-                        step: this.totalSteps,
-                        position: [...agent.position],
-                        reward: reward,
-                        energy: agent.energy
-                    });
+                // Log data for charts
+                this.dataLog.push({
+                    step: this.totalSteps,
+                    rewards: this.agents.map(agent => agent.totalReward),
+                    energies: this.agents.map(agent => agent.energy)
                 });
 
                 // Limit dataLog size to prevent memory issues
                 if (this.dataLog.length > 1000) {
-                    this.dataLog.splice(0, this.dataLog.length - 1000);
+                    this.dataLog.shift();
                 }
 
                 this.totalSteps++;
@@ -695,15 +719,20 @@
             }
 
             calculateAveragePredictionAccuracy() {
+                // For Q-Learning, defining prediction accuracy is non-trivial.
+                // Placeholder implementation:
+                // Here we can define it as the average difference between predicted Q-values and actual environmental state
                 let totalAccuracy = 0;
                 this.agents.forEach(agent => {
                     let totalDiff = 0;
                     for (let y = 0; y < GRID_SIZE; y++) {
                         for (let x = 0; x < GRID_SIZE; x++) {
-                            totalDiff += Math.abs(this.env.state[y][x] - agent.predictionState[y][x]);
+                            const state = `${x},${y}`;
+                            const maxQ = Math.max(...Object.values(agent.qTable[state]));
+                            totalDiff += Math.abs(agent.env.state[y][x] - maxQ);
                         }
                     }
-                    const accuracy = 1 - (totalDiff / (GRID_SIZE * GRID_SIZE * 10));
+                    const accuracy = 1 - (totalDiff / (GRID_SIZE * GRID_SIZE * 10)); // Scaling factor
                     totalAccuracy += accuracy;
                 });
                 return totalAccuracy / this.agents.length;
@@ -716,7 +745,12 @@
                 for (let y = 0; y < GRID_SIZE; y++) {
                     for (let x = 0; x < GRID_SIZE; x++) {
                         this.drawCell(worldCtx, x, y, this.env.state[y][x]);
-                        this.drawCell(predictionCtx, x, y, this.agents[0].predictionState[y][x]);
+                        // For prediction canvas, visualize maximum Q-value for the state
+                        const state = `${x},${y}`;
+                        const maxQ = Math.max(...Object.values(this.agents[0].qTable[state]));
+                        const intensity = Math.min(255, Math.floor(maxQ * 25));
+                        predictionCtx.fillStyle = this.env.obstacles[y][x] ? '#444' : `rgb(0, ${intensity}, 0)`;
+                        predictionCtx.fillRect(x * CELL_SIZE, y * CELL_SIZE, CELL_SIZE, CELL_SIZE);
                     }
                 }
 
@@ -808,7 +842,27 @@
         });
 
         learningRateInput.addEventListener('change', () => {
-            // Optional: Handle changes if needed
+            // Update agents' learning rates
+            simulation.agents.forEach(agent => {
+                agent.alpha = parseFloat(document.getElementById('learning-rate').value);
+                // If using neural networks, update optimizer's learning rate
+                // Example:
+                // agent.model.optimizer.learningRate = agent.alpha;
+            });
+        });
+
+        discountFactorInput.addEventListener('change', () => {
+            // Update agents' discount factors
+            simulation.agents.forEach(agent => {
+                agent.gamma = parseFloat(document.getElementById('discount-factor').value);
+            });
+        });
+
+        epsilonInput.addEventListener('change', () => {
+            // Update agents' exploration rates
+            simulation.agents.forEach(agent => {
+                agent.epsilon = parseFloat(document.getElementById('epsilon').value);
+            });
         });
 
         agentSpeedInput.addEventListener('input', () => {
