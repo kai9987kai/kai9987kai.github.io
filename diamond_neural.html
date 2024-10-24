@@ -1,0 +1,819 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Optimized DIAMOND Simulation with Neural Network Agents</title>
+    <style>
+        /* Styles for the simulation */
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #fafafa;
+            margin: 0;
+            padding: 20px;
+        }
+        .container {
+            max-width: 1400px;
+            margin: auto;
+        }
+        h1 {
+            color: #222;
+            text-align: center;
+        }
+        .canvas-container {
+            display: flex;
+            justify-content: space-around;
+            flex-wrap: wrap;
+        }
+        canvas {
+            border: 1px solid #999;
+            background-color: #fff;
+            margin: 10px;
+        }
+        .controls {
+            margin-top: 20px;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            align-items: center;
+        }
+        .controls label {
+            margin-right: 5px;
+        }
+        .info-panel {
+            margin-top: 20px;
+            background-color: #eaeaea;
+            padding: 15px;
+            border-radius: 8px;
+        }
+        .agent-info {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 20px;
+        }
+        .agent-info div {
+            flex: 1;
+            min-width: 150px;
+        }
+        .slider-label {
+            display: flex;
+            align-items: center;
+        }
+        .slider-label input {
+            margin-left: 5px;
+        }
+        .data-visualization {
+            margin-top: 20px;
+        }
+        .chart-container {
+            width: 100%;
+            height: 300px;
+            margin-bottom: 30px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Optimized DIAMOND Simulation with Neural Network Agents</h1>
+        <div class="canvas-container">
+            <div>
+                <h2>World State</h2>
+                <canvas id="world-canvas" width="600" height="600"></canvas>
+            </div>
+            <div>
+                <h2>Agent's Prediction</h2>
+                <canvas id="prediction-canvas" width="600" height="600"></canvas>
+            </div>
+        </div>
+        <div class="controls">
+            <button id="reset-button">Reset</button>
+            <button id="step-button">Step</button>
+            <button id="run-button">Run</button>
+            <label for="diffusion-steps">Diffusion Steps:</label>
+            <input type="number" id="diffusion-steps" value="1" min="1" max="3">
+            <label for="learning-rate">Learning Rate:</label>
+            <input type="number" id="learning-rate" value="0.1" min="0.01" max="1" step="0.01">
+            <div class="slider-label">
+                <label for="agent-speed">Agent Speed:</label>
+                <input type="range" id="agent-speed" value="5" min="1" max="10">
+            </div>
+            <label for="num-agents">Number of Agents:</label>
+            <input type="number" id="num-agents" value="1" min="1" max="5">
+        </div>
+        <div class="info-panel">
+            <div class="agent-info" id="agent-info">
+                <!-- Agent information will be populated here -->
+            </div>
+            <p>Total Steps: <span id="total-steps">0</span></p>
+            <p>Average Prediction Accuracy: <span id="prediction-accuracy">0%</span></p>
+        </div>
+        <div class="data-visualization">
+            <h2>Agent Performance Metrics</h2>
+            <canvas id="reward-chart" class="chart-container"></canvas>
+            <canvas id="energy-chart" class="chart-container"></canvas>
+        </div>
+    </div>
+
+    <!-- Include Chart.js library before the simulation script -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js"></script>
+    <!-- Simulation script -->
+    <script>
+        // Configuration Constants
+        const GRID_SIZE = 60;
+        const CELL_SIZE = 10;
+        const CANVAS_SIZE = GRID_SIZE * CELL_SIZE;
+        const FOG_OF_WAR_RADIUS = 5;
+        const MAX_ENERGY = 200; // Increased from 100 to 200
+
+        // DOM elements
+        const worldCanvas = document.getElementById('world-canvas');
+        const predictionCanvas = document.getElementById('prediction-canvas');
+        const worldCtx = worldCanvas.getContext('2d');
+        const predictionCtx = predictionCanvas.getContext('2d');
+
+        const resetButton = document.getElementById('reset-button');
+        const stepButton = document.getElementById('step-button');
+        const runButton = document.getElementById('run-button');
+        const diffusionStepsInput = document.getElementById('diffusion-steps');
+        const learningRateInput = document.getElementById('learning-rate');
+        const agentSpeedInput = document.getElementById('agent-speed');
+        const numAgentsInput = document.getElementById('num-agents');
+
+        const agentInfoContainer = document.getElementById('agent-info');
+        const totalStepsDisplay = document.getElementById('total-steps');
+        const predictionAccuracyDisplay = document.getElementById('prediction-accuracy');
+
+        const rewardChartCtx = document.getElementById('reward-chart').getContext('2d');
+        const energyChartCtx = document.getElementById('energy-chart').getContext('2d');
+
+        // Helper functions for Base64 encoding/decoding Unicode strings
+        function b64EncodeUnicode(str) {
+            return btoa(encodeURIComponent(str).replace(/%([0-9A-F]{2})/g, function(match, p1) {
+                return String.fromCharCode('0x' + p1);
+            }));
+        }
+
+        function b64DecodeUnicode(str) {
+            return decodeURIComponent(Array.prototype.map.call(atob(str), function(c) {
+                return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
+            }).join(''));
+        }
+
+        // Simulation classes
+        class Environment {
+            constructor(gridSize) {
+                this.gridSize = gridSize;
+                this.state = this.createInitialState();
+                this.obstacles = this.createObstacles();
+                this.terrain = this.createTerrain();
+                this.traps = this.createTraps();
+                this.movingObstacles = this.createMovingObstacles();
+                this.energyPacks = this.createEnergyPacks();
+            }
+
+            createInitialState() {
+                let state = Array.from({ length: this.gridSize }, () =>
+                    new Float32Array(this.gridSize).fill(0)
+                );
+                for (let i = 0; i < 20; i++) {
+                    const x = Math.floor(Math.random() * this.gridSize);
+                    const y = Math.floor(Math.random() * this.gridSize);
+                    state[y][x] = Math.random() * 5 + 5;
+                }
+                return state;
+            }
+
+            createObstacles() {
+                let obstacles = Array.from({ length: this.gridSize }, () =>
+                    new Array(this.gridSize).fill(false)
+                );
+                for (let i = 0; i < 100; i++) { // Adjusted obstacle count
+                    const x = Math.floor(Math.random() * this.gridSize);
+                    const y = Math.floor(Math.random() * this.gridSize);
+                    obstacles[y][x] = true;
+                }
+                return obstacles;
+            }
+
+            createMovingObstacles() {
+                let movingObstacles = [];
+                for (let i = 0; i < 10; i++) {
+                    const x = Math.floor(Math.random() * this.gridSize);
+                    const y = Math.floor(Math.random() * this.gridSize);
+                    movingObstacles.push({ x, y, dx: Math.random() < 0.5 ? 1 : -1, dy: Math.random() < 0.5 ? 1 : -1 });
+                }
+                return movingObstacles;
+            }
+
+            updateMovingObstacles() {
+                this.movingObstacles.forEach(obstacle => {
+                    const oldX = obstacle.x;
+                    const oldY = obstacle.y;
+                    obstacle.x += obstacle.dx;
+                    obstacle.y += obstacle.dy;
+
+                    if (obstacle.x < 0 || obstacle.x >= this.gridSize) {
+                        obstacle.dx *= -1;
+                        obstacle.x += obstacle.dx * 2;
+                    }
+                    if (obstacle.y < 0 || obstacle.y >= this.gridSize) {
+                        obstacle.dy *= -1;
+                        obstacle.y += obstacle.dy * 2;
+                    }
+
+                    // Remove old obstacle
+                    this.obstacles[oldY][oldX] = false;
+
+                    // Check for collision at new position
+                    if (!this.obstacles[obstacle.y][obstacle.x]) {
+                        this.obstacles[obstacle.y][obstacle.x] = true;
+                    } else {
+                        // Reverse direction if collision occurs
+                        obstacle.dx *= -1;
+                        obstacle.dy *= -1;
+                        obstacle.x = oldX;
+                        obstacle.y = oldY;
+                    }
+                });
+            }
+
+            createTerrain() {
+                let terrain = Array.from({ length: this.gridSize }, () =>
+                    new Array(this.gridSize).fill('normal')
+                );
+                return terrain;
+            }
+
+            createTraps() {
+                let traps = Array.from({ length: this.gridSize }, () =>
+                    new Array(this.gridSize).fill(false)
+                );
+                return traps;
+            }
+
+            createEnergyPacks() {
+                let energyPacks = [];
+                for (let i = 0; i < 30; i++) { // Increased number of energy packs
+                    const x = Math.floor(Math.random() * this.gridSize);
+                    const y = Math.floor(Math.random() * this.gridSize);
+                    if (!this.obstacles[y][x]) {
+                        energyPacks.push({ x, y });
+                    }
+                }
+                return energyPacks;
+            }
+
+            updateEnergyPacks() {
+                const maxEnergyPacks = 30; // Desired number of energy packs
+                const packsToAdd = maxEnergyPacks - this.energyPacks.length;
+                for (let i = 0; i < packsToAdd; i++) {
+                    const x = Math.floor(Math.random() * this.gridSize);
+                    const y = Math.floor(Math.random() * this.gridSize);
+                    if (!this.obstacles[y][x] && !this.energyPacks.some(pack => pack.x === x && pack.y === y)) {
+                        this.energyPacks.push({ x, y });
+                    }
+                }
+            }
+
+            diffuse(steps) {
+                for (let s = 0; s < steps; s++) {
+                    let newState = this.state.map(row => new Float32Array(row));
+                    for (let y = 0; y < this.gridSize; y++) {
+                        for (let x = 0; x < this.gridSize; x++) {
+                            if (this.obstacles[y][x]) continue;
+                            let sum = this.state[y][x];
+                            let count = 1;
+                            const neighbors = [
+                                [x - 1, y],
+                                [x + 1, y],
+                                [x, y - 1],
+                                [x, y + 1]
+                            ];
+                            neighbors.forEach(([nx, ny]) => {
+                                if (
+                                    nx >= 0 &&
+                                    nx < this.gridSize &&
+                                    ny >= 0 &&
+                                    ny < this.gridSize &&
+                                    !this.obstacles[ny][nx]
+                                ) {
+                                    sum += this.state[ny][nx];
+                                    count++;
+                                }
+                            });
+                            newState[y][x] = sum / count;
+                        }
+                    }
+                    this.state = newState;
+                }
+            }
+        }
+
+        class Agent {
+            constructor(environment, id) {
+                this.id = id;
+                this.env = environment;
+                // Initialize at random non-obstacle position
+                let startX, startY;
+                do {
+                    startX = Math.floor(Math.random() * this.env.gridSize);
+                    startY = Math.floor(Math.random() * this.env.gridSize);
+                } while (this.env.obstacles[startY][startX] || this.env.energyPacks.some(pack => pack.x === startX && pack.y === startY));
+                this.position = [startX * CELL_SIZE + CELL_SIZE / 2, startY * CELL_SIZE + CELL_SIZE / 2];
+                this.predictionState = this.env.createInitialState();
+                this.path = [];
+                this.totalReward = 0;
+                this.totalSteps = 0;
+                this.energy = MAX_ENERGY;
+            }
+
+            move() {
+                if (this.energy <= 0) {
+                    console.log(`Agent ${this.id} has run out of energy.`);
+                    return;
+                }
+
+                const speed = parseInt(agentSpeedInput.value);
+                let dx = 0, dy = 0;
+
+                [dx, dy] = this.combinedStrategyMove(speed);
+
+                let newX = this.position[0] + dx;
+                let newY = this.position[1] + dy;
+
+                // Ensure new position is within bounds
+                newX = Math.max(0, Math.min(CANVAS_SIZE - 1, newX));
+                newY = Math.max(0, Math.min(CANVAS_SIZE - 1, newY));
+
+                const gridX = Math.floor(newX / CELL_SIZE);
+                const gridY = Math.floor(newY / CELL_SIZE);
+                if (!this.env.obstacles[gridY][gridX]) {
+                    this.position = [newX, newY];
+                    this.path.push([...this.position]);
+                    if (this.path.length > 100) {
+                        this.path.shift();
+                    }
+                } else {
+                    // Optional: Handle collision (e.g., stop movement or choose a different direction)
+                }
+
+                this.energy -= 0.5; // Reduced energy consumption
+            }
+
+            combinedStrategyMove(speed) {
+                if (this.energy < MAX_ENERGY * 0.5) {
+                    return this.moveTowardsEnergyPack(speed);
+                } else {
+                    return this.randomMove(speed);
+                }
+            }
+
+            moveTowardsEnergyPack(speed) {
+                const x = Math.floor(this.position[0] / CELL_SIZE);
+                const y = Math.floor(this.position[1] / CELL_SIZE);
+                let closestPack = null;
+                let minDistance = Infinity;
+
+                this.env.energyPacks.forEach(pack => {
+                    const distance = Math.abs(pack.x - x) + Math.abs(pack.y - y);
+                    if (distance < minDistance) {
+                        minDistance = distance;
+                        closestPack = pack;
+                    }
+                });
+
+                if (closestPack) {
+                    const dx = Math.sign(closestPack.x - x);
+                    const dy = Math.sign(closestPack.y - y);
+                    return [dx * CELL_SIZE, dy * CELL_SIZE];
+                } else {
+                    return this.randomMove(speed);
+                }
+            }
+
+            randomMove(speed) {
+                const angle = Math.random() * 2 * Math.PI;
+                const dx = Math.cos(angle) * speed;
+                const dy = Math.sin(angle) * speed;
+                return [dx, dy];
+            }
+
+            updatePrediction(learningRate) {
+                const x = Math.floor(this.position[0] / CELL_SIZE);
+                const y = Math.floor(this.position[1] / CELL_SIZE);
+
+                const observedReward = this.getCellReward(x, y);
+                this.predictionState[y][x] += learningRate * (observedReward - this.predictionState[y][x]);
+            }
+
+            getCellReward(x, y) {
+                let reward = this.env.state[y][x];
+                const energyPackIndex = this.env.energyPacks.findIndex(pack => pack.x === x && pack.y === y);
+                if (energyPackIndex !== -1) {
+                    this.energy = Math.min(this.energy + 50, MAX_ENERGY);
+                    this.env.energyPacks.splice(energyPackIndex, 1);
+                    console.log(`Agent ${this.id} picked up an energy pack.`);
+                }
+                return reward;
+            }
+
+            getReward() {
+                const x = Math.floor(this.position[0] / CELL_SIZE);
+                const y = Math.floor(this.position[1] / CELL_SIZE);
+                const reward = this.env.state[y][x];
+                return reward;
+            }
+        }
+
+        class Simulation {
+            constructor() {
+                this.env = new Environment(GRID_SIZE);
+                this.agents = [];
+                this.isRunning = false;
+                this.totalSteps = 0;
+                this.dataLog = [];
+                this.rewardChart = null;
+                this.energyChart = null;
+                this.initializeAgents();
+                this.initializeCharts();
+                this.updateDisplay();
+                this.draw();
+
+                // Optimization variables
+                this.lastFrameTime = performance.now();
+                this.targetFPS = 30;
+                this.frameInterval = 1000 / this.targetFPS;
+            }
+
+            initializeAgents() {
+                const numAgents = parseInt(numAgentsInput.value);
+                this.agents = [];
+                for (let i = 0; i < numAgents; i++) {
+                    this.agents.push(new Agent(this.env, i + 1));
+                }
+                this.updateAgentInfoDisplay();
+            }
+
+            initializeCharts() {
+                if (this.rewardChart) {
+                    this.rewardChart.destroy();
+                }
+                if (this.energyChart) {
+                    this.energyChart.destroy();
+                }
+
+                const labels = [];
+                const rewardDatasets = [];
+                const energyDatasets = [];
+                this.agents.forEach(agent => {
+                    rewardDatasets.push({
+                        label: `Agent ${agent.id}`,
+                        data: [],
+                        borderColor: `hsl(${(agent.id * 50) % 360}, 100%, 50%)`,
+                        fill: false
+                    });
+                    energyDatasets.push({
+                        label: `Agent ${agent.id}`,
+                        data: [],
+                        borderColor: `hsl(${(agent.id * 50) % 360}, 100%, 50%)`,
+                        fill: false
+                    });
+                });
+
+                this.rewardChart = new Chart(rewardChartCtx, {
+                    type: 'line',
+                    data: {
+                        labels: labels,
+                        datasets: rewardDatasets
+                    },
+                    options: {
+                        responsive: true,
+                        animation: false,
+                        plugins: {
+                            title: {
+                                display: true,
+                                text: 'Total Reward Over Time'
+                            },
+                            legend: {
+                                display: true,
+                                position: 'bottom'
+                            }
+                        },
+                        scales: {
+                            x: {
+                                title: {
+                                    display: true,
+                                    text: 'Steps'
+                                }
+                            },
+                            y: {
+                                title: {
+                                    display: true,
+                                    text: 'Total Reward'
+                                }
+                            }
+                        }
+                    }
+                });
+
+                this.energyChart = new Chart(energyChartCtx, {
+                    type: 'line',
+                    data: {
+                        labels: labels,
+                        datasets: energyDatasets
+                    },
+                    options: {
+                        responsive: true,
+                        animation: false,
+                        plugins: {
+                            title: {
+                                display: true,
+                                text: 'Energy Level Over Time'
+                            },
+                            legend: {
+                                display: true,
+                                position: 'bottom'
+                            }
+                        },
+                        scales: {
+                            x: {
+                                title: {
+                                    display: true,
+                                    text: 'Steps'
+                                }
+                            },
+                            y: {
+                                title: {
+                                    display: true,
+                                    text: 'Energy Level'
+                                },
+                                min: 0,
+                                max: MAX_ENERGY
+                            }
+                        }
+                    }
+                });
+            }
+
+            start() {
+                if (!this.isRunning) {
+                    this.isRunning = true;
+                    this.lastFrameTime = performance.now();
+                    this.loop();
+                }
+            }
+
+            stop() {
+                this.isRunning = false;
+            }
+
+            reset() {
+                this.stop();
+                this.env = new Environment(GRID_SIZE);
+                this.initializeAgents();
+                this.totalSteps = 0;
+                this.dataLog = [];
+                this.initializeCharts();
+                this.updateDisplay();
+                this.draw();
+            }
+
+            step() {
+                const diffusionSteps = Math.min(parseInt(diffusionStepsInput.value), 3);
+                const learningRate = parseFloat(learningRateInput.value);
+
+                // Diffuse less frequently to improve performance
+                if (this.totalSteps % 2 === 0) {
+                    this.env.diffuse(diffusionSteps);
+                }
+
+                // Regenerate energy packs periodically
+                if (this.totalSteps % 50 === 0) { // Every 50 steps
+                    this.env.updateEnergyPacks();
+                }
+
+                this.env.updateMovingObstacles();
+
+                this.agents.forEach(agent => {
+                    agent.move();
+                    agent.updatePrediction(learningRate);
+
+                    const reward = agent.getReward();
+                    agent.totalReward += reward;
+                    agent.totalSteps++;
+
+                    this.dataLog.push({
+                        agentId: agent.id,
+                        step: this.totalSteps,
+                        position: [...agent.position],
+                        reward: reward,
+                        energy: agent.energy
+                    });
+                });
+
+                // Limit dataLog size to prevent memory issues
+                if (this.dataLog.length > 1000) {
+                    this.dataLog.splice(0, this.dataLog.length - 1000);
+                }
+
+                this.totalSteps++;
+                this.updateDisplay();
+                this.updateCharts();
+                this.draw();
+            }
+
+            loop() {
+                if (!this.isRunning) return;
+
+                const currentTime = performance.now();
+                const elapsed = currentTime - this.lastFrameTime;
+
+                if (elapsed > this.frameInterval) {
+                    this.lastFrameTime = currentTime - (elapsed % this.frameInterval);
+                    this.step();
+                }
+
+                requestAnimationFrame(() => this.loop());
+            }
+
+            updateDisplay() {
+                totalStepsDisplay.textContent = this.totalSteps;
+                const avgAccuracy = this.calculateAveragePredictionAccuracy();
+                predictionAccuracyDisplay.textContent = `${(avgAccuracy * 100).toFixed(2)}%`;
+                this.updateAgentInfoDisplay();
+            }
+
+            updateAgentInfoDisplay() {
+                agentInfoContainer.innerHTML = '';
+                this.agents.forEach(agent => {
+                    const [x, y] = agent.position;
+                    const agentDiv = document.createElement('div');
+                    agentDiv.innerHTML = `
+                        <p><strong>Agent ${agent.id}</strong></p>
+                        <p>Position: (${Math.round(x)}, ${Math.round(y)})</p>
+                        <p>Reward: ${agent.totalReward.toFixed(2)}</p>
+                        <p>Energy: ${agent.energy.toFixed(1)}</p>
+                        <p>Steps: ${agent.totalSteps}</p>
+                    `;
+                    agentInfoContainer.appendChild(agentDiv);
+                });
+            }
+
+            updateCharts() {
+                if (!this.rewardChart || !this.energyChart) return;
+
+                // Limit the number of data points to prevent memory issues
+                const maxDataPoints = 100;
+
+                if (this.rewardChart.data.labels.length > maxDataPoints) {
+                    this.rewardChart.data.labels.shift();
+                    this.rewardChart.data.datasets.forEach(dataset => dataset.data.shift());
+                }
+                if (this.energyChart.data.labels.length > maxDataPoints) {
+                    this.energyChart.data.labels.shift();
+                    this.energyChart.data.datasets.forEach(dataset => dataset.data.shift());
+                }
+
+                this.rewardChart.data.labels.push(this.totalSteps);
+                this.energyChart.data.labels.push(this.totalSteps);
+
+                this.agents.forEach((agent, index) => {
+                    if (this.rewardChart.data.datasets[index]) {
+                        this.rewardChart.data.datasets[index].data.push(agent.totalReward);
+                    }
+                    if (this.energyChart.data.datasets[index]) {
+                        this.energyChart.data.datasets[index].data.push(agent.energy);
+                    }
+                });
+
+                // Update charts only if they are in the document
+                if (document.contains(this.rewardChart.canvas)) {
+                    this.rewardChart.update('none');
+                }
+                if (document.contains(this.energyChart.canvas)) {
+                    this.energyChart.update('none');
+                }
+            }
+
+            calculateAveragePredictionAccuracy() {
+                let totalAccuracy = 0;
+                this.agents.forEach(agent => {
+                    let totalDiff = 0;
+                    for (let y = 0; y < GRID_SIZE; y++) {
+                        for (let x = 0; x < GRID_SIZE; x++) {
+                            totalDiff += Math.abs(this.env.state[y][x] - agent.predictionState[y][x]);
+                        }
+                    }
+                    const accuracy = 1 - (totalDiff / (GRID_SIZE * GRID_SIZE * 10));
+                    totalAccuracy += accuracy;
+                });
+                return totalAccuracy / this.agents.length;
+            }
+
+            draw() {
+                worldCtx.clearRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
+                predictionCtx.clearRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
+
+                for (let y = 0; y < GRID_SIZE; y++) {
+                    for (let x = 0; x < GRID_SIZE; x++) {
+                        this.drawCell(worldCtx, x, y, this.env.state[y][x]);
+                        this.drawCell(predictionCtx, x, y, this.agents[0].predictionState[y][x]);
+                    }
+                }
+
+                // Draw energy packs
+                this.env.energyPacks.forEach(pack => {
+                    const packX = pack.x * CELL_SIZE + CELL_SIZE / 2;
+                    const packY = pack.y * CELL_SIZE + CELL_SIZE / 2;
+                    worldCtx.fillStyle = '#FFD700'; // Gold color
+                    worldCtx.beginPath();
+                    worldCtx.arc(packX, packY, 5, 0, 2 * Math.PI);
+                    worldCtx.fill();
+
+                    predictionCtx.fillStyle = '#FFD700';
+                    predictionCtx.beginPath();
+                    predictionCtx.arc(packX, packY, 5, 0, 2 * Math.PI);
+                    predictionCtx.fill();
+                });
+
+                // Draw agents
+                this.agents.forEach(agent => {
+                    this.drawAgent(worldCtx, agent);
+                    this.drawAgent(predictionCtx, agent);
+                });
+            }
+
+            drawCell(ctx, x, y, value) {
+                if (this.env.obstacles[y][x]) {
+                    ctx.fillStyle = '#444';
+                } else {
+                    const intensity = Math.min(255, Math.floor(value * 25));
+                    ctx.fillStyle = `rgb(0, ${intensity}, 0)`;
+                }
+                ctx.fillRect(x * CELL_SIZE, y * CELL_SIZE, CELL_SIZE, CELL_SIZE);
+            }
+
+            drawAgent(ctx, agent) {
+                ctx.fillStyle = `hsl(${(agent.id * 50) % 360}, 100%, 50%)`;
+                const [ax, ay] = agent.position;
+                ctx.beginPath();
+                ctx.arc(ax, ay, 5, 0, 2 * Math.PI);
+                ctx.fill();
+
+                ctx.strokeStyle = `hsla(${(agent.id * 50) % 360}, 100%, 50%, 0.5)`;
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                agent.path.forEach((pos, index) => {
+                    if (index === 0) {
+                        ctx.moveTo(pos[0], pos[1]);
+                    } else {
+                        ctx.lineTo(pos[0], pos[1]);
+                    }
+                });
+                ctx.stroke();
+            }
+        }
+
+        // Initialize simulation
+        let simulation = new Simulation();
+        simulation.draw();
+
+        // Event listeners
+        resetButton.addEventListener('click', () => {
+            simulation.reset();
+            runButton.textContent = 'Run';
+        });
+
+        stepButton.addEventListener('click', () => {
+            simulation.step();
+        });
+
+        runButton.addEventListener('click', () => {
+            if (simulation.isRunning) {
+                simulation.stop();
+                runButton.textContent = 'Run';
+            } else {
+                simulation.start();
+                runButton.textContent = 'Stop';
+            }
+        });
+
+        numAgentsInput.addEventListener('change', () => {
+            simulation.initializeAgents();
+            simulation.initializeCharts();
+            simulation.draw();
+        });
+
+        diffusionStepsInput.addEventListener('change', () => {
+            // Optional: Handle changes if needed
+        });
+
+        learningRateInput.addEventListener('change', () => {
+            // Optional: Handle changes if needed
+        });
+
+        agentSpeedInput.addEventListener('input', () => {
+            // Optional: Handle changes if needed
+        });
+    </script>
+</body>
+</html>
