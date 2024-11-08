@@ -1,0 +1,388 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Online 3D Slicer & Ender 3 Controller</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <!-- Include Three.js from CDN -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <!-- Include OrbitControls -->
+  <script src="https://threejs.org/examples/js/controls/OrbitControls.js"></script>
+  <!-- Include additional loaders -->
+  <script src="https://threejs.org/examples/js/loaders/STLLoader.js"></script>
+  <script src="https://threejs.org/examples/js/loaders/OBJLoader.js"></script>
+  <!-- Include Google Fonts -->
+  <link href="https://fonts.googleapis.com/css?family=Roboto:400,500&display=swap" rel="stylesheet">
+  <style>
+    /* Reset and Basic Styles */
+    *, *::before, *::after {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      font-family: 'Roboto', sans-serif;
+      background-color: #f0f2f5;
+      color: #333;
+    }
+
+    /* Header */
+    header {
+      background-color: #1e88e5;
+      color: white;
+      padding: 20px 0;
+      text-align: center;
+    }
+
+    header h1 {
+      margin: 0;
+      font-weight: 500;
+    }
+
+    /* Container */
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 20px;
+    }
+
+    /* Controls */
+    .controls {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 20px;
+      margin-bottom: 20px;
+    }
+
+    .controls input[type="file"],
+    .controls input[type="number"],
+    .controls input[type="text"],
+    .controls select,
+    .controls button {
+      padding: 10px 15px;
+      border: none;
+      border-radius: 5px;
+      font-size: 16px;
+      transition: background-color 0.3s;
+    }
+
+    .controls input[type="file"],
+    .controls input[type="number"],
+    .controls input[type="text"],
+    .controls select {
+      background-color: #fff;
+      border: 1px solid #ccc;
+      width: 200px;
+    }
+
+    .controls button {
+      background-color: #1e88e5;
+      color: #fff;
+      cursor: pointer;
+    }
+
+    .controls button:hover {
+      background-color: #1565c0;
+    }
+
+    .controls label {
+      font-size: 16px;
+      margin-right: 10px;
+    }
+
+    /* Model View */
+    #modelView {
+      width: 100%;
+      height: 500px;
+      border: 1px solid #ccc;
+      border-radius: 5px;
+      background-color: #fff;
+      margin-bottom: 20px;
+    }
+
+    /* Footer */
+    footer {
+      background-color: #1e88e5;
+      color: white;
+      text-align: center;
+      padding: 10px 0;
+      position: fixed;
+      bottom: 0;
+      width: 100%;
+    }
+
+    /* Responsive Design */
+    @media (max-width: 768px) {
+      .controls {
+        flex-direction: column;
+        align-items: center;
+      }
+
+      .controls input[type="file"],
+      .controls input[type="number"],
+      .controls input[type="text"],
+      .controls select,
+      .controls button {
+        width: 100%;
+        max-width: 300px;
+      }
+
+      #modelView {
+        height: 300px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Online 3D Slicer & Ender 3 Controller</h1>
+  </header>
+  <div class="container">
+    <!-- Model Upload and Printer Connection -->
+    <div class="controls">
+      <input type="file" id="modelUpload" accept=".stl,.obj">
+      <button id="connectPrinter">Connect to Ender 3</button>
+    </div>
+    <!-- Model Viewer -->
+    <div id="modelView"></div>
+    <!-- Adjustable Printing Properties -->
+    <div class="controls">
+      <label for="layerHeight">Layer Height (mm):</label>
+      <input type="number" id="layerHeight" min="0.05" max="0.4" step="0.05" value="0.2">
+      <label for="printSpeed">Print Speed (mm/s):</label>
+      <input type="number" id="printSpeed" min="10" max="100" step="5" value="60">
+      <label for="bedTemperature">Bed Temp (°C):</label>
+      <input type="number" id="bedTemperature" min="0" max="110" step="5" value="60">
+      <label for="nozzleTemperature">Nozzle Temp (°C):</label>
+      <input type="number" id="nozzleTemperature" min="170" max="260" step="5" value="200">
+    </div>
+    <!-- Section Reprint Controls -->
+    <div class="controls">
+      <label for="layerSelect">Select Layer to Reprint:</label>
+      <input type="number" id="layerSelect" min="1" value="1">
+      <button id="reprintSection">Reprint Section</button>
+    </div>
+    <!-- Auto Start Print -->
+    <div class="controls">
+      <button id="autoStartPrint">Auto Start Print</button>
+    </div>
+  </div>
+  <footer>
+    &copy; 2024 Kai Piper
+  </footer>
+
+  <script>
+    // Global variables
+    let printerDevice;
+    let scene, camera, renderer, controls;
+    let modelMesh;
+    let gcodeData;
+
+    // Initialize Three.js scene
+    function initScene() {
+      scene = new THREE.Scene();
+      camera = new THREE.PerspectiveCamera(60, window.innerWidth / 500, 0.1, 1000);
+      renderer = new THREE.WebGLRenderer({ antialias: true });
+      renderer.setSize(window.innerWidth, 500);
+      renderer.setPixelRatio(window.devicePixelRatio);
+      document.getElementById('modelView').appendChild(renderer.domElement);
+
+      controls = new THREE.OrbitControls(camera, renderer.domElement);
+      camera.position.set(0, 0, 100);
+      controls.update();
+
+      window.addEventListener('resize', onWindowResize, false);
+
+      animate();
+    }
+
+    function onWindowResize() {
+      camera.aspect = window.innerWidth / 500;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, 500);
+    }
+
+    function animate() {
+      requestAnimationFrame(animate);
+      controls.update();
+      renderer.render(scene, camera);
+    }
+
+    // Handle model upload
+    document.getElementById('modelUpload').addEventListener('change', function(event) {
+      const file = event.target.files[0];
+      if (file) {
+        const reader = new FileReader();
+        reader.onload = function(e) {
+          const contents = e.target.result;
+          loadModel(contents, file.name.endsWith('.stl') ? 'stl' : 'obj');
+          // Generate G-code after loading the model
+          generateGCode();
+        };
+        if (file.name.endsWith('.stl')) {
+          reader.readAsArrayBuffer(file);
+        } else {
+          reader.readAsText(file);
+        }
+      }
+    });
+
+    // Load the 3D model
+    function loadModel(data, type) {
+      if (modelMesh) {
+        scene.remove(modelMesh);
+      }
+
+      if (type === 'stl') {
+        const loader = new THREE.STLLoader();
+        const geometry = loader.parse(data);
+        const material = new THREE.MeshNormalMaterial();
+        modelMesh = new THREE.Mesh(geometry, material);
+        scene.add(modelMesh);
+      } else if (type === 'obj') {
+        const loader = new THREE.OBJLoader();
+        const object = loader.parse(data);
+        modelMesh = object;
+        scene.add(modelMesh);
+      }
+
+      // Center the model
+      const box = new THREE.Box3().setFromObject(modelMesh);
+      const center = box.getCenter(new THREE.Vector3());
+      modelMesh.position.sub(center);
+
+      // Adjust camera
+      const size = box.getSize(new THREE.Vector3()).length();
+      camera.position.z = size * 1.5;
+      controls.update();
+    }
+
+    // Connect to printer
+    document.getElementById('connectPrinter').addEventListener('click', async function() {
+      try {
+        printerDevice = await navigator.usb.requestDevice({
+          filters: [{ vendorId: 0x2e3c }] // Vendor ID for Creality (Ender 3)
+        });
+        await printerDevice.open();
+        await printerDevice.selectConfiguration(1);
+        await printerDevice.claimInterface(0);
+        alert('Printer connected!');
+      } catch (error) {
+        console.error('Connection failed:', error);
+        alert('Failed to connect to printer.');
+      }
+    });
+
+    // Auto Start Print
+    document.getElementById('autoStartPrint').addEventListener('click', async function() {
+      if (!printerDevice) {
+        alert('Please connect to the printer first.');
+        return;
+      }
+      if (!gcodeData) {
+        alert('Please generate G-code first.');
+        return;
+      }
+      await sendGCodeToPrinter(gcodeData);
+    });
+
+    // Reprint Section
+    document.getElementById('reprintSection').addEventListener('click', function() {
+      const layerNumber = parseInt(document.getElementById('layerSelect').value);
+      if (isNaN(layerNumber) || layerNumber < 1) {
+        alert('Please enter a valid layer number.');
+        return;
+      }
+      if (!gcodeData) {
+        alert('Please generate G-code first.');
+        return;
+      }
+      const sectionGCode = extractLayerGCode(gcodeData, layerNumber);
+      if (sectionGCode) {
+        sendGCodeToPrinter(sectionGCode);
+      }
+    });
+
+    // Generate G-code in browser (simplified example)
+    async function generateGCode() {
+      // Retrieve user-defined settings
+      const layerHeight = parseFloat(document.getElementById('layerHeight').value);
+      const printSpeed = parseInt(document.getElementById('printSpeed').value);
+      const bedTemp = parseInt(document.getElementById('bedTemperature').value);
+      const nozzleTemp = parseInt(document.getElementById('nozzleTemperature').value);
+
+      // Placeholder G-code generation using user settings
+      gcodeData = `
+        ; G-code generated for model
+        ; Layer Height: ${layerHeight} mm
+        ; Print Speed: ${printSpeed} mm/s
+        ; Bed Temperature: ${bedTemp} °C
+        ; Nozzle Temperature: ${nozzleTemp} °C
+        M140 S${bedTemp} ; Set bed temperature
+        M104 S${nozzleTemp} ; Set nozzle temperature
+        M190 S${bedTemp} ; Wait for bed temperature
+        M109 S${nozzleTemp} ; Wait for nozzle temperature
+        G28 ; Home all axes
+        G1 Z${layerHeight} F3000 ; Move to first layer height
+        G1 F${printSpeed * 60} ; Set print speed
+        ;LAYER:0
+        ; ... Layer 0 commands
+        ;LAYER:1
+        ; ... Layer 1 commands
+        ;LAYER:2
+        ; ... Layer 2 commands
+        ;LAYER:3
+        ; ... Layer 3 commands
+        ; ...
+      `;
+      alert('G-code generated with your settings!');
+    }
+
+    // Send G-code to printer
+    async function sendGCodeToPrinter(gcode) {
+      const encoder = new TextEncoder();
+      const lines = gcode.split('\n');
+      for (const line of lines) {
+        if (line.trim() === '') continue;
+        const data = encoder.encode(line + '\n');
+        try {
+          await printerDevice.transferOut(2, data); // Endpoint 2 is commonly used for writing to printer
+          // Delay between commands to prevent buffer overflow
+          await new Promise(resolve => setTimeout(resolve, 50));
+        } catch (error) {
+          console.error('Error sending data:', error);
+        }
+      }
+      alert('G-code sent to printer.');
+    }
+
+    // Extract G-code for a specific layer
+    function extractLayerGCode(gcode, layerNumber) {
+      const lines = gcode.split('\n');
+      let layerStart = -1;
+      let layerEnd = -1;
+      for (let i = 0; i < lines.length; i++) {
+        if (lines[i].includes(`;LAYER:${layerNumber - 1}`)) {
+          layerStart = i;
+        } else if (lines[i].includes(`;LAYER:${layerNumber}`) && layerStart !== -1) {
+          layerEnd = i;
+          break;
+        }
+      }
+      if (layerStart !== -1 && layerEnd !== -1) {
+        // Include initial setup commands
+        const header = gcode.split('\n').slice(0, layerStart).join('\n');
+        const layerGCode = lines.slice(layerStart, layerEnd).join('\n');
+        return header + '\n' + layerGCode;
+      } else {
+        alert('Layer not found in G-code.');
+        return null;
+      }
+    }
+
+    // Initialize the scene on page load
+    initScene();
+  </script>
+</body>
+</html>
