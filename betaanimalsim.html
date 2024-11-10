@@ -1,0 +1,271 @@
+!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Advanced 3D Animal Simulation Environment</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/simplex-noise/2.4.0/simplex-noise.min.js"></script>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 0; background-color: #f0f2f5; overflow: hidden; }
+    #canvasContainer { width: 100vw; height: 100vh; }
+    #info, #controls {
+      position: absolute; top: 10px; color: white; background: rgba(0,0,0,0.7); padding: 10px; border-radius: 5px; z-index: 1;
+    }
+    #info { left: 10px; }
+    #controls { right: 10px; }
+  </style>
+</head>
+<body>
+  <div id="canvasContainer"></div>
+  <div id="info">
+    <strong>Advanced Animal Simulation</strong><br>
+    <span id="timeDisplay">Time: Morning</span><br>
+    Animal Speed: <span id="speedDisplay">2</span><br>
+    Terrain Complexity: <span id="terrainDisplay">1</span><br>
+    Weather: <span id="weatherDisplay">Clear</span>
+  </div>
+  <div id="controls">
+    <label>Animal Speed:</label>
+    <input type="range" id="speedControl" min="0.5" max="5" step="0.1" value="2"><br>
+    <label>Terrain Complexity:</label>
+    <input type="range" id="terrainControl" min="0.1" max="1.5" step="0.1" value="1"><br>
+    <label>Day/Night Cycle Speed:</label>
+    <input type="range" id="timeControl" min="0.1" max="5" step="0.1" value="1"><br>
+    <label>Toggle Rain:</label>
+    <input type="checkbox" id="rainControl">
+  </div>
+
+  <script>
+    let scene, camera, renderer, controls, clock, env, animals, rainParticles = [], rainEnabled = false;
+    let animalSpeed = 2, terrainComplexity = 1, dayNightSpeed = 1, timeOfDay = 0, currentWeather = "clear";
+
+    class Environment {
+      constructor(size) {
+        this.size = size;
+        this.simplex = new SimplexNoise();
+      }
+
+      getHeight(x, y) {
+        return this.simplex.noise2D(x * terrainComplexity / 10, y * terrainComplexity / 10) * 5;
+      }
+
+      isWater(x, y) {
+        return Math.abs(this.simplex.noise2D(x / 5, y / 5)) < 0.1;
+      }
+
+      addWaterAndVegetation() {
+        const waterMaterial = new THREE.MeshPhongMaterial({ color: 0x1e90ff, transparent: true, opacity: 0.7 });
+        const vegetationMaterial = new THREE.MeshLambertMaterial({ color: 0x228B22 });
+
+        for (let i = 0; i < this.size; i += 2) {
+          for (let j = 0; j < this.size; j += 2) {
+            const x = i - this.size / 2;
+            const z = j - this.size / 2;
+            if (this.isWater(i, j)) {
+              const water = new THREE.Mesh(new THREE.CircleGeometry(1, 16), waterMaterial);
+              water.rotation.x = -Math.PI / 2;
+              water.position.set(x, this.getHeight(x, z) + 0.05, z);
+              scene.add(water);
+            } else if (Math.random() < 0.1) {  // Place vegetation at random
+              const plant = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 1, 8), vegetationMaterial);
+              plant.position.set(x, this.getHeight(x, z) + 0.5, z);
+              plant.castShadow = true;
+              scene.add(plant);
+            }
+          }
+        }
+      }
+    }
+
+    class Animal {
+      constructor(environment) {
+        this.environment = environment;
+        this.position = [
+          Math.random() * environment.size,
+          Math.random() * environment.size
+        ];
+        this.energy = 100;
+        this.rotation = Math.random() * Math.PI * 2;
+      }
+
+      createMesh() {
+        const bodyMaterial = new THREE.MeshPhongMaterial({ color: this.getRandomColor() });
+        this.mesh = new THREE.Group();
+
+        const body = new THREE.Mesh(new THREE.SphereGeometry(0.5, 16, 16), bodyMaterial);
+        const head = new THREE.Mesh(new THREE.SphereGeometry(0.3, 16, 16), bodyMaterial);
+        head.position.set(0.5, 0.2, 0);
+
+        this.mesh.add(body);
+        this.mesh.add(head);
+
+        // Adding legs with simple rotation animation
+        this.legs = [];
+        for (let i = 0; i < 4; i++) {
+          const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 0.5, 8), bodyMaterial);
+          leg.position.set(i < 2 ? -0.3 : 0.3, -0.5, i % 2 === 0 ? -0.3 : 0.3);
+          this.legs.push(leg);
+          this.mesh.add(leg);
+        }
+
+        this.mesh.castShadow = true;
+        scene.add(this.mesh);
+        this.updateMeshPosition();
+      }
+
+      getRandomColor() {
+        const colors = [0xff5555, 0x55ff55, 0x5555ff, 0xffff55, 0xff55ff, 0x55ffff];
+        return colors[Math.floor(Math.random() * colors.length)];
+      }
+
+      updateMeshPosition() {
+        const x = this.position[0] - this.environment.size / 2;
+        const z = this.position[1] - this.environment.size / 2;
+        const height = this.environment.getHeight(x, z);
+        this.mesh.position.set(x, height + 0.5, z);
+        this.mesh.rotation.y = this.rotation;
+
+        const time = clock.getElapsedTime();
+        this.legs.forEach((leg, index) => {
+          leg.rotation.z = Math.sin(time * 5 + index) * 0.5;
+        });
+      }
+
+      move(delta) {
+        const angle = this.rotation;
+        this.position[0] += Math.cos(angle) * animalSpeed * delta;
+        this.position[1] += Math.sin(angle) * animalSpeed * delta;
+
+        this.position = this.position.map(pos => {
+          if (pos < 0) pos += this.environment.size;
+          if (pos >= this.environment.size) pos -= this.environment.size;
+          return pos;
+        });
+
+        this.rotation += (Math.random() - 0.5) * delta;
+      }
+    }
+
+    function initScene() {
+      scene = new THREE.Scene();
+      scene.background = new THREE.Color(0x87ceeb);
+      scene.fog = new THREE.FogExp2(0x87ceeb, 0.02);
+
+      camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+      camera.position.set(0, 20, 30);
+
+      renderer = new THREE.WebGLRenderer({ antialias: true });
+      renderer.shadowMap.enabled = true;
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      document.getElementById("canvasContainer").appendChild(renderer.domElement);
+
+      controls = new THREE.OrbitControls(camera, renderer.domElement);
+      controls.enableDamping = true;
+      controls.dampingFactor = 0.05;
+
+      const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
+      directionalLight.position.set(10, 20, 10);
+      directionalLight.castShadow = true;
+      directionalLight.shadow.mapSize.width = 2048;
+      directionalLight.shadow.mapSize.height = 2048;
+      scene.add(directionalLight);
+
+      const ambientLight = new THREE.AmbientLight(0x404040);
+      scene.add(ambientLight);
+
+      clock = new THREE.Clock();
+
+      createTerrain();
+      createAnimals();
+      animate();
+    }
+
+    function createTerrain() {
+      const geometry = new THREE.PlaneGeometry(env.size, env.size, env.size - 1, env.size - 1);
+      const positions = geometry.attributes.position.array;
+
+      for (let i = 0; i < positions.length; i += 3) {
+        const x = positions[i];
+        const z = positions[i + 1];
+        positions[i + 2] = env.getHeight(x, z);
+      }
+
+      geometry.attributes.position.needsUpdate = true;
+      geometry.computeVertexNormals();
+
+      const material = new THREE.MeshPhongMaterial({
+        color: 0x3d8c40,
+        shininess: 0,
+        flatShading: true
+      });
+
+      const terrain = new THREE.Mesh(geometry, material);
+      terrain.rotation.x = -Math.PI / 2;
+      terrain.receiveShadow = true;
+      scene.add(terrain);
+
+      env.addWaterAndVegetation();
+    }
+
+    function createAnimals() {
+      animals.forEach(animal => animal.createMesh());
+    }
+
+    function animate() {
+      requestAnimationFrame(animate);
+      const delta = clock.getDelta();
+
+      timeOfDay += delta * dayNightSpeed;
+      const sunIntensity = Math.max(Math.sin(timeOfDay * 0.1), 0);
+      scene.fog.color.setHSL(0.6, 1, 0.5 - sunIntensity * 0.3);
+      renderer.setClearColor(scene.fog.color);
+
+      animals.forEach(animal => {
+        animal.move(delta);
+        animal.updateMeshPosition();
+      });
+
+      controls.update();
+      renderer.render(scene, camera);
+    }
+
+    function simulate() {
+      env = new Environment(50);
+      animals = Array.from({ length: 20 }, () => new Animal(env));
+    }
+
+    // Initialize simulation on load
+    window.addEventListener("load", () => {
+      simulate();
+      initScene();
+    });
+
+    window.addEventListener("resize", () => {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+
+    document.getElementById("speedControl").addEventListener("input", (e) => {
+      animalSpeed = parseFloat(e.target.value);
+      document.getElementById("speedDisplay").textContent = animalSpeed;
+    });
+
+    document.getElementById("terrainControl").addEventListener("input", (e) => {
+      terrainComplexity = parseFloat(e.target.value);
+      document.getElementById("terrainDisplay").textContent = terrainComplexity;
+      scene.remove(scene.children.find(child => child.isMesh));
+      createTerrain();
+    });
+
+    document.getElementById("timeControl").addEventListener("input", (e) => {
+      dayNightSpeed = parseFloat(e.target.value);
+    });
+
+    document.getElementById("rainControl").addEventListener("input", (e) => {
+      rainEnabled = e.target.checked;
+    });
+  </script>
+</body>
+</html>
