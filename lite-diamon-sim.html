@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>DIAMOND Simulation with Q-Learning and Neural Network Agents</title>
+    <style>
+        body { font-family: Arial, sans-serif; background-color: #fafafa; margin: 0; padding: 20px; }
+        .container { max-width: 1800px; margin: auto; }
+        h1 { color: #222; text-align: center; }
+        .canvas-container { display: flex; justify-content: space-around; flex-wrap: wrap; }
+        canvas { border: 1px solid #999; background-color: #fff; margin: 10px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Enhanced DIAMOND Simulation with Resource Interaction and Threat Adaptation</h1>
+        <div class="canvas-container">
+            <canvas id="world-canvas" width="600" height="600"></canvas>
+        </div>
+    </div>
+    
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest"></script>
+    <script>
+        let GRID_SIZE = 60;
+        let CELL_SIZE = 10;
+        let MAX_ENERGY = 200;
+        let POPULATION_SIZE = 12;
+        const RESOURCE_TYPES = ['food', 'water', 'materials'];
+        const THREAT_TYPES = ['predator', 'hazard'];
+
+        // Get canvas context
+        const worldCanvas = document.getElementById('world-canvas');
+        const worldCtx = worldCanvas.getContext('2d');
+
+        class Environment {
+            constructor(gridSize) {
+                this.gridSize = gridSize;
+                this.state = this.createState(gridSize);
+                this.resources = this.createResources(gridSize);
+                this.threats = this.createThreats(gridSize);
+            }
+
+            createState(gridSize) {
+                let state = [];
+                for (let y = 0; y < gridSize; y++) {
+                    let row = [];
+                    for (let x = 0; x < gridSize; x++) {
+                        row.push(null); // Empty cell
+                    }
+                    state.push(row);
+                }
+                return state;
+            }
+
+            createResources(gridSize) {
+                let resources = [];
+                const resourceCount = Math.floor(gridSize * gridSize * 0.1);
+                for (let i = 0; i < resourceCount; i++) {
+                    let type = RESOURCE_TYPES[Math.floor(Math.random() * RESOURCE_TYPES.length)];
+                    let quality = Math.random() > 0.5 ? 'high' : 'low';
+                    let x = Math.floor(Math.random() * gridSize);
+                    let y = Math.floor(Math.random() * gridSize);
+                    resources.push({ x, y, type, quality });
+                    this.state[y][x] = { type: 'resource', resourceType: type, quality: quality };
+                }
+                return resources;
+            }
+
+            createThreats(gridSize) {
+                let threats = [];
+                const threatCount = Math.floor(gridSize * gridSize * 0.05);
+                for (let i = 0; i < threatCount; i++) {
+                    let type = THREAT_TYPES[Math.floor(Math.random() * THREAT_TYPES.length)];
+                    let x = Math.floor(Math.random() * gridSize);
+                    let y = Math.floor(Math.random() * gridSize);
+                    threats.push({ x, y, type });
+                    this.state[y][x] = { type: 'threat', threatType: type };
+                }
+                return threats;
+            }
+        }
+
+        class Agent {
+            constructor(env, id) {
+                this.env = env;
+                this.id = id;
+                this.position = [Math.floor(GRID_SIZE / 2), Math.floor(GRID_SIZE / 2)];
+                this.energy = MAX_ENERGY;
+            }
+
+            move() {
+                const actions = ['up', 'down', 'left', 'right'];
+                const action = actions[Math.floor(Math.random() * actions.length)];
+                let [dx, dy] = [0, 0];
+                switch (action) {
+                    case 'up': dy = -1; break;
+                    case 'down': dy = 1; break;
+                    case 'left': dx = -1; break;
+                    case 'right': dx = 1; break;
+                }
+                this.updatePosition(dx, dy);
+            }
+
+            updatePosition(dx, dy) {
+                const newX = Math.min(Math.max(this.position[0] + dx, 0), GRID_SIZE - 1);
+                const newY = Math.min(Math.max(this.position[1] + dy, 0), GRID_SIZE - 1);
+                this.position = [newX, newY];
+            }
+        }
+
+        class Simulation {
+            constructor() {
+                this.env = new Environment(GRID_SIZE);
+                this.agents = this.initializeAgents();
+                this.totalSteps = 0;
+                this.draw();
+                this.run();
+            }
+
+            initializeAgents() {
+                const agents = [];
+                for (let i = 0; i < POPULATION_SIZE; i++) {
+                    agents.push(new Agent(this.env, i + 1));
+                }
+                return agents;
+            }
+
+            draw() {
+                worldCtx.clearRect(0, 0, worldCanvas.width, worldCanvas.height);
+                for (let y = 0; y < this.env.gridSize; y++) {
+                    for (let x = 0; x < this.env.gridSize; x++) {
+                        const cell = this.env.state[y][x];
+                        if (cell && cell.type === 'resource') {
+                            worldCtx.fillStyle = cell.resourceType === 'food' ? 'green' :
+                                                 cell.resourceType === 'water' ? 'blue' : 'brown';
+                        } else if (cell && cell.type === 'threat') {
+                            worldCtx.fillStyle = cell.threatType === 'predator' ? 'red' : 'orange';
+                        } else {
+                            continue;
+                        }
+                        worldCtx.fillRect(x * CELL_SIZE, y * CELL_SIZE, CELL_SIZE, CELL_SIZE);
+                    }
+                }
+
+                for (let agent of this.agents) {
+                    worldCtx.fillStyle = 'purple';
+                    worldCtx.fillRect(agent.position[0] * CELL_SIZE, agent.position[1] * CELL_SIZE, CELL_SIZE, CELL_SIZE);
+                }
+            }
+
+            async run() {
+                setInterval(() => {
+                    for (let agent of this.agents) {
+                        agent.move();
+                    }
+                    this.totalSteps++;
+                    this.draw();
+                }, 100); // Update every 100ms
+            }
+        }
+
+        new Simulation();
+    </script>
+</body>
+</html>
