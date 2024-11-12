@@ -10,6 +10,7 @@
         .canvas-container { display: flex; justify-content: center; }
         canvas { border: 1px solid #999; background-color: #fff; margin: 10px; }
         .info { text-align: center; }
+        .info p { margin: 5px 0; }
     </style>
 </head>
 <body>
@@ -20,29 +21,39 @@
         </div>
         <div class="info">
             <p>Total Steps: <span id="total-steps">0</span></p>
+            <p>Population Size: <span id="population-size">10</span></p>
+            <p>Average Energy Level: <span id="average-energy">0</span></p>
+            <p>Exploration Rate (epsilon): <span id="exploration-rate">0.2</span></p>
+            <p>Learning Rate (alpha): <span id="learning-rate">0.1</span></p>
+            <p>Discount Factor (gamma): <span id="gamma">0.9</span></p>
         </div>
     </div>
     
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest"></script>
     <script>
-        let GRID_SIZE = 60;
-        let CELL_SIZE = 10;
-        let MAX_ENERGY = 100;
-        let POPULATION_SIZE = 10;
+        const GRID_SIZE = 60;
+        const CELL_SIZE = 10;
+        const MAX_ENERGY = 100;
+        const POPULATION_SIZE = 10;
         const RESOURCE_TYPES = ['food', 'water'];
         const THREAT_TYPES = ['predator', 'hazard'];
         const ACTIONS = ['up', 'down', 'left', 'right'];
         
         const worldCanvas = document.getElementById('world-canvas');
         const worldCtx = worldCanvas.getContext('2d');
-        const stepsCounter = document.getElementById('total-steps');
+        const totalStepsCounter = document.getElementById('total-steps');
+        const averageEnergyCounter = document.getElementById('average-energy');
+        const populationSizeCounter = document.getElementById('population-size');
+        const explorationRateCounter = document.getElementById('exploration-rate');
+        const learningRateCounter = document.getElementById('learning-rate');
+        const gammaCounter = document.getElementById('gamma');
 
         class Environment {
             constructor(gridSize) {
                 this.gridSize = gridSize;
                 this.state = this.createState(gridSize);
-                this.resources = this.createResources(gridSize);
-                this.threats = this.createThreats(gridSize);
+                this.createResources(gridSize);
+                this.createThreats(gridSize);
             }
 
             createState(gridSize) {
@@ -58,29 +69,23 @@
             }
 
             createResources(gridSize) {
-                let resources = [];
                 const resourceCount = Math.floor(gridSize * gridSize * 0.05);
                 for (let i = 0; i < resourceCount; i++) {
                     let type = RESOURCE_TYPES[Math.floor(Math.random() * RESOURCE_TYPES.length)];
                     let x = Math.floor(Math.random() * gridSize);
                     let y = Math.floor(Math.random() * gridSize);
-                    resources.push({ x, y, type });
                     this.state[y][x] = { type: 'resource', resourceType: type };
                 }
-                return resources;
             }
 
             createThreats(gridSize) {
-                let threats = [];
                 const threatCount = Math.floor(gridSize * gridSize * 0.03);
                 for (let i = 0; i < threatCount; i++) {
                     let type = THREAT_TYPES[Math.floor(Math.random() * THREAT_TYPES.length)];
                     let x = Math.floor(Math.random() * gridSize);
                     let y = Math.floor(Math.random() * gridSize);
-                    threats.push({ x, y, type });
                     this.state[y][x] = { type: 'threat', threatType: type };
                 }
-                return threats;
             }
         }
 
@@ -88,7 +93,7 @@
             constructor(env, id) {
                 this.env = env;
                 this.id = id;
-                this.position = [Math.floor(GRID_SIZE / 2), Math.floor(GRID_SIZE / 2)];
+                this.position = [Math.floor(Math.random() * GRID_SIZE), Math.floor(Math.random() * GRID_SIZE)];
                 this.energy = MAX_ENERGY;
                 this.alive = true;
                 this.qTable = {};
@@ -105,21 +110,29 @@
             move() {
                 if (!this.alive) return;
 
-                const action = this.chooseAction();
-                let [dx, dy] = [0, 0];
-                switch (action) {
-                    case 'up': dy = -1; break;
-                    case 'down': dy = 1; break;
-                    case 'left': dx = -1; break;
-                    case 'right': dx = 1; break;
-                }
+                const currentState = this.getState();
+                const action = this.chooseAction(currentState);
+                const [dx, dy] = this.getActionDelta(action);
 
                 this.updatePosition(dx, dy);
-                this.interactWithEnvironment();
+                const reward = this.interactWithEnvironment();
                 this.energy -= 1; // Decrease energy on each move
+
+                const newState = this.getState();
+                this.learn(currentState, action, reward, newState);
 
                 if (this.energy <= 0) {
                     this.alive = false;
+                }
+            }
+
+            getActionDelta(action) {
+                switch (action) {
+                    case 'up': return [0, -1];
+                    case 'down': return [0, 1];
+                    case 'left': return [-1, 0];
+                    case 'right': return [1, 0];
+                    default: return [0, 0];
                 }
             }
 
@@ -132,17 +145,21 @@
             interactWithEnvironment() {
                 const [x, y] = this.position;
                 const cell = this.env.state[y][x];
+                let reward = -0.1; // Small penalty to encourage efficient movement
 
                 if (cell && cell.type === 'resource') {
                     this.energy = Math.min(this.energy + 20, MAX_ENERGY); // Gain energy
+                    reward = 10; // Positive reward for collecting resource
                     this.env.state[y][x] = null; // Remove resource after collection
                 } else if (cell && cell.type === 'threat') {
                     this.energy -= 30; // Lose energy
+                    reward = -20; // Negative reward for encountering threat
                 }
+
+                return reward;
             }
 
-            chooseAction() {
-                const state = this.getState();
+            chooseAction(state) {
                 if (Math.random() < this.epsilon || !this.qTable[state]) {
                     // Explore random action
                     return ACTIONS[Math.floor(Math.random() * ACTIONS.length)];
@@ -154,16 +171,36 @@
 
             getBestAction(state) {
                 if (!this.qTable[state]) return ACTIONS[Math.floor(Math.random() * ACTIONS.length)];
-                let bestAction = ACTIONS[0];
-                let maxQ = this.qTable[state][bestAction] || 0;
+                const qValues = this.qTable[state];
+                let maxQ = -Infinity;
+                let bestActions = [];
                 for (let action of ACTIONS) {
-                    const qValue = this.qTable[state][action] || 0;
+                    const qValue = qValues[action] || 0;
                     if (qValue > maxQ) {
                         maxQ = qValue;
-                        bestAction = action;
+                        bestActions = [action];
+                    } else if (qValue === maxQ) {
+                        bestActions.push(action);
                     }
                 }
-                return bestAction;
+                // Randomly select among best actions to break ties
+                return bestActions[Math.floor(Math.random() * bestActions.length)];
+            }
+
+            learn(state, action, reward, nextState) {
+                if (!this.qTable[state]) {
+                    this.qTable[state] = {};
+                }
+                if (!this.qTable[nextState]) {
+                    this.qTable[nextState] = {};
+                }
+
+                const qPredict = this.qTable[state][action] || 0;
+                const qNextMax = Math.max(...ACTIONS.map(a => this.qTable[nextState][a] || 0));
+                const qTarget = reward + this.gamma * qNextMax;
+
+                // Update Q-value
+                this.qTable[state][action] = qPredict + this.alpha * (qTarget - qPredict);
             }
         }
 
@@ -186,7 +223,12 @@
             run() {
                 setInterval(() => {
                     this.totalSteps++;
-                    stepsCounter.textContent = this.totalSteps;
+                    totalStepsCounter.textContent = this.totalSteps;
+                    populationSizeCounter.textContent = POPULATION_SIZE;
+                    explorationRateCounter.textContent = this.agents[0].epsilon.toFixed(2);
+                    learningRateCounter.textContent = this.agents[0].alpha.toFixed(2);
+                    gammaCounter.textContent = this.agents[0].gamma.toFixed(2);
+
                     this.update();
                     this.draw();
                 }, 100);
@@ -196,6 +238,11 @@
                 for (let agent of this.agents) {
                     agent.move();
                 }
+
+                // Update average energy level
+                const totalEnergy = this.agents.reduce((sum, agent) => sum + agent.energy, 0);
+                const averageEnergy = (totalEnergy / POPULATION_SIZE).toFixed(2);
+                averageEnergyCounter.textContent = averageEnergy;
             }
 
             draw() {
@@ -219,7 +266,10 @@
                 // Draw agents
                 for (let agent of this.agents) {
                     if (agent.alive) {
-                        worldCtx.fillStyle = 'purple';
+                        // Agent color based on energy level
+                        const energyRatio = agent.energy / MAX_ENERGY;
+                        const colorIntensity = Math.floor(energyRatio * 255);
+                        worldCtx.fillStyle = `rgb(${255 - colorIntensity}, 0, ${colorIntensity})`;
                         worldCtx.fillRect(agent.position[0] * CELL_SIZE, agent.position[1] * CELL_SIZE, CELL_SIZE, CELL_SIZE);
                     }
                 }
