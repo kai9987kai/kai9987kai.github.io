@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Enhanced DIAMOND Simulation with Q-Learning and Interaction</title>
+    <title>Enhanced DIAMOND Simulation with Advanced Features</title>
     <style>
         body { font-family: Arial, sans-serif; background-color: #fafafa; margin: 0; padding: 20px; }
         .container { max-width: 1200px; margin: auto; }
@@ -11,11 +11,14 @@
         canvas { border: 1px solid #999; background-color: #fff; margin: 10px; }
         .info { text-align: center; }
         .info p { margin: 5px 0; }
+        .controls { text-align: center; margin-top: 20px; }
+        .controls input { margin: 0 5px; }
+        #chart-container { width: 600px; margin: 20px auto; }
     </style>
 </head>
 <body>
     <div class="container">
-        <h1>DIAMOND Simulation with Resource Interaction and Learning</h1>
+        <h1>DIAMOND Simulation with Advanced Features</h1>
         <div class="canvas-container">
             <canvas id="world-canvas" width="600" height="600"></canvas>
         </div>
@@ -27,8 +30,18 @@
             <p>Learning Rate (alpha): <span id="learning-rate">0.1</span></p>
             <p>Discount Factor (gamma): <span id="gamma">0.9</span></p>
         </div>
+        <div class="controls">
+            <label>Exploration Rate (epsilon): <input type="range" id="epsilon-slider" min="0" max="1" step="0.01" value="0.2"></label>
+            <label>Learning Rate (alpha): <input type="range" id="alpha-slider" min="0" max="1" step="0.01" value="0.1"></label>
+            <label>Discount Factor (gamma): <input type="range" id="gamma-slider" min="0" max="1" step="0.01" value="0.9"></label>
+        </div>
+        <div id="chart-container">
+            <canvas id="energy-chart"></canvas>
+        </div>
     </div>
     
+    <!-- Include Chart.js for data visualization -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest"></script>
     <script>
         const GRID_SIZE = 60;
@@ -47,6 +60,31 @@
         const explorationRateCounter = document.getElementById('exploration-rate');
         const learningRateCounter = document.getElementById('learning-rate');
         const gammaCounter = document.getElementById('gamma');
+        const epsilonSlider = document.getElementById('epsilon-slider');
+        const alphaSlider = document.getElementById('alpha-slider');
+        const gammaSlider = document.getElementById('gamma-slider');
+
+        // Chart for data visualization
+        const energyChartCtx = document.getElementById('energy-chart').getContext('2d');
+        const energyChart = new Chart(energyChartCtx, {
+            type: 'line',
+            data: {
+                labels: [],
+                datasets: [{
+                    label: 'Average Energy Level',
+                    data: [],
+                    borderColor: 'blue',
+                    fill: false,
+                }]
+            },
+            options: {
+                responsive: true,
+                scales: {
+                    x: { title: { display: true, text: 'Time Steps' } },
+                    y: { title: { display: true, text: 'Energy Level' }, min: 0, max: MAX_ENERGY }
+                }
+            }
+        });
 
         class Environment {
             constructor(gridSize) {
@@ -71,9 +109,15 @@
             createResources(gridSize) {
                 const resourceCount = Math.floor(gridSize * gridSize * 0.05);
                 for (let i = 0; i < resourceCount; i++) {
-                    let type = RESOURCE_TYPES[Math.floor(Math.random() * RESOURCE_TYPES.length)];
-                    let x = Math.floor(Math.random() * gridSize);
-                    let y = Math.floor(Math.random() * gridSize);
+                    this.addResource();
+                }
+            }
+
+            addResource() {
+                let type = RESOURCE_TYPES[Math.floor(Math.random() * RESOURCE_TYPES.length)];
+                let x = Math.floor(Math.random() * this.gridSize);
+                let y = Math.floor(Math.random() * this.gridSize);
+                if (!this.state[y][x]) {
                     this.state[y][x] = { type: 'resource', resourceType: type };
                 }
             }
@@ -81,25 +125,44 @@
             createThreats(gridSize) {
                 const threatCount = Math.floor(gridSize * gridSize * 0.03);
                 for (let i = 0; i < threatCount; i++) {
-                    let type = THREAT_TYPES[Math.floor(Math.random() * THREAT_TYPES.length)];
-                    let x = Math.floor(Math.random() * gridSize);
-                    let y = Math.floor(Math.random() * gridSize);
+                    this.addThreat();
+                }
+            }
+
+            addThreat() {
+                let type = THREAT_TYPES[Math.floor(Math.random() * THREAT_TYPES.length)];
+                let x = Math.floor(Math.random() * this.gridSize);
+                let y = Math.floor(Math.random() * this.gridSize);
+                if (!this.state[y][x]) {
                     this.state[y][x] = { type: 'threat', threatType: type };
+                }
+            }
+
+            regenerateResourcesAndThreats() {
+                // Regenerate resources
+                if (Math.random() < 0.1) { // 10% chance to add a new resource each step
+                    this.addResource();
+                }
+                // Regenerate threats
+                if (Math.random() < 0.05) { // 5% chance to add a new threat each step
+                    this.addThreat();
                 }
             }
         }
 
         class Agent {
-            constructor(env, id) {
+            constructor(env, id, agents) {
                 this.env = env;
                 this.id = id;
                 this.position = [Math.floor(Math.random() * GRID_SIZE), Math.floor(Math.random() * GRID_SIZE)];
                 this.energy = MAX_ENERGY;
                 this.alive = true;
                 this.qTable = {};
-                this.epsilon = 0.2; // Exploration factor
-                this.alpha = 0.1;  // Learning rate
-                this.gamma = 0.9;  // Discount factor
+                this.epsilon = parseFloat(epsilonSlider.value); // Exploration factor
+                this.alpha = parseFloat(alphaSlider.value);  // Learning rate
+                this.gamma = parseFloat(gammaSlider.value);  // Discount factor
+                this.communicationRange = 5; // Range within which agents can communicate
+                this.agents = agents; // Reference to other agents
             }
 
             getState() {
@@ -109,6 +172,11 @@
 
             move() {
                 if (!this.alive) return;
+
+                // Update agent parameters from sliders
+                this.epsilon = parseFloat(epsilonSlider.value);
+                this.alpha = parseFloat(alphaSlider.value);
+                this.gamma = parseFloat(gammaSlider.value);
 
                 const currentState = this.getState();
                 const action = this.chooseAction(currentState);
@@ -120,6 +188,10 @@
 
                 const newState = this.getState();
                 this.learn(currentState, action, reward, newState);
+
+                if (this.energy >= MAX_ENERGY * 0.9) {
+                    this.reproduce();
+                }
 
                 if (this.energy <= 0) {
                     this.alive = false;
@@ -156,7 +228,39 @@
                     reward = -20; // Negative reward for encountering threat
                 }
 
+                // Communicate with nearby agents
+                this.communicate();
+
                 return reward;
+            }
+
+            communicate() {
+                for (let agent of this.agents) {
+                    if (agent.id !== this.id && agent.alive) {
+                        const distance = Math.hypot(this.position[0] - agent.position[0], this.position[1] - agent.position[1]);
+                        if (distance <= this.communicationRange) {
+                            // Share Q-values
+                            this.mergeQTables(agent);
+                        }
+                    }
+                }
+            }
+
+            mergeQTables(otherAgent) {
+                for (let state in otherAgent.qTable) {
+                    if (!this.qTable[state]) {
+                        this.qTable[state] = { ...otherAgent.qTable[state] };
+                    } else {
+                        for (let action in otherAgent.qTable[state]) {
+                            if (!this.qTable[state][action]) {
+                                this.qTable[state][action] = otherAgent.qTable[state][action];
+                            } else {
+                                // Average the Q-values
+                                this.qTable[state][action] = (this.qTable[state][action] + otherAgent.qTable[state][action]) / 2;
+                            }
+                        }
+                    }
+                }
             }
 
             chooseAction(state) {
@@ -202,6 +306,19 @@
                 // Update Q-value
                 this.qTable[state][action] = qPredict + this.alpha * (qTarget - qPredict);
             }
+
+            reproduce() {
+                // Create a new agent with inherited properties
+                const newAgent = new Agent(this.env, this.agents.length + 1, this.agents);
+                newAgent.position = [...this.position];
+                newAgent.energy = MAX_ENERGY / 2;
+                this.energy = MAX_ENERGY / 2;
+                // Slightly mutate learning parameters
+                newAgent.epsilon = Math.min(Math.max(this.epsilon + (Math.random() - 0.5) * 0.02, 0), 1);
+                newAgent.alpha = Math.min(Math.max(this.alpha + (Math.random() - 0.5) * 0.02, 0), 1);
+                newAgent.gamma = Math.min(Math.max(this.gamma + (Math.random() - 0.5) * 0.02, 0), 1);
+                this.agents.push(newAgent);
+            }
         }
 
         class Simulation {
@@ -209,13 +326,14 @@
                 this.env = new Environment(GRID_SIZE);
                 this.agents = this.initializeAgents();
                 this.totalSteps = 0;
+                this.energyHistory = [];
                 this.run();
             }
 
             initializeAgents() {
                 const agents = [];
                 for (let i = 0; i < POPULATION_SIZE; i++) {
-                    agents.push(new Agent(this.env, i + 1));
+                    agents.push(new Agent(this.env, i + 1, agents));
                 }
                 return agents;
             }
@@ -224,13 +342,14 @@
                 setInterval(() => {
                     this.totalSteps++;
                     totalStepsCounter.textContent = this.totalSteps;
-                    populationSizeCounter.textContent = POPULATION_SIZE;
+                    populationSizeCounter.textContent = this.agents.filter(agent => agent.alive).length;
                     explorationRateCounter.textContent = this.agents[0].epsilon.toFixed(2);
                     learningRateCounter.textContent = this.agents[0].alpha.toFixed(2);
                     gammaCounter.textContent = this.agents[0].gamma.toFixed(2);
 
                     this.update();
                     this.draw();
+                    this.updateChart();
                 }, 100);
             }
 
@@ -239,10 +358,17 @@
                     agent.move();
                 }
 
+                // Remove dead agents from the list
+                this.agents = this.agents.filter(agent => agent.alive);
+
                 // Update average energy level
                 const totalEnergy = this.agents.reduce((sum, agent) => sum + agent.energy, 0);
-                const averageEnergy = (totalEnergy / POPULATION_SIZE).toFixed(2);
+                const averageEnergy = (totalEnergy / this.agents.length).toFixed(2);
                 averageEnergyCounter.textContent = averageEnergy;
+                this.energyHistory.push(averageEnergy);
+
+                // Regenerate resources and threats
+                this.env.regenerateResourcesAndThreats();
             }
 
             draw() {
@@ -274,9 +400,33 @@
                     }
                 }
             }
+
+            updateChart() {
+                energyChart.data.labels.push(this.totalSteps);
+                energyChart.data.datasets[0].data.push(parseFloat(averageEnergyCounter.textContent));
+                if (energyChart.data.labels.length > 100) {
+                    energyChart.data.labels.shift();
+                    energyChart.data.datasets[0].data.shift();
+                }
+                energyChart.update();
+            }
         }
 
-        new Simulation();
+        // Initialize the simulation
+        const simulation = new Simulation();
+
+        // Update agents' parameters when sliders are adjusted
+        epsilonSlider.addEventListener('input', () => {
+            explorationRateCounter.textContent = parseFloat(epsilonSlider.value).toFixed(2);
+        });
+
+        alphaSlider.addEventListener('input', () => {
+            learningRateCounter.textContent = parseFloat(alphaSlider.value).toFixed(2);
+        });
+
+        gammaSlider.addEventListener('input', () => {
+            gammaCounter.textContent = parseFloat(gammaSlider.value).toFixed(2);
+        });
     </script>
 </body>
 </html>
