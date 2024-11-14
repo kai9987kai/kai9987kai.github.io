@@ -1,0 +1,397 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Advanced 3D Animal Simulation Environment</title>
+    <!-- Load Three.js -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <!-- Load OrbitControls -->
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <!-- Load Simplex Noise -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/simplex-noise/2.4.0/simplex-noise.min.js"></script>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 0; background-color: #f0f2f5; overflow: hidden; }
+        #canvasContainer { width: 100vw; height: 100vh; }
+        #info, #controls {
+            position: absolute; top: 10px; color: white; background: rgba(0,0,0,0.7); padding: 10px; border-radius: 5px; z-index: 1;
+        }
+        #info { left: 10px; }
+        #controls { right: 10px; }
+        #controls label { display: block; margin-top: 10px; }
+        #controls input[type="range"], #controls select { width: 150px; }
+        #controls button { margin-top: 10px; padding: 5px 10px; }
+    </style>
+</head>
+<body>
+    <div id="canvasContainer"></div>
+    <div id="info">
+        <strong>Advanced Animal Simulation</strong><br>
+        <span id="timeDisplay">Time: Morning</span><br>
+        Animal Speed: <span id="speedDisplay">2.0</span><br>
+        Terrain Complexity: <span id="terrainDisplay">1.0</span><br>
+        Weather: <span id="weatherDisplay">Clear</span>
+    </div>
+    <div id="controls">
+        <label>Animal Speed:</label>
+        <input type="range" id="speedControl" min="0.5" max="5" step="0.1" value="2"><br>
+        <label>Terrain Complexity:</label>
+        <input type="range" id="terrainControl" min="0.1" max="1.5" step="0.1" value="1"><br>
+        <label>Day/Night Cycle Speed:</label>
+        <input type="range" id="timeControl" min="0.1" max="5" step="0.1" value="1"><br>
+        <label>Weather:</label>
+        <select id="weatherControl">
+            <option value="clear">Clear</option>
+            <option value="rain">Rain</option>
+            <option value="snow">Snow</option>
+        </select><br>
+        <button id="addAnimalBtn">Add Animal</button>
+        <button id="removeAnimalBtn">Remove Animal</button><br>
+        <button id="addFoodBtn">Add Food Source</button>
+    </div>
+
+    <script>
+        let scene, camera, renderer, controls, clock, env, animals = [], particles = [];
+        let animalSpeed = 2, terrainComplexity = 1, dayNightSpeed = 1, timeOfDay = 0;
+        let weather = 'clear';
+        let directionalLight, ambientLight, hemisphereLight;
+        let foodSources = [];
+
+        class Environment {
+            constructor(size) {
+                this.size = size;
+                this.simplex = new SimplexNoise();
+            }
+
+            getHeight(x, y) {
+                return this.simplex.noise2D(x * terrainComplexity / 10, y * terrainComplexity / 10) * 5;
+            }
+
+            isWater(x, y) {
+                return Math.abs(this.simplex.noise2D(x / 5, y / 5)) < 0.1;
+            }
+
+            addWaterAndVegetation() {
+                const waterMaterial = new THREE.MeshPhongMaterial({ color: 0x1e90ff, transparent: true, opacity: 0.7 });
+                const vegetationMaterial = new THREE.MeshLambertMaterial({ color: 0x228B22 });
+
+                for (let i = 0; i < this.size; i += 2) {
+                    for (let j = 0; j < this.size; j += 2) {
+                        const x = i - this.size / 2;
+                        const z = j - this.size / 2;
+                        if (this.isWater(i, j)) {
+                            const water = new THREE.Mesh(new THREE.CircleGeometry(1, 16), waterMaterial);
+                            water.rotation.x = -Math.PI / 2;
+                            water.position.set(x, this.getHeight(x, z) + 0.05, z);
+                            scene.add(water);
+                        } else if (Math.random() < 0.1) {
+                            const plant = new THREE.Mesh(new THREE.ConeGeometry(0.3, 1, 8), vegetationMaterial);
+                            plant.position.set(x, this.getHeight(x, z) + 0.5, z);
+                            plant.castShadow = true;
+                            scene.add(plant);
+                        }
+                    }
+                }
+            }
+        }
+
+        class Animal {
+            constructor(environment) {
+                this.environment = environment;
+                this.position = [
+                    Math.random() * environment.size,
+                    Math.random() * environment.size
+                ];
+                this.energy = 100;
+                this.rotation = Math.random() * Math.PI * 2;
+                this.mesh = new THREE.Group();
+                this.createMesh();
+            }
+
+            createMesh() {
+                const bodyMaterial = new THREE.MeshPhongMaterial({ color: this.getRandomColor() });
+
+                const body = new THREE.Mesh(new THREE.SphereGeometry(0.5, 16, 16), bodyMaterial);
+                const head = new THREE.Mesh(new THREE.SphereGeometry(0.3, 16, 16), bodyMaterial);
+                head.position.set(0.5, 0.2, 0);
+
+                this.mesh.add(body);
+                this.mesh.add(head);
+
+                // Adding legs with simple rotation animation
+                this.legs = [];
+                for (let i = 0; i < 4; i++) {
+                    const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 0.5, 8), bodyMaterial);
+                    leg.position.set(i < 2 ? -0.3 : 0.3, -0.5, i % 2 === 0 ? -0.3 : 0.3);
+                    this.legs.push(leg);
+                    this.mesh.add(leg);
+                }
+
+                this.mesh.castShadow = true;
+                scene.add(this.mesh);
+                this.updateMeshPosition();
+            }
+
+            getRandomColor() {
+                const colors = [0xff5555, 0x55ff55, 0x5555ff, 0xffff55, 0xff55ff, 0x55ffff];
+                return colors[Math.floor(Math.random() * colors.length)];
+            }
+
+            updateMeshPosition() {
+                const x = this.position[0] - this.environment.size / 2;
+                const z = this.position[1] - this.environment.size / 2;
+                const height = this.environment.getHeight(x, z);
+                this.mesh.position.set(x, height + 0.5, z);
+                this.mesh.rotation.y = this.rotation;
+
+                const time = clock.getElapsedTime();
+                this.legs.forEach((leg, index) => {
+                    leg.rotation.z = Math.sin(time * 5 + index) * 0.5;
+                });
+            }
+
+            move(delta) {
+                const speedFactor = (Math.sin(timeOfDay * 0.1) + 1) / 2 + 0.5;
+                let angle = this.rotation;
+
+                const nearestFood = this.getNearestFoodSource();
+                if (nearestFood) {
+                    const dx = nearestFood.x - (this.position[0] - this.environment.size / 2);
+                    const dz = nearestFood.z - (this.position[1] - this.environment.size / 2);
+                    angle = Math.atan2(dz, dx);
+                } else {
+                    this.rotation += (Math.random() - 0.5) * delta;
+                    angle = this.rotation;
+                }
+
+                this.position[0] += Math.cos(angle) * animalSpeed * speedFactor * delta;
+                this.position[1] += Math.sin(angle) * animalSpeed * speedFactor * delta;
+
+                this.position = this.position.map(pos => {
+                    if (pos < 0) pos += this.environment.size;
+                    if (pos >= this.environment.size) pos -= this.environment.size;
+                    return pos;
+                });
+
+                this.updateMeshPosition();
+
+                if (nearestFood) {
+                    const distance = this.getDistanceTo(nearestFood.x, nearestFood.z);
+                    if (distance < 1) {
+                        scene.remove(nearestFood.mesh);
+                        const index = foodSources.indexOf(nearestFood);
+                        if (index > -1) {
+                            foodSources.splice(index, 1);
+                        }
+                        this.energy = 100;
+                    }
+                }
+            }
+
+            getNearestFoodSource() {
+                if (foodSources.length === 0) return null;
+                let nearestFood = null;
+                let minDistance = Infinity;
+                const x = this.position[0] - this.environment.size / 2;
+                const z = this.position[1] - this.environment.size / 2;
+
+                foodSources.forEach(food => {
+                    const dx = food.x - x;
+                    const dz = food.z - z;
+                    const distance = Math.sqrt(dx * dx + dz * dz);
+                    if (distance < minDistance) {
+                        minDistance = distance;
+                        nearestFood = food;
+                    }
+                });
+                return nearestFood;
+            }
+
+            getDistanceTo(x, z) {
+                const dx = x - (this.position[0] - this.environment.size / 2);
+                const dz = z - (this.position[1] - this.environment.size / 2);
+                return Math.sqrt(dx * dx + dz * dz);
+            }
+
+            dispose() {
+                scene.remove(this.mesh);
+                this.mesh.traverse((object) => {
+                    if (object.geometry) object.geometry.dispose();
+                    if (object.material) object.material.dispose();
+                });
+            }
+        }
+
+        function initScene() {
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x87ceeb);
+            scene.fog = new THREE.FogExp2(0x87ceeb, 0.005);
+
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.set(0, 20, 30);
+
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.shadowMap.enabled = true;
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            document.getElementById("canvasContainer").appendChild(renderer.domElement);
+
+            controls = new THREE.OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true;
+            controls.dampingFactor = 0.05;
+
+            hemisphereLight = new THREE.HemisphereLight(0xffffff, 0x444444, 1);
+            scene.add(hemisphereLight);
+
+            directionalLight = new THREE.DirectionalLight(0xffffff, 1);
+            directionalLight.position.set(10, 20, 10);
+            directionalLight.castShadow = true;
+            directionalLight.shadow.mapSize.width = 2048;
+            directionalLight.shadow.mapSize.height = 2048;
+            scene.add(directionalLight);
+
+            ambientLight = new THREE.AmbientLight(0x404040);
+            scene.add(ambientLight);
+
+            clock = new THREE.Clock();
+
+            createTerrain();
+            animate();
+        }
+
+        function createTerrain() {
+            const size = 100;
+            const geometry = new THREE.PlaneGeometry(size, size, 100, 100);
+            const simplex = new SimplexNoise();
+            
+            const positions = geometry.attributes.position.array;
+
+            for (let i = 0; i < positions.length; i += 3) {
+                const x = positions[i];
+                const y = positions[i + 1];
+                positions[i + 2] = simplex.noise2D(x / 25, y / 25) * 5;
+            }
+
+            geometry.attributes.position.needsUpdate = true;
+            geometry.computeVertexNormals();
+
+            const material = new THREE.MeshPhongMaterial({ color: 0x3d8c40, flatShading: true });
+            const terrain = new THREE.Mesh(geometry, material);
+            terrain.name = 'terrain';
+            terrain.rotation.x = -Math.PI / 2;
+            terrain.receiveShadow = true;
+            scene.add(terrain);
+
+            env.addWaterAndVegetation();
+        }
+
+        function addAnimal() {
+            const animal = new Animal(env);
+            animals.push(animal);
+        }
+
+        function removeAnimal() {
+            if (animals.length > 0) {
+                const animal = animals.pop();
+                animal.dispose();
+            }
+        }
+
+        function addFoodSource() {
+            const x = Math.random() * env.size - env.size / 2;
+            const z = Math.random() * env.size - env.size / 2;
+            const height = env.getHeight(x, z) + 0.2;
+
+            const foodMaterial = new THREE.MeshPhongMaterial({ color: 0xffaa00 });
+            const foodMesh = new THREE.Mesh(new THREE.SphereGeometry(0.2, 8, 8), foodMaterial);
+            foodMesh.position.set(x, height, z);
+            foodMesh.castShadow = true;
+            scene.add(foodMesh);
+
+            const foodSource = { x, z, mesh: foodMesh };
+            foodSources.push(foodSource);
+        }
+
+        function updateDayNightCycle(delta) {
+            timeOfDay += delta * dayNightSpeed;
+            const sunIntensity = Math.max(Math.sin(timeOfDay * 0.1), 0);
+            const moonIntensity = 1 - sunIntensity;
+
+            directionalLight.intensity = sunIntensity;
+            ambientLight.intensity = sunIntensity * 0.5 + 0.1;
+            hemisphereLight.intensity = moonIntensity * 0.3 + 0.2;
+
+            const skyColor = new THREE.Color(0x87ceeb).lerp(new THREE.Color(0x000033), moonIntensity);
+            scene.background = skyColor;
+            scene.fog.color = skyColor;
+
+            const timeDisplay = document.getElementById('timeDisplay');
+            if (sunIntensity > 0.75) {
+                timeDisplay.textContent = 'Time: Morning';
+            } else if (sunIntensity > 0.25) {
+                timeDisplay.textContent = 'Time: Afternoon';
+            } else if (moonIntensity > 0.75) {
+                timeDisplay.textContent = 'Time: Night';
+            } else {
+                timeDisplay.textContent = 'Time: Evening';
+            }
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            const delta = clock.getDelta();
+
+            updateDayNightCycle(delta);
+
+            animals.forEach(animal => {
+                animal.move(delta);
+            });
+
+            controls.update();
+            renderer.render(scene, camera);
+        }
+
+        window.addEventListener("load", () => {
+            env = new Environment(50);
+            initScene();
+        });
+
+        window.addEventListener("resize", () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        document.getElementById("speedControl").addEventListener("input", (e) => {
+            animalSpeed = parseFloat(e.target.value);
+            document.getElementById("speedDisplay").textContent = animalSpeed.toFixed(1);
+        });
+
+        document.getElementById("terrainControl").addEventListener("input", (e) => {
+            terrainComplexity = parseFloat(e.target.value);
+            document.getElementById("terrainDisplay").textContent = terrainComplexity.toFixed(1);
+            scene.children = scene.children.filter(child => child.name !== 'terrain' && child.name !== 'particles');
+            createTerrain();
+        });
+
+        document.getElementById("timeControl").addEventListener("input", (e) => {
+            dayNightSpeed = parseFloat(e.target.value);
+        });
+
+        document.getElementById("weatherControl").addEventListener("change", (e) => {
+            weather = e.target.value;
+            document.getElementById('weatherDisplay').textContent = weather.charAt(0).toUpperCase() + weather.slice(1);
+        });
+
+        document.getElementById("addAnimalBtn").addEventListener("click", () => {
+            addAnimal();
+        });
+
+        document.getElementById("removeAnimalBtn").addEventListener("click", () => {
+            removeAnimal();
+        });
+
+        document.getElementById("addFoodBtn").addEventListener("click", () => {
+            addFoodSource();
+        });
+    </script>
+</body>
+</html>
