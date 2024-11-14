@@ -13,6 +13,7 @@
       margin: 0; 
       padding: 0; 
       background-color: #f5f5f5; 
+      /* Page can scroll if needed */
     }
     h1, p { 
       text-align: center; 
@@ -20,16 +21,18 @@
     }
     #maze { 
       display: grid; 
-      grid-template-columns: repeat(20, 1fr); /* Maze is now 20x20 cells */
+      grid-template-columns: repeat(20, 1fr); /* Desktop default: 20x20 cells */
       gap: 2px; 
+      width: 90vw; 
       max-width: 90vw; 
-      max-height: 90vw; 
       margin-top: 10px; 
       border: 2px solid #333; 
       background-color: #333; 
-      position: relative; 
+      position: relative;
+      /* Page scrolling is allowed outside the maze area. Swiping inside the maze moves the player. */
     }
     .cell { 
+      /* The padding-top ensures the height is proportional to width, keeping cells square */
       width: 100%; 
       padding-top: 100%; 
       position: relative; 
@@ -100,6 +103,7 @@
       font-size: 1.2rem; 
       flex: 1; 
       margin: 0 5px; 
+      cursor: pointer;
     }
     #winMessage {
       margin-top: 10px;
@@ -113,7 +117,7 @@
       display: none;
     }
     @media screen and (max-width: 600px) {
-      /* Adjust the layout for smaller screens */
+      /* Adjust the layout and maze size for smaller screens */
       #maze {
         grid-template-columns: repeat(10, 1fr);
       }
@@ -141,12 +145,14 @@
     const mazeContainer = document.getElementById("maze");
     const promptText = document.getElementById("promptText");
     let playerPosition = { x: 0, y: 0 };
-    const mazeSize = 20; // Maze size increased to 20
+    
+    // Determine device type and set appropriate maze size
+    const isMobile = window.innerWidth <= 600;
+    const mazeSize = isMobile ? 10 : 20;  // 10x10 on mobile, 20x20 on desktop
     let maze = Array.from({ length: mazeSize }, () => Array(mazeSize).fill("wall"));
 
     // Generate a perfect maze using DFS algorithm
     function generateMaze() {
-      // Initialize the stack and start cell
       const stack = [];
       let currentCell = { x: 0, y: 0 };
       maze[0][0] = "path";
@@ -171,13 +177,15 @@
       maze[mazeSize - 1][mazeSize - 1] = "end";
 
       // **Minimal Fix**: Ensure the end cell is accessible by making sure one of its neighbors is a path
-      if (maze[mazeSize - 2][mazeSize - 1] === "wall" && maze[mazeSize - 1][mazeSize - 2] === "wall") {
+      if (maze[mazeSize - 2] && maze[mazeSize - 2][mazeSize - 1] === "wall" && 
+          maze[mazeSize - 1][mazeSize - 2] === "wall") {
         // If both the cell above and the cell to the left are walls, make the cell above a path
         maze[mazeSize - 2][mazeSize - 1] = "path";
       }
 
-      // Mark random path cells as nodes
-      for (let i = 0; i < 5; i++) {
+      // Mark random path cells as nodes (fewer nodes on smaller mazes)
+      const nodeCount = isMobile ? 3 : 5;
+      for (let i = 0; i < nodeCount; i++) {
         let nodeX, nodeY;
         do {
           nodeX = Math.floor(Math.random() * mazeSize);
@@ -193,7 +201,6 @@
 
     function getUnvisitedNeighbors(x, y) {
       const neighbors = [];
-      // Only carve paths in increments of 2 to maintain walls between paths
       if (y - 2 >= 0 && maze[y - 2][x] === "wall") neighbors.push({ nx: x, ny: y - 2 });
       if (y + 2 < mazeSize && maze[y + 2][x] === "wall") neighbors.push({ nx: x, ny: y + 2 });
       if (x - 2 >= 0 && maze[y][x - 2] === "wall") neighbors.push({ nx: x - 2, ny: y });
@@ -203,7 +210,13 @@
 
     function carvePath(x, y, nx, ny) {
       // Mark the path between the current cell and the chosen cell
-      maze[(y + ny) / 2][(x + nx) / 2] = "path";
+      if (x === nx) {
+        // Vertical movement
+        maze[(y + ny) / 2][x] = "path";
+      } else if (y === ny) {
+        // Horizontal movement
+        maze[y][(x + nx) / 2] = "path";
+      }
       maze[ny][nx] = "path";
     }
 
@@ -238,7 +251,7 @@
     generateMaze();
     renderMaze();
 
-    // Handle movement and update current cell
+    // Movement handling for up, down, left, right 
     function move(direction) {
       const { x, y } = playerPosition;
       let newX = x, newY = y;
@@ -326,37 +339,49 @@
     // Add mobile swipe gesture support
     let startX, startY, endX, endY;
 
-    document.addEventListener('touchstart', handleTouchStart, false);
-    document.addEventListener('touchmove', handleTouchMove, false);
-    document.addEventListener('touchend', handleTouchEnd, false);
-
     function handleTouchStart(event) {
+      if (event.target.closest('#maze')) {
+        // If touch event starts inside the maze container, prevent default scroll
+        event.preventDefault();
+      }
       startX = event.touches[0].clientX;
       startY = event.touches[0].clientY;
     }
 
     function handleTouchMove(event) {
+      if (event.target.closest('#maze')) {
+        // If the finger moves inside the maze container, prevent default scrolling
+        event.preventDefault();
+      }
       endX = event.touches[0].clientX;
       endY = event.touches[0].clientY;
     }
 
-    function handleTouchEnd() {
-      const deltaX = endX - startX;
-      const deltaY = endY - startY;
+    function handleTouchEnd(event) {
+      if (!startX || !startY || !endX || !endY) {
+        return;
+      }
+      
+      // If the user started the swipe in the maze container, interpret as game movement
+      if (event.target.closest('#maze')) {
+        event.preventDefault();
+        const deltaX = endX - startX;
+        const deltaY = endY - startY;
 
-      if (Math.abs(deltaX) > Math.abs(deltaY)) {
-        // Horizontal swipe
-        if (deltaX > 0) {
-          move('right');
+        if (Math.abs(deltaX) > Math.abs(deltaY)) {
+          // Horizontal swipe
+          if (deltaX > 0) {
+            move('right');
+          } else {
+            move('left');
+          }
         } else {
-          move('left');
-        }
-      } else {
-        // Vertical swipe
-        if (deltaY > 0) {
-          move('down');
-        } else {
-          move('up');
+          // Vertical swipe
+          if (deltaY > 0) {
+            move('down');
+          } else {
+            move('up');
+          }
         }
       }
 
@@ -365,6 +390,36 @@
       startY = null;
       endX = null;
       endY = null;
+    }
+
+    document.addEventListener('touchstart', handleTouchStart, { passive: false });
+    document.addEventListener('touchmove', handleTouchMove, { passive: false });
+    document.addEventListener('touchend', handleTouchEnd, { passive: false });
+
+    // Add arrow key support for movement
+    document.addEventListener('keydown', handleKeyDown);
+    function handleKeyDown(event) {
+      switch (event.key) {
+        case 'ArrowUp':
+          move('up');
+          event.preventDefault();
+          break;
+        case 'ArrowDown':
+          move('down');
+          event.preventDefault();
+          break;
+        case 'ArrowLeft':
+          move('left');
+          event.preventDefault();
+          break;
+        case 'ArrowRight':
+          move('right');
+          event.preventDefault();
+          break;
+        default:
+          // If the key pressed is not an arrow key, do nothing
+          break;
+      }
     }
   </script>
 </body>
