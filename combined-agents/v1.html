@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Enhanced Multi-Agent Simulation with Threat Combat</title>
+    <style>
+        body { font-family: Arial, sans-serif; background-color: #fafafa; margin: 0; overflow: hidden; }
+        #controls { position: absolute; top: 10px; left: 10px; z-index: 10; background: rgba(0, 0, 0, 0.7); color: white; padding: 10px; border-radius: 5px; }
+        #controls label, #controls button { display: block; margin: 5px 0; }
+    </style>
+</head>
+<body>
+    <div id="controls">
+        <label>Agent Speed:</label>
+        <input type="range" id="speedSlider" min="1" max="10" value="5">
+        <button onclick="resetSimulation()">Reset Simulation</button>
+    </div>
+    <canvas id="canvas"></canvas>
+
+    <script>
+        const canvas = document.getElementById("canvas");
+        const ctx = canvas.getContext("2d");
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+
+        // Simulation settings
+        const agentCount = 25; 
+        const obstacleCount = 50;
+        const threatCount = 10; // Increased threat count
+        const foodRespawnRate = 5000; // Respawn rate in milliseconds
+        const threatRespawnRate = 7000; // Respawn rate in milliseconds
+        const agentAttributes = {
+            maxSpeed: 5,
+            maxHealth: 120,
+            reproductionRate: 0.1,
+        };
+
+        const dynamicAttentionScale = 5;
+
+        class Agent {
+            constructor(x, y) {
+                this.x = x;
+                this.y = y;
+                this.size = Math.random() * 3 + 3;
+                this.health = agentAttributes.maxHealth;
+                this.speed = Math.random() * agentAttributes.maxSpeed;
+                this.reproductionRate = agentAttributes.reproductionRate;
+                this.attentionScale = dynamicAttentionScale;
+                this.qTable = {}; 
+            }
+
+            move() {
+                this.x += (Math.random() - 0.5) * this.speed;
+                this.y += (Math.random() - 0.5) * this.speed;
+
+                if (this.x < 0 || this.x > canvas.width) this.x = Math.max(0, Math.min(canvas.width, this.x));
+                if (this.y < 0 || this.y > canvas.height) this.y = Math.max(0, Math.min(canvas.height, this.y));
+            }
+
+            reproduce() {
+                if (Math.random() < this.reproductionRate) {
+                    return new Agent(this.x, this.y);
+                }
+                return null;
+            }
+
+            engageThreat(threat) {
+                const dx = threat.x - this.x;
+                const dy = threat.y - this.y;
+                const distance = Math.sqrt(dx * dx + dy * dy);
+                
+                if (distance < this.size + threat.size) {
+                    threat.health -= 10;
+                    if (threat.health <= 0) threat.despawn();
+                }
+            }
+        }
+
+        class Obstacle {
+            constructor(x, y, ageLimit) {
+                this.x = x;
+                this.y = y;
+                this.size = Math.random() * 10 + 5;
+                this.ageLimit = ageLimit;
+                this.age = 0;
+            }
+
+            update() {
+                this.age += 1;
+                if (this.age > this.ageLimit) this.despawn();
+            }
+
+            despawn() {
+                obstacles.splice(obstacles.indexOf(this), 1);
+            }
+        }
+
+        class Food {
+            constructor(x, y) {
+                this.x = x;
+                this.y = y;
+                this.size = 5;
+                this.spawnTime = Date.now(); // Track when it was spawned
+            }
+
+            despawn() {
+                foods.splice(foods.indexOf(this), 1);
+            }
+
+            // Check if food should despawn based on a time threshold
+            checkDespawn() {
+                if (Date.now() - this.spawnTime > foodRespawnRate) {
+                    this.despawn();
+                }
+            }
+        }
+
+        class Threat {
+            constructor(x, y, target) {
+                this.x = x;
+                this.y = y;
+                this.size = 7;
+                this.speed = 2;
+                this.health = 30; // Health for the threat to allow combat interaction
+                this.target = target;
+            }
+
+            move() {
+                if (!this.target) return;
+                const dx = this.target.x - this.x;
+                const dy = this.target.y - this.y;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+                this.x += (dx / dist) * this.speed;
+                this.y += (dy / dist) * this.speed;
+
+                if (dist < this.size) {
+                    this.target.health -= 20; 
+                    this.despawn();
+                }
+            }
+
+            despawn() {
+                threats.splice(threats.indexOf(this), 1);
+            }
+        }
+
+        const agents = Array.from({ length: agentCount }, () => new Agent(Math.random() * canvas.width, Math.random() * canvas.height));
+        const obstacles = Array.from({ length: obstacleCount }, () => new Obstacle(Math.random() * canvas.width, Math.random() * canvas.height, 300));
+        let foods = [new Food(Math.random() * canvas.width, Math.random() * canvas.height)];
+        let threats = Array.from({ length: threatCount }, () => new Threat(Math.random() * canvas.width, Math.random() * canvas.height, agents[Math.floor(Math.random() * agents.length)]));
+
+        function updateSimulation() {
+            agents.forEach(agent => {
+                agent.move();
+                if (agent.health <= 0) agents.splice(agents.indexOf(agent), 1);
+                if (Math.random() < agent.reproductionRate) {
+                    const offspring = agent.reproduce();
+                    if (offspring) agents.push(offspring);
+                }
+                threats.forEach(threat => agent.engageThreat(threat));
+            });
+
+            threats.forEach(threat => threat.move());
+            obstacles.forEach(obstacle => obstacle.update());
+            foods.forEach(food => food.checkDespawn()); // Check if food should despawn
+
+            // Check spawn rates and add new threats or food when needed
+            if (foods.length < 5) foods.push(new Food(Math.random() * canvas.width, Math.random() * canvas.height));
+            if (threats.length < threatCount) threats.push(new Threat(Math.random() * canvas.width, Math.random() * canvas.height, agents[Math.floor(Math.random() * agents.length)]));
+            if (obstacles.length < obstacleCount) obstacles.push(new Obstacle(Math.random() * canvas.width, Math.random() * canvas.height, 300));
+
+            render();
+            requestAnimationFrame(updateSimulation);
+        }
+
+        function render() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            agents.forEach(agent => {
+                ctx.fillStyle = "blue";
+                ctx.beginPath();
+                ctx.arc(agent.x, agent.y, agent.size, 0, Math.PI * 2);
+                ctx.fill();
+            });
+
+            obstacles.forEach(obstacle => {
+                ctx.fillStyle = "grey";
+                ctx.beginPath();
+                ctx.arc(obstacle.x, obstacle.y, obstacle.size, 0, Math.PI * 2);
+                ctx.fill();
+            });
+
+            foods.forEach(food => {
+                ctx.fillStyle = "green";
+                ctx.beginPath();
+                ctx.arc(food.x, food.y, food.size, 0, Math.PI * 2);
+                ctx.fill();
+            });
+
+            threats.forEach(threat => {
+                ctx.fillStyle = "red";
+                ctx.beginPath();
+                ctx.arc(threat.x, threat.y, threat.size, 0, Math.PI * 2);
+                ctx.fill();
+            });
+        }
+
+        function resetSimulation() {
+            agents.splice(0, agents.length, ...Array.from({ length: agentCount }, () => new Agent(Math.random() * canvas.width, Math.random() * canvas.height)));
+            obstacles.splice(0, obstacles.length, ...Array.from({ length: obstacleCount }, () => new Obstacle(Math.random() * canvas.width, Math.random() * canvas.height, 300)));
+            foods = [new Food(Math.random() * canvas.width, Math.random() * canvas.height)];
+            threats = Array.from({ length: threatCount }, () => new Threat(Math.random() * canvas.width, Math.random() * canvas.height, agents[Math.floor(Math.random() * agents.length)]));
+        }
+
+        document.getElementById("speedSlider").addEventListener("input", (e) => {
+            agents.forEach(agent => agent.speed = parseFloat(e.target.value));
+        });
+
+        updateSimulation();
+    </script>
+</body>
+</html>
