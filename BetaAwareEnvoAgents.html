@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>AI Environmental Simulation</title>
+    <title>Enhanced Multi-Agent Environmental Simulation</title>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -24,6 +24,35 @@
             display: block;
             margin: 10px 0;
         }
+        #performance {
+            position: absolute;
+            bottom: 10px;
+            right: 10px;
+            z-index: 10;
+            background: rgba(0, 0, 0, 0.8);
+            padding: 15px;
+            border-radius: 8px;
+            color: white;
+        }
+        #eventLog {
+            position: absolute;
+            top: 200px;
+            left: 10px;
+            z-index: 10;
+            background: rgba(0, 0, 0, 0.8);
+            padding: 15px;
+            border-radius: 8px;
+            color: white;
+            max-height: 200px;
+            overflow-y: scroll;
+        }
+        #eventLog ul {
+            list-style-type: none;
+            padding: 0;
+        }
+        #eventLog li {
+            margin-bottom: 5px;
+        }
     </style>
 </head>
 <body>
@@ -35,6 +64,14 @@
         <button onclick="resetSimulation()">Reset Simulation</button>
         <button onclick="createEnvironmentalTask()">Create Environmental Task</button>
     </div>
+    <div id="performance">
+        <p>FPS: <span id="fps"></span></p>
+        <p>Simulation Step Time: <span id="stepTime"></span> ms</p>
+    </div>
+    <div id="eventLog">
+        <h3>Event Log</h3>
+        <ul id="eventList"></ul>
+    </div>
     <canvas id="canvas"></canvas>
 
     <script>
@@ -43,28 +80,65 @@
         canvas.width = window.innerWidth;
         canvas.height = window.innerHeight;
 
+        window.addEventListener('resize', () => {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        });
+
         const settings = {
-            agentCount: 30,
-            obstacleCount: 40,
-            threatCount: 8,
-            foodCount: 20,
-            agentAttributes: {
+            agent: {
+                count: 30,
                 maxSpeed: 6,
                 maxHealth: 150,
-                reproductionRate: 0.08,
+                reproductionRate: 0.1,
                 visionRadius: 150,
                 sustainabilityAwareness: 1,
+                maxCount: 100,
             },
-            threatAttributes: {
+            threat: {
+                count: 10,
                 speed: 3,
                 health: 50,
                 aggressiveness: 3,
             },
-            respawnRates: {
-                food: 5000,
-                threat: 7000,
+            food: {
+                count: 20,
+                respawnRate: 5000,
             },
+            task: {
+                count: 0,
+                completionReward: 20,
+            },
+            obstacle: {
+                count: 40,
+                ageLimit: 300,
+            },
+            qLearning: {
+                learningRate: 0.1,
+                discountRate: 0.9,
+                explorationRate: 0.2,
+            },
+            shelter: {
+                count: 10,
+            },
+            eventLog: {
+                maxSize: 1000,
+            },
+            dayNightCycle: {
+                enabled: true,
+                timeIncrement: 0.1,
+            }
         };
+
+        let timeOfDay = 0; // 0 to 24 representing hours
+
+        const eventLog = [];
+        function logEvent(event) {
+            eventLog.push({ time: Date.now(), ...event });
+            if (eventLog.length > settings.eventLog.maxSize) {
+                eventLog.shift();
+            }
+        }
 
         class Entity {
             constructor(x, y, size, color) {
@@ -72,6 +146,7 @@
                 this.y = y;
                 this.size = size;
                 this.color = color;
+                this.isAlive = true;
             }
 
             distanceTo(other) {
@@ -87,7 +162,6 @@
                 ctx.fill();
             }
 
-            // Keep entity within canvas boundaries
             keepWithinBounds() {
                 this.x = Math.max(this.size, Math.min(canvas.width - this.size, this.x));
                 this.y = Math.max(this.size, Math.min(canvas.height - this.size, this.y));
@@ -95,81 +169,177 @@
         }
 
         class Agent extends Entity {
-            constructor(x, y) {
-                super(x, y, Math.random() * 4 + 3, "blue");
-                this.health = settings.agentAttributes.maxHealth;
-                this.speed = Math.random() * settings.agentAttributes.maxSpeed + 1;
-                this.visionRadius = settings.agentAttributes.visionRadius;
-                this.sustainabilityAwareness = settings.agentAttributes.sustainabilityAwareness;
+            constructor(x, y, traits = {}) {
+                super(x, y, traits.size || (Math.random() * 4 + 3), "blue");
+                this.health = settings.agent.maxHealth;
+                this.speed = traits.speed || (Math.random() * settings.agent.maxSpeed + 1);
+                this._visionRadius = traits.visionRadius || settings.agent.visionRadius;
+                this.sustainabilityAwareness = traits.sustainabilityAwareness || settings.agent.sustainabilityAwareness;
+                this.qTable = {}; // Q-learning table
+                this.lastState = null;
+                this.lastAction = null;
+                this.actions = this.getActions();
+                this.generation = traits.generation || 1;
+                this.id = Agent.nextId++;
+            }
+
+            static nextId = 1;
+
+            get visionRadius() {
+                const baseVision = this._visionRadius;
+                // Reduce vision at night (e.g., between 18 and 6)
+                if (timeOfDay >= 18 || timeOfDay <= 6) {
+                    return baseVision * 0.5;
+                } else {
+                    return baseVision;
+                }
+            }
+
+            draw() {
+                // Color changes based on generation
+                this.color = `hsl(${(this.generation * 30) % 360}, 100%, 50%)`;
+                super.draw();
             }
 
             move() {
-                // Random movement
-                this.x += (Math.random() - 0.5) * this.speed;
-                this.y += (Math.random() - 0.5) * this.speed;
+                const state = this.getState();
+                const actions = this.getActions();
+                let action = this.chooseAction(actions);
+
+                switch (action) {
+                    case 'move_towards_food':
+                        this.moveTowardsFood();
+                        break;
+                    case 'move_towards_task':
+                        this.moveTowardsTask();
+                        break;
+                    case 'avoid_threat':
+                        this.avoidThreat();
+                        break;
+                    case 'avoid_obstacle':
+                        this.avoidObstacle();
+                        break;
+                    case 'move_towards_shelter':
+                        this.moveTowardsShelter();
+                        break;
+                    default:
+                        this.moveRandomly();
+                }
+
                 this.keepWithinBounds();
+
+                if (this.lastState && this.lastAction) {
+                    const reward = this.getReward();
+                    const nextState = this.getState();
+                    this.updateQTable(this.lastState, this.lastAction, reward, nextState);
+                }
+                this.lastState = state;
+                this.lastAction = action;
+
+                this.communicate();
             }
 
-            decide(foods, threats, tasks, obstacles) {
-                let targetFood = null;
-                let targetTask = null;
-                let closestThreat = null;
-                let minFoodDist = Infinity;
-                let minThreatDist = Infinity;
-                let minTaskDist = Infinity;
+            getState() {
+                const nearestFood = this.getNearestFood();
+                const nearestThreat = this.getNearestThreat();
+                const nearestTask = this.getNearestTask();
+                const nearestObstacle = this.getNearestObstacle();
+                const nearestShelter = this.getNearestShelter();
+                // Discretize distances
+                return {
+                    foodDistance: this.getDistanceCategory(nearestFood?.distance),
+                    threatDistance: this.getDistanceCategory(nearestThreat?.distance),
+                    taskDistance: this.getDistanceCategory(nearestTask?.distance),
+                    obstacleDistance: this.getDistanceCategory(nearestObstacle?.distance),
+                    shelterDistance: this.getDistanceCategory(nearestShelter?.distance),
+                };
+            }
 
-                // Find nearest food
-                for (const food of foods) {
-                    const dist = this.distanceTo(food);
-                    if (dist < this.visionRadius && dist < minFoodDist) {
-                        targetFood = food;
-                        minFoodDist = dist;
-                    }
-                }
+            getDistanceCategory(distance) {
+                if (distance == null) return 'none';
+                const normalized = distance / Math.hypot(canvas.width, canvas.height);
+                if (normalized < 0.2) return 'very_close';
+                else if (normalized < 0.4) return 'close';
+                else if (normalized < 0.6) return 'medium';
+                else if (normalized < 0.8) return 'far';
+                else return 'very_far';
+            }
 
-                // Find nearest threat
-                for (const threat of threats) {
-                    const dist = this.distanceTo(threat);
-                    if (dist < this.visionRadius && dist < minThreatDist) {
-                        closestThreat = threat;
-                        minThreatDist = dist;
-                    }
-                }
+            getActions() {
+                return ['move_towards_food', 'move_towards_task', 'avoid_threat', 'avoid_obstacle', 'move_towards_shelter', 'move_randomly'];
+            }
 
-                // Find nearest task
-                if (tasks.length > 0 && Math.random() < this.sustainabilityAwareness) {
-                    for (const task of tasks) {
-                        const dist = this.distanceTo(task);
-                        if (dist < this.visionRadius && dist < minTaskDist) {
-                            targetTask = task;
-                            minTaskDist = dist;
+            chooseAction(actions) {
+                if (Math.random() < settings.qLearning.explorationRate) {
+                    return actions[Math.floor(Math.random() * actions.length)];
+                } else {
+                    let bestAction = actions[0];
+                    let bestQValue = -Infinity;
+                    for (const action of actions) {
+                        const qValue = this.qTable[this.stateKey(this.getState()) + action] || 0;
+                        if (qValue > bestQValue) {
+                            bestQValue = qValue;
+                            bestAction = action;
                         }
                     }
+                    return bestAction;
                 }
+            }
 
-                // Decision-making logic
-                if (closestThreat && minThreatDist < this.size * 5) {
-                    // Move away from threat
-                    this.moveAwayFrom(closestThreat);
-                } else if (targetTask) {
-                    // Move towards task
-                    this.moveTowards(targetTask);
-                    if (minTaskDist < this.size) {
-                        tasks.splice(tasks.indexOf(targetTask), 1); // Complete task
-                    }
-                } else if (targetFood) {
-                    // Move towards food
-                    this.moveTowards(targetFood);
-                    if (minFoodDist < this.size) {
-                        foods.splice(foods.indexOf(targetFood), 1);
-                        this.health = Math.min(this.health + 20, settings.agentAttributes.maxHealth);
-                    }
-                } else {
-                    // Random movement
-                    this.move();
+            updateQTable(state, action, reward, nextState) {
+                const currentQ = this.qTable[this.stateKey(state) + action] || 0;
+                const maxNextQ = this.actions.length > 0 ? Math.max(...this.actions.map(a => this.qTable[this.stateKey(nextState) + a] || 0)) : 0;
+                this.qTable[this.stateKey(state) + action] = currentQ + settings.qLearning.learningRate * (reward + settings.qLearning.discountRate * maxNextQ - currentQ);
+            }
+
+            stateKey(state) {
+                return `${state.foodDistance},${state.threatDistance},${state.taskDistance},${state.obstacleDistance},${state.shelterDistance}`;
+            }
+
+            getReward() {
+                if (this.health > settings.agent.maxHealth * 0.8) return 1;
+                else if (this.health < settings.agent.maxHealth * 0.2) return -1;
+                else return 0;
+            }
+
+            moveTowardsFood() {
+                const food = this.getNearestFood();
+                if (food) {
+                    this.moveTowards(food.target);
                 }
+            }
 
-                this.avoidObstacles(obstacles);
+            moveTowardsTask() {
+                const task = this.getNearestTask();
+                if (task) {
+                    this.moveTowards(task.target);
+                }
+            }
+
+            avoidThreat() {
+                const threat = this.getNearestThreat();
+                if (threat) {
+                    this.moveAwayFrom(threat.target);
+                }
+            }
+
+            avoidObstacle() {
+                const obstacle = this.getNearestObstacle();
+                if (obstacle) {
+                    this.moveAwayFrom(obstacle.target);
+                }
+            }
+
+            moveTowardsShelter() {
+                const shelter = this.getNearestShelter();
+                if (shelter) {
+                    this.moveTowards(shelter.target);
+                }
+            }
+
+            moveRandomly() {
+                this.x += (Math.random() - 0.5) * this.speed;
+                this.y += (Math.random() - 0.5) * this.speed;
             }
 
             moveTowards(target) {
@@ -179,7 +349,6 @@
                 if (dist > 0) {
                     this.x += (dx / dist) * this.speed;
                     this.y += (dy / dist) * this.speed;
-                    this.keepWithinBounds();
                 }
             }
 
@@ -190,39 +359,147 @@
                 if (dist > 0) {
                     this.x += (dx / dist) * this.speed;
                     this.y += (dy / dist) * this.speed;
-                    this.keepWithinBounds();
                 }
             }
 
-            avoidObstacles(obstacles) {
+            getNearestFood() {
+                if (foods.length === 0) return null;
+                let nearest = null;
+                let minDist = Infinity;
+                for (const food of foods) {
+                    const dist = this.distanceTo(food);
+                    if (dist < minDist && dist < this.visionRadius) {
+                        nearest = { target: food, distance: dist };
+                        minDist = dist;
+                    }
+                }
+                return nearest;
+            }
+
+            getNearestThreat() {
+                if (threats.length === 0) return null;
+                let nearest = null;
+                let minDist = Infinity;
+                for (const threat of threats) {
+                    const dist = this.distanceTo(threat);
+                    if (dist < minDist && dist < this.visionRadius) {
+                        nearest = { target: threat, distance: dist };
+                        minDist = dist;
+                    }
+                }
+                return nearest;
+            }
+
+            getNearestTask() {
+                if (tasks.length === 0) return null;
+                let nearest = null;
+                let minDist = Infinity;
+                for (const task of tasks) {
+                    const dist = this.distanceTo(task);
+                    if (dist < minDist && dist < this.visionRadius) {
+                        nearest = { target: task, distance: dist };
+                        minDist = dist;
+                    }
+                }
+                return nearest;
+            }
+
+            getNearestObstacle() {
+                if (obstacles.length === 0) return null;
+                let nearest = null;
+                let minDist = Infinity;
                 for (const obstacle of obstacles) {
                     const dist = this.distanceTo(obstacle);
-                    if (dist < this.size + obstacle.size) {
-                        // Move away from obstacle
-                        this.moveAwayFrom(obstacle);
+                    if (dist < minDist && dist < this.visionRadius) {
+                        nearest = { target: obstacle, distance: dist };
+                        minDist = dist;
+                    }
+                }
+                return nearest;
+            }
+
+            getNearestShelter() {
+                if (shelters.length === 0) return null;
+                let nearest = null;
+                let minDist = Infinity;
+                for (const shelter of shelters) {
+                    const dist = this.distanceTo(shelter);
+                    if (dist < minDist && dist < this.visionRadius) {
+                        nearest = { target: shelter, distance: dist };
+                        minDist = dist;
+                    }
+                }
+                return nearest;
+            }
+
+            reproduce() {
+                if (agents.length >= settings.agent.maxCount) return null;
+                const mutationRate = 0.1;
+                const traits = {
+                    speed: this.speed + (Math.random() < mutationRate ? (Math.random() - 0.5) : 0),
+                    visionRadius: this._visionRadius + (Math.random() < mutationRate ? (Math.random() * 10 - 5) : 0),
+                    size: this.size + (Math.random() < mutationRate ? (Math.random() - 0.5) : 0),
+                    sustainabilityAwareness: this.sustainabilityAwareness,
+                    generation: this.generation + 1,
+                };
+                const offspring = new Agent(this.x, this.y, traits);
+                // Inherit Q-table with potential mutations
+                offspring.qTable = JSON.parse(JSON.stringify(this.qTable));
+                return offspring;
+            }
+
+            engageThreat(threat) {
+                const dx = threat.x - this.x;
+                const dy = threat.y - this.y;
+                const distance = Math.hypot(dx, dy);
+                if (distance < this.size + threat.size) {
+                    threat.health -= 10;
+                    if (threat.health <= 0) threat.despawn();
+                }
+            }
+
+            despawn() {
+                this.isAlive = false;
+            }
+
+            communicate() {
+                const nearbyAgents = agents.filter(otherAgent =>
+                    otherAgent !== this && this.distanceTo(otherAgent) < this.visionRadius
+                );
+                for (const otherAgent of nearbyAgents) {
+                    // Share knowledge (e.g., Q-tables)
+                    otherAgent.receiveInformation(this);
+                }
+            }
+
+            receiveInformation(otherAgent) {
+                // Merge Q-tables or update beliefs
+                for (let key in otherAgent.qTable) {
+                    if (!this.qTable[key]) {
+                        this.qTable[key] = otherAgent.qTable[key];
+                    } else {
+                        // Average the Q-values
+                        this.qTable[key] = (this.qTable[key] + otherAgent.qTable[key]) / 2;
                     }
                 }
             }
         }
 
         class Threat extends Entity {
-            constructor(x, y) {
+            constructor(x, y, target) {
                 super(x, y, 8, "red");
-                this.speed = settings.threatAttributes.speed * settings.threatAttributes.aggressiveness;
-                this.health = settings.threatAttributes.health;
-                this.target = null;
+                this.speed = settings.threat.speed * settings.threat.aggressiveness;
+                this.health = settings.threat.health;
+                this.target = target;
             }
 
-            assignTarget(agents) {
-                if (agents.length > 0) {
-                    this.target = agents[Math.floor(Math.random() * agents.length)];
-                }
-            }
-
-            move(agents) {
-                if (!this.target || this.target.health <= 0) {
-                    this.assignTarget(agents);
-                    return;
+            move() {
+                if (!this.target || !this.target.isAlive) {
+                    if (agents.length > 0) {
+                        this.target = agents[Math.floor(Math.random() * agents.length)];
+                    } else {
+                        return;
+                    }
                 }
                 const dx = this.target.x - this.x;
                 const dy = this.target.y - this.y;
@@ -232,12 +509,74 @@
                     this.y += (dy / dist) * this.speed;
                     this.keepWithinBounds();
 
-                    // Attack if close enough
                     if (dist < this.size + this.target.size) {
-                        this.target.health -= 15 * settings.threatAttributes.aggressiveness;
-                        threats.splice(threats.indexOf(this), 1); // Remove threat after attack
+                        this.target.health -= 15 * settings.threat.aggressiveness;
+                        this.despawn();
                     }
                 }
+            }
+
+            despawn() {
+                this.isAlive = false;
+            }
+        }
+
+        class Food extends Entity {
+            constructor(x, y) {
+                super(x, y, 5, "green");
+                this.spawnTime = Date.now();
+            }
+
+            despawn() {
+                this.isAlive = false;
+            }
+
+            checkDespawn() {
+                if (Date.now() - this.spawnTime > settings.food.respawnRate) {
+                    this.despawn();
+                }
+            }
+        }
+
+        class Task extends Entity {
+            constructor(x, y) {
+                super(x, y, 6, "yellow");
+            }
+
+            despawn() {
+                this.isAlive = false;
+            }
+
+            complete() {
+                this.despawn();
+                // Reward agents involved
+            }
+        }
+
+        class Obstacle extends Entity {
+            constructor(x, y) {
+                super(x, y, Math.random() * 10 + 5, "gray");
+                this.age = 0;
+                this.ageLimit = settings.obstacle.ageLimit;
+            }
+
+            update() {
+                this.age += 1;
+                if (this.age > this.ageLimit) this.despawn();
+            }
+
+            despawn() {
+                this.isAlive = false;
+            }
+        }
+
+        class Shelter extends Entity {
+            constructor(x, y) {
+                super(x, y, 10, "brown");
+            }
+
+            despawn() {
+                this.isAlive = false;
             }
         }
 
@@ -246,6 +585,7 @@
         const foods = [];
         const tasks = [];
         const obstacles = [];
+        const shelters = [];
 
         function initializeSimulation() {
             agents.length = 0;
@@ -253,68 +593,193 @@
             foods.length = 0;
             tasks.length = 0;
             obstacles.length = 0;
+            shelters.length = 0;
+            eventLog.length = 0;
 
-            for (let i = 0; i < settings.agentCount; i++) {
+            for (let i = 0; i < settings.agent.count; i++) {
                 agents.push(new Agent(Math.random() * canvas.width, Math.random() * canvas.height));
             }
-            for (let i = 0; i < settings.obstacleCount; i++) {
-                obstacles.push(new Entity(Math.random() * canvas.width, Math.random() * canvas.height, Math.random() * 10 + 5, "gray"));
+
+            for (let i = 0; i < settings.threat.count; i++) {
+                if (agents.length > 0) {
+                    const target = agents[Math.floor(Math.random() * agents.length)];
+                    threats.push(new Threat(Math.random() * canvas.width, Math.random() * canvas.height, target));
+                }
+            }
+
+            for (let i = 0; i < settings.food.count; i++) {
+                foods.push(new Food(Math.random() * canvas.width, Math.random() * canvas.height));
+            }
+
+            for (let i = 0; i < settings.obstacle.count; i++) {
+                obstacles.push(new Obstacle(Math.random() * canvas.width, Math.random() * canvas.height));
+            }
+
+            for (let i = 0; i < settings.shelter.count; i++) {
+                shelters.push(new Shelter(Math.random() * canvas.width, Math.random() * canvas.height));
             }
         }
 
         function spawnFood() {
-            if (foods.length < settings.foodCount) {
-                foods.push(new Entity(Math.random() * canvas.width, Math.random() * canvas.height, 5, "green"));
+            if (foods.length < settings.food.count) {
+                foods.push(new Food(Math.random() * canvas.width, Math.random() * canvas.height));
             }
         }
 
         function spawnThreat() {
-            if (threats.length < settings.threatCount) {
-                const threat = new Threat(Math.random() * canvas.width, Math.random() * canvas.height);
-                threat.assignTarget(agents);
-                threats.push(threat);
+            if (threats.length < settings.threat.count && agents.length > 0) {
+                const target = agents[Math.floor(Math.random() * agents.length)];
+                threats.push(new Threat(Math.random() * canvas.width, Math.random() * canvas.height, target));
             }
         }
 
         function createEnvironmentalTask() {
-            const task = new Entity(Math.random() * canvas.width, Math.random() * canvas.height, 6, "yellow");
-            tasks.push(task);
+            tasks.push(new Task(Math.random() * canvas.width, Math.random() * canvas.height));
         }
 
-        function updateSimulation() {
+        function updateTime() {
+            timeOfDay = (timeOfDay + settings.dayNightCycle.timeIncrement) % 24;
+        }
+
+        function drawBackground() {
+            let alpha = 0;
+            if (timeOfDay >= 18) {
+                alpha = (timeOfDay - 18) / 6;
+            } else if (timeOfDay <= 6) {
+                alpha = (6 - timeOfDay) / 6;
+            }
+            ctx.fillStyle = `rgba(0, 0, 0, ${alpha * 0.5})`;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+        }
+
+        let lastTimestamp = performance.now();
+        let fps, stepTime;
+
+        function updateSimulation(timestamp) {
+            const delta = timestamp - lastTimestamp;
+            lastTimestamp = timestamp;
+            fps = (1000 / delta).toFixed(1);
+            const startTime = performance.now();
+
             ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            updateTime();
+            drawBackground();
 
             // Update agents
             for (let i = agents.length - 1; i >= 0; i--) {
                 const agent = agents[i];
                 if (agent.health <= 0) {
-                    agents.splice(i, 1);
+                    logEvent({ type: 'AgentDeath', agentId: agent.id, generation: agent.generation });
+                    agent.despawn();
                     continue;
                 }
-                agent.decide(foods, threats, tasks, obstacles);
-                agent.health -= 0.05; // Health decay
+                agent.move();
+                agent.health -= 0.05;
+
+                if (agent.health > settings.agent.maxHealth * 1.5 && agents.length < settings.agent.maxCount) {
+                    const offspring = agent.reproduce();
+                    if (offspring) {
+                        agents.push(offspring);
+                        logEvent({ type: 'AgentReproduction', parentId: agent.id, offspringId: offspring.id, generation: offspring.generation });
+                        agent.health -= settings.agent.maxHealth * 0.5;
+                    }
+                }
+
                 agent.draw();
+            }
+
+            // Remove despawned agents
+            for (let i = agents.length - 1; i >= 0; i--) {
+                if (!agents[i].isAlive) {
+                    agents.splice(i, 1);
+                }
             }
 
             // Update threats
             for (let i = threats.length - 1; i >= 0; i--) {
                 const threat = threats[i];
-                threat.move(agents);
+                threat.move();
                 threat.draw();
             }
 
-            // Render tasks, food, and obstacles
-            for (const food of foods) {
+            // Remove despawned threats
+            for (let i = threats.length - 1; i >= 0; i--) {
+                if (!threats[i].isAlive) {
+                    threats.splice(i, 1);
+                }
+            }
+
+            // Update foods
+            for (let i = foods.length - 1; i >= 0; i--) {
+                const food = foods[i];
                 food.draw();
+                food.checkDespawn();
+
+                for (const agent of agents) {
+                    if (agent.distanceTo(food) < agent.size + food.size) {
+                        agent.health = Math.min(agent.health + 20, settings.agent.maxHealth);
+                        food.despawn();
+                        logEvent({ type: 'FoodConsumed', agentId: agent.id });
+                    }
+                }
             }
-            for (const task of tasks) {
+
+            // Remove despawned foods
+            for (let i = foods.length - 1; i >= 0; i--) {
+                if (!foods[i].isAlive) {
+                    foods.splice(i, 1);
+                }
+            }
+
+            // Update tasks
+            for (let i = tasks.length - 1; i >= 0; i--) {
+                const task = tasks[i];
                 task.draw();
-                ctx.strokeStyle = "yellow";
-                ctx.strokeRect(task.x - task.size / 2, task.y - task.size / 2, task.size, task.size);
+
+                for (const agent of agents) {
+                    if (agent.distanceTo(task) < agent.size + task.size) {
+                        agent.health += settings.task.completionReward;
+                        task.despawn();
+                        logEvent({ type: 'TaskCompleted', agentId: agent.id });
+                    }
+                }
             }
-            for (const obstacle of obstacles) {
+
+            // Remove despawned tasks
+            for (let i = tasks.length - 1; i >= 0; i--) {
+                if (!tasks[i].isAlive) {
+                    tasks.splice(i, 1);
+                }
+            }
+
+            // Update obstacles
+            for (let i = obstacles.length - 1; i >= 0; i--) {
+                const obstacle = obstacles[i];
+                obstacle.update();
                 obstacle.draw();
             }
+
+            // Remove despawned obstacles
+            for (let i = obstacles.length - 1; i >= 0; i--) {
+                if (!obstacles[i].isAlive) {
+                    obstacles.splice(i, 1);
+                }
+            }
+
+            // Draw shelters
+            for (const shelter of shelters) {
+                shelter.draw();
+            }
+
+            spawnFood();
+            spawnThreat();
+
+            stepTime = (performance.now() - startTime).toFixed(1);
+
+            // Update performance display
+            document.getElementById('fps').innerText = fps;
+            document.getElementById('stepTime').innerText = stepTime;
 
             requestAnimationFrame(updateSimulation);
         }
@@ -329,15 +794,25 @@
         });
 
         document.getElementById("threatSlider").addEventListener("input", e => {
-            settings.threatAttributes.aggressiveness = parseFloat(e.target.value);
-            threats.forEach(threat => threat.speed = settings.threatAttributes.speed * settings.threatAttributes.aggressiveness);
+            settings.threat.aggressiveness = parseFloat(e.target.value);
+            threats.forEach(threat => threat.speed = settings.threat.speed * settings.threat.aggressiveness);
         });
 
-        setInterval(spawnFood, settings.respawnRates.food);
-        setInterval(spawnThreat, settings.respawnRates.threat);
+        function updateEventLog() {
+            const eventList = document.getElementById('eventList');
+            eventList.innerHTML = '';
+            for (const event of eventLog) {
+                const listItem = document.createElement('li');
+                listItem.textContent = `[${new Date(event.time).toLocaleTimeString()}] ${event.type}`;
+                eventList.appendChild(listItem);
+            }
+        }
+
+        // Call updateEventLog at regular intervals
+        setInterval(updateEventLog, 1000);
 
         initializeSimulation();
-        updateSimulation();
+        updateSimulation(performance.now());
     </script>
 </body>
 </html>
