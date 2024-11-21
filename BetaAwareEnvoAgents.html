@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>AI Environmental Simulation</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #1a1a1a;
+            color: white;
+            margin: 0;
+            overflow: hidden;
+        }
+        #controls {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            z-index: 10;
+            background: rgba(0, 0, 0, 0.8);
+            padding: 15px;
+            border-radius: 8px;
+        }
+        #controls label, #controls button {
+            display: block;
+            margin: 10px 0;
+        }
+    </style>
+</head>
+<body>
+    <div id="controls">
+        <label>Agent Speed:</label>
+        <input type="range" id="speedSlider" min="1" max="10" value="5">
+        <label>Threat Aggressiveness:</label>
+        <input type="range" id="threatSlider" min="1" max="5" value="3">
+        <button onclick="resetSimulation()">Reset Simulation</button>
+        <button onclick="createEnvironmentalTask()">Create Environmental Task</button>
+    </div>
+    <canvas id="canvas"></canvas>
+
+    <script>
+        const canvas = document.getElementById("canvas");
+        const ctx = canvas.getContext("2d");
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+
+        const settings = {
+            agentCount: 30,
+            obstacleCount: 40,
+            threatCount: 8,
+            foodCount: 20,
+            agentAttributes: {
+                maxSpeed: 6,
+                maxHealth: 150,
+                reproductionRate: 0.08,
+                visionRadius: 150,
+                sustainabilityAwareness: 1,
+            },
+            threatAttributes: {
+                speed: 3,
+                health: 50,
+                aggressiveness: 3,
+            },
+            respawnRates: {
+                food: 5000,
+                threat: 7000,
+            },
+        };
+
+        class Entity {
+            constructor(x, y, size, color) {
+                this.x = x;
+                this.y = y;
+                this.size = size;
+                this.color = color;
+            }
+
+            distanceTo(other) {
+                const dx = other.x - this.x;
+                const dy = other.y - this.y;
+                return Math.hypot(dx, dy);
+            }
+
+            draw() {
+                ctx.fillStyle = this.color;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctx.fill();
+            }
+
+            // Keep entity within canvas boundaries
+            keepWithinBounds() {
+                this.x = Math.max(this.size, Math.min(canvas.width - this.size, this.x));
+                this.y = Math.max(this.size, Math.min(canvas.height - this.size, this.y));
+            }
+        }
+
+        class Agent extends Entity {
+            constructor(x, y) {
+                super(x, y, Math.random() * 4 + 3, "blue");
+                this.health = settings.agentAttributes.maxHealth;
+                this.speed = Math.random() * settings.agentAttributes.maxSpeed + 1;
+                this.visionRadius = settings.agentAttributes.visionRadius;
+                this.sustainabilityAwareness = settings.agentAttributes.sustainabilityAwareness;
+            }
+
+            move() {
+                // Random movement
+                this.x += (Math.random() - 0.5) * this.speed;
+                this.y += (Math.random() - 0.5) * this.speed;
+                this.keepWithinBounds();
+            }
+
+            decide(foods, threats, tasks, obstacles) {
+                let targetFood = null;
+                let targetTask = null;
+                let closestThreat = null;
+                let minFoodDist = Infinity;
+                let minThreatDist = Infinity;
+                let minTaskDist = Infinity;
+
+                // Find nearest food
+                for (const food of foods) {
+                    const dist = this.distanceTo(food);
+                    if (dist < this.visionRadius && dist < minFoodDist) {
+                        targetFood = food;
+                        minFoodDist = dist;
+                    }
+                }
+
+                // Find nearest threat
+                for (const threat of threats) {
+                    const dist = this.distanceTo(threat);
+                    if (dist < this.visionRadius && dist < minThreatDist) {
+                        closestThreat = threat;
+                        minThreatDist = dist;
+                    }
+                }
+
+                // Find nearest task
+                if (tasks.length > 0 && Math.random() < this.sustainabilityAwareness) {
+                    for (const task of tasks) {
+                        const dist = this.distanceTo(task);
+                        if (dist < this.visionRadius && dist < minTaskDist) {
+                            targetTask = task;
+                            minTaskDist = dist;
+                        }
+                    }
+                }
+
+                // Decision-making logic
+                if (closestThreat && minThreatDist < this.size * 5) {
+                    // Move away from threat
+                    this.moveAwayFrom(closestThreat);
+                } else if (targetTask) {
+                    // Move towards task
+                    this.moveTowards(targetTask);
+                    if (minTaskDist < this.size) {
+                        tasks.splice(tasks.indexOf(targetTask), 1); // Complete task
+                    }
+                } else if (targetFood) {
+                    // Move towards food
+                    this.moveTowards(targetFood);
+                    if (minFoodDist < this.size) {
+                        foods.splice(foods.indexOf(targetFood), 1);
+                        this.health = Math.min(this.health + 20, settings.agentAttributes.maxHealth);
+                    }
+                } else {
+                    // Random movement
+                    this.move();
+                }
+
+                this.avoidObstacles(obstacles);
+            }
+
+            moveTowards(target) {
+                const dx = target.x - this.x;
+                const dy = target.y - this.y;
+                const dist = Math.hypot(dx, dy);
+                if (dist > 0) {
+                    this.x += (dx / dist) * this.speed;
+                    this.y += (dy / dist) * this.speed;
+                    this.keepWithinBounds();
+                }
+            }
+
+            moveAwayFrom(target) {
+                const dx = this.x - target.x;
+                const dy = this.y - target.y;
+                const dist = Math.hypot(dx, dy);
+                if (dist > 0) {
+                    this.x += (dx / dist) * this.speed;
+                    this.y += (dy / dist) * this.speed;
+                    this.keepWithinBounds();
+                }
+            }
+
+            avoidObstacles(obstacles) {
+                for (const obstacle of obstacles) {
+                    const dist = this.distanceTo(obstacle);
+                    if (dist < this.size + obstacle.size) {
+                        // Move away from obstacle
+                        this.moveAwayFrom(obstacle);
+                    }
+                }
+            }
+        }
+
+        class Threat extends Entity {
+            constructor(x, y) {
+                super(x, y, 8, "red");
+                this.speed = settings.threatAttributes.speed * settings.threatAttributes.aggressiveness;
+                this.health = settings.threatAttributes.health;
+                this.target = null;
+            }
+
+            assignTarget(agents) {
+                if (agents.length > 0) {
+                    this.target = agents[Math.floor(Math.random() * agents.length)];
+                }
+            }
+
+            move(agents) {
+                if (!this.target || this.target.health <= 0) {
+                    this.assignTarget(agents);
+                    return;
+                }
+                const dx = this.target.x - this.x;
+                const dy = this.target.y - this.y;
+                const dist = Math.hypot(dx, dy);
+                if (dist > 0) {
+                    this.x += (dx / dist) * this.speed;
+                    this.y += (dy / dist) * this.speed;
+                    this.keepWithinBounds();
+
+                    // Attack if close enough
+                    if (dist < this.size + this.target.size) {
+                        this.target.health -= 15 * settings.threatAttributes.aggressiveness;
+                        threats.splice(threats.indexOf(this), 1); // Remove threat after attack
+                    }
+                }
+            }
+        }
+
+        const agents = [];
+        const threats = [];
+        const foods = [];
+        const tasks = [];
+        const obstacles = [];
+
+        function initializeSimulation() {
+            agents.length = 0;
+            threats.length = 0;
+            foods.length = 0;
+            tasks.length = 0;
+            obstacles.length = 0;
+
+            for (let i = 0; i < settings.agentCount; i++) {
+                agents.push(new Agent(Math.random() * canvas.width, Math.random() * canvas.height));
+            }
+            for (let i = 0; i < settings.obstacleCount; i++) {
+                obstacles.push(new Entity(Math.random() * canvas.width, Math.random() * canvas.height, Math.random() * 10 + 5, "gray"));
+            }
+        }
+
+        function spawnFood() {
+            if (foods.length < settings.foodCount) {
+                foods.push(new Entity(Math.random() * canvas.width, Math.random() * canvas.height, 5, "green"));
+            }
+        }
+
+        function spawnThreat() {
+            if (threats.length < settings.threatCount) {
+                const threat = new Threat(Math.random() * canvas.width, Math.random() * canvas.height);
+                threat.assignTarget(agents);
+                threats.push(threat);
+            }
+        }
+
+        function createEnvironmentalTask() {
+            const task = new Entity(Math.random() * canvas.width, Math.random() * canvas.height, 6, "yellow");
+            tasks.push(task);
+        }
+
+        function updateSimulation() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // Update agents
+            for (let i = agents.length - 1; i >= 0; i--) {
+                const agent = agents[i];
+                if (agent.health <= 0) {
+                    agents.splice(i, 1);
+                    continue;
+                }
+                agent.decide(foods, threats, tasks, obstacles);
+                agent.health -= 0.05; // Health decay
+                agent.draw();
+            }
+
+            // Update threats
+            for (let i = threats.length - 1; i >= 0; i--) {
+                const threat = threats[i];
+                threat.move(agents);
+                threat.draw();
+            }
+
+            // Render tasks, food, and obstacles
+            for (const food of foods) {
+                food.draw();
+            }
+            for (const task of tasks) {
+                task.draw();
+                ctx.strokeStyle = "yellow";
+                ctx.strokeRect(task.x - task.size / 2, task.y - task.size / 2, task.size, task.size);
+            }
+            for (const obstacle of obstacles) {
+                obstacle.draw();
+            }
+
+            requestAnimationFrame(updateSimulation);
+        }
+
+        function resetSimulation() {
+            initializeSimulation();
+        }
+
+        document.getElementById("speedSlider").addEventListener("input", e => {
+            const speed = parseFloat(e.target.value);
+            agents.forEach(agent => agent.speed = speed);
+        });
+
+        document.getElementById("threatSlider").addEventListener("input", e => {
+            settings.threatAttributes.aggressiveness = parseFloat(e.target.value);
+            threats.forEach(threat => threat.speed = settings.threatAttributes.speed * settings.threatAttributes.aggressiveness);
+        });
+
+        setInterval(spawnFood, settings.respawnRates.food);
+        setInterval(spawnThreat, settings.respawnRates.threat);
+
+        initializeSimulation();
+        updateSimulation();
+    </script>
+</body>
+</html>
