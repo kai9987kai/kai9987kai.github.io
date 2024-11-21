@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Enhanced Multi-Agent Environmental Simulation</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #1a1a1a;
+            color: white;
+            margin: 0;
+            overflow: hidden;
+        }
+        #controls {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            z-index: 10;
+            background: rgba(0, 0, 0, 0.8);
+            padding: 15px;
+            border-radius: 8px;
+        }
+        #controls label, #controls button {
+            display: block;
+            margin: 10px 0;
+        }
+        #performance {
+            position: absolute;
+            bottom: 10px;
+            right: 10px;
+            z-index: 10;
+            background: rgba(0, 0, 0, 0.8);
+            padding: 15px;
+            border-radius: 8px;
+        }
+        #eventLog {
+            position: absolute;
+            top: 200px;
+            left: 10px;
+            z-index: 10;
+            background: rgba(0, 0, 0, 0.8);
+            padding: 15px;
+            border-radius: 8px;
+            color: white;
+            max-height: 200px;
+            overflow-y: scroll;
+        }
+        #eventLog ul {
+            list-style-type: none;
+            padding: 0;
+        }
+        #eventLog li {
+            margin-bottom: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div id="controls">
+        <label>Agent Speed:</label>
+        <input type="range" id="speedSlider" min="1" max="10" value="5">
+        <label>Threat Aggressiveness:</label>
+        <input type="range" id="threatSlider" min="1" max="5" value="3">
+        <button onclick="resetSimulation()">Reset Simulation</button>
+        <button onclick="createEnvironmentalTask()">Create Environmental Task</button>
+    </div>
+    <div id="performance">
+        <p>FPS: <span id="fps"></span></p>
+        <p>Simulation Step Time: <span id="stepTime"></span> ms</p>
+    </div>
+    <div id="eventLog">
+        <h3>Event Log</h3>
+        <ul id="eventList"></ul>
+    </div>
+    <canvas id="canvas"></canvas>
+
+    <script>
+        const canvas = document.getElementById("canvas");
+        const ctx = canvas.getContext("2d");
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+
+        window.addEventListener("resize", () => {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        });
+
+        // Global Settings
+        const settings = {
+            agent: { count: 30, maxSpeed: 6, maxHealth: 150, maxCount: 100 },
+            threat: { count: 10, speed: 3, aggressiveness: 3 },
+            food: { count: 20, respawnRate: 5000 },
+            task: { count: 0, completionReward: 20 },
+            eventLog: { maxSize: 100 },
+            dayNightCycle: { enabled: true, timeIncrement: 0.1 }
+        };
+
+        // Globals
+        let agents = [];
+        let threats = [];
+        let foods = [];
+        let tasks = [];
+        const eventLog = [];
+        let timeOfDay = 0; // 0 to 24 (hours)
+
+        // Performance metrics
+        let lastTimestamp = performance.now();
+        let fps = 0, stepTime = 0;
+
+        // Helper Functions
+        function logEvent(message) {
+            const logList = document.getElementById("eventList");
+            const logItem = document.createElement("li");
+            logItem.textContent = `${new Date().toLocaleTimeString()}: ${message}`;
+            logList.appendChild(logItem);
+
+            if (logList.children.length > settings.eventLog.maxSize) {
+                logList.removeChild(logList.firstChild);
+            }
+        }
+
+        function updateEventLog() {
+            const logList = document.getElementById("eventList");
+            logList.scrollTop = logList.scrollHeight; // Auto-scroll to the latest log
+        }
+
+        // Classes
+        class Entity {
+            constructor(x, y, size, color) {
+                this.x = x;
+                this.y = y;
+                this.size = size;
+                this.color = color;
+                this.isAlive = true;
+            }
+
+            draw() {
+                ctx.fillStyle = this.color;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
+
+        class Agent extends Entity {
+            constructor(x, y) {
+                super(x, y, 5, "blue");
+                this.health = settings.agent.maxHealth;
+                this.speed = Math.random() * settings.agent.maxSpeed + 1;
+            }
+
+            move() {
+                this.x += (Math.random() - 0.5) * this.speed;
+                this.y += (Math.random() - 0.5) * this.speed;
+                this.keepWithinBounds();
+            }
+
+            keepWithinBounds() {
+                this.x = Math.max(this.size, Math.min(canvas.width - this.size, this.x));
+                this.y = Math.max(this.size, Math.min(canvas.height - this.size, this.y));
+            }
+        }
+
+        class Threat extends Entity {
+            constructor(x, y) {
+                super(x, y, 8, "red");
+                this.speed = settings.threat.speed * settings.threat.aggressiveness;
+            }
+
+            move() {
+                this.x += (Math.random() - 0.5) * this.speed;
+                this.y += (Math.random() - 0.5) * this.speed;
+                this.keepWithinBounds();
+            }
+
+            keepWithinBounds() {
+                this.x = Math.max(this.size, Math.min(canvas.width - this.size, this.x));
+                this.y = Math.max(this.size, Math.min(canvas.height - this.size, this.y));
+            }
+        }
+
+        class Food extends Entity {
+            constructor(x, y) {
+                super(x, y, 5, "green");
+            }
+        }
+
+        class Task extends Entity {
+            constructor(x, y) {
+                super(x, y, 6, "yellow");
+            }
+        }
+
+        // Simulation Functions
+        function initializeSimulation() {
+            agents = Array.from({ length: settings.agent.count }, () => new Agent(Math.random() * canvas.width, Math.random() * canvas.height));
+            threats = Array.from({ length: settings.threat.count }, () => new Threat(Math.random() * canvas.width, Math.random() * canvas.height));
+            foods = Array.from({ length: settings.food.count }, () => new Food(Math.random() * canvas.width, Math.random() * canvas.height));
+            logEvent("Simulation initialized.");
+        }
+
+        function createEnvironmentalTask() {
+            tasks.push(new Task(Math.random() * canvas.width, Math.random() * canvas.height));
+            logEvent("Environmental task created.");
+        }
+
+        function resetSimulation() {
+            initializeSimulation();
+            logEvent("Simulation reset.");
+        }
+
+        function updateSimulation(timestamp) {
+            const delta = timestamp - lastTimestamp;
+            lastTimestamp = timestamp;
+            fps = (1000 / delta).toFixed(1);
+
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // Draw and move agents
+            for (const agent of agents) {
+                agent.move();
+                agent.draw();
+            }
+
+            // Draw and move threats
+            for (const threat of threats) {
+                threat.move();
+                threat.draw();
+            }
+
+            // Draw foods
+            for (const food of foods) {
+                food.draw();
+            }
+
+            // Draw tasks
+            for (const task of tasks) {
+                task.draw();
+            }
+
+            // Update performance
+            document.getElementById("fps").innerText = fps;
+            stepTime = delta.toFixed(1);
+            document.getElementById("stepTime").innerText = stepTime;
+
+            requestAnimationFrame(updateSimulation);
+        }
+
+        // Event Listeners
+        document.getElementById("speedSlider").addEventListener("input", (e) => {
+            settings.agent.maxSpeed = parseFloat(e.target.value);
+            logEvent(`Agent speed updated to ${settings.agent.maxSpeed}`);
+        });
+
+        document.getElementById("threatSlider").addEventListener("input", (e) => {
+            settings.threat.aggressiveness = parseFloat(e.target.value);
+            threats.forEach(threat => threat.speed = settings.threat.speed * settings.threat.aggressiveness);
+            logEvent(`Threat aggressiveness updated to ${settings.threat.aggressiveness}`);
+        });
+
+        // Initialize and Start Simulation
+        initializeSimulation();
+        requestAnimationFrame(updateSimulation);
+    </script>
+</body>
+</html>
