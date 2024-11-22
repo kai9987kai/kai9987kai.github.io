@@ -1,0 +1,508 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Enhanced Multi-Agent Environmental Simulation</title>
+    <style>
+        /* Styles remain unchanged */
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #1a1a1a;
+            color: white;
+            margin: 0;
+            overflow: hidden;
+        }
+        #controls {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            z-index: 10;
+            background: rgba(0, 0, 0, 0.8);
+            padding: 15px;
+            border-radius: 8px;
+        }
+        #controls label, #controls button {
+            display: block;
+            margin: 10px 0;
+        }
+        #performance {
+            position: absolute;
+            bottom: 10px;
+            right: 10px;
+            z-index: 10;
+            background: rgba(0, 0, 0, 0.8);
+            padding: 15px;
+            border-radius: 8px;
+        }
+        #eventLog {
+            position: absolute;
+            top: 200px;
+            left: 10px;
+            z-index: 10;
+            background: rgba(0, 0, 0, 0.8);
+            padding: 15px;
+            border-radius: 8px;
+            color: white;
+            max-height: 200px;
+            overflow-y: scroll;
+        }
+        #eventLog ul {
+            list-style-type: none;
+            padding: 0;
+        }
+        #eventLog li {
+            margin-bottom: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div id="controls">
+        <label>Agent Speed:</label>
+        <input type="range" id="speedSlider" min="1" max="10" value="5">
+        <label>Threat Aggressiveness:</label>
+        <input type="range" id="threatSlider" min="1" max="5" value="3">
+        <button onclick="resetSimulation()">Reset Simulation</button>
+        <button onclick="createEnvironmentalTask()">Create Environmental Task</button>
+    </div>
+    <div id="performance">
+        <p>FPS: <span id="fps"></span></p>
+        <p>Simulation Step Time: <span id="stepTime"></span> ms</p>
+    </div>
+    <div id="eventLog">
+        <h3>Event Log</h3>
+        <ul id="eventList"></ul>
+    </div>
+    <canvas id="canvas"></canvas>
+
+    <!-- Include TensorFlow.js library -->
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest"></script>
+
+    <script>
+        // Global Variables and Settings
+        const canvas = document.getElementById("canvas");
+        const ctx = canvas.getContext("2d");
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+
+        window.addEventListener("resize", () => {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        });
+
+        // Global Settings
+        const settings = {
+            agent: { count: 30, maxSpeed: 6, maxHealth: 150, maxCount: 100 },
+            threat: { count: 10, speed: 3, aggressiveness: 3 },
+            food: { count: 20, respawnRate: 5000 },
+            task: { count: 0, completionReward: 20 },
+            eventLog: { maxSize: 100 },
+            dayNightCycle: { enabled: true, timeIncrement: 0.1 }
+        };
+
+        // Globals
+        let agents = [];
+        let threats = [];
+        let foods = [];
+        let tasks = [];
+        const eventLog = [];
+        let timeOfDay = 0; // 0 to 24 (hours)
+
+        // Performance metrics
+        let lastTimestamp = performance.now();
+        let fps = 0, stepTime = 0;
+
+        // Helper Functions
+        function logEvent(message) {
+            const logList = document.getElementById("eventList");
+            const logItem = document.createElement("li");
+            logItem.textContent = `${new Date().toLocaleTimeString()}: ${message}`;
+            logList.appendChild(logItem);
+
+            if (logList.children.length > settings.eventLog.maxSize) {
+                logList.removeChild(logList.firstChild);
+            }
+        }
+
+        function updateEventLog() {
+            const logList = document.getElementById("eventList");
+            logList.scrollTop = logList.scrollHeight; // Auto-scroll to the latest log
+        }
+
+        // Data Augmentation Functions (for transformations)
+        const transformations = {
+            identity: (input) => input,
+            flipX: (input) => [-input[0], input[1], -input[2], input[3]],
+            flipY: (input) => [input[0], -input[1], input[2], -input[3]],
+            rotate90: (input) => [-input[1], input[0], -input[3], input[2]],
+            rotate180: (input) => [-input[0], -input[1], -input[2], -input[3]],
+            // Add more transformations as needed
+        };
+
+        const transformKeys = Object.keys(transformations);
+
+        // Classes
+        class Entity {
+            constructor(x, y, size, color) {
+                this.x = x;
+                this.y = y;
+                this.size = size;
+                this.color = color;
+                this.isAlive = true;
+            }
+
+            draw() {
+                ctx.fillStyle = this.color;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
+
+        class Agent extends Entity {
+            constructor(x, y) {
+                super(x, y, 5, "blue");
+                this.health = settings.agent.maxHealth;
+                this.speed = Math.random() * settings.agent.maxSpeed + 1;
+
+                // Initialize neural network model for the agent
+                this.brain = this.createBrain();
+
+                // Memory of past experiences
+                this.memory = [];
+
+                // Pre-trained flag
+                this.isPreTrained = false;
+            }
+
+            // Create a simple neural network
+            createBrain() {
+                const model = tf.sequential();
+                model.add(tf.layers.dense({ units: 16, inputShape: [4], activation: 'relu' }));
+                model.add(tf.layers.dense({ units: 8, activation: 'relu' }));
+                model.add(tf.layers.dense({ units: 2, activation: 'tanh' }));
+                model.compile({ optimizer: 'adam', loss: 'meanSquaredError' });
+                return model;
+            }
+
+            // Pre-train the agent on similar tasks
+            async preTrain(tasks) {
+                const inputs = [];
+                const labels = [];
+                for (const task of tasks) {
+                    const input = task.input;
+                    const label = task.label;
+                    inputs.push(input);
+                    labels.push(label);
+                }
+                const xs = tf.tensor2d(inputs);
+                const ys = tf.tensor2d(labels);
+                await this.brain.fit(xs, ys, { epochs: 10 });
+                xs.dispose();
+                ys.dispose();
+                this.isPreTrained = true;
+                logEvent("Agent pre-trained on similar tasks.");
+            }
+
+            // Decide next move using augmented inference and voting
+            decideMove() {
+                // Get transformed inputs and predictions
+                const predictions = [];
+                for (const key of transformKeys) {
+                    const transform = transformations[key];
+                    const inverseTransform = transformations[key]; // Assuming transformations are invertible
+                    const transformedInput = transform(this.senseEnvironment());
+                    const tensorInput = tf.tensor2d([transformedInput]);
+                    const output = this.brain.predict(tensorInput);
+                    let data = output.dataSync();
+                    data = inverseTransform(data); // Inverse transform the output if necessary
+                    predictions.push({ key, data });
+                    tensorInput.dispose();
+                    output.dispose();
+                }
+
+                // Voting mechanism
+                const finalDecision = this.vote(predictions);
+                this.x += finalDecision[0] * this.speed;
+                this.y += finalDecision[1] * this.speed;
+                this.keepWithinBounds();
+            }
+
+            // Voting mechanism to decide on the final action
+            vote(predictions) {
+                // Simple averaging of predictions
+                let sumX = 0;
+                let sumY = 0;
+                for (const pred of predictions) {
+                    sumX += pred.data[0];
+                    sumY += pred.data[1];
+                }
+                const avgX = sumX / predictions.length;
+                const avgY = sumY / predictions.length;
+                return [avgX, avgY];
+            }
+
+            // Sense the environment to find nearest threat and food
+            senseEnvironment() {
+                let nearestThreat = this.findNearest(threats);
+                let nearestFood = this.findNearest(foods);
+
+                return [
+                    (nearestThreat ? (nearestThreat.x - this.x) / canvas.width : 0),
+                    (nearestThreat ? (nearestThreat.y - this.y) / canvas.height : 0),
+                    (nearestFood ? (nearestFood.x - this.x) / canvas.width : 0),
+                    (nearestFood ? (nearestFood.y - this.y) / canvas.height : 0)
+                ];
+            }
+
+            findNearest(entities) {
+                let minDist = Infinity;
+                let nearest = null;
+                for (const entity of entities) {
+                    const dist = Math.hypot(this.x - entity.x, this.y - entity.y);
+                    if (dist < minDist) {
+                        minDist = dist;
+                        nearest = entity;
+                    }
+                }
+                return nearest;
+            }
+
+            // Learn from experiences with data augmentation
+            learn() {
+                if (this.memory.length >= 5) {
+                    // Apply data augmentation
+                    const augmentedMemory = [];
+                    for (const mem of this.memory) {
+                        for (const key of transformKeys) {
+                            const transform = transformations[key];
+                            const transformedInput = transform(mem.input);
+                            const transformedLabel = transform(mem.label); // Assuming labels can be transformed similarly
+                            augmentedMemory.push({ input: transformedInput, label: transformedLabel });
+                        }
+                    }
+
+                    const inputs = augmentedMemory.map(mem => mem.input);
+                    const labels = augmentedMemory.map(mem => mem.label);
+
+                    const xs = tf.tensor2d(inputs);
+                    const ys = tf.tensor2d(labels);
+
+                    // Train the model
+                    this.brain.fit(xs, ys, { epochs: 1 }).then(() => {
+                        xs.dispose();
+                        ys.dispose();
+                    });
+
+                    // Clear memory after learning
+                    this.memory = [];
+                    logEvent(`Agent learned from experiences with data augmentation.`);
+                }
+            }
+
+            // Overriding the move function
+            move() {
+                // Decide the move based on the neural network
+                this.decideMove();
+
+                // Interact with environment
+                this.interact();
+            }
+
+            interact() {
+                // Check collision with threats
+                for (const threat of threats) {
+                    const dist = Math.hypot(this.x - threat.x, this.y - threat.y);
+                    if (dist < this.size + threat.size) {
+                        // Negative experience
+                        this.health -= 20;
+                        const input = this.senseEnvironment();
+                        const label = [-(threat.x - this.x) / canvas.width, -(threat.y - this.y) / canvas.height];
+                        this.memory.push({ input, label });
+                        logEvent(`Agent encountered a threat! Health: ${this.health}`);
+                        if (this.health <= 0) {
+                            this.isAlive = false;
+                            logEvent(`An agent has died.`);
+                        }
+                    }
+                }
+
+                // Check collision with food
+                for (let i = foods.length - 1; i >= 0; i--) {
+                    const food = foods[i];
+                    const dist = Math.hypot(this.x - food.x, this.y - food.y);
+                    if (dist < this.size + food.size) {
+                        // Positive experience
+                        this.health = Math.min(this.health + 10, settings.agent.maxHealth);
+                        const input = this.senseEnvironment();
+                        const label = [(food.x - this.x) / canvas.width, (food.y - this.y) / canvas.height];
+                        this.memory.push({ input, label });
+                        logEvent(`Agent found food! Health: ${this.health}`);
+                        foods.splice(i, 1); // Remove the food
+                    }
+                }
+
+                // Periodically learn from experiences
+                if (Math.random() < 0.05) {
+                    this.learn();
+                }
+            }
+
+            keepWithinBounds() {
+                this.x = Math.max(this.size, Math.min(canvas.width - this.size, this.x));
+                this.y = Math.max(this.size, Math.min(canvas.height - this.size, this.y));
+            }
+        }
+
+        class Threat extends Entity {
+            constructor(x, y) {
+                super(x, y, 8, "red");
+                this.speed = settings.threat.speed * settings.threat.aggressiveness;
+            }
+
+            move() {
+                this.x += (Math.random() - 0.5) * this.speed;
+                this.y += (Math.random() - 0.5) * this.speed;
+                this.keepWithinBounds();
+            }
+
+            keepWithinBounds() {
+                this.x = Math.max(this.size, Math.min(canvas.width - this.size, this.x));
+                this.y = Math.max(this.size, Math.min(canvas.height - this.size, this.y));
+            }
+        }
+
+        class Food extends Entity {
+            constructor(x, y) {
+                super(x, y, 5, "green");
+            }
+        }
+
+        class Task extends Entity {
+            constructor(x, y) {
+                super(x, y, 6, "yellow");
+            }
+        }
+
+        // Simulation Functions
+
+        // Predefined similar tasks for pre-training
+        const preTrainingTasks = generatePreTrainingTasks();
+
+        function generatePreTrainingTasks() {
+            const tasks = [];
+            // Create tasks where agents learn to move away from threats and towards food
+            for (let i = 0; i < 100; i++) {
+                // Random positions
+                const agentX = Math.random() * canvas.width;
+                const agentY = Math.random() * canvas.height;
+                const threatX = Math.random() * canvas.width;
+                const threatY = Math.random() * canvas.height;
+                const foodX = Math.random() * canvas.width;
+                const foodY = Math.random() * canvas.height;
+
+                // Inputs and labels
+                const input = [
+                    (threatX - agentX) / canvas.width,
+                    (threatY - agentY) / canvas.height,
+                    (foodX - agentX) / canvas.width,
+                    (foodY - agentY) / canvas.height
+                ];
+                const label = [
+                    // Desired movement away from threat and towards food
+                    ((agentX - threatX) + (foodX - agentX)) / canvas.width,
+                    ((agentY - threatY) + (foodY - agentY)) / canvas.height
+                ];
+                tasks.push({ input, label });
+            }
+            return tasks;
+        }
+
+        function initializeSimulation() {
+            agents = Array.from({ length: settings.agent.count }, () => new Agent(Math.random() * canvas.width, Math.random() * canvas.height));
+            threats = Array.from({ length: settings.threat.count }, () => new Threat(Math.random() * canvas.width, Math.random() * canvas.height));
+            foods = Array.from({ length: settings.food.count }, () => new Food(Math.random() * canvas.width, Math.random() * canvas.height));
+            logEvent("Simulation initialized.");
+
+            // Pre-train agents
+            preTrainAgents();
+        }
+
+        async function preTrainAgents() {
+            for (const agent of agents) {
+                await agent.preTrain(preTrainingTasks);
+            }
+            logEvent("All agents pre-trained on similar tasks.");
+        }
+
+        function createEnvironmentalTask() {
+            tasks.push(new Task(Math.random() * canvas.width, Math.random() * canvas.height));
+            logEvent("Environmental task created.");
+        }
+
+        function resetSimulation() {
+            initializeSimulation();
+            logEvent("Simulation reset.");
+        }
+
+        function updateSimulation(timestamp) {
+            const delta = timestamp - lastTimestamp;
+            lastTimestamp = timestamp;
+            fps = (1000 / delta).toFixed(1);
+
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // Update agents
+            for (let i = agents.length - 1; i >= 0; i--) {
+                const agent = agents[i];
+                if (agent.isAlive) {
+                    agent.move();
+                    agent.draw();
+                } else {
+                    agents.splice(i, 1);
+                }
+            }
+
+            // Update threats
+            for (const threat of threats) {
+                threat.move();
+                threat.draw();
+            }
+
+            // Draw foods
+            for (const food of foods) {
+                food.draw();
+            }
+
+            // Draw tasks
+            for (const task of tasks) {
+                task.draw();
+            }
+
+            // Update performance
+            document.getElementById("fps").innerText = fps;
+            stepTime = delta.toFixed(1);
+            document.getElementById("stepTime").innerText = stepTime;
+
+            updateEventLog();
+
+            requestAnimationFrame(updateSimulation);
+        }
+
+        // Event Listeners
+        document.getElementById("speedSlider").addEventListener("input", (e) => {
+            settings.agent.maxSpeed = parseFloat(e.target.value);
+            logEvent(`Agent speed updated to ${settings.agent.maxSpeed}`);
+        });
+
+        document.getElementById("threatSlider").addEventListener("input", (e) => {
+            settings.threat.aggressiveness = parseFloat(e.target.value);
+            threats.forEach(threat => threat.speed = settings.threat.speed * settings.threat.aggressiveness);
+            logEvent(`Threat aggressiveness updated to ${settings.threat.aggressiveness}`);
+        });
+
+        // Initialize and Start Simulation
+        initializeSimulation();
+        requestAnimationFrame(updateSimulation);
+    </script>
+</body>
+</html>
