@@ -1,0 +1,750 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Offline Simulation with Expanding Map</title>
+    <style>
+        body {
+            margin: 0;
+            font-family: Arial, sans-serif;
+            background-color: #1a1a1a;
+            overflow: hidden;
+            color: white;
+        }
+
+        #controls, #scoreboard, #performance, #eventLog, #helpPanel {
+            position: absolute;
+            background: rgba(0,0,0,0.8);
+            padding: 15px;
+            border-radius: 8px;
+            font-size: 14px;
+            z-index: 10;
+        }
+
+        #controls {
+            top: 10px;
+            left: 10px;
+        }
+
+        #controls label, #controls button, #controls input {
+            display: block;
+            margin: 10px 0;
+            color: #fff;
+        }
+
+        #scoreboard {
+            bottom: 220px;
+            right: 10px;
+        }
+
+        #performance {
+            bottom: 10px;
+            right: 10px;
+            margin-bottom: 5px;
+        }
+
+        #eventLog {
+            top: 200px;
+            left: 10px;
+            max-height: 200px;
+            overflow-y: scroll;
+            width: 300px;
+        }
+
+        #eventLog ul {
+            list-style-type: none;
+            padding: 0;
+        }
+
+        #eventLog li {
+            margin-bottom: 5px;
+        }
+
+        #helpPanel {
+            top: 10px;
+            right: 10px;
+            width: 250px;
+            display: none;
+        }
+
+        #helpPanel h3 {
+            margin-top: 0;
+        }
+
+        #chartContainer {
+            position: absolute;
+            bottom: 130px;
+            left: 10px;
+            width: 300px;
+            height: 100px;
+            background: rgba(0,0,0,0.8);
+            border-radius: 8px;
+            padding: 10px;
+            z-index:10;
+        }
+
+        #chartContainer h4 {
+            margin: 0 0 5px 0;
+        }
+
+        .bar {
+            height: 10px;
+            background: lightgreen;
+            margin: 5px 0;
+        }
+
+        canvas {
+            position: absolute;
+            top:0;
+            left:0;
+        }
+    </style>
+</head>
+<body>
+    <div id="controls">
+        <label>Agent Speed:</label>
+        <input type="range" id="speedSlider" min="1" max="10" value="5">
+        <label>Threat Aggressiveness:</label>
+        <input type="range" id="threatSlider" min="1" max="5" value="3">
+        <button onclick="resetSimulation()">Reset Simulation</button>
+        <button onclick="createEnvironmentalTask()">Create Environmental Task</button>
+        <label>Pause Simulation:</label>
+        <button id="pauseBtn" onclick="togglePause()">Pause</button>
+        <button onclick="toggleHelp()">Toggle Help</button>
+    </div>
+
+    <div id="scoreboard">
+        <h4>Global Scoreboard</h4>
+        <p>Tasks Completed: <span id="tasksCompleted">0</span></p>
+        <p>Alive Agents: <span id="aliveAgents">0</span></p>
+        <p>Avg Health: <span id="avgHealth">0</span></p>
+        <p>Avg Lifespan: <span id="avgLifespan">0</span></p>
+    </div>
+
+    <div id="performance">
+        <p>FPS: <span id="fps"></span></p>
+        <p>Step Time: <span id="stepTime"></span> ms</p>
+        <p>Season: <span id="currentSeason"></span></p>
+        <p>Time of Day: <span id="timeOfDayDisplay"></span>h</p>
+        <p>Canvas Size: <span id="canvasSize"></span></p>
+        <p>Temperature: <span id="temperatureDisplay"></span> °C</p>
+        <p>Weather: <span id="weatherDisplay"></span></p>
+        <p>Map Radius: <span id="mapRadiusDisplay"></span></p>
+    </div>
+
+    <div id="eventLog">
+        <h3>Event Log</h3>
+        <ul id="eventList"></ul>
+    </div>
+
+    <div id="helpPanel">
+        <h3>Instructions</h3>
+        <p>No external requests, full offline simulation.</p>
+        <p>Features: expansions of map radius over time, illusions, day/night, etc.</p>
+        <p>Watch as the map radius grows, giving agents more space to roam.</p>
+    </div>
+
+    <div id="chartContainer">
+        <h4>Population Metrics</h4>
+        <div class="bar" id="agentHealthBar"></div>
+        <div class="bar" id="agentLifespanBar"></div>
+        <div class="bar" id="taskCompletionBar"></div>
+    </div>
+
+    <canvas id="canvas"></canvas>
+    <script>
+        const canvas = document.getElementById("canvas");
+        const ctx = canvas.getContext("2d");
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+
+        let pixelWidth = 160;
+        let pixelHeight = 90;
+        const offscreenCanvas = document.createElement('canvas');
+        offscreenCanvas.width = pixelWidth;
+        offscreenCanvas.height = pixelHeight;
+        const offctx = offscreenCanvas.getContext('2d',{willReadFrequently:true});
+
+        window.addEventListener("resize", () => {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        });
+
+        const settings = {
+            agent: {count:30, maxHealth:150, maxCount:100, baseSpeed:6, mutationRate:0.1},
+            threat:{count:10,speed:3,aggressiveness:3},
+            food:{count:20},
+            task:{completionReward:20},
+            dayNightCycle:{enabled:true,timeIncrement:0.05},
+            circadian:{nightSpeedFactor:0.7,daySpeedFactor:1.0},
+            seasonCycle:{enabled:true,length:2000,seasons:["Spring","Summer","Autumn","Winter"],currentIndex:0},
+            weatherCycle:{states:["Sunny","Cloudy","Rain"],length:500,currentIndex:0},
+            politicalCycleLength:3000,
+            eventLog:{maxSize:100},
+            mapExpandRate: 0.2 // how fast map radius grows per step
+        };
+
+        let agents = [];
+        let threats = [];
+        let foods = [];
+        let tasks = [];
+        let tasksCompleted = 0;
+        let paused = false;
+        let simulationStep = 0; 
+        let timeOfDay = 0; 
+        let lastTimestamp = performance.now();
+        let fps = 0, stepTime = 0;
+
+        const echoChance = 0.002;
+        const echoMessages = ["Echo...", "A distant call", "Whisper of the wind", "A faint cry", "Echoing footsteps"];
+        let particles = [];
+        const politicalEvents = [
+            {msg:"Health Tax: All agents lose 10 health", action:()=>{for(let a of agents){a.health=Math.max(a.health-10,0);} }},
+            {msg:"Speed Limit: Agents slow down by 1", action:()=>{for(let a of agents){a.baseSpeed=Math.max(1,a.baseSpeed-1);} }},
+            {msg:"Peace Treaty: Agents gain 10 health", action:()=>{for(let a of agents){a.health=Math.min(a.health+10,settings.agent.maxHealth);} }},
+            {msg:"Resource Redistribution: +10 Foods", action:()=>{
+                for(let i=0;i<10;i++){
+                    foods.push(new Food(Math.random()*mapRadius+mapCenterX(),Math.random()*mapRadius+mapCenterY()));
+                }
+            }},
+            {msg:"New Policy: Adjust learning rates (no actual ML)", action:()=>{adjustLearningRates();}}
+        ];
+
+        let mapRadius = 100; 
+        function mapCenterX() {return canvas.width/2;}
+        function mapCenterY() {return canvas.height/2;}
+
+        function logEvent(message) {
+            const logList = document.getElementById("eventList");
+            const logItem = document.createElement("li");
+            logItem.textContent = `${new Date().toLocaleTimeString()}: ${message}`;
+            logList.appendChild(logItem);
+            if (logList.children.length > settings.eventLog.maxSize) {
+                logList.removeChild(logList.firstChild);
+            }
+        }
+
+        function updateEventLog() {
+            const logList = document.getElementById("eventList");
+            logList.scrollTop = logList.scrollHeight;
+        }
+
+        function getTemperature() {
+            const season = settings.seasonCycle.seasons[settings.seasonCycle.currentIndex];
+            let baseTemp = 15; 
+            if(season==="Summer") baseTemp=25;
+            if(season==="Autumn") baseTemp=10;
+            if(season==="Winter") baseTemp=0;
+            let angle = (timeOfDay/24)*Math.PI*2 - Math.PI/2;
+            let dayOffset = Math.sin(angle)*5; 
+            return Math.round(baseTemp + dayOffset);
+        }
+
+        function getWeather() {
+            return settings.weatherCycle.states[settings.weatherCycle.currentIndex];
+        }
+
+        function getThermalSpeedFactor(temp) {
+            let factor = 1.0;
+            if(temp<5) factor-=0.2;
+            if(temp>20) factor-=0.1;
+            return factor;
+        }
+
+        function getFoodBenefitModifier() {
+            let w = getWeather();
+            if(w==="Rain") return 0.9;
+            return 1.0;
+        }
+
+        function adjustLearningRates() {
+            const newLR = Math.pow(10, -2 - Math.random());
+            logEvent("Pretend learning rates adjusted to "+newLR.toFixed(5));
+        }
+
+        class Entity {
+            constructor(x,y,size,color) {
+                this.x = x;
+                this.y = y;
+                this.size = size;
+                this.color = color;
+                this.isAlive = true;
+            }
+            draw(ctx) {
+                ctx.fillStyle = this.color;
+                ctx.beginPath();
+                let sx = Math.floor(((this.x - mapCenterX())/mapRadius)* (pixelWidth/2) + pixelWidth/2);
+                let sy = Math.floor(((this.y - mapCenterY())/mapRadius)* (pixelHeight/2) + pixelHeight/2);
+                let ssize = Math.max(1, Math.floor((this.size/mapRadius)* (pixelWidth/2)));
+                ctx.arc(sx,sy,ssize,0,Math.PI*2);
+                ctx.fill();
+            }
+
+            keepWithinMap() {
+                // Ensure entity stays within mapRadius
+                let dx = this.x - mapCenterX();
+                let dy = this.y - mapCenterY();
+                let dist = Math.hypot(dx,dy);
+                let maxR = mapRadius;
+                if(dist>maxR-this.size) {
+                    // push back inside
+                    let angle = Math.atan2(dy,dx);
+                    this.x = mapCenterX() + (maxR - this.size)*Math.cos(angle);
+                    this.y = mapCenterY() + (maxR - this.size)*Math.sin(angle);
+                }
+            }
+        }
+
+        class Threat extends Entity {
+            constructor(x,y) {
+                super(x,y,8,"red");
+                this.baseSpeed = settings.threat.speed;
+                this.speed = this.baseSpeed*settings.threat.aggressiveness;
+            }
+            move() {
+                this.x += (Math.random()-0.5)*this.speed;
+                this.y += (Math.random()-0.5)*this.speed;
+                this.keepWithinMap();
+            }
+        }
+
+        class Food extends Entity {
+            constructor(x,y) {
+                super(x,y,5,"green");
+            }
+        }
+
+        class Task extends Entity {
+            constructor(x,y) {
+                super(x,y,6,"yellow");
+            }
+        }
+
+        class Agent extends Entity {
+            constructor(x,y) {
+                super(x,y,5,"blue");
+                this.health = settings.agent.maxHealth;
+                this.baseSpeed = settings.agent.baseSpeed;
+                this.age = 0;
+                this.threatEncounters = 0;
+                this.taskCompletes = 0;
+                this.moveBiasX = 0;
+                this.moveBiasY = 0;
+            }
+
+            activeTune() {
+                if(this.health<50 && this.baseSpeed>2) {
+                    this.baseSpeed -= 0.05;
+                } else if(this.health>100 && this.baseSpeed<settings.agent.baseSpeed) {
+                    this.baseSpeed += 0.01;
+                }
+
+                if(this.threatEncounters>3) {
+                    this.moveBiasX = (Math.random()-0.5)*2;
+                    this.moveBiasY = (Math.random()-0.5)*2;
+                    this.threatEncounters=0; 
+                }
+
+                if(this.taskCompletes>0) {
+                    this.baseSpeed += 0.1*this.taskCompletes;
+                    this.taskCompletes=0; 
+                }
+
+                this.moveBiasX *= 0.95;
+                this.moveBiasY *= 0.95;
+            }
+
+            move(temp) {
+                this.activeTune();
+                const isNight = (timeOfDay>18||timeOfDay<6);
+                const speedFactor = isNight?settings.circadian.nightSpeedFactor:settings.circadian.daySpeedFactor;
+                const thermalFactor = getThermalSpeedFactor(temp);
+                const speed = this.baseSpeed*speedFactor*thermalFactor;
+                let dx = (Math.random()-0.5)+this.moveBiasX;
+                let dy = (Math.random()-0.5)+this.moveBiasY;
+                this.x += dx*speed;
+                this.y += dy*speed;
+                this.keepWithinMap();
+                this.interact();
+                this.age++;
+            }
+
+            interact() {
+                const foodModifier = getFoodBenefitModifier();
+                for(let t of threats) {
+                    let dist = Math.hypot(this.x - t.x,this.y - t.y);
+                    if(dist<this.size+t.size) {
+                        this.health-=20;
+                        logEvent("Agent encountered a threat. Health:"+this.health);
+                        this.threatEncounters++;
+                        if(this.health<=0) {
+                            this.isAlive=false;
+                            logEvent("An agent died.");
+                            spawnParticles(this.x,this.y,10,"red");
+                        }
+                    }
+                }
+
+                for(let i=foods.length-1;i>=0;i--){
+                    let f=foods[i];
+                    let dist = Math.hypot(this.x - f.x,this.y - f.y);
+                    if(dist<this.size+f.size) {
+                        const gain = 10*foodModifier;
+                        this.health=Math.min(this.health+gain,settings.agent.maxHealth);
+                        logEvent("Agent ate food! Health:"+this.health);
+                        foods.splice(i,1);
+                        spawnParticles(this.x,this.y,5,"green");
+                    }
+                }
+
+                for(let i=tasks.length-1;i>=0;i--) {
+                    let ta = tasks[i];
+                    let dist = Math.hypot(this.x - ta.x,this.y - ta.y);
+                    if(dist<this.size+ta.size) {
+                        this.health=Math.min(this.health+settings.task.completionReward,settings.agent.maxHealth);
+                        tasksCompleted++;
+                        this.taskCompletes++;
+                        logEvent("Task completed! Total:"+tasksCompleted);
+                        tasks.splice(i,1);
+                        spawnParticles(this.x,this.y,10,"yellow");
+                    }
+                }
+            }
+        }
+
+        function mapCenterX(){return canvas.width/2;}
+        function mapCenterY(){return canvas.height/2;}
+
+        function generateSpiralPoints(count) {
+            const points = [];
+            for(let i=0;i<count;i++){
+                let t = (i/count)*10*Math.PI;
+                let r = 0.3*t; 
+                // Place within initial map radius
+                let x = mapCenterX() + r*Math.cos(t);
+                let y = mapCenterY() + r*Math.sin(t);
+                // Ensure inside initial map radius:
+                if(Math.hypot(x-mapCenterX(),y-mapCenterY())<mapRadius) {
+                    points.push({x,y});
+                } else {
+                    break;
+                }
+            }
+            return points;
+        }
+
+        function initializeSimulation() {
+            mapRadius = 100; 
+            agents = Array.from({length:settings.agent.count},()=>new Agent(
+                mapCenterX()+(Math.random()-0.5)*mapRadius,
+                mapCenterY()+(Math.random()-0.5)*mapRadius
+            ));
+            threats = Array.from({length:settings.threat.count},()=>new Threat(
+                mapCenterX()+(Math.random()-0.5)*mapRadius,
+                mapCenterY()+(Math.random()-0.5)*mapRadius
+            ));
+            const spiralPoints = generateSpiralPoints(settings.food.count);
+            foods = spiralPoints.map(p=>new Food(p.x,p.y));
+            tasks=[];
+            tasksCompleted=0;
+            particles=[];
+            logEvent("Simulation initialized.");
+        }
+
+        function createEnvironmentalTask() {
+            let angle = Math.random()*Math.PI*2;
+            let r = Math.random()*mapRadius;
+            let x = mapCenterX()+r*Math.cos(angle);
+            let y = mapCenterY()+r*Math.sin(angle);
+            tasks.push(new Task(x,y));
+            logEvent("Environmental task created.");
+        }
+
+        function resetSimulation() {
+            initializeSimulation();
+            logEvent("Simulation reset.");
+        }
+
+        function togglePause() {
+            paused=!paused;
+            document.getElementById("pauseBtn").textContent = paused?"Resume":"Pause";
+        }
+
+        function toggleHelp() {
+            const helpPanel = document.getElementById("helpPanel");
+            helpPanel.style.display = (helpPanel.style.display==='none'?'block':'none');
+        }
+
+        document.getElementById("speedSlider").addEventListener("input",(e)=>{
+            settings.agent.baseSpeed = parseFloat(e.target.value);
+            logEvent("Agent speed set to "+settings.agent.baseSpeed);
+        });
+
+        document.getElementById("threatSlider").addEventListener("input",(e)=>{
+            settings.threat.aggressiveness=parseFloat(e.target.value);
+            threats.forEach(t=>t.speed = t.baseSpeed*settings.threat.aggressiveness);
+            logEvent("Threat aggressiveness set to "+settings.threat.aggressiveness);
+        });
+
+        function drawSpiral(ctx) {
+            ctx.save();
+            ctx.strokeStyle = 'rgba(255,255,255,0.1)';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            const cx = pixelWidth/2;
+            const cy = pixelHeight/2;
+            let started=false;
+            // Draw a small spiral as reference
+            for(let t=0;t<10*Math.PI;t+=0.05){
+                let r= 0.3*t; 
+                let x=cx+r*Math.cos(t);
+                let y=cy+r*Math.sin(t);
+                if(!started) { ctx.moveTo(x,y); started=true; }
+                else ctx.lineTo(x,y);
+                if(x<0||x>pixelWidth||y<0||y>pixelHeight) break;
+            }
+            ctx.stroke();
+            ctx.restore();
+        }
+
+        function drawAxesAndScale(ctx) {
+            ctx.save();
+            ctx.strokeStyle='rgba(255,255,255,0.1)';
+            ctx.lineWidth=1;
+
+            const cx = pixelWidth/2;
+            const cy = pixelHeight/2;
+            ctx.beginPath();
+            ctx.moveTo(0,cy);
+            ctx.lineTo(pixelWidth,cy);
+            ctx.stroke();
+
+            ctx.beginPath();
+            ctx.moveTo(cx,0);
+            ctx.lineTo(cx,pixelHeight);
+            ctx.stroke();
+
+            const scaleLength = 20; 
+            const margin = 2;
+            ctx.strokeStyle='white';
+            ctx.lineWidth=1;
+            ctx.beginPath();
+            ctx.moveTo(margin,pixelHeight - margin);
+            ctx.lineTo(margin+scaleLength,pixelHeight - margin);
+            ctx.stroke();
+            ctx.fillStyle='white';
+            ctx.font='5px sans-serif';
+            ctx.fillText("~100px", margin, pixelHeight - margin -1);
+            ctx.restore();
+        }
+
+        function drawIllusions(ctx) {
+            ctx.save();
+            ctx.strokeStyle='rgba(255,255,255,0.2)';
+            ctx.lineWidth=1;
+            const vpX = pixelWidth/2;
+            const vpY = pixelHeight/2;
+            for(let i=0;i<10;i++){
+                ctx.beginPath();
+                ctx.moveTo(vpX,vpY);
+                let angle = (i/10)*Math.PI*2;
+                let endX = vpX+Math.cos(angle)*pixelWidth;
+                let endY = vpY+Math.sin(angle)*pixelHeight;
+                ctx.lineTo(endX,endY);
+                ctx.stroke();
+            }
+
+            ctx.strokeStyle='rgba(255,255,255,0.3)';
+            ctx.beginPath();
+            ctx.rect(vpX-10,vpY-10,20,20);
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.moveTo(vpX+10,vpY-10);
+            ctx.lineTo(vpX+15,vpY-20);
+            ctx.lineTo(vpX-5,vpY-20);
+            ctx.lineTo(vpX-10,vpY-10);
+            ctx.closePath();
+            ctx.stroke();
+
+            ctx.restore();
+        }
+
+        function quantize9bit(imgData) {
+            let d = imgData.data;
+            for(let i=0;i<d.length;i+=4) {
+                d[i] = Math.floor(d[i]/32)*32;
+                d[i+1] = Math.floor(d[i+1]/32)*32;
+                d[i+2] = Math.floor(d[i+2]/32)*32;
+            }
+        }
+
+        function applyDistortion(imgData) {
+            let d = imgData.data;
+            let newData = new Uint8ClampedArray(d.length);
+            for(let y=0;y<pixelHeight;y++){
+                let offset = Math.floor(Math.sin(y/5)*2); 
+                for(let x=0;x<pixelWidth;x++){
+                    let srcX = x+offset;
+                    if(srcX<0) srcX=0;
+                    if(srcX>=pixelWidth) srcX=pixelWidth-1;
+                    let srcIndex = (y*pixelWidth+srcX)*4;
+                    let dstIndex = (y*pixelWidth+x)*4;
+                    newData[dstIndex] = d[srcIndex];
+                    newData[dstIndex+1] = d[srcIndex+1];
+                    newData[dstIndex+2] = d[srcIndex+2];
+                    newData[dstIndex+3] = d[srcIndex+3];
+                }
+            }
+            imgData.data.set(newData);
+        }
+
+        function spawnParticles(x,y,count,color) {
+            for(let i=0;i<count;i++){
+                particles.push({
+                    x:x+(Math.random()-0.5)*20,
+                    y:y+(Math.random()-0.5)*20,
+                    life:30,
+                    color:color
+                });
+            }
+        }
+
+        function updateParticles() {
+            for(let i=particles.length-1;i>=0;i--){
+                particles[i].life--;
+                if(particles[i].life<=0) {
+                    particles.splice(i,1);
+                    continue;
+                }
+            }
+        }
+
+        function drawParticles(ctx) {
+            for(let p of particles) {
+                let sx = Math.floor(((p.x - mapCenterX())/mapRadius)*(pixelWidth/2)+pixelWidth/2);
+                let sy = Math.floor(((p.y - mapCenterY())/mapRadius)*(pixelHeight/2)+pixelHeight/2);
+                ctx.fillStyle = p.color;
+                ctx.fillRect(sx,sy,1,1);
+            }
+        }
+
+        function triggerPoliticalEvent() {
+            let event = politicalEvents[Math.floor(Math.random()*politicalEvents.length)];
+            event.action();
+            logEvent("Political Event: "+event.msg);
+            spawnParticles(mapCenterX(),mapCenterY(),20,"magenta");
+        }
+
+        function updateSimulation(timestamp) {
+            if(paused){requestAnimationFrame(updateSimulation);return;}
+            const delta = timestamp - lastTimestamp;
+            lastTimestamp=timestamp;
+            fps=(1000/delta).toFixed(1);
+            stepTime=delta.toFixed(1);
+
+            if(settings.dayNightCycle.enabled) {
+                timeOfDay=(timeOfDay+settings.dayNightCycle.timeIncrement)%24;
+            }
+
+            simulationStep++;
+
+            if(settings.seasonCycle.enabled) {
+                if(simulationStep%settings.seasonCycle.length===0) {
+                    settings.seasonCycle.currentIndex=(settings.seasonCycle.currentIndex+1)%settings.seasonCycle.seasons.length;
+                    logEvent("Season changed to "+settings.seasonCycle.seasons[settings.seasonCycle.currentIndex]);
+                    adjustLearningRates();
+                }
+            }
+
+            if(simulationStep%settings.weatherCycle.length===0) {
+                settings.weatherCycle.currentIndex=(settings.weatherCycle.currentIndex+1)%settings.weatherCycle.states.length;
+                logEvent("Weather changed to "+getWeather());
+            }
+
+            if(Math.random()<echoChance) {
+                let emsg = echoMessages[Math.floor(Math.random()*echoMessages.length)];
+                logEvent(emsg);
+            }
+
+            if(simulationStep%settings.politicalCycleLength===0) {
+                triggerPoliticalEvent();
+            }
+
+            const temp = getTemperature();
+            const weather = getWeather();
+
+            // Expand map radius up to max half of canvas dimension
+            let maxPossible = Math.min(canvas.width,canvas.height)/2;
+            if(mapRadius<maxPossible) {
+                mapRadius += settings.mapExpandRate;
+                if(mapRadius>maxPossible) mapRadius=maxPossible;
+            }
+
+            offctx.clearRect(0,0,pixelWidth,pixelHeight);
+            drawSpiral(offctx);
+            drawAxesAndScale(offctx);
+
+            for(let i=agents.length-1;i>=0;i--){
+                let a=agents[i];
+                if(a.isAlive) {
+                    a.move(temp);
+                    a.draw(offctx);
+                } else {
+                    agents.splice(i,1);
+                }
+            }
+
+            for(let t of threats) {
+                t.move();
+                t.draw(offctx);
+            }
+
+            for(let f of foods) f.draw(offctx);
+            for(let ta of tasks) ta.draw(offctx);
+
+            updateParticles();
+            drawParticles(offctx);
+            drawIllusions(offctx);
+
+            let imgData = offctx.getImageData(0,0,pixelWidth,pixelHeight);
+            if(weather==="Cloudy"||weather==="Rain") {
+                for(let i=0;i<imgData.data.length;i+=4) {
+                    imgData.data[i]*=0.9;
+                    imgData.data[i+1]*=0.9;
+                    imgData.data[i+2]*=0.9;
+                }
+            }
+
+            quantize9bit(imgData);
+            applyDistortion(imgData);
+            offctx.putImageData(imgData,0,0);
+
+            ctx.clearRect(0,0,canvas.width,canvas.height);
+            ctx.imageSmoothingEnabled = false;
+            ctx.drawImage(offscreenCanvas,0,0,canvas.width,canvas.height);
+
+            document.getElementById("fps").innerText=fps;
+            document.getElementById("stepTime").innerText=stepTime;
+            document.getElementById("tasksCompleted").innerText=tasksCompleted;
+            document.getElementById("aliveAgents").innerText=agents.filter(a=>a.isAlive).length;
+            let aliveAgents = agents.filter(a=>a.isAlive);
+            let avgHealth = aliveAgents.length?(aliveAgents.reduce((sum,a)=>sum+a.health,0)/aliveAgents.length).toFixed(1):0;
+            let avgLifespan = aliveAgents.length?(aliveAgents.reduce((sum,a)=>sum+a.age,0)/aliveAgents.length).toFixed(1):0;
+            document.getElementById("avgHealth").innerText = avgHealth;
+            document.getElementById("avgLifespan").innerText = avgLifespan;
+            document.getElementById("currentSeason").innerText = settings.seasonCycle.seasons[settings.seasonCycle.currentIndex];
+            document.getElementById("timeOfDayDisplay").innerText=timeOfDay.toFixed(1);
+            document.getElementById("canvasSize").innerText = canvas.width+" x "+canvas.height;
+            document.getElementById("temperatureDisplay").innerText = temp.toString();
+            document.getElementById("weatherDisplay").innerText = weather;
+            document.getElementById("mapRadiusDisplay").innerText = mapRadius.toFixed(1);
+
+            updateEventLog();
+            requestAnimationFrame(updateSimulation);
+        }
+
+        initializeSimulation();
+        requestAnimationFrame(updateSimulation);
+    </script>
+</body>
+</html>
