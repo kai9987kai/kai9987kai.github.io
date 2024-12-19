@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Advanced Rotary Generator</title>
+    <style>
+        body {font-family: Arial, sans-serif;margin: 20px;}
+        h1 {color: #333;}
+        label {display: block;margin-top: 10px;}
+        input, select {width: 100%;padding: 8px;margin-top: 5px;box-sizing: border-box;}
+        button {margin-top: 15px;padding: 10px 15px;background-color: #007BFF;color: #fff;border: none;cursor: pointer;}
+        button:hover {background-color: #0056b3;}
+        .output {margin-top: 20px;padding: 10px;border: 1px solid #ddd;background-color: #f9f9f9;}
+        canvas {display: block;margin: 20px auto;border: 1px solid #ddd;}
+        #threeCanvas {width: 800px;height: 400px;margin: 20px auto;border: 1px solid #ddd;}
+        #controlPanel {margin-top: 20px;display: flex;flex-wrap: wrap;gap: 10px;}
+        #controlPanel>div {flex: 1;min-width: 200px;}
+        #exportButtons {margin-top: 10px;display: flex;justify-content: flex-start;gap: 10px;}
+        #exportButtons button {padding: 8px 12px;background-color: #28a745;color: white;border: none;cursor: pointer;}
+        #exportButtons button:hover {background-color: #1e7e34;}
+         #simulationOptions {margin-top: 20px;display: flex;flex-wrap: wrap;gap: 10px;}
+        #simulationOptions>div {flex: 1;min-width: 200px;}
+    </style>
+</head>
+<body>
+    <h1>Advanced Rotary Generator</h1>
+    <form id="generatorForm">
+        <label>Power Output (W):</label>
+        <input type="number" id="powerOutput" required>
+        <label>Dimensions (L×W×H mm):</label>
+        <input type="text" id="dimensions" placeholder="e.g., 50×30×20" required>
+        <label>Operating Speed (RPM):</label>
+        <input type="number" id="rpm" required>
+        <label>Efficiency (%):</label>
+        <input type="number" id="efficiency" required>
+        <label>Material:</label>
+        <select id="material" required>
+            <option>Aluminum</option><option>Steel</option><option>Titanium</option><option>Composite</option>
+        </select>
+        <label>Gear Type:</label>
+        <select id="gearType" required>
+            <option>Spur</option><option>Bevel</option><option>Helical</option><option>Worm</option>
+        </select>
+        <label>Number of Gears:</label>
+        <input type="number" id="gears" placeholder="e.g., 2" required>
+        <label>Axial Offset (mm):</label>
+        <input type="number" id="axialOffset" value="0" required>
+         <label>Gear Ratio:</label>
+        <input type="number" id="gearRatio" value="1" required>
+        <label>Tooth Count (Per Gear):</label>
+        <input type="number" id="toothCount" value="20" required>
+        <button type="button" id="generateButton">Generate Specifications</button>
+    </form>
+    <div id="output" class="output" style="display:none;">
+        <h2>Generated Specifications:</h2>
+        <p id="specs"></p>
+    </div>
+    <canvas id="rotaCanvas" width="800" height="400"></canvas>
+    <div id="threeCanvas"></div>
+    <div id="controlPanel" style="display: none;">
+        <div><label>Zoom:</label><input type="range" id="zoomControl" min="0.1" max="2" step="0.1" value="1"></div>
+        <div><label>Camera Angle X:</label><input type="range" id="angleXControl" min="-180" max="180" step="5" value="0"></div>
+        <div><label>Camera Angle Y:</label><input type="range" id="angleYControl" min="-180" max="180" step="5" value="0"></div>
+        <div><label>Camera Angle Z:</label><input type="range" id="angleZControl" min="-180" max="180" step="5" value="0"></div>
+    </div>
+    <div id="exportButtons" style="display: none;">
+        <button id="export2DButton">Export 2D (PNG)</button>
+        <button id="export3DButton">Export 3D (STL)</button>
+         <button id="exportGIFButton">Export GIF</button>
+    </div>
+       <div id="simulationOptions" style="display: none;">
+          <div><label>Simulation Speed:</label><input type="range" id="simSpeedControl" min="0.1" max="5" step="0.1" value="1"></div>
+             <div><label>Show Trail:</label> <input type="checkbox" id="showTrailCheckbox" checked></div>
+           <div><label>Trail Length:</label><input type="range" id="trailLengthControl" min="10" max="500" step="10" value="100"></div>
+
+      </div>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/exporters/STLExporter.js"></script>
+       <script src="https://cdnjs.cloudflare.com/ajax/libs/gif.js/0.2.0/gif.js"></script>
+   <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.7.1/jszip.min.js"></script>
+    <script>
+        const canvas = document.getElementById('rotaCanvas'), ctx = canvas.getContext('2d');
+        const drawGear = (x, y, radius, teeth, rotation, connectedTo) => {
+            const angleIncrement = (Math.PI * 2) / teeth;
+            ctx.save(); ctx.translate(x, y); ctx.rotate(rotation); ctx.beginPath();
+            for (let i = 0; i < teeth; i++) {
+                const angle = i * angleIncrement, outerX = Math.cos(angle) * radius, outerY = Math.sin(angle) * radius;
+                const innerX = Math.cos(angle + angleIncrement / 2) * (radius - 10), innerY = Math.sin(angle + angleIncrement / 2) * (radius - 10);
+                ctx.lineTo(outerX, outerY); ctx.lineTo(innerX, innerY);
+            }
+            ctx.closePath(); ctx.strokeStyle = '#007BFF'; ctx.lineWidth = 2; ctx.stroke();
+            if (connectedTo) {
+                ctx.beginPath();
+                ctx.moveTo(0, 0);
+                ctx.lineTo(connectedTo.x - x, connectedTo.y - y);
+                ctx.strokeStyle = '#FF0000'; ctx.lineWidth = 1; ctx.stroke();
+            }
+            ctx.restore();
+        };
+        let trailPoints = [];
+        const drawSystem = (rotationSpeed, specs) => {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            const centerX = canvas.width / 2, centerY = canvas.height / 2;
+            const { gears, axialOffset, gearRatio, toothCount} = specs;
+            const radiusIncrement = 20;
+            const connections = [];
+            for (let i = 0; i < gears; i++) {
+                const angle = i * (Math.PI * 2) / gears;
+                 const radius = 40 + i * 10;
+                const x = centerX + Math.cos(angle) * (i * radiusIncrement + 50);
+                const y = centerY + Math.sin(angle) * (i * radiusIncrement + 50);
+               const connectedTo = connections.length ? connections[connections.length - 1] : null;
+                 const gearRotation = (rotationSpeed * (i + 1) / gearRatio) ;
+                 drawGear(x, y, radius, toothCount , gearRotation / 180, connectedTo);
+
+                connections.push({ x, y });
+                if(document.getElementById('showTrailCheckbox').checked)
+                 trailPoints.push({x,y,rotation: gearRotation });
+            if (trailPoints.length > parseInt(document.getElementById('trailLengthControl').value)) {
+                trailPoints.shift();
+            }
+
+        }
+          if (document.getElementById('showTrailCheckbox').checked) {
+           ctx.beginPath();
+                trailPoints.forEach(({ x, y, rotation }, index) => {
+                    if (index === 0) {
+                         ctx.moveTo(x, y);
+                    }
+                      const prev = trailPoints[index-1] || {x,y,rotation};
+                       ctx.lineTo(x, y);
+                  })
+                    ctx.strokeStyle = '#6c757d';
+                ctx.lineWidth = 1; ctx.stroke();
+         }
+
+
+             for (let i = 0; i < gears; i++) {
+              if (axialOffset && axialOffset != 0) {
+                const angle = i * (Math.PI * 2) / gears;
+                 const x = centerX + Math.cos(angle) * (i * radiusIncrement + 50);
+                   const y = centerY + Math.sin(angle) * (i * radiusIncrement + 50);
+
+                    ctx.save();
+                ctx.translate(x, y);
+                ctx.rotate(Math.PI / 2);
+                ctx.beginPath();
+                ctx.moveTo(0, 0);
+                ctx.lineTo(0, axialOffset);
+                ctx.strokeStyle = "gray";
+                ctx.lineWidth = 2;
+                ctx.stroke();
+                 ctx.beginPath();
+                 ctx.arc(0, axialOffset, 2, 0, 2 * Math.PI);
+                ctx.fillStyle = "red";
+                 ctx.fill();
+                ctx.restore();
+            }
+        }
+    };
+
+        let rotationSpeed = 0;
+        let animateFrame;
+        const animateSystem = specs => {
+            drawSystem(rotationSpeed+=parseFloat(document.getElementById('simSpeedControl').value), specs);
+            animateFrame = requestAnimationFrame(() => animateSystem(specs));
+        };
+        const generateSpecs = () => {
+            cancelAnimationFrame(animateFrame);
+            const powerOutput = document.getElementById('powerOutput').value, dimensions = document.getElementById('dimensions').value;
+            const rpm = document.getElementById('rpm').value, efficiency = document.getElementById('efficiency').value;
+            const material = document.getElementById('material').value, gears = parseInt(document.getElementById('gears').value);
+            const gearType= document.getElementById('gearType').value,axialOffset = parseFloat(document.getElementById('axialOffset').value);
+              const gearRatio = parseFloat(document.getElementById('gearRatio').value),toothCount = parseInt(document.getElementById('toothCount').value);
+            if (!powerOutput || !dimensions || !rpm || !efficiency || !material || isNaN(gears) ) return alert('Fill all fields.');
+            const specs = { powerOutput: `${powerOutput} W`, dimensions: `${dimensions} mm`, rpm: `${rpm} RPM`, efficiency: `${efficiency}%`, material, gears, gearType, axialOffset, gearRatio, toothCount };
+            localStorage.setItem('gearboxSpecs', JSON.stringify(specs));
+            let specsHTML = ''; Object.entries(specs).forEach(([k, v]) => specsHTML += `<strong>${k}:</strong> ${v}<br>`);
+            document.getElementById('specs').innerHTML = specsHTML + `<br><strong>Optimized RPM:</strong> ${optimizeRPM(rpm, efficiency)} RPM`;
+            document.getElementById('output').style.display = 'block';
+            document.getElementById('controlPanel').style.display = 'flex';
+            document.getElementById('exportButtons').style.display = 'flex';
+             document.getElementById('simulationOptions').style.display = 'flex';
+            create3DGears(specs);
+            animateSystem(specs);
+        };
+        const optimizeRPM = (rpm, efficiency) => (rpm * (efficiency / 100)).toFixed(2);
+      let scene, camera, renderer, gearGroup;
+    const create3DGears = specs => {
+        const { gears, gearType, axialOffset } = specs;
+        const threeCanvas = document.getElementById('threeCanvas');
+        threeCanvas.innerHTML = '';
+        scene = new THREE.Scene();
+        camera = new THREE.PerspectiveCamera(75, 800 / 400, 0.1, 1000);
+        renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(800, 400);
+        threeCanvas.appendChild(renderer.domElement);
+        const controls = new THREE.OrbitControls(camera, renderer.domElement);
+        let lastGear = null;
+        gearGroup = new THREE.Group();
+        for (let i = 0; i < gears; i++) {
+            let geometry;
+            const radius = 5;
+             const height = 2;
+              const segments = 32;
+              const angle = i * (Math.PI * 2) / gears;
+
+                switch (gearType) {
+                      case "Spur":
+                        geometry = new THREE.CylinderGeometry(radius, radius, height, segments);
+                        break;
+                    case "Bevel":
+                        geometry = new THREE.ConeGeometry(radius, height,segments);
+                        break;
+                     case "Helical":
+                        geometry = new THREE.CylinderGeometry(radius, radius, height, segments, 1, true);
+                         geometry.rotateZ(Math.PI/6);
+                         break;
+                      case "Worm":
+                        geometry = new THREE.TorusGeometry(radius, 1, 16, 100);
+                        geometry.rotateX(Math.PI / 2);
+                         break;
+                }
+            const material = new THREE.MeshBasicMaterial({ color: 0x007BFF });
+            const gear = new THREE.Mesh(geometry, material);
+             const x = Math.cos(angle) * (i * 10 + 20);
+              const y = Math.sin(angle) * (i * 10 + 20);
+            gear.position.set(x, y, axialOffset * i );
+           gearGroup.add(gear);
+            if (lastGear) {
+                const connector = new THREE.Line(new THREE.BufferGeometry().setFromPoints([
+                    lastGear.position, gear.position
+                ]), new THREE.LineBasicMaterial({ color: 0xff0000 }));
+                scene.add(connector);
+            }
+            lastGear = gear;
+        }
+         scene.add(gearGroup)
+        camera.position.z = 50;
+       const zoomControl = document.getElementById('zoomControl');
+        const angleXControl = document.getElementById('angleXControl');
+        const angleYControl = document.getElementById('angleYControl');
+         const angleZControl = document.getElementById('angleZControl');
+         const updateCamera = () => {
+             camera.position.z = 50 / parseFloat(zoomControl.value);
+              camera.rotation.x = parseFloat(angleXControl.value) * Math.PI / 180;
+             camera.rotation.y = parseFloat(angleYControl.value) * Math.PI / 180;
+             camera.rotation.z = parseFloat(angleZControl.value) * Math.PI / 180;
+         };
+          zoomControl.addEventListener('input', updateCamera);
+          angleXControl.addEventListener('input', updateCamera);
+           angleYControl.addEventListener('input', updateCamera);
+            angleZControl.addEventListener('input', updateCamera);
+        const animate = () => {
+            requestAnimationFrame(animate);
+            renderer.render(scene, camera);
+             gearGroup.rotation.z += 0.01;
+        };
+         updateCamera();
+          animate();
+    };
+       const export2D = () => {
+        const imgData = canvas.toDataURL('image/png');
+        const link = document.createElement('a');
+        link.href = imgData;
+        link.download = 'gearbox_2d.png';
+        link.click();
+    };
+   const export3D = () => {
+        const exporter = new THREE.STLExporter();
+        const stlString = exporter.parse(scene);
+         const blob = new Blob([stlString], { type: 'text/plain' });
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        link.download = 'gearbox_3d.stl';
+        link.click();
+    };
+     const exportGIF = async () => {
+    const gif = new GIF({
+        workers: 2,
+        quality: 10,
+        width: canvas.width,
+        height: canvas.height,
+    });
+         let frameCount = 60;
+            const currentSimSpeed = parseFloat(document.getElementById('simSpeedControl').value);
+            document.getElementById('simSpeedControl').value = 0.5
+        for (let i = 0; i < frameCount; i++) {
+            drawSystem(rotationSpeed+=parseFloat(document.getElementById('simSpeedControl').value), specs);
+            gif.addFrame(canvas, { delay: 1000/60 });
+          }
+            document.getElementById('simSpeedControl').value = currentSimSpeed;
+
+    gif.on('finished', function (blob) {
+         let link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+         link.download = 'gearbox.gif';
+       link.click();
+        });
+    gif.render();
+
+    };
+   document.getElementById('export2DButton').addEventListener('click', export2D);
+   document.getElementById('export3DButton').addEventListener('click', export3D);
+     document.getElementById('exportGIFButton').addEventListener('click', exportGIF);
+    document.getElementById('generateButton').addEventListener('click', generateSpecs);
+    </script>
+</body>
+</html>
