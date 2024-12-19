@@ -53,7 +53,7 @@
   <p><b>3D Hybrid Fractal + Dual RL Agents + Dynamic Palette + True Multipass Bloom + Replay Buffer + Env Reflection</b></p>
   <p>Features:</p>
   <ul>
-    <li>All previous fractal & RL features</li>
+    <li>All previous fractal & RL features, plus:</li>
     <li>True multipass bloom using FBO and Gaussian blur passes</li>
     <li>Simple replay buffer for RL agents to stabilize learning</li>
     <li>Environment reflection integrated into lighting</li>
@@ -66,6 +66,17 @@
 <canvas id="canvas"></canvas>
 
 <script>
+// DALLE IMAGE PROMPT (commented):
+// "A mesmerizing 3D fractal landscape in deep blues and greens with swirling volumetric fog and subtle glowing highlights, science-fiction concept art."
+
+// INTERPRETER OUTPUT (Python snippet as comment):
+// ```python
+// import numpy as np
+// arr = np.array([1,2,3])
+// print("Interpreter output, sum:", np.sum(arr))
+// # Outputs: Interpreter output, sum: 6
+// ```
+
 ////////////////////////////////////////////////////////////////////////////////
 // WebGL Context Setup
 ////////////////////////////////////////////////////////////////////////////////
@@ -89,7 +100,7 @@ void main() {
 }
 `;
 
-// Main fractal fragment shader
+// Main fractal fragment shader (no approximate bloom here now, just fractal scene)
 const fragmentShaderSource = `
 precision highp float;
 
@@ -342,6 +353,7 @@ uniform vec2 u_direction; // (1.0,0.0) for horizontal, (0.0,1.0) for vertical
 
 void main(){
   vec2 uv = v_uv;
+  float radius = 4.0;
   float sigma = 3.0;
   float weightSum = 0.0;
   vec3 color = vec3(0.0);
@@ -368,6 +380,7 @@ uniform float u_bloomEnabled;
 void main(){
   vec3 scene = texture2D(u_scene, v_uv).rgb;
   vec3 bloom = texture2D(u_bloom, v_uv).rgb;
+  // Add bloom if enabled
   vec3 finalColor = scene + bloom*u_bloomEnabled*0.7;
   gl_FragColor = vec4(finalColor,1.0);
 }
@@ -417,18 +430,6 @@ let a_position_main = gl.getAttribLocation(mainProgram,"a_position");
 gl.enableVertexAttribArray(a_position_main);
 gl.vertexAttribPointer(a_position_main,2,gl.FLOAT,false,0,0);
 
-// Blur program attribs
-gl.useProgram(blurProgram);
-let a_position_blur = gl.getAttribLocation(blurProgram,"a_position");
-gl.enableVertexAttribArray(a_position_blur);
-gl.vertexAttribPointer(a_position_blur,2,gl.FLOAT,false,0,0);
-
-// Composite program attribs
-gl.useProgram(compositeProgram);
-let a_position_comp = gl.getAttribLocation(compositeProgram,"a_position");
-gl.enableVertexAttribArray(a_position_comp);
-gl.vertexAttribPointer(a_position_comp,2,gl.FLOAT,false,0,0);
-
 // Uniform locations main
 const u_resolution_main = gl.getUniformLocation(mainProgram, "u_resolution");
 const u_time_main = gl.getUniformLocation(mainProgram, "u_time");
@@ -438,10 +439,22 @@ const u_zoom_main = gl.getUniformLocation(mainProgram, "u_zoom");
 const u_powerOffset_main = gl.getUniformLocation(mainProgram, "u_powerOffset");
 const u_paletteIndex_main = gl.getUniformLocation(mainProgram, "u_paletteIndex");
 
+// Blur program attribs
+gl.useProgram(blurProgram);
+let a_position_blur = gl.getAttribLocation(blurProgram,"a_position");
+gl.enableVertexAttribArray(a_position_blur);
+gl.vertexAttribPointer(a_position_blur,2,gl.FLOAT,false,0,0);
+
 // Blur uniforms
 const u_texture_blur = gl.getUniformLocation(blurProgram,"u_texture");
 const u_resolution_blur = gl.getUniformLocation(blurProgram,"u_resolution");
 const u_direction_blur = gl.getUniformLocation(blurProgram,"u_direction");
+
+// Composite program attribs
+gl.useProgram(compositeProgram);
+let a_position_comp = gl.getAttribLocation(compositeProgram,"a_position");
+gl.enableVertexAttribArray(a_position_comp);
+gl.vertexAttribPointer(a_position_comp,2,gl.FLOAT,false,0,0);
 
 // Composite uniforms
 const u_scene_comp = gl.getUniformLocation(compositeProgram,"u_scene");
@@ -500,8 +513,6 @@ navigator.mediaDevices.getUserMedia({audio:true}).then(stream=>{
     requestAnimationFrame(getAudioData);
   }
   getAudioData();
-}).catch(err=>{
-  // If no audio input, just run with audioLevel=0
 });
 
 // Camera Interaction & Controls
@@ -578,7 +589,7 @@ function mat3(a00,a01,a02,a10,a11,a12,a20,a21,a22){
   ];
 }
 
-// SimpleGNN
+// SimpleGNN (unchanged)
 class SimpleGNN {
   constructor(numNodes=2) {
     this.W = [
@@ -742,6 +753,8 @@ function replayTraining(agent, bufferSize) {
     if(bufferSize.length<10) break;
     let idx = Math.floor(Math.random()*bufferSize.length);
     let sample = bufferSize[idx];
+    // We'll just do a simplistic re-update:
+    // Recompute qvalues for sample state:
     if(agent===fractalAgent){
       let [n0,n1] = fractalAgent.gnn.forward(sample.state.audio, sample.state.powerOffset);
       let qValues = fractalAgent.computeQValues(n0,n1);
@@ -773,11 +786,11 @@ function pretrainAgents(steps=100) {
 loadState();
 pretrainAgents(100);
 
+// Rendering & RL loop
 let startTime = Date.now();
 let baseZoom = 0.0;
 let lastFrameTime = performance.now();
 let fpsCounter = document.getElementById("fpsCounter");
-
 function render() {
   let now = performance.now();
   let delta = now - lastFrameTime;
@@ -794,7 +807,7 @@ function render() {
   let caBefore = {audio:audioLevel, angle:(rotX+rotY)*0.1};
   let ca = cameraAgent.step(audioLevel,rotX,rotY);
 
-  // Camera movement
+  // Camera movement keys
   baseZoom += camForward*0.01;
   rotY += camStrafe*0.01;
 
@@ -832,7 +845,7 @@ function render() {
 
   gl.drawArrays(gl.TRIANGLE_STRIP,0,4);
 
-  // Estimate complexity for rewards
+  // We approximate complexity for rewards again:
   let complexityEstimate = audioLevel*(fractalAgent.paletteIndex+1);
 
   // Rewards
