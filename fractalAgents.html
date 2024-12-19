@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>3D Fractal + Dual RL Agents + Dynamic Palette + Approx Bloom + LocalStorage + Pretraining</title>
+<title>3D Fractal + Dual RL Agents + Dynamic Palette + True Bloom + Replay Buffer + Env Reflection</title>
 <style>
   body {
     margin: 0;
@@ -33,6 +33,16 @@
     border: 1px solid #333;
     cursor: pointer;
   }
+  #fpsCounter {
+    position: absolute;
+    bottom: 10px;
+    left: 10px;
+    background: rgba(0,0,0,0.5);
+    padding: 5px;
+    font-size: 12px;
+    z-index: 10001;
+    color: #0f0;
+  }
   canvas {
     display: block;
   }
@@ -40,56 +50,36 @@
 </head>
 <body>
 <div id="info">
-  <p><b>3D Hybrid Fractal + Dual RL Agents + Dynamic Palette + Approx Bloom + LocalStorage + Pretraining</b></p>
+  <p><b>3D Hybrid Fractal + Dual RL Agents + Dynamic Palette + True Multipass Bloom + Replay Buffer + Env Reflection</b></p>
   <p>Features:</p>
   <ul>
-    <li>All previous fractal features (audio-driven, AO, volumetrics, bloom approximation, fractal-julia hybrid, etc.)</li>
-    <li>First RL agent: Controls fractal power offset AND palette selection</li>
-    <li>Second RL agent: Controls camera angles (rotX, rotY) for more interesting views</li>
-    <li>Approximate bloom by sampling neighboring pixels</li>
-    <li>Multi-agent interaction with contrived reward signals based on complexity & audio</li>
-    <li>Press 'b' to toggle bloom, 'w/s/a/d' to move</li>
-    <li>LocalStorage: Agent states (weights, offsets, palette) saved/loaded between sessions</li>
-    <li>Pretraining step at startup to initialize Q-values before main loop</li>
+    <li>All previous fractal & RL features</li>
+    <li>True multipass bloom using FBO and Gaussian blur passes</li>
+    <li>Simple replay buffer for RL agents to stabilize learning</li>
+    <li>Environment reflection integrated into lighting</li>
+    <li>FPS counter overlay</li>
+    <li>Press 'b' to toggle bloom, 'w/s/a/d' to move, VR button attempts VR</li>
   </ul>
 </div>
 <button id="vrButton">Enter VR</button>
+<div id="fpsCounter">FPS: 0</div>
 <canvas id="canvas"></canvas>
 
 <script>
-// DALLE IMAGE PROMPT (commented, as requested "where possible"):
-// Prompt: "A mesmerizing 3D fractal landscape in deep blues and greens with swirling volumetric fog and subtle glowing highlights, in the style of a science-fiction concept art."
-//
-// INTERPRETER OUTPUT (Python snippet as a comment for demonstration):
-// ```python
-// import numpy as np
-// arr = np.array([1,2,3])
-// print("Interpreter output, sum:", np.sum(arr))
-// # Outputs: Interpreter output, sum: 6
-// ```
-
 ////////////////////////////////////////////////////////////////////////////////
-// WebGL + Fractal Rendering with Approximate Bloom and Dynamic Palettes
-// + Dual RL Agents + LocalStorage Persistence + Pretraining
+// WebGL Context Setup
 ////////////////////////////////////////////////////////////////////////////////
-
-// Maya or other 3D references from user instructions (no placeholders):
-// import maya.cmds as cmds
-// import json
-// import os
-// import numpy as np
-// (Note: These imports are for reference only, as this is a browser JS environment.)
-
 const canvas = document.getElementById("canvas");
 const gl = canvas.getContext("webgl");
 if(!gl) {
   alert("WebGL not supported.");
 }
-
 canvas.width = window.innerWidth;
 canvas.height = window.innerHeight;
+
 gl.viewport(0,0,gl.drawingBufferWidth, gl.drawingBufferHeight);
 
+// Shaders for main fractal scene
 const vertexShaderSource = `
 attribute vec2 a_position;
 varying vec2 v_uv;
@@ -99,8 +89,7 @@ void main() {
 }
 `;
 
-// Note: All fractal, lighting, bloom and palette logic from original code.
-// Kept intact. Just extended with localStorage and RL logic improvements.
+// Main fractal fragment shader
 const fragmentShaderSource = `
 precision highp float;
 
@@ -112,7 +101,6 @@ uniform float u_audioLevel;
 uniform mat3 u_cameraMatrix;
 uniform float u_zoom;
 uniform float u_powerOffset;
-uniform float u_bloom;
 uniform int u_paletteIndex;
 
 #define MAX_MARCH_STEPS 400
@@ -227,6 +215,12 @@ vec3 getPaletteColor(int idx, float iterationFactor) {
     }
 }
 
+// Simple environment reflection: gradient based on direction
+vec3 environmentColor(vec3 dir) {
+    float u = dir.y*0.5+0.5;
+    return mix(vec3(0.05,0.05,0.1), vec3(0.2,0.5,0.7), u);
+}
+
 vec3 lighting(vec3 p, vec3 n, vec3 ro, float iteration, float power, float audioLevel, float time, int paletteIdx) {
     vec3 lightDir = normalize(vec3(1.0, 0.5, 0.7));
     vec3 rimLightDir = normalize(vec3(-0.7, -0.4, -1.0));
@@ -246,6 +240,11 @@ vec3 lighting(vec3 p, vec3 n, vec3 ro, float iteration, float power, float audio
     float skyFactor = clamp(n.y*0.5+0.5,0.0,1.0);
     vec3 skyColor = mix(vec3(0.05,0.05,0.1), vec3(0.2,0.3,0.5), skyFactor);
     finalColor = mix(finalColor, finalColor*skyColor, 0.2);
+
+    // Add environment reflection
+    float reflectFactor = 0.2;
+    vec3 reflectColor = environmentColor(reflect(normalize(ro - p), n));
+    finalColor = mix(finalColor, finalColor+reflectColor*0.5, reflectFactor);
 
     return finalColor;
 }
@@ -271,14 +270,6 @@ vec3 toneMap(vec3 color) {
     return pow(color, vec3(0.9));
 }
 
-vec3 approximateBloom(vec2 uv, vec3 color) {
-    float brightness = dot(color, vec3(0.299,0.587,0.114));
-    if(brightness > 0.7) {
-        color += vec3(0.2)*brightness;
-    }
-    return color;
-}
-
 void main() {
     vec2 uv = v_uv;
     float fov = 1.2;
@@ -302,7 +293,6 @@ void main() {
     float t = rm.x;
     float iteration = rm.y;
     vec3 color;
-    float complexity = 0.0;
     if(t > 0.0) {
         vec3 p = ro + rd*t;
         vec3 n = calcNormal(p, power, blendFactor);
@@ -314,7 +304,6 @@ void main() {
         vec3 lightDir = normalize(vec3(1.0,0.5,0.7));
         float vol = volumetricLight(p, lightDir, power, blendFactor);
         color += vec3(vol*0.1, vol*0.08, vol*0.05);
-        complexity = iteration*u_audioLevel;
     } else {
         vec3 bg = mix(vec3(0.01,0.02,0.05), vec3(0.0,0.0,0.1), uv.y);
         float sf = starField(uv, u_time);
@@ -322,7 +311,6 @@ void main() {
         float particleNoise = hash(floor(uv*200.0 + u_time*2.0));
         bg += particleNoise*0.01;
         color = bg;
-        complexity = u_audioLevel*0.1;
     }
 
     float grain = hash(uv*vec2(u_time*60.0,u_time*60.0)) * 0.02;
@@ -331,15 +319,61 @@ void main() {
     float d = dither(v_uv*u_resolution);
     color += (d - 0.5)*DITHER_SCALE*0.01;
 
-    if(u_bloom > 0.5) {
-      color = approximateBloom(uv,color);
-    }
-
     gl_FragColor = vec4(color,1.0);
 }
 `;
 
-// Create shaders & program
+// Gaussian blur (horizontal/vertical) shaders
+const blurVertexShaderSource = `
+attribute vec2 a_position;
+varying vec2 v_uv;
+void main(){
+  v_uv = (a_position*0.5)+0.5;
+  gl_Position = vec4(a_position,0.0,1.0);
+}
+`;
+
+const blurFragmentShaderSource = `
+precision highp float;
+varying vec2 v_uv;
+uniform sampler2D u_texture;
+uniform vec2 u_resolution;
+uniform vec2 u_direction; // (1.0,0.0) for horizontal, (0.0,1.0) for vertical
+
+void main(){
+  vec2 uv = v_uv;
+  float sigma = 3.0;
+  float weightSum = 0.0;
+  vec3 color = vec3(0.0);
+  for(float i=-4.0; i<=4.0; i++){
+    float x = i;
+    float w = exp(-0.5*(x*x)/(sigma*sigma));
+    vec2 offset = u_direction*(x/u_resolution);
+    color += w*texture2D(u_texture, uv+offset).rgb;
+    weightSum += w;
+  }
+  color /= weightSum;
+  gl_FragColor = vec4(color,1.0);
+}
+`;
+
+// Composite shader: combines original scene with blurred bloom texture
+const compositeFragmentShaderSource = `
+precision highp float;
+varying vec2 v_uv;
+uniform sampler2D u_scene;
+uniform sampler2D u_bloom;
+uniform float u_bloomEnabled;
+
+void main(){
+  vec3 scene = texture2D(u_scene, v_uv).rgb;
+  vec3 bloom = texture2D(u_bloom, v_uv).rgb;
+  vec3 finalColor = scene + bloom*u_bloomEnabled*0.7;
+  gl_FragColor = vec4(finalColor,1.0);
+}
+`;
+
+// Create shaders & programs
 function createShader(gl,type,source) {
   const shader = gl.createShader(type);
   gl.shaderSource(shader,source);
@@ -352,7 +386,9 @@ function createShader(gl,type,source) {
   return shader;
 }
 
-function createProgram(gl, vs, fs) {
+function createProgram(gl, vsSource, fsSource) {
+  const vs = createShader(gl, gl.VERTEX_SHADER, vsSource);
+  const fs = createShader(gl, gl.FRAGMENT_SHADER, fsSource);
   const program = gl.createProgram();
   gl.attachShader(program,vs);
   gl.attachShader(program,fs);
@@ -365,9 +401,9 @@ function createProgram(gl, vs, fs) {
   return program;
 }
 
-const vs = createShader(gl, gl.VERTEX_SHADER, vertexShaderSource);
-const fs = createShader(gl, gl.FRAGMENT_SHADER, fragmentShaderSource);
-const program = createProgram(gl, vs, fs);
+const mainProgram = createProgram(gl, vertexShaderSource, fragmentShaderSource);
+const blurProgram = createProgram(gl, blurVertexShaderSource, blurFragmentShaderSource);
+const compositeProgram = createProgram(gl, blurVertexShaderSource, compositeFragmentShaderSource);
 
 // Fullscreen quad
 const positionBuffer = gl.createBuffer();
@@ -375,19 +411,72 @@ gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
 const positions = new Float32Array([-1,-1, 1,-1, -1,1, 1,1]);
 gl.bufferData(gl.ARRAY_BUFFER, positions, gl.STATIC_DRAW);
 
-const a_position = gl.getAttribLocation(program,"a_position");
-gl.enableVertexAttribArray(a_position);
-gl.vertexAttribPointer(a_position,2,gl.FLOAT,false,0,0);
+// Setup main program attribs
+gl.useProgram(mainProgram);
+let a_position_main = gl.getAttribLocation(mainProgram,"a_position");
+gl.enableVertexAttribArray(a_position_main);
+gl.vertexAttribPointer(a_position_main,2,gl.FLOAT,false,0,0);
 
-// Uniform locations
-const u_resolution = gl.getUniformLocation(program, "u_resolution");
-const u_time = gl.getUniformLocation(program, "u_time");
-const u_audioLevel = gl.getUniformLocation(program, "u_audioLevel");
-const u_cameraMatrix = gl.getUniformLocation(program, "u_cameraMatrix");
-const u_zoom = gl.getUniformLocation(program, "u_zoom");
-const u_powerOffset = gl.getUniformLocation(program, "u_powerOffset");
-const u_bloom = gl.getUniformLocation(program, "u_bloom");
-const u_paletteIndex = gl.getUniformLocation(program, "u_paletteIndex");
+// Blur program attribs
+gl.useProgram(blurProgram);
+let a_position_blur = gl.getAttribLocation(blurProgram,"a_position");
+gl.enableVertexAttribArray(a_position_blur);
+gl.vertexAttribPointer(a_position_blur,2,gl.FLOAT,false,0,0);
+
+// Composite program attribs
+gl.useProgram(compositeProgram);
+let a_position_comp = gl.getAttribLocation(compositeProgram,"a_position");
+gl.enableVertexAttribArray(a_position_comp);
+gl.vertexAttribPointer(a_position_comp,2,gl.FLOAT,false,0,0);
+
+// Uniform locations main
+const u_resolution_main = gl.getUniformLocation(mainProgram, "u_resolution");
+const u_time_main = gl.getUniformLocation(mainProgram, "u_time");
+const u_audioLevel_main = gl.getUniformLocation(mainProgram, "u_audioLevel");
+const u_cameraMatrix_main = gl.getUniformLocation(mainProgram, "u_cameraMatrix");
+const u_zoom_main = gl.getUniformLocation(mainProgram, "u_zoom");
+const u_powerOffset_main = gl.getUniformLocation(mainProgram, "u_powerOffset");
+const u_paletteIndex_main = gl.getUniformLocation(mainProgram, "u_paletteIndex");
+
+// Blur uniforms
+const u_texture_blur = gl.getUniformLocation(blurProgram,"u_texture");
+const u_resolution_blur = gl.getUniformLocation(blurProgram,"u_resolution");
+const u_direction_blur = gl.getUniformLocation(blurProgram,"u_direction");
+
+// Composite uniforms
+const u_scene_comp = gl.getUniformLocation(compositeProgram,"u_scene");
+const u_bloom_comp = gl.getUniformLocation(compositeProgram,"u_bloom");
+const u_bloomEnabled_comp = gl.getUniformLocation(compositeProgram,"u_bloomEnabled");
+
+// Setup Framebuffers & Textures for multipass
+function createFBO(w,h) {
+  const fb = gl.createFramebuffer();
+  gl.bindFramebuffer(gl.FRAMEBUFFER, fb);
+
+  const tex = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D, tex);
+  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE);
+  gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,w,h,0,gl.RGBA,gl.UNSIGNED_BYTE,null);
+
+  const rb = gl.createRenderbuffer();
+  gl.bindRenderbuffer(gl.RENDERBUFFER, rb);
+  gl.renderbufferStorage(gl.RENDERBUFFER,gl.DEPTH_COMPONENT16,w,h);
+  gl.framebufferTexture2D(gl.FRAMEBUFFER,gl.COLOR_ATTACHMENT0,gl.TEXTURE_2D,tex,0);
+  gl.framebufferRenderbuffer(gl.FRAMEBUFFER,gl.DEPTH_ATTACHMENT,gl.RENDERBUFFER,rb);
+
+  gl.bindTexture(gl.TEXTURE_2D,null);
+  gl.bindFramebuffer(gl.FRAMEBUFFER,null);
+  return {fbo:fb, tex:tex, rb:rb, w:w, h:h};
+}
+
+let width = gl.drawingBufferWidth;
+let height = gl.drawingBufferHeight;
+let sceneFBO = createFBO(width,height);
+let pingFBO = createFBO(width,height);
+let pongFBO = createFBO(width,height);
 
 // Audio Setup
 let audioLevel = 0.0;
@@ -411,6 +500,8 @@ navigator.mediaDevices.getUserMedia({audio:true}).then(stream=>{
     requestAnimationFrame(getAudioData);
   }
   getAudioData();
+}).catch(err=>{
+  // If no audio input, just run with audioLevel=0
 });
 
 // Camera Interaction & Controls
@@ -439,13 +530,18 @@ window.addEventListener("resize",()=>{
   canvas.width = window.innerWidth;
   canvas.height = window.innerHeight;
   gl.viewport(0,0,gl.drawingBufferWidth, gl.drawingBufferHeight);
+  width = gl.drawingBufferWidth;
+  height = gl.drawingBufferHeight;
+  sceneFBO = createFBO(width,height);
+  pingFBO = createFBO(width,height);
+  pongFBO = createFBO(width,height);
 });
 
-// Attempt VR
+// VR button
 document.getElementById('vrButton').addEventListener('click', async ()=>{
   if(navigator.xr){
     try {
-      const session = await navigator.xr.requestSession('immersive-vr');
+      await navigator.xr.requestSession('immersive-vr');
       alert("VR session started (conceptually).");
     } catch(err) {
       alert("Failed to start VR: " + err);
@@ -455,7 +551,7 @@ document.getElementById('vrButton').addEventListener('click', async ()=>{
   }
 });
 
-let bloomEnabled = 0.0;
+let bloomEnabled = 1.0;
 let camForward = 0.0;
 let camStrafe = 0.0;
 
@@ -482,7 +578,7 @@ function mat3(a00,a01,a02,a10,a11,a12,a20,a21,a22){
   ];
 }
 
-// Simple GNN
+// SimpleGNN
 class SimpleGNN {
   constructor(numNodes=2) {
     this.W = [
@@ -505,15 +601,6 @@ class SimpleGNN {
       x1_agg[0]*this.W[0][1] + x1_agg[1]*this.W[1][1]
     ];
     return [n0,n1];
-  }
-
-  backward(qValues, chosenAction, target) {
-    let error = target - qValues[chosenAction];
-    for(let i=0;i<2;i++){
-      for(let j=0;j<2;j++){
-        this.W[i][j] += error * this.lr;
-      }
-    }
   }
 }
 
@@ -553,10 +640,6 @@ class FractalAgent {
 
   updateQ(action, qValues, reward) {
     let error = reward - qValues[action];
-    this.updateWeights(error);
-  }
-
-  updateWeights(error) {
     for(let i=0;i<2;i++){
       for(let j=0;j<2;j++){
         this.gnn.W[i][j] += error*this.gnn.lr;
@@ -589,7 +672,6 @@ class CameraAgent {
     } else {
       action = qValues.indexOf(Math.max(...qValues));
     }
-
     return {action,qValues};
   }
 
@@ -606,7 +688,7 @@ class CameraAgent {
 let fractalAgent = new FractalAgent();
 let cameraAgent = new CameraAgent();
 
-// Load state from localStorage if available
+// Load/Save State
 function loadState() {
   let storedFA = localStorage.getItem('fractalAgent');
   if(storedFA) {
@@ -640,48 +722,94 @@ function saveState() {
   localStorage.setItem('cameraAgent', JSON.stringify(caData));
 }
 
+// Replay Buffer for RL agents
+const replayBufferFA = [];
+const replayBufferCA = [];
+const MAX_REPLAY = 1000;
+
+function addToReplayFA(state,action,reward) {
+  replayBufferFA.push({state,action,reward});
+  if(replayBufferFA.length>MAX_REPLAY) replayBufferFA.shift();
+}
+
+function addToReplayCA(state,action,reward) {
+  replayBufferCA.push({state,action,reward});
+  if(replayBufferCA.length>MAX_REPLAY) replayBufferCA.shift();
+}
+
+function replayTraining(agent, bufferSize) {
+  for(let i=0;i<10;i++){
+    if(bufferSize.length<10) break;
+    let idx = Math.floor(Math.random()*bufferSize.length);
+    let sample = bufferSize[idx];
+    if(agent===fractalAgent){
+      let [n0,n1] = fractalAgent.gnn.forward(sample.state.audio, sample.state.powerOffset);
+      let qValues = fractalAgent.computeQValues(n0,n1);
+      fractalAgent.updateQ(sample.action, qValues, sample.reward);
+    } else {
+      let [n0,n1] = cameraAgent.gnn.forward(sample.state.audio, sample.state.angle);
+      let qValues = cameraAgent.computeQValues(n0,n1);
+      cameraAgent.updateQ(sample.action, qValues, sample.reward);
+    }
+  }
+}
+
 // Pretraining
 function pretrainAgents(steps=100) {
   for(let i=0; i<steps; i++) {
-    // Random dummy state:
     let randAudio = Math.random();
-    // Fractal agent step & update with random reward
+    let fakeFAState = {audio:randAudio, powerOffset:fractalAgent.powerOffset};
     let fa = fractalAgent.step(randAudio);
     let randomRewardFA = (Math.random()-0.5)*0.1;
     fractalAgent.updateQ(fa.action, fa.qValues, randomRewardFA);
 
-    // Camera agent step & update with random reward
+    let fakeCAState = {audio:randAudio, angle:(rotX+rotY)*0.1};
     let ca = cameraAgent.step(randAudio, rotX, rotY);
     let randomRewardCA = (Math.random()-0.5)*0.1;
     cameraAgent.updateQ(ca.action, ca.qValues, randomRewardCA);
   }
 }
 
-// Initialize
 loadState();
-pretrainAgents(100); // Pretrain before the main loop
+pretrainAgents(100);
 
 let startTime = Date.now();
 let baseZoom = 0.0;
+let lastFrameTime = performance.now();
+let fpsCounter = document.getElementById("fpsCounter");
 
 function render() {
+  let now = performance.now();
+  let delta = now - lastFrameTime;
+  lastFrameTime = now;
+  let fps = 1000/delta;
+  fpsCounter.textContent = "FPS: " + fps.toFixed(1);
+
   let time = (Date.now()-startTime)*0.001;
 
   // Step fractal agent
+  let faBefore = {audio:audioLevel, powerOffset:fractalAgent.powerOffset};
   let fa = fractalAgent.step(audioLevel);
   // Step camera agent
+  let caBefore = {audio:audioLevel, angle:(rotX+rotY)*0.1};
   let ca = cameraAgent.step(audioLevel,rotX,rotY);
 
-  // Camera movement keys
+  // Camera movement
   baseZoom += camForward*0.01;
   rotY += camStrafe*0.01;
 
-  gl.useProgram(program);
-  gl.uniform2f(u_resolution, canvas.width, canvas.height);
-  gl.uniform1f(u_time, time);
-  gl.uniform1f(u_audioLevel, audioLevel);
+  // Render fractal to sceneFBO
+  gl.bindFramebuffer(gl.FRAMEBUFFER, sceneFBO.fbo);
+  gl.viewport(0,0,width,height);
+  gl.clearColor(0,0,0,1);
+  gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);
+  gl.useProgram(mainProgram);
+
+  gl.uniform2f(u_resolution_main, width, height);
+  gl.uniform1f(u_time_main, time);
+  gl.uniform1f(u_audioLevel_main, audioLevel);
   let zoom = 0.5 + Math.sin(time*0.1)*0.2 + baseZoom;
-  gl.uniform1f(u_zoom, zoom);
+  gl.uniform1f(u_zoom_main, zoom);
   let camMat = mat3(Math.cos(rotY),0,-Math.sin(rotY), 0,1,0, Math.sin(rotY),0,Math.cos(rotY));
   let cx = Math.cos(rotX), sx = Math.sin(rotX);
   let rotXMat = mat3(1,0,0,0,cx,-sx,0,sx,cx);
@@ -698,23 +826,65 @@ function render() {
     rotXMat[6]*camMat[1]+rotXMat[7]*camMat[4]+rotXMat[8]*camMat[7],
     rotXMat[6]*camMat[2]+rotXMat[7]*camMat[5]+rotXMat[8]*camMat[8]
   ];
-
-  gl.uniformMatrix3fv(u_cameraMatrix,false,new Float32Array(finalMat));
-  gl.uniform1f(u_powerOffset, fractalAgent.powerOffset);
-  gl.uniform1f(u_bloom, bloomEnabled);
-  gl.uniform1i(u_paletteIndex, fractalAgent.paletteIndex);
+  gl.uniformMatrix3fv(u_cameraMatrix_main,false,new Float32Array(finalMat));
+  gl.uniform1f(u_powerOffset_main, fractalAgent.powerOffset);
+  gl.uniform1i(u_paletteIndex_main, fractalAgent.paletteIndex);
 
   gl.drawArrays(gl.TRIANGLE_STRIP,0,4);
 
-  // Estimate complexity for reward:
+  // Estimate complexity for rewards
   let complexityEstimate = audioLevel*(fractalAgent.paletteIndex+1);
 
-  // Rewards:
+  // Rewards
   let fractalReward = (complexityEstimate>0.5 && audioLevel>0.5)?0.1:-0.01;
   fractalAgent.updateQ(fa.action, fa.qValues, fractalReward);
+  addToReplayFA(faBefore, fa.action, fractalReward);
 
   let cameraReward = complexityEstimate * 0.05; 
   cameraAgent.updateQ(ca.action, ca.qValues, cameraReward);
+  addToReplayCA(caBefore, ca.action, cameraReward);
+
+  // Occasionally do replay training
+  if(Math.random()<0.01) {
+    replayTraining(fractalAgent, replayBufferFA);
+    replayTraining(cameraAgent, replayBufferCA);
+  }
+
+  // Bloom pass
+  // 1. Horizontal blur (sceneFBO -> pingFBO)
+  gl.bindFramebuffer(gl.FRAMEBUFFER, pingFBO.fbo);
+  gl.clearColor(0,0,0,1);
+  gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);
+  gl.useProgram(blurProgram);
+  gl.uniform2f(u_resolution_blur,width,height);
+  gl.uniform2f(u_direction_blur,1.0,0.0);
+  gl.activeTexture(gl.TEXTURE0);
+  gl.bindTexture(gl.TEXTURE_2D, sceneFBO.tex);
+  gl.uniform1i(u_texture_blur,0);
+  gl.drawArrays(gl.TRIANGLE_STRIP,0,4);
+
+  // 2. Vertical blur (pingFBO -> pongFBO)
+  gl.bindFramebuffer(gl.FRAMEBUFFER, pongFBO.fbo);
+  gl.clearColor(0,0,0,1);
+  gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);
+  gl.uniform2f(u_direction_blur,0.0,1.0);
+  gl.bindTexture(gl.TEXTURE_2D, pingFBO.tex);
+  gl.drawArrays(gl.TRIANGLE_STRIP,0,4);
+
+  // Composite (sceneFBO & pongFBO) to screen
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  gl.viewport(0,0,width,height);
+  gl.clearColor(0,0,0,1);
+  gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);
+  gl.useProgram(compositeProgram);
+  gl.activeTexture(gl.TEXTURE0);
+  gl.bindTexture(gl.TEXTURE_2D, sceneFBO.tex);
+  gl.uniform1i(u_scene_comp,0);
+  gl.activeTexture(gl.TEXTURE1);
+  gl.bindTexture(gl.TEXTURE_2D, pongFBO.tex);
+  gl.uniform1i(u_bloom_comp,1);
+  gl.uniform1f(u_bloomEnabled_comp, bloomEnabled);
+  gl.drawArrays(gl.TRIANGLE_STRIP,0,4);
 
   // Save state after updates
   saveState();
