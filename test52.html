@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>PyScript DistilGPT2 Demo</title>
+
+  <!-- PyScript alpha CDN -->
+  <link rel="stylesheet" href="https://pyscript.net/alpha/pyscript.css" />
+  <script defer src="https://pyscript.net/alpha/pyscript.js"></script>
+
+  <style>
+    /* Inline CSS */
+    body {
+      margin: 0;
+      padding: 0;
+      font-family: Arial, sans-serif;
+      background: #f9fafb;
+      color: #222;
+    }
+    header {
+      background: #4b5563;
+      padding: 1rem;
+      color: #fff;
+    }
+    h1, h2 {
+      margin: 0;
+      padding: 0;
+    }
+    .container {
+      max-width: 900px;
+      margin: 2rem auto;
+      background: #fff;
+      padding: 1rem 2rem;
+      border-radius: 0.5rem;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+    label {
+      display: block;
+      margin: 1rem 0 0.25rem;
+    }
+    textarea, input[type="text"] {
+      width: 100%;
+      padding: 0.5rem;
+      border: 1px solid #ccc;
+      border-radius: 0.25rem;
+    }
+    button {
+      margin-top: 1rem;
+      background: #3b82f6;
+      color: #fff;
+      padding: 0.75rem 1rem;
+      border: none;
+      border-radius: 0.25rem;
+      cursor: pointer;
+    }
+    button:hover {
+      background: #2563eb;
+    }
+    #example-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 1rem;
+    }
+    #example-table th, #example-table td {
+      border: 1px solid #ccc;
+      padding: 0.5rem;
+    }
+    .section {
+      margin-bottom: 2rem;
+    }
+    #training-status {
+      font-weight: bold;
+      color: #2563eb;
+      margin-top: 0.5rem;
+    }
+  </style>
+</head>
+
+<body>
+  <header>
+    <h1>PyScript DistilGPT2 Demo</h1>
+  </header>
+
+  <div class="container">
+    <!-- 1) Table for Input-Output Examples -->
+    <div class="section">
+      <h2>1. Add Examples</h2>
+      <label for="input-text">Input Text:</label>
+      <textarea id="input-text" rows="3" placeholder="E.g. 'Hello'"></textarea>
+
+      <label for="output-text">Output Text:</label>
+      <textarea id="output-text" rows="3" placeholder="E.g. 'Hi there!'"></textarea>
+
+      <button id="add-row">Add Row</button>
+
+      <table id="example-table">
+        <thead>
+          <tr>
+            <th>Input</th>
+            <th>Output</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          <!-- Dynamically added rows go here -->
+        </tbody>
+      </table>
+    </div>
+
+    <!-- 2) Train Button + Status -->
+    <div class="section">
+      <h2>2. Train Model</h2>
+      <p>Trains DistilGPT2 in-browser. May be slow or fail if PyScript can’t load Torch/Transformers.</p>
+      <button id="train-model">Train</button>
+      <p id="training-status">Not trained yet</p>
+    </div>
+
+    <!-- 3) Inference -->
+    <div class="section">
+      <h2>3. Model Inference</h2>
+      <label for="test-input">Test Input:</label>
+      <input type="text" id="test-input" placeholder="Type something..." />
+      <button id="run-inference">Run Inference</button>
+      <p><strong>Inference Output:</strong> <span id="inference-output">N/A</span></p>
+    </div>
+  </div>
+
+  <!-- PyScript environment: attempt to load torch & transformers -->
+  <py-config>
+packages = [
+  "torch",
+  "transformers"
+]
+  </py-config>
+
+  <!-- Hidden JSON storage for training data -->
+  <div id="training-data" style="display:none;">[]</div>
+
+  <!-- PyScript: define python code for training & inference -->
+  <py-script>
+import js
+import json
+import asyncio
+
+try:
+    from transformers import AutoTokenizer, AutoModelForCausalLM
+    import torch
+    from torch.utils.data import Dataset
+except ImportError:
+    print("Error importing torch/transformers. PyScript environment might not support them.")
+    raise
+
+model = None
+tokenizer = None
+
+class CustomDataset(Dataset):
+    def __init__(self, data, tokenizer):
+        self.examples = []
+        self.tokenizer = tokenizer
+        for item in data:
+            inp = item["input"]
+            outp = item["output"]
+            enc_inp = tokenizer(inp, max_length=32, padding="max_length", truncation=True, return_tensors="pt")
+            enc_outp = tokenizer(outp, max_length=32, padding="max_length", truncation=True, return_tensors="pt")
+            self.examples.append((enc_inp["input_ids"].squeeze(), enc_outp["input_ids"].squeeze()))
+
+    def __len__(self):
+        return len(self.examples)
+
+    def __getitem__(self, idx):
+        return self.examples[idx]
+
+async def train_model(data_list):
+    global model, tokenizer
+
+    js.document.getElementById("training-status").innerText = "Loading DistilGPT2 model..."
+    print("Loading DistilGPT2 model...")
+
+    tokenizer = AutoTokenizer.from_pretrained("distilgpt2")
+    model = AutoModelForCausalLM.from_pretrained("distilgpt2")
+    model.train()
+
+    dataset = CustomDataset(data_list, tokenizer)
+    optimizer = torch.optim.AdamW(model.parameters(), lr=1e-5)
+    batch_size = 2
+    epochs = 1  # For demonstration
+
+    for epoch in range(epochs):
+        epoch_msg = f"Training Epoch {epoch+1}/{epochs}"
+        js.document.getElementById("training-status").innerText = epoch_msg
+        print(epoch_msg)
+
+        for i in range(0, len(dataset), batch_size):
+            batch_data = dataset[i:i+batch_size]
+            input_ids = torch.stack([item[0] for item in batch_data])
+            labels = torch.stack([item[1] for item in batch_data])
+
+            outputs = model(input_ids=input_ids, labels=labels)
+            loss = outputs.loss
+            loss.backward()
+            optimizer.step()
+            optimizer.zero_grad()
+
+            step_msg = f"  Step {i} - Loss: {loss.item():.4f}"
+            print(step_msg)
+
+    model.eval()
+    js.document.getElementById("training-status").innerText = "Training Complete!"
+    print("Training complete.")
+
+def py_train_model(*args):
+    """Called from JS. Loads data, starts training asynchronously."""
+    data_str = js.document.getElementById("training-data").textContent
+    data_list = json.loads(data_str)
+    if len(data_list) == 0:
+        js.alert("No training data found. Please add rows first!")
+        return
+
+    asyncio.create_task(train_model(data_list))
+
+def py_run_inference(*args):
+    """Called from JS. Runs inference on the trained model."""
+    global model, tokenizer
+    prompt = js.document.getElementById("test-input").value
+    if not model or not tokenizer:
+        js.document.getElementById("inference-output").innerHTML = "Model not loaded or trained yet."
+        return
+
+    input_ids = tokenizer.encode(prompt, return_tensors="pt")
+    with torch.no_grad():
+        output_ids = model.generate(input_ids, max_length=50, num_return_sequences=1)
+    result = tokenizer.decode(output_ids[0], skip_special_tokens=True)
+    js.document.getElementById("inference-output").innerHTML = result
+
+# Expose to JS
+js.py_train_model = py_train_model
+js.py_run_inference = py_run_inference
+  </py-script>
+
+  <!-- JS code that wires buttons to the Python functions -->
+  <script>
+    document.addEventListener("DOMContentLoaded", function() {
+      // We wait for DOMContentLoaded so elements exist
+
+      const trainingDataEl = document.getElementById("training-data");
+      const exampleTableBody = document.querySelector("#example-table tbody");
+
+      // 1) Add Row
+      document.getElementById("add-row").addEventListener("click", () => {
+        const inputText = document.getElementById("input-text").value.trim();
+        const outputText = document.getElementById("output-text").value.trim();
+
+        if (!inputText || !outputText) {
+          alert("Please fill both Input Text and Output Text before adding a row.");
+          return;
+        }
+
+        // Create table row
+        const row = document.createElement("tr");
+        const tdInput = document.createElement("td");
+        const tdOutput = document.createElement("td");
+        const tdStatus = document.createElement("td");
+
+        tdInput.textContent = inputText;
+        tdOutput.textContent = outputText;
+        tdStatus.textContent = "Not trained";
+
+        row.appendChild(tdInput);
+        row.appendChild(tdOutput);
+        row.appendChild(tdStatus);
+        exampleTableBody.appendChild(row);
+
+        // Update hidden JSON
+        const dataArray = JSON.parse(trainingDataEl.textContent);
+        dataArray.push({ input: inputText, output: outputText });
+        trainingDataEl.textContent = JSON.stringify(dataArray);
+
+        // Clear fields
+        document.getElementById("input-text").value = "";
+        document.getElementById("output-text").value = "";
+      });
+
+      // 2) Train button
+      document.getElementById("train-model").addEventListener("click", () => {
+        // Check if the PyScript function is defined
+        if (typeof py_train_model === "function") {
+          py_train_model();
+        } else {
+          alert("py_train_model is not defined. PyScript may not have loaded or may have errored. Check console logs.");
+        }
+      });
+
+      // 3) Inference button
+      document.getElementById("run-inference").addEventListener("click", () => {
+        if (typeof py_run_inference === "function") {
+          py_run_inference();
+        } else {
+          alert("py_run_inference is not defined. PyScript may not have loaded or may have errored. Check console logs.");
+        }
+      });
+    });
+  </script>
+</body>
+</html>
