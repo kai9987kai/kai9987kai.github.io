@@ -1,0 +1,360 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Enhanced Ecosystem Simulator</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            font-family: Arial, sans-serif;
+            background-color: #1a1a1a;
+            color: white;
+        }
+
+        canvas {
+            display: block;
+        }
+
+        #controls {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background: rgba(0, 0, 0, 0.8);
+            padding: 15px;
+            border-radius: 8px;
+            z-index: 10;
+        }
+
+        #controls label, #controls input, #controls button {
+            display: block;
+            margin: 5px 0;
+        }
+
+        #stats {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: rgba(0, 0, 0, 0.8);
+            padding: 15px;
+            border-radius: 8px;
+            z-index: 10;
+        }
+
+        #stats p {
+            margin: 5px 0;
+        }
+
+        #chartContainer {
+            position: absolute;
+            bottom: 10px;
+            left: 10px;
+            background: rgba(0, 0, 0, 0.8);
+            padding: 15px;
+            border-radius: 8px;
+            z-index: 10;
+            width: 300px;
+        }
+
+        .bar {
+            height: 10px;
+            background: lightgreen;
+            margin: 5px 0;
+        }
+    </style>
+</head>
+<body>
+    <div id="controls">
+        <label for="plantCount">Plant Count:</label>
+        <input type="range" id="plantCount" min="10" max="100" value="50">
+        <label for="herbivoreCount">Herbivore Count:</label>
+        <input type="range" id="herbivoreCount" min="5" max="50" value="20">
+        <label for="carnivoreCount">Carnivore Count:</label>
+        <input type="range" id="carnivoreCount" min="1" max="20" value="5">
+        <button onclick="resetEcosystem()">Reset Ecosystem</button>
+    </div>
+
+    <div id="stats">
+        <p>Plants: <span id="plantStats">0</span></p>
+        <p>Herbivores: <span id="herbivoreStats">0</span></p>
+        <p>Carnivores: <span id="carnivoreStats">0</span></p>
+        <p>Time: <span id="timeStats">0</span>s</p>
+        <p>Weather: <span id="weatherStats">Sunny</span></p>
+        <p>Temperature: <span id="tempStats">20</span>°C</p>
+    </div>
+
+    <div id="chartContainer">
+        <h4>Population Metrics</h4>
+        <div class="bar" id="plantBar"></div>
+        <div class="bar" id="herbivoreBar"></div>
+        <div class="bar" id="carnivoreBar"></div>
+    </div>
+
+    <canvas id="canvas"></canvas>
+
+    <script>
+        const canvas = document.getElementById("canvas");
+        const ctx = canvas.getContext("2d");
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+
+        let plants = [];
+        let herbivores = [];
+        let carnivores = [];
+        let time = 0;
+        let weather = "Sunny";
+        let temperature = 20;
+
+        class Plant {
+            constructor(x, y) {
+                this.x = x;
+                this.y = y;
+                this.size = 5;
+                this.color = "green";
+                this.energy = 100;
+                this.growthRate = 0.1;
+            }
+
+            draw() {
+                ctx.fillStyle = this.color;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctx.fill();
+            }
+
+            grow() {
+                if (this.energy < 100) {
+                    this.energy += this.growthRate;
+                    this.size = Math.min(10, this.size + 0.01);
+                }
+            }
+
+            reproduce() {
+                if (this.energy >= 100 && Math.random() < 0.01) {
+                    plants.push(new Plant(this.x + (Math.random() - 0.5) * 50, this.y + (Math.random() - 0.5) * 50));
+                    this.energy = 50;
+                }
+            }
+        }
+
+        class Herbivore {
+            constructor(x, y) {
+                this.x = x;
+                this.y = y;
+                this.size = 8;
+                this.color = "blue";
+                this.energy = 100;
+                this.speed = 2;
+                this.reproductionRate = 0.005;
+            }
+
+            draw() {
+                ctx.fillStyle = this.color;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctx.fill();
+            }
+
+            move() {
+                this.x += (Math.random() - 0.5) * this.speed;
+                this.y += (Math.random() - 0.5) * this.speed;
+                this.energy -= 0.1;
+            }
+
+            eat(plant) {
+                if (Math.hypot(this.x - plant.x, this.y - plant.y) < this.size + plant.size) {
+                    this.energy += 20;
+                    plant.energy = 0;
+                }
+            }
+
+            reproduce() {
+                if (this.energy >= 100 && Math.random() < this.reproductionRate) {
+                    herbivores.push(new Herbivore(this.x + (Math.random() - 0.5) * 50, this.y + (Math.random() - 0.5) * 50));
+                    this.energy = 50;
+                }
+            }
+        }
+
+        class Carnivore {
+            constructor(x, y) {
+                this.x = x;
+                this.y = y;
+                this.size = 10;
+                this.color = "red";
+                this.energy = 100;
+                this.speed = 3;
+                this.reproductionRate = 0.003;
+            }
+
+            draw() {
+                ctx.fillStyle = this.color;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctx.fill();
+            }
+
+            move() {
+                this.x += (Math.random() - 0.5) * this.speed;
+                this.y += (Math.random() - 0.5) * this.speed;
+                this.energy -= 0.2;
+            }
+
+            eat(herbivore) {
+                if (Math.hypot(this.x - herbivore.x, this.y - herbivore.y) < this.size + herbivore.size) {
+                    this.energy += 50;
+                    herbivore.energy = 0;
+                }
+            }
+
+            reproduce() {
+                if (this.energy >= 100 && Math.random() < this.reproductionRate) {
+                    carnivores.push(new Carnivore(this.x + (Math.random() - 0.5) * 50, this.y + (Math.random() - 0.5) * 50));
+                    this.energy = 50;
+                }
+            }
+        }
+
+        function initializeEcosystem() {
+            plants = [];
+            herbivores = [];
+            carnivores = [];
+
+            const plantCount = parseInt(document.getElementById("plantCount").value);
+            const herbivoreCount = parseInt(document.getElementById("herbivoreCount").value);
+            const carnivoreCount = parseInt(document.getElementById("carnivoreCount").value);
+
+            for (let i = 0; i < plantCount; i++) {
+                plants.push(new Plant(Math.random() * canvas.width, Math.random() * canvas.height));
+            }
+
+            for (let i = 0; i < herbivoreCount; i++) {
+                herbivores.push(new Herbivore(Math.random() * canvas.width, Math.random() * canvas.height));
+            }
+
+            for (let i = 0; i < carnivoreCount; i++) {
+                carnivores.push(new Carnivore(Math.random() * canvas.width, Math.random() * canvas.height));
+            }
+        }
+
+        function updateWeather() {
+            const weatherStates = ["Sunny", "Rainy", "Stormy"];
+            if (Math.random() < 0.01) {
+                weather = weatherStates[Math.floor(Math.random() * weatherStates.length)];
+            }
+
+            if (weather === "Sunny") {
+                temperature = 20 + Math.random() * 10;
+            } else if (weather === "Rainy") {
+                temperature = 15 + Math.random() * 5;
+            } else if (weather === "Stormy") {
+                temperature = 10 + Math.random() *5;
+            }
+
+            document.getElementById("weatherStats").textContent = weather;
+            document.getElementById("tempStats").textContent = temperature.toFixed(1);
+        }
+
+        function updateEcosystem() {
+            time += 0.1;
+
+            // Update weather
+            updateWeather();
+
+            // Update plants
+            for (let plant of plants) {
+                plant.grow();
+                plant.reproduce();
+            }
+
+            // Update herbivores
+            for (let herbivore of herbivores) {
+                herbivore.move();
+                for (let plant of plants) {
+                    herbivore.eat(plant);
+                }
+                if (herbivore.energy <= 0) {
+                    herbivores.splice(herbivores.indexOf(herbivore), 1);
+                } else {
+                    herbivore.reproduce();
+                }
+            }
+
+            // Update carnivores
+            for (let carnivore of carnivores) {
+                carnivore.move();
+                for (let herbivore of herbivores) {
+                    carnivore.eat(herbivore);
+                }
+                if (carnivore.energy <= 0) {
+                    carnivores.splice(carnivores.indexOf(carnivore), 1);
+                } else {
+                    carnivore.reproduce();
+                }
+            }
+
+            // Remove dead plants
+            plants = plants.filter(plant => plant.energy > 0);
+
+            // Update stats
+            document.getElementById("plantStats").textContent = plants.length;
+            document.getElementById("herbivoreStats").textContent = herbivores.length;
+            document.getElementById("carnivoreStats").textContent = carnivores.length;
+            document.getElementById("timeStats").textContent = time.toFixed(1);
+
+            // Update population metrics
+            const maxPlants = 100;
+            const maxHerbivores = 50;
+            const maxCarnivores = 20;
+
+            document.getElementById("plantBar").style.width = `${(plants.length / maxPlants) * 100}%`;
+            document.getElementById("herbivoreBar").style.width = `${(herbivores.length / maxHerbivores) * 100}%`;
+            document.getElementById("carnivoreBar").style.width = `${(carnivores.length / maxCarnivores) * 100}%`;
+        }
+
+        function renderEcosystem() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // Draw terrain (optional: add visual effects based on weather)
+            if (weather === "Rainy") {
+                ctx.fillStyle = "rgba(0, 0, 255, 0.1)";
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+            } else if (weather === "Stormy") {
+                ctx.fillStyle = "rgba(0, 0, 0, 0.2)";
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+            }
+
+            // Draw entities
+            for (let plant of plants) {
+                plant.draw();
+            }
+
+            for (let herbivore of herbivores) {
+                herbivore.draw();
+            }
+
+            for (let carnivore of carnivores) {
+                carnivore.draw();
+            }
+        }
+
+        function resetEcosystem() {
+            initializeEcosystem();
+            time = 0;
+            weather = "Sunny";
+            temperature = 20;
+        }
+
+        function loop() {
+            updateEcosystem();
+            renderEcosystem();
+            requestAnimationFrame(loop);
+        }
+
+        // Initialize and start the ecosystem
+        initializeEcosystem();
+        loop();
+    </script>
+</body>
+</html>
