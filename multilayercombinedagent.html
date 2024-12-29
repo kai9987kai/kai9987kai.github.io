@@ -1,0 +1,357 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Enhanced Multi-Agent Simulation</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #1a1a1a;
+            color: white;
+            margin: 0;
+            overflow: hidden;
+        }
+        #controls {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            z-index: 10;
+            background: rgba(0, 0, 0, 0.8);
+            padding: 15px;
+            border-radius: 8px;
+        }
+        #performance, #scoreboard {
+            position: absolute;
+            bottom: 10px;
+            right: 10px;
+            z-index: 10;
+            background: rgba(0, 0, 0, 0.8);
+            padding: 15px;
+            border-radius: 8px;
+        }
+        #scoreboard {
+            bottom: 130px;
+        }
+        canvas {
+            display: block;
+        }
+        label {
+            display: block;
+            margin-top: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div id="controls">
+        <label for="speedSlider">Agent Speed:</label>
+        <input type="range" id="speedSlider" min="1" max="10" value="5">
+        <label for="threatSlider">Threat Aggressiveness:</label>
+        <input type="range" id="threatSlider" min="1" max="5" value="3">
+        <button onclick="resetSimulation()">Reset Simulation</button>
+    </div>
+
+    <div id="scoreboard">
+        <h4>Global Scoreboard</h4>
+        <p>Tasks Completed: <span id="tasksCompleted">0</span></p>
+        <p>Alive Agents: <span id="aliveAgents">0</span></p>
+    </div>
+
+    <div id="performance">
+        <p>FPS: <span id="fps"></span></p>
+    </div>
+
+    <canvas id="canvas"></canvas>
+
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest"></script>
+
+    <script>
+        window.onload = function () {
+            const canvas = document.getElementById("canvas");
+            const ctx = canvas.getContext("2d");
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+
+            window.addEventListener("resize", () => {
+                canvas.width = window.innerWidth;
+                canvas.height = window.innerHeight;
+            });
+
+            const settings = {
+                agent: { count: 30, maxSpeed: 6, maxHealth: 150 },
+                threat: { count: 10, speed: 3, aggressiveness: 3 },
+                food: { count: 20 },
+            };
+
+            let agents = [];
+            let threats = [];
+            let foods = [];
+            let tasksCompleted = 0;
+            let lastFrameTime = 0;
+            const frameRate = 30; // Limit frame rate to 30 FPS
+
+            // DOM Elements for controls
+            const speedSlider = document.getElementById("speedSlider");
+            const threatSlider = document.getElementById("threatSlider");
+            const tasksCompletedSpan = document.getElementById("tasksCompleted");
+            const aliveAgentsSpan = document.getElementById("aliveAgents");
+            const fpsSpan = document.getElementById("fps");
+
+            // Update settings based on sliders
+            speedSlider.addEventListener("input", (e) => {
+                const newSpeed = parseInt(e.target.value);
+                settings.agent.maxSpeed = newSpeed;
+                agents.forEach(agent => {
+                    agent.speed = Math.random() * settings.agent.maxSpeed + 1;
+                });
+            });
+
+            threatSlider.addEventListener("input", (e) => {
+                const newAggressiveness = parseInt(e.target.value);
+                settings.threat.aggressiveness = newAggressiveness;
+                // Potentially adjust threat behavior based on aggressiveness
+                // For simplicity, we could adjust threat speed
+                threats.forEach(threat => {
+                    threat.speed = settings.threat.speed * (newAggressiveness / 3);
+                });
+            });
+
+            class Entity {
+                constructor(x, y, size, color) {
+                    this.x = x;
+                    this.y = y;
+                    this.size = size;
+                    this.color = color;
+                }
+
+                draw() {
+                    ctx.fillStyle = this.color;
+                    ctx.beginPath();
+                    ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+            }
+
+            class Agent extends Entity {
+                constructor(x, y) {
+                    super(x, y, 5, "blue");
+                    this.health = settings.agent.maxHealth;
+                    this.speed = Math.random() * settings.agent.maxSpeed + 1;
+                    this.energy = 100;
+                    this.memory = [0, 0, 0]; // Initialize memory with default values
+
+                    this.brain = this.createBrain();
+                    this.preTrain(); // Pre-train the agent
+                }
+
+                createBrain() {
+                    const model = tf.sequential();
+
+                    // Input layer (8 features)
+                    model.add(tf.layers.dense({ units: 16, inputShape: [8], activation: 'relu' }));
+
+                    // Quantum-inspired layer (simulated)
+                    // Replacing 'sin' with 'tanh' as 'sin' is not a valid activation
+                    model.add(tf.layers.dense({ units: 8, activation: 'tanh' })); // Simulate quantum behavior
+
+                    // Hidden layer
+                    model.add(tf.layers.dense({ units: 8, activation: 'relu' }));
+
+                    // Output layer (Q-values for actions)
+                    model.add(tf.layers.dense({ units: 4, activation: 'linear' })); // 4 possible actions
+
+                    model.compile({ optimizer: tf.train.adam(0.01), loss: 'meanSquaredError' });
+
+                    return model;
+                }
+
+                async preTrain() {
+                    // Simulate pre-training by initializing the model with pre-trained weights
+                    const dummyInput = tf.randomNormal([1, 8]);
+                    const dummyOutput = tf.randomNormal([1, 4]);
+                    await this.brain.fit(dummyInput, dummyOutput, { epochs: 10 });
+                    dummyInput.dispose();
+                    dummyOutput.dispose();
+                }
+
+                move() {
+                    const state = this.senseEnvironment();
+                    const tensorState = tf.tensor2d([state]);
+
+                    // Predict Q-values
+                    const qValues = this.brain.predict(tensorState).dataSync();
+                    tensorState.dispose();
+
+                    // Choose the action with the highest Q-value
+                    const action = qValues.indexOf(Math.max(...qValues));
+
+                    // Execute the action
+                    switch (action) {
+                        case 0: this.x += this.speed; break; // Move right
+                        case 1: this.x -= this.speed; break; // Move left
+                        case 2: this.y += this.speed; break; // Move down
+                        case 3: this.y -= this.speed; break; // Move up
+                        default: break;
+                    }
+
+                    // Ensure the agent stays within the canvas bounds
+                    this.x = Math.max(0, Math.min(canvas.width, this.x));
+                    this.y = Math.max(0, Math.min(canvas.height, this.y));
+
+                    this.energy -= 0.1; // Energy usage
+
+                    // Example interaction: if near food, consume it
+                    foods.forEach((food, index) => {
+                        const distance = Math.hypot(this.x - food.x, this.y - food.y);
+                        if (distance < this.size + food.size) {
+                            this.energy = Math.min(this.energy + 20, 100); // Replenish energy
+                            foods.splice(index, 1); // Remove consumed food
+                            tasksCompleted++;
+                        }
+                    });
+
+                    // Example interaction: if near threat, lose energy
+                    threats.forEach(threat => {
+                        const distance = Math.hypot(this.x - threat.x, this.y - threat.y);
+                        if (distance < this.size + threat.size) {
+                            this.energy -= settings.threat.aggressiveness * 0.5;
+                        }
+                    });
+
+                    // Check if agent is still alive
+                    if (this.energy <= 0) {
+                        const agentIndex = agents.indexOf(this);
+                        if (agentIndex > -1) {
+                            agents.splice(agentIndex, 1);
+                        }
+                    }
+                }
+
+                senseEnvironment() {
+                    const nearestThreat = this.findNearest(threats);
+                    const nearestFood = this.findNearest(foods);
+
+                    return [
+                        nearestThreat ? nearestThreat.x - this.x : 0,
+                        nearestThreat ? nearestThreat.y - this.y : 0,
+                        nearestFood ? nearestFood.x - this.x : 0,
+                        nearestFood ? nearestFood.y - this.y : 0,
+                        this.energy,
+                        ...this.memory // 3 memory values
+                    ]; // Total of 8 features
+                }
+
+                findNearest(entities) {
+                    if (entities.length === 0) return null;
+                    let nearest = entities[0];
+                    let minDist = Math.hypot(this.x - nearest.x, this.y - nearest.y);
+                    for (let i = 1; i < entities.length; i++) {
+                        const dist = Math.hypot(this.x - entities[i].x, this.y - entities[i].y);
+                        if (dist < minDist) {
+                            minDist = dist;
+                            nearest = entities[i];
+                        }
+                    }
+                    return nearest;
+                }
+            }
+
+            class Threat extends Entity {
+                constructor(x, y) {
+                    super(x, y, 8, "red");
+                    this.speed = settings.threat.speed;
+                }
+
+                move() {
+                    // Simple random movement for threats
+                    const direction = Math.random() * Math.PI * 2;
+                    this.x += Math.cos(direction) * this.speed;
+                    this.y += Math.sin(direction) * this.speed;
+
+                    // Ensure the threat stays within the canvas bounds
+                    this.x = Math.max(0, Math.min(canvas.width, this.x));
+                    this.y = Math.max(0, Math.min(canvas.height, this.y));
+                }
+            }
+
+            function initializeSimulation() {
+                // Clear existing entities
+                agents = [];
+                threats = [];
+                foods = [];
+
+                // Spawn agents within canvas bounds
+                for (let i = 0; i < settings.agent.count; i++) {
+                    const x = Math.random() * canvas.width;
+                    const y = Math.random() * canvas.height;
+                    agents.push(new Agent(x, y));
+                }
+
+                // Spawn threats within canvas bounds
+                for (let i = 0; i < settings.threat.count; i++) {
+                    const x = Math.random() * canvas.width;
+                    const y = Math.random() * canvas.height;
+                    threats.push(new Threat(x, y));
+                }
+
+                // Spawn food within canvas bounds
+                for (let i = 0; i < settings.food.count; i++) {
+                    const x = Math.random() * canvas.width;
+                    const y = Math.random() * canvas.height;
+                    foods.push(new Entity(x, y, 5, "green"));
+                }
+
+                tasksCompleted = 0;
+                updateScoreboard();
+            }
+
+            function resetSimulation() {
+                initializeSimulation();
+            }
+
+            function updateSimulation(currentTime) {
+                const deltaTime = currentTime - lastFrameTime;
+                if (deltaTime < 1000 / frameRate) {
+                    requestAnimationFrame(updateSimulation);
+                    return;
+                }
+                lastFrameTime = currentTime;
+
+                // Clear the canvas
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+                // Update and draw threats
+                threats.forEach(threat => {
+                    threat.move();
+                    threat.draw();
+                });
+
+                // Update and draw agents
+                agents.forEach(agent => {
+                    agent.move();
+                    agent.draw();
+                });
+
+                // Draw food
+                foods.forEach(food => food.draw());
+
+                // Update FPS display
+                fpsSpan.textContent = Math.round(1000 / deltaTime);
+
+                // Update scoreboard
+                updateScoreboard();
+
+                requestAnimationFrame(updateSimulation);
+            }
+
+            function updateScoreboard() {
+                tasksCompletedSpan.textContent = tasksCompleted;
+                aliveAgentsSpan.textContent = agents.length;
+            }
+
+            // Initialize and start the simulation
+            initializeSimulation();
+            requestAnimationFrame(updateSimulation);
+        };
+    </script>
+</body>
+</html>
