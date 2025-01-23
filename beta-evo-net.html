@@ -1,0 +1,646 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Advanced Evolutionary Agent Simulation</title>
+  <style>
+    /* Basic page and canvas styling */
+    html, body {
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+      background: #222;
+      color: #fefefe;
+      font-family: sans-serif;
+    }
+
+    /* Logging panel */
+    #log {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 300px;
+      max-height: 200px;
+      overflow-y: auto;
+      background: rgba(0,0,0,0.5);
+      padding: 8px;
+      font-size: 14px;
+    }
+
+    /* Synergy scoreboard panel */
+    #synergyPanel {
+      position: absolute;
+      top: 0;
+      right: 0;
+      width: 280px;
+      max-height: 250px;
+      overflow-y: auto;
+      background: rgba(0,0,0,0.5);
+      padding: 8px;
+      font-size: 14px;
+      text-align: right;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="canvas"></canvas>
+  <div id="log"></div>
+  <div id="synergyPanel"></div>
+
+  <!-- TensorFlow.js -->
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest"></script>
+
+  <script>
+  // ========================== GLOBALS & HELPER FUNCTIONS ==========================
+  const canvas = document.getElementById("canvas");
+  const ctx = canvas.getContext("2d");
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
+
+  let agents = [], 
+      threats = [], 
+      foods = [], 
+      tasks = [], 
+      threatNests = [];
+  let commander;
+  let lastTimestamp = performance.now();
+  let fps = 0, stepTime = 0, timeOfDay = 8, generation = 0;
+
+  // Simulation configuration and constants
+  const settings = {
+    threat: {
+      baseSpeed: 0.5,
+      aggressiveness: 1.0,
+      spawnInterval: 20000, // 20 seconds for nests to spawn new threats
+      nextSpawnCheck: 0
+    },
+    tasks: {
+      synergyRequired: 3,  // Base synergy requirement (Commander can lower it)
+      megaTaskSynergyReq: 8 // Additional synergy for MegaTasks
+    },
+    synergy: {
+      distanceThreshold: 50,  // Agents within 50px gain synergy
+      perNeighborGain: 0.01,  // Synergy gained per neighbor per frame
+      maxSynergyPerAgent: 5,  // Hard cap on synergy per agent
+      degradeFactor: 0.999    // Per-frame synergy degradation
+    },
+    food: {
+      decayTime: 30000 // 30 seconds lifetime for food items
+    },
+    tribes: 2 // Number of distinct tribes
+  };
+
+  // Simple utility logging to the left panel
+  function logEvent(msg) {
+    const logDiv = document.getElementById('log');
+    const line = document.createElement('div');
+    line.textContent = msg;
+    logDiv.appendChild(line);
+    logDiv.scrollTop = logDiv.scrollHeight;
+  }
+
+  // Keep an entity within canvas boundaries
+  function keepInBounds(entity) {
+    if (entity.x < entity.size) entity.x = entity.size;
+    if (entity.y < entity.size) entity.y = entity.size;
+    if (entity.x > canvas.width - entity.size) entity.x = canvas.width - entity.size;
+    if (entity.y > canvas.height - entity.size) entity.y = canvas.height - entity.size;
+  }
+
+  // Argmax for array
+  function argmax(arr) {
+    let maxIndex = 0, maxValue = arr[0];
+    for (let i = 1; i < arr.length; i++) {
+      if (arr[i] > maxValue) {
+        maxValue = arr[i];
+        maxIndex = i;
+      }
+    }
+    return maxIndex;
+  }
+
+  // ========================== SPAWN FUNCTIONS ==========================
+  // Regular synergy-based tasks
+  function spawnMultiStepCommanderTask() {
+    tasks.push(new Task(
+      Math.random() * canvas.width, 
+      Math.random() * canvas.height, 
+      true, 
+      false  // not a MegaTask
+    ));
+    logEvent("Multi-step Commander task spawned (requires synergy)!");
+  }
+
+  // MegaTasks require a higher synergy level
+  function spawnMegaTask(tribe) {
+    tasks.push(new Task(
+      Math.random() * canvas.width,
+      Math.random() * canvas.height,
+      true, 
+      true,  // this is a MegaTask
+      tribe
+    ));
+    logEvent(`MegaTask spawned for Tribe ${tribe} (higher synergy requirement)!`);
+  }
+
+  // ========================== ENTITY CLASSES ==========================
+  class Entity {
+    constructor(x, y, size, color) {
+      this.x = x;
+      this.y = y;
+      this.size = size;
+      this.color = color;
+      this.alive = true;
+    }
+
+    draw(ctx) {
+      ctx.fillStyle = this.color;
+      ctx.beginPath();
+      ctx.arc(this.x, this.y, this.size, 0, Math.PI*2);
+      ctx.fill();
+    }
+  }
+
+  // Threats wander around; faster at night
+  class Threat extends Entity {
+    constructor(x, y) {
+      super(x, y, 8, 'red');
+    }
+
+    move(timeOfDay) {
+      const speed = settings.threat.baseSpeed * settings.threat.aggressiveness *
+                    ((timeOfDay > 18 || timeOfDay < 6) ? 1.2 : 1);
+      this.x += (Math.random() - 0.5) * speed;
+      this.y += (Math.random() - 0.5) * speed;
+      keepInBounds(this);
+    }
+  }
+
+  // A stationary “nest” that spawns threats if synergy grows too high
+  class ThreatNest extends Entity {
+    constructor(x, y) {
+      super(x, y, 10, 'darkred');
+      this.lastSpawn = performance.now();
+    }
+
+    spawnThreatIfNeeded(globalSynergy) {
+      const now = performance.now();
+      if (now - this.lastSpawn > settings.threat.spawnInterval) {
+        // If global synergy is above a certain threshold, nest spawns more threats
+        if (globalSynergy > settings.tasks.synergyRequired * 1.5) {
+          threats.push(new Threat(
+            this.x + (Math.random() - 0.5) * 50, 
+            this.y + (Math.random() - 0.5) * 50
+          ));
+          logEvent("Threat Nest spawned a new Threat due to high global synergy!");
+        }
+        this.lastSpawn = now;
+      }
+    }
+  }
+
+  // Food now decays over time
+  class Food extends Entity {
+    constructor(x, y) {
+      super(x, y, 5, 'green');
+      this.spawnTime = performance.now();
+    }
+    updateDecay() {
+      if (performance.now() - this.spawnTime > settings.food.decayTime) {
+        // Food decays
+        this.alive = false;
+      }
+    }
+  }
+
+  // Tasks can be synergy-based or MegaTasks
+  class Task extends Entity {
+    /**
+     * 
+     * @param {number} x 
+     * @param {number} y 
+     * @param {boolean} requiresSynergy 
+     * @param {boolean} isMegaTask 
+     * @param {number} [tribeForMegaTask] 
+     */
+    constructor(x, y, requiresSynergy = false, isMegaTask = false, tribeForMegaTask = null) {
+      super(x, y, 6, isMegaTask ? 'violet' : (requiresSynergy ? 'cyan' : 'yellow'));
+      this.requiresSynergy = requiresSynergy;
+      this.isMegaTask = isMegaTask;
+      this.tribeForMegaTask = tribeForMegaTask; // Which tribe is targeted, if a MegaTask
+    }
+  }
+
+  // Agents are assigned a tribe and synergy mechanics
+  class Agent extends Entity {
+    constructor(x, y, tribe) {
+      super(x, y, 7, tribe === 0 ? 'blue' : 'orange');
+      this.energy = 100;
+      this.synergy = 0;    // personal synergy
+      this.tribe = tribe;  // which tribe
+      this.synergyBuff = 1.0; // can be temporarily buffed by Commander
+    }
+
+    move() {
+      // Random movement
+      this.x += (Math.random() - 0.5) * 2;
+      this.y += (Math.random() - 0.5) * 2;
+      keepInBounds(this);
+
+      // Degrade synergy slightly
+      this.synergy *= settings.synergy.degradeFactor;
+
+      // Energy usage
+      this.energy -= 0.05;
+      if (this.energy <= 0) {
+        this.alive = false;
+      }
+    }
+
+    // Gains synergy for being near neighbors of the same tribe
+    updateSynergy(agents) {
+      for (let other of agents) {
+        if (other !== this && other.alive && other.tribe === this.tribe) {
+          const dx = other.x - this.x;
+          const dy = other.y - this.y;
+          const dist = Math.sqrt(dx*dx + dy*dy);
+          if (dist < settings.synergy.distanceThreshold) {
+            this.synergy += settings.synergy.perNeighborGain * this.synergyBuff;
+          }
+        }
+      }
+      // Cap synergy
+      if (this.synergy > settings.synergy.maxSynergyPerAgent) {
+        this.synergy = settings.synergy.maxSynergyPerAgent;
+      }
+    }
+
+    // Called if Commander forces a target network update, etc.
+    updateTarget() {
+      logEvent(`Tribe ${this.tribe} Agent at (${this.x.toFixed(0)}, ${this.y.toFixed(0)}) updated target network!`);
+    }
+  }
+
+  // ========================== COMMANDER AGENT (DQN) ==========================
+  class CommanderAgent {
+    constructor() {
+      this.stepCount = 0;
+      this.epsilon = 1.0;
+      this.exp = [];
+      this.model = this.buildCommanderDQN();
+      this.targetModel = this.buildCommanderDQN();
+      this.targetModel.setWeights(this.model.getWeights());
+    }
+
+    buildCommanderDQN() {
+      const model = tf.sequential({
+        layers: [
+          tf.layers.dense({units: 32, inputShape: [5], activation: 'relu'}),
+          tf.layers.dense({units: 16, activation: 'relu'}),
+          tf.layers.dense({units: 6, activation: 'linear'}) // note: 6 possible actions now
+        ]
+      });
+      model.compile({optimizer: tf.train.adam(0.0005), loss: 'meanSquaredError'});
+      return model;
+    }
+
+    // Commander picks an action
+    step(agents, threats, foods, tasks, timeOfDay) {
+      this.stepCount++;
+
+      // Construct environment state features
+      const state = [
+        agents.length / 30,                 // # of agents scaled
+        tasks.length / 10,                  // # of tasks scaled
+        settings.tasks.synergyRequired / 5, // synergy requirement scaled
+        timeOfDay / 24,                    // time of day scaled
+        settings.threat.aggressiveness / 5  // threat aggressiveness scaled
+      ];
+
+      let action;
+      if (Math.random() < this.epsilon) {
+        action = Math.floor(Math.random() * 6); // 6 possible actions now
+      } else {
+        const stT = tf.tensor2d([state]);
+        const out = this.model.predict(stT);
+        const arr = out.dataSync();
+        out.dispose();
+        stT.dispose();
+        action = argmax(arr);
+      }
+
+      let reward = 0;
+
+      // 6 Commander actions total:
+      // 0) Possibly spawn synergy-based tasks
+      // 1) Lower synergy requirement
+      // 2) Increase threat aggressiveness
+      // 3) Force agents to update target network
+      // 4) Possibly spawn a MegaTask for a random tribe
+      // 5) Grant synergy buff to a random tribe
+      switch(action) {
+        case 0:
+          if (Math.random() < 0.3) {
+            spawnMultiStepCommanderTask();
+            reward += 2;
+          }
+          break;
+        case 1:
+          if (settings.tasks.synergyRequired > 1) {
+            settings.tasks.synergyRequired--;
+            reward += 2;
+            logEvent("Commander lowered synergy requirement!");
+          }
+          break;
+        case 2:
+          settings.threat.aggressiveness += 0.05;
+          logEvent("Commander increased threat aggressiveness slightly!");
+          reward -= 1; // Negative reward, it’s riskier
+          break;
+        case 3:
+          agents.forEach(ag => ag.updateTarget());
+          reward += 3;
+          logEvent("Commander forced target network update!");
+          break;
+        case 4:
+          // Spawn a MegaTask for one random tribe
+          const randTribe = Math.floor(Math.random() * settings.tribes);
+          spawnMegaTask(randTribe);
+          reward += 3;
+          break;
+        case 5:
+          // Commander buffs synergy generation for one random tribe
+          const buffTribe = Math.floor(Math.random() * settings.tribes);
+          agents.forEach(a => {
+            if (a.tribe === buffTribe) {
+              a.synergyBuff *= 1.2; // stackable synergy buff
+            }
+          });
+          reward += 2;
+          logEvent(`Commander gave synergy buff to tribe ${buffTribe}!`);
+          break;
+      }
+
+      const nextState = [...state];
+      this.exp.push({state, action, reward, nextState, done: false});
+
+      // Train from experience if we have enough
+      if (this.exp.length > 64) {
+        this.learn();
+      }
+
+      // Decay exploration
+      if (this.epsilon > 0.05) {
+        this.epsilon *= 0.999;
+      }
+    }
+
+    learn() {
+      const batchSize = 64;
+      const batch = this.exp.slice(-batchSize);
+
+      const states = batch.map(e => e.state);
+      const actions = batch.map(e => e.action);
+      const rewards = batch.map(e => e.reward);
+      const nextStates = batch.map(e => e.nextState);
+
+      const sT = tf.tensor2d(states);
+      const nsT = tf.tensor2d(nextStates);
+
+      const currQ = this.model.predict(sT);
+      const nextQ = this.targetModel.predict(nsT);
+
+      const currData = currQ.arraySync();
+      const nextData = nextQ.arraySync();
+
+      for (let i = 0; i < batch.length; i++) {
+        const maxNext = Math.max(...nextData[i]);
+        currData[i][actions[i]] = rewards[i] + 0.99 * maxNext;
+      }
+
+      const target = tf.tensor2d(currData);
+
+      this.model.fit(sT, target, {epochs: 1, verbose: 0}).then(() => {
+        tf.dispose([sT, nsT, currQ, nextQ, target]);
+        // Periodically update target network
+        if (this.stepCount % 100 === 0) {
+          this.targetModel.setWeights(this.model.getWeights());
+        }
+      });
+    }
+  }
+
+  // ========================== SIMULATION CONTROL ==========================
+  function initializeSimulation() {
+    agents = [];
+    threats = [];
+    foods = [];
+    tasks = [];
+    threatNests = [];
+    generation = 0;
+    timeOfDay = 8;
+
+    commander = new CommanderAgent();
+
+    // Add Agents for each tribe
+    const totalAgents = 12;
+    for (let i=0; i < totalAgents; i++) {
+      const tribe = i % settings.tribes; // distribute among tribes
+      agents.push(new Agent(
+        Math.random() * canvas.width,
+        Math.random() * canvas.height,
+        tribe
+      ));
+    }
+
+    // Add some Threats
+    for (let i=0; i<3; i++) {
+      threats.push(new Threat(
+        Math.random()*canvas.width,
+        Math.random()*canvas.height
+      ));
+    }
+
+    // Add some Food
+    for (let i=0; i<5; i++) {
+      foods.push(new Food(
+        Math.random()*canvas.width,
+        Math.random()*canvas.height
+      ));
+    }
+
+    // Possibly a synergy-based Task at start
+    tasks.push(new Task(
+      Math.random() * canvas.width, 
+      Math.random() * canvas.height,
+      true,  // synergy-based
+      false, // not mega
+      null
+    ));
+
+    // Add a Threat Nest or two
+    for (let i = 0; i < 2; i++){
+      threatNests.push(new ThreatNest(
+        Math.random() * canvas.width,
+        Math.random() * canvas.height
+      ));
+    }
+  }
+
+  function updateSimulation(timestamp) {
+    const dt = timestamp - lastTimestamp;
+    lastTimestamp = timestamp;
+    fps = (1000 / dt).toFixed(1);
+
+    // Day-night cycle
+    stepTime += dt / 1000;
+    if (stepTime > 1) {
+      timeOfDay += 0.05;
+      if (timeOfDay >= 24) {
+        timeOfDay = 0;
+      }
+      stepTime = 0;
+    }
+
+    // Commander picks an action
+    commander.step(agents, threats, foods, tasks, timeOfDay);
+
+    // Update synergy
+    agents.forEach(agent => {
+      if (agent.alive) {
+        agent.updateSynergy(agents);
+      }
+    });
+
+    // Move threats & agents
+    threats.forEach(t => t.move(timeOfDay));
+    agents.forEach(a => a.move());
+
+    // Food decay
+    foods.forEach(f => f.updateDecay());
+
+    // Remove dead agents or decayed food
+    agents = agents.filter(a => a.alive);
+    foods = foods.filter(f => f.alive);
+
+    // Evaluate synergy tasks
+    completeSynergyTasksIfReady(agents);
+
+    // Threat Nests spawn new threats if synergy is high
+    const globalSynergy = getGlobalSynergy(agents);
+    threatNests.forEach(n => n.spawnThreatIfNeeded(globalSynergy));
+
+    // Clear and redraw the scene
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    threatNests.forEach(n => n.draw(ctx));
+    threats.forEach(t => t.draw(ctx));
+    foods.forEach(f => f.draw(ctx));
+    tasks.forEach(task => task.draw(ctx));
+    agents.forEach(a => a.draw(ctx));
+
+    // Render synergy scoreboard
+    updateSynergyPanel(agents);
+
+    requestAnimationFrame(updateSimulation);
+  }
+
+  // Sums synergy across *all* agents (global synergy)
+  function getGlobalSynergy(agentArray) {
+    return agentArray.reduce((sum, ag) => sum + ag.synergy, 0);
+  }
+
+  // Check synergy-based tasks for completion
+  function completeSynergyTasksIfReady(agentArray) {
+    const globalSynergy = getGlobalSynergy(agentArray);
+
+    // We'll also track synergy by tribe
+    const synergyByTribe = new Array(settings.tribes).fill(0);
+    for (let ag of agentArray) {
+      synergyByTribe[ag.tribe] += ag.synergy;
+    }
+
+    // Filter tasks that remain
+    tasks = tasks.filter(task => {
+      if (!task.requiresSynergy) {
+        return true; // not synergy-based, always remain
+      }
+      // If synergy-based
+      if (!task.isMegaTask) {
+        // Normal synergy-based task
+        if (globalSynergy >= settings.tasks.synergyRequired) {
+          logEvent("A synergy-based Task was completed due to total synergy!");
+          return false;
+        } else {
+          return true;
+        }
+      } else {
+        // MegaTask
+        // Must check synergy of the target tribe, or if none specified, use global
+        const required = settings.tasks.megaTaskSynergyReq;
+        const tribe = task.tribeForMegaTask;
+        if (tribe !== null) {
+          if (synergyByTribe[tribe] >= required) {
+            logEvent(`A MegaTask for Tribe ${tribe} was completed! Tribe synergy +1 bonus!`);
+            // Add synergy bonus to that tribe’s agents
+            agentArray.forEach(a => {
+              if (a.tribe === tribe) {
+                a.synergy = Math.min(
+                  a.synergy + 1, 
+                  settings.synergy.maxSynergyPerAgent
+                );
+              }
+            });
+            return false;
+          } else {
+            return true;
+          }
+        } else {
+          // If no tribe specified, fall back to global synergy
+          if (globalSynergy >= required) {
+            logEvent("A MegaTask with no tribe specified was completed by global synergy!");
+            return false;
+          } else {
+            return true;
+          }
+        }
+      }
+    });
+  }
+
+  // Update scoreboard with synergy per tribe and total synergy
+  function updateSynergyPanel(agentArray) {
+    const synergyPanel = document.getElementById('synergyPanel');
+    synergyPanel.innerHTML = "";
+
+    // Summaries
+    const synergyByTribe = new Array(settings.tribes).fill(0);
+    agentArray.forEach(a => {
+      synergyByTribe[a.tribe] += a.synergy;
+    });
+    const globalSynergy = synergyByTribe.reduce((sum, val) => sum + val, 0);
+
+    // Show global synergy first
+    const globalLine = document.createElement('div');
+    globalLine.textContent = `Global Synergy: ${globalSynergy.toFixed(2)}`;
+    synergyPanel.appendChild(globalLine);
+
+    // Show synergy by tribe
+    synergyByTribe.forEach((val, tribeIndex) => {
+      const line = document.createElement('div');
+      line.textContent = `Tribe ${tribeIndex} Synergy: ${val.toFixed(2)}`;
+      synergyPanel.appendChild(line);
+    });
+
+    // Optionally show FPS or time of day
+    const timeLine = document.createElement('div');
+    timeLine.textContent = `Time of Day: ${timeOfDay.toFixed(2)}h (FPS: ${fps})`;
+    synergyPanel.appendChild(timeLine);
+  }
+
+  // Start simulation
+  initializeSimulation();
+  requestAnimationFrame(updateSimulation);
+  </script>
+</body>
+</html>
