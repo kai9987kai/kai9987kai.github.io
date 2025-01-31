@@ -2,52 +2,51 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Drag and Drop Animation Builder – Multi-Shape Advanced with Emoji Tools</title>
+  <title>Animation Builder – Advanced Multi-Shape with New Tools</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <style>
-    /* Basic Reset & Layout */
+    /* --- Basic Reset & Layout --- */
+    * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
-      margin: 0;
-      padding: 0;
+      font-family: sans-serif;
+      background-color: #f0f0f0;
       display: flex;
       flex-direction: column;
       align-items: center;
-      font-family: sans-serif;
-      background-color: #f0f0f0;
+      padding: 10px;
       overflow: auto;
     }
-    /* Increase canvas/container size */
+    /* --- Animation Container (80% of viewport) --- */
     #animationContainer {
+      position: relative;
       width: 80vw;
       height: 80vh;
-      background-color: #ffffff;
-      border: 1px solid #000;
-      position: relative;
-      margin-top: 20px;
+      background-color: #fff;
+      border: 2px solid #000;
+      margin-bottom: 20px;
     }
-    /* Draggable shape style (supports translation, rotation & scale) */
+    /* --- Draggable Shapes --- */
     .draggable {
+      position: absolute;
       width: 50px;
       height: 50px;
       background-color: #3498db;
-      position: absolute;
-      left: 0;
-      top: 0;
+      background-size: cover;
       transition: left 0.8s ease, top 0.8s ease, transform 0.8s ease, background-color 0.8s ease;
       border-radius: 0;
-      background-size: cover;
       display: flex;
       align-items: center;
       justify-content: center;
-      font-size: 24px;
     }
-    /* Controls styling */
+    .selected { outline: 3px solid #ff9800; }
+    /* --- Controls Panel --- */
     #controls {
+      width: 80vw;
       display: flex;
       flex-wrap: wrap;
       justify-content: center;
-      width: 80vw;
-      margin-top: 20px;
+      gap: 5px;
+      margin-bottom: 10px;
     }
     #controls button,
     #controls select,
@@ -55,63 +54,75 @@
     #controls input[type="color"],
     #controls input[type="text"],
     #controls input[type="range"] {
-      margin: 5px;
       padding: 5px 10px;
       background-color: #3498db;
       color: #fff;
       border: none;
-      cursor: pointer;
       border-radius: 4px;
+      cursor: pointer;
       font-size: 14px;
     }
-    /* New: Emoji Tools */
-    #emojiTools {
-      margin: 5px;
+    /* --- New Tools: Duplicate, Lock, Flip, Reset Timeline, Timeline Scrubber, Preview All --- */
+    #extraControls {
       display: flex;
       flex-wrap: wrap;
+      gap: 5px;
       justify-content: center;
+      margin-bottom: 10px;
+    }
+    /* --- Emoji Tools Panel --- */
+    #emojiTools {
+      display: flex;
+      gap: 5px;
+      flex-wrap: wrap;
+      justify-content: center;
+      margin-bottom: 10px;
     }
     #emojiTools button {
-      margin: 3px;
-      padding: 5px;
-      font-size: 24px;
       background-color: #f1c40f;
       border: none;
       border-radius: 50%;
+      font-size: 24px;
+      padding: 5px;
       cursor: pointer;
     }
-    /* Active Shape selector */
-    #activeShapeSelector {
-      margin: 5px;
-      padding: 5px 10px;
-      background-color: #2ecc71;
-      color: #fff;
-      border: none;
-      cursor: pointer;
-      border-radius: 4px;
-      font-size: 14px;
-    }
-    /* Timeline styling */
+    /* --- Timeline styling --- */
     #timeline {
-      margin-top: 20px;
+      width: 80vw;
       display: flex;
       flex-wrap: wrap;
       justify-content: center;
+      margin-top: 10px;
     }
     .timeline-btn {
-      margin: 5px;
       padding: 5px 10px;
       background-color: #2ecc71;
-      color: #fff;
       border: none;
       border-radius: 4px;
+      color: #fff;
       font-size: 12px;
       cursor: pointer;
     }
+    /* --- Free Draw Overlay Canvas --- */
+    #freeDrawCanvas {
+      position: absolute;
+      top: 0;
+      left: 0;
+      z-index: 999;
+      pointer-events: none;
+    }
+    /* --- FPS Control --- */
+    #fpsControl {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      margin: 5px;
+    }
+    #fpsSlider { width: 100px; }
   </style>
 </head>
 <body>
-  <!-- Animation Container -->
+  <!-- Animation Container (no static square) -->
   <div id="animationContainer"></div>
   
   <!-- Controls Panel -->
@@ -133,6 +144,25 @@
     <button onclick="pauseAnimation()">Pause</button>
     <button onclick="saveAnimation()">Save Animation</button>
     <button onclick="openAnimation()">Open Animation</button>
+    <button id="bgColorEditor" onclick="changeBackgroundColor()">Change Background</button>
+    <button id="freeDrawToggle" onclick="toggleFreeDraw()">Free Draw Mode</button>
+    <div id="fpsControl">
+      <label for="fpsSlider">Target FPS:</label>
+      <input type="range" id="fpsSlider" min="10" max="60" step="1" value="60" onchange="updateTargetFPS(this.value)">
+      <span id="fpsDisplay">60 FPS</span>
+    </div>
+  </div>
+  
+  <!-- Extra Tools Panel (New Innovations) -->
+  <div id="extraControls">
+    <button onclick="duplicateShape()">Duplicate Shape</button>
+    <button onclick="toggleLock()">Lock/Unlock Shape</button>
+    <button onclick="flipShape('horizontal')">Flip Horizontal</button>
+    <button onclick="flipShape('vertical')">Flip Vertical</button>
+    <button onclick="resetTimeline()">Reset Timeline</button>
+    <label for="timelineScrubber">Scrub Timeline:</label>
+    <input type="range" id="timelineScrubber" min="0" max="0" step="1" value="0" onchange="scrubTimeline(this.value)">
+    <button onclick="previewAll()">Preview All</button>
   </div>
   
   <!-- Emoji Tools Panel -->
@@ -142,64 +172,93 @@
     <button onclick="addEmojiShape('🔥')">🔥</button>
     <button onclick="addEmojiShape('🎉')">🎉</button>
     <button onclick="addEmojiShape('💎')">💎</button>
-    <!-- Add more emojis as desired -->
   </div>
   
   <!-- Timeline -->
   <div id="timeline"></div>
   
+  <!-- Free Draw Overlay Canvas -->
+  <canvas id="freeDrawCanvas"></canvas>
+  
   <script>
-    /******************************************************
-     * Multi-Shape Drag and Drop Animation Builder – Advanced & Multi-Shape
-     ******************************************************/
-    // Global: an array of shape objects; each shape object has: { element, keyframes }
-    let shapeObjects = [];
-    let activeShape = null; // currently selected shape object
-    // To capture click coordinates for new shapes
-    let lastClickPos = { x: 200, y: 200 }; // default center of 400x400 container
+    /*******************************************************
+     * Advanced Multi-Shape Animation Builder – Reimagined
+     * Features:
+     * - Multi-shape support with active selection.
+     * - Draggable shapes with rotate & scale controls.
+     * - Keyframe timeline with copy/paste.
+     * - Local save/open of animation state.
+     * - New tools: duplicate, lock/unlock, flip, reset timeline, timeline scrubber, preview all.
+     * - Background color editor, free draw mode, and FPS controls.
+     *******************************************************/
     
-    // Update lastClickPos on container click
-    document.getElementById('animationContainer').addEventListener('click', (e) => {
-      const rect = e.currentTarget.getBoundingClientRect();
-      lastClickPos = {
-        x: e.clientX - rect.left,
-        y: e.clientY - rect.top
-      };
+    let shapeObjects = [];  // Each shape: { element, keyframes, locked: false }
+    let activeShape = null;
+    let copiedKeyframe = null;
+    let targetFPS = 60;
+    let lastFrameTime = performance.now();
+    
+    // For new shape placement: store last clicked coordinates in container
+    let lastClickPos = { x: 200, y: 200 };
+    const container = document.getElementById('animationContainer');
+    container.addEventListener('click', (e) => {
+      const rect = container.getBoundingClientRect();
+      lastClickPos = { x: e.clientX - rect.left, y: e.clientY - rect.top };
     });
     
-    // Add new shape at last click position (or if emoji version, handled below)
+    // Free Draw mode variables
+    let freeDrawActive = false;
+    const freeDrawCanvas = document.getElementById('freeDrawCanvas');
+    const freeDrawCtx = freeDrawCanvas.getContext('2d');
+    freeDrawCanvas.width = container.clientWidth;
+    freeDrawCanvas.height = container.clientHeight;
+    freeDrawCanvas.style.display = 'none';
+    let drawing = false;
+    freeDrawCanvas.addEventListener('mousedown', () => { if(freeDrawActive) drawing = true; });
+    freeDrawCanvas.addEventListener('mouseup', () => { drawing = false; });
+    freeDrawCanvas.addEventListener('mousemove', (e) => {
+      if(freeDrawActive && drawing) {
+        const rect = freeDrawCanvas.getBoundingClientRect();
+        const x = e.clientX - rect.left;
+        const y = e.clientY - rect.top;
+        freeDrawCtx.fillStyle = "#000";
+        freeDrawCtx.beginPath();
+        freeDrawCtx.arc(x, y, 3, 0, Math.PI*2);
+        freeDrawCtx.fill();
+      }
+    });
+    
+    // Update freeDrawCanvas size on window resize
+    window.addEventListener('resize', () => {
+      freeDrawCanvas.width = container.clientWidth;
+      freeDrawCanvas.height = container.clientHeight;
+    });
+    
+    // --- Shape Management ---
     function addNewShape() {
       const newShape = document.createElement('div');
       newShape.classList.add('draggable');
-      // Place new shape at lastClickPos (relative to container)
       newShape.style.left = `${lastClickPos.x}px`;
       newShape.style.top = `${lastClickPos.y}px`;
-      // Default transform: no rotation, scale 1
       newShape.style.transform = `rotate(0deg) scale(1)`;
-      // Append to container
-      document.getElementById('animationContainer').appendChild(newShape);
-      // Create shape object with its own keyframes array
-      const shapeObj = { element: newShape, keyframes: [] };
+      container.appendChild(newShape);
+      const shapeObj = { element: newShape, keyframes: [], locked: false, flipH: false, flipV: false };
       shapeObjects.push(shapeObj);
       updateActiveShapeSelector();
       changeActiveShape(shapeObjects.length - 1);
       addDragHandlers(newShape);
     }
     
-    // Add new emoji shape (sets innerHTML to emoji)
     function addEmojiShape(emoji) {
       addNewShape();
-      // Set the new shape's inner content to the emoji
       activeShape.element.textContent = emoji;
-      // Increase font-size for clarity
       activeShape.element.style.fontSize = "32px";
     }
     
-    // Update the "Active Shape" selector options
     function updateActiveShapeSelector() {
       const selector = document.getElementById('activeShapeSelector');
       selector.innerHTML = "";
-      shapeObjects.forEach((shapeObj, index) => {
+      shapeObjects.forEach((obj, index) => {
         const opt = document.createElement('option');
         opt.value = index;
         opt.textContent = "Shape " + (index + 1);
@@ -207,29 +266,93 @@
       });
     }
     
-    // Change the active shape based on dropdown selection
     function changeActiveShape(index) {
       activeShape = shapeObjects[parseInt(index)];
       updateControlsFromActiveShape();
       updateTimeline();
+      shapeObjects.forEach((obj, idx) => {
+        obj.element.classList.toggle('selected', idx === parseInt(index));
+      });
     }
     
-    // Get current properties of the active shape (relative to container)
+    function duplicateShape() {
+      if (!activeShape) return;
+      const clone = activeShape.element.cloneNode(true);
+      // Place clone slightly offset
+      clone.style.left = parseFloat(activeShape.element.style.left) + 20 + "px";
+      clone.style.top = parseFloat(activeShape.element.style.top) + 20 + "px";
+      container.appendChild(clone);
+      const newObj = { element: clone, keyframes: JSON.parse(JSON.stringify(activeShape.keyframes)), locked: false, flipH: activeShape.flipH, flipV: activeShape.flipV };
+      shapeObjects.push(newObj);
+      updateActiveShapeSelector();
+      changeActiveShape(shapeObjects.length - 1);
+      addDragHandlers(clone);
+    }
+    
+    function toggleLock() {
+      if (!activeShape) return;
+      activeShape.locked = !activeShape.locked;
+      activeShape.element.style.opacity = activeShape.locked ? 0.5 : 1;
+    }
+    
+    function flipShape(direction) {
+      if (!activeShape) return;
+      const el = activeShape.element;
+      let currTransform = window.getComputedStyle(el).transform;
+      // Use CSS scaleX or scaleY for flip
+      if(direction === 'horizontal') {
+        activeShape.flipH = !activeShape.flipH;
+      } else if(direction === 'vertical') {
+        activeShape.flipV = !activeShape.flipV;
+      }
+      // Combine existing rotation, scale, and flips
+      const baseProps = getCurrentShapeProps();
+      let scaleX = activeShape.flipH ? -baseProps.scale : baseProps.scale;
+      let scaleY = activeShape.flipV ? -baseProps.scale : baseProps.scale;
+      // Apply transform: note that rotate is applied and then scale.
+      el.style.transform = `rotate(${baseProps.rotate}deg) scale(${scaleX}, ${scaleY})`;
+      scaleInput.value = baseProps.scale; // Reset slider display
+    }
+    
+    function resetTimeline() {
+      if(!activeShape) return;
+      activeShape.keyframes = [];
+      updateTimeline();
+    }
+    
+    function scrubTimeline(value) {
+      if (!activeShape || activeShape.keyframes.length === 0) return;
+      const index = parseInt(value);
+      if(index < activeShape.keyframes.length) {
+        goToKeyframe(index);
+      }
+    }
+    
+    function previewAll() {
+      // Preview all shapes: for simplicity, run playback for each shape sequentially (or simultaneously)
+      shapeObjects.forEach((obj) => {
+        // For each shape, if it has keyframes, animate it
+        if(obj.keyframes.length >= 2) {
+          animateShapePlayback(obj);
+        }
+      });
+    }
+    
+    // --- Controls for active shape ---
     function getCurrentShapeProps() {
-      if(!activeShape) return {};
+      if (!activeShape) return {};
       const rect = activeShape.element.getBoundingClientRect();
-      const containerRect = document.getElementById('animationContainer').getBoundingClientRect();
+      const containerRect = container.getBoundingClientRect();
       const left = rect.left - containerRect.left;
       const top = rect.top - containerRect.top;
-      // Get rotation and scale from computed transform
       let style = window.getComputedStyle(activeShape.element).transform;
       let rotate = 0, scale = 1;
-      if(style && style !== "none") {
+      if (style && style !== 'none') {
         const values = style.split('(')[1].split(')')[0].split(',');
         const a = parseFloat(values[0]);
         const b = parseFloat(values[1]);
-        rotate = Math.round(Math.atan2(b, a) * (180/Math.PI));
-        scale = Math.sqrt(a*a + b*b);
+        rotate = Math.round(Math.atan2(b, a) * (180 / Math.PI));
+        scale = Math.sqrt(a * a + b * b);
       } else {
         rotate = parseFloat(rotateInput.value) || 0;
         scale = parseFloat(scaleInput.value) || 1;
@@ -240,36 +363,36 @@
         rotate,
         scale,
         color: activeShape.element.style.backgroundColor || "#3498db",
-        image: activeShape.element.style.backgroundImage ? activeShape.element.style.backgroundImage.slice(5,-2) : "",
+        image: activeShape.element.style.backgroundImage ? activeShape.element.style.backgroundImage.slice(5, -2) : "",
         shape: shapeSelector.value,
         speed: speedInput.value || 1
       };
     }
     
-    // Update controls to reflect the active shape's current properties
     function updateControlsFromActiveShape() {
-      if(!activeShape) return;
+      if (!activeShape) return;
       const props = getCurrentShapeProps();
       shapeSelector.value = props.shape;
       rotateInput.value = props.rotate;
       scaleInput.value = props.scale;
-      speedInput.value = props.speed || 1;
+      speedInput.value = props.speed;
       colorInput.value = props.color;
       imageInput.value = props.image;
     }
     
-    // Set properties on the active shape element
     function setShapeProperties(props) {
-      if(!activeShape) return;
+      if (!activeShape) return;
       const el = activeShape.element;
-      if(props.left !== undefined) el.style.left = `${props.left}px`;
-      if(props.top !== undefined) el.style.top = `${props.top}px`;
-      if(props.rotate !== undefined && props.scale !== undefined) {
-        el.style.transform = `rotate(${props.rotate}deg) scale(${props.scale})`;
+      if (props.left !== undefined) el.style.left = `${props.left}px`;
+      if (props.top !== undefined) el.style.top = `${props.top}px`;
+      if (props.rotate !== undefined && props.scale !== undefined) {
+        let scaleX = activeShape.flipH ? -props.scale : props.scale;
+        let scaleY = activeShape.flipV ? -props.scale : props.scale;
+        el.style.transform = `rotate(${props.rotate}deg) scale(${scaleX}, ${scaleY})`;
       }
-      if(props.color !== undefined) el.style.backgroundColor = props.color;
-      if(props.image !== undefined) {
-        if(props.image.trim() !== ""){
+      if (props.color !== undefined) el.style.backgroundColor = props.color;
+      if (props.image !== undefined) {
+        if (props.image.trim() !== "") {
           el.style.backgroundImage = `url('${props.image}')`;
           el.style.backgroundSize = 'cover';
           el.style.backgroundColor = 'transparent';
@@ -284,22 +407,23 @@
       }
     }
     
-    // Timeline update for active shape
+    // --- Timeline Functions ---
     function updateTimeline() {
       timeline.innerHTML = "";
-      if(!activeShape) return;
+      if (!activeShape) return;
       activeShape.keyframes.forEach((kf, index) => {
         const btn = document.createElement('button');
         btn.className = 'timeline-btn';
-        btn.textContent = `${index+1}: ${kf.time}`;
+        btn.textContent = `${index + 1}: ${kf.time}`;
         btn.addEventListener('click', () => goToKeyframe(index));
         timeline.appendChild(btn);
       });
+      // Update scrubber max value
+      document.getElementById('timelineScrubber').max = Math.max(activeShape.keyframes.length - 1, 0);
     }
     
-    // Add a keyframe for active shape using current controls
     function addKeyframe() {
-      if(!activeShape) return;
+      if (!activeShape) return;
       const currentTime = new Date().toLocaleTimeString();
       const props = getCurrentShapeProps();
       const kf = {
@@ -317,13 +441,13 @@
     }
     
     function deleteKeyframe() {
-      if(!activeShape || activeShape.keyframes.length === 0) return;
+      if (!activeShape || activeShape.keyframes.length === 0) return;
       activeShape.keyframes.pop();
       updateTimeline();
     }
     
     function goToKeyframe(index) {
-      if(!activeShape) return;
+      if (!activeShape) return;
       const kf = activeShape.keyframes[index];
       setShapeProperties({
         left: kf.position.x,
@@ -341,13 +465,26 @@
       imageInput.value = kf.image;
     }
     
-    /********* Smooth Playback with Interpolation *********/
+    function copyKeyframe() {
+      if (!activeShape || activeShape.keyframes.length === 0) return;
+      copiedKeyframe = activeShape.keyframes[activeShape.keyframes.length - 1];
+      alert("Keyframe copied.");
+    }
+    
+    function pasteKeyframe() {
+      if (!activeShape || !copiedKeyframe) return;
+      const newKF = { ...copiedKeyframe, time: new Date().toLocaleTimeString() };
+      activeShape.keyframes.push(newKF);
+      updateTimeline();
+      alert("Keyframe pasted.");
+    }
+    
+    /********* Smooth Playback *********/
     let playbackActive = false, playRequest;
     let playbackIndex = 0, playbackStartTime, playbackDuration, startKF, endKF;
-    
     function playAnimation() {
-      if(!activeShape || activeShape.keyframes.length < 2) {
-        alert("Need at least 2 keyframes for playback.");
+      if (!activeShape || activeShape.keyframes.length < 2) {
+        alert("At least 2 keyframes are needed for playback.");
         return;
       }
       playbackActive = true;
@@ -358,12 +495,11 @@
       playbackDuration = endKF.speed * 1000;
       animatePlayback();
     }
-    
     function animatePlayback() {
-      if(!playbackActive) return;
+      if (!playbackActive) return;
       const now = performance.now();
       const t = (now - playbackStartTime) / playbackDuration;
-      if(t < 1) {
+      if (t < 1) {
         const lerp = (a, b, t) => a + (b - a) * t;
         const posX = lerp(startKF.position.x, endKF.position.x, t);
         const posY = lerp(startKF.position.y, endKF.position.y, t);
@@ -374,7 +510,7 @@
         playRequest = requestAnimationFrame(animatePlayback);
       } else {
         playbackIndex++;
-        if(playbackIndex >= activeShape.keyframes.length - 1) {
+        if (playbackIndex >= activeShape.keyframes.length - 1) {
           playbackActive = false;
           return;
         }
@@ -385,7 +521,6 @@
         playRequest = requestAnimationFrame(animatePlayback);
       }
     }
-    
     function pauseAnimation() {
       playbackActive = false;
       cancelAnimationFrame(playRequest);
@@ -394,56 +529,142 @@
     /********* Draggable Behavior *********/
     function addDragHandlers(el) {
       let isDragging = false;
-      el.addEventListener('mousedown', () => { isDragging = true; });
+      el.addEventListener('mousedown', () => { 
+        if(activeShape && !activeShape.locked) isDragging = true; 
+      });
       window.addEventListener('mouseup', () => { isDragging = false; });
-      animationContainer.addEventListener('mousemove', (e) => {
-        if(isDragging) {
-          const rect = animationContainer.getBoundingClientRect();
+      container.addEventListener('mousemove', (e) => {
+        if (isDragging) {
+          const rect = container.getBoundingClientRect();
           const x = e.clientX - rect.left;
           const y = e.clientY - rect.top;
           setShapeProperties({ left: x, top: y });
         }
       });
+      // Click to select shape
+      el.addEventListener('click', (e) => {
+        e.stopPropagation();
+        shapeObjects.forEach((obj, idx) => {
+          obj.element.classList.remove('selected');
+        });
+        el.classList.add('selected');
+        const index = shapeObjects.findIndex(obj => obj.element === el);
+        changeActiveShape(index);
+      });
     }
     
-    /********* Local Save and Open *********/
+    /********* Local Save/Open *********/
     function saveAnimation() {
-      // Save keyframes for all shapes
-      const state = shapeObjects.map(shapeObj => shapeObj.keyframes);
+      const state = shapeObjects.map(obj => obj.keyframes);
       localStorage.setItem("animationState", JSON.stringify(state));
       alert("Animation state saved locally.");
     }
-    
     function openAnimation() {
       const state = localStorage.getItem("animationState");
-      if(state) {
+      if (state) {
         const allKeyframes = JSON.parse(state);
         allKeyframes.forEach((kfArray, index) => {
-          if(shapeObjects[index]) {
+          if (shapeObjects[index]) {
             shapeObjects[index].keyframes = kfArray;
           }
         });
-        if(shapeObjects.length > 0) changeActiveShape(0);
+        if (shapeObjects.length > 0) changeActiveShape(0);
         updateTimeline();
         alert("Animation state loaded.");
       } else {
         alert("No saved animation found.");
       }
     }
-    
     window.addEventListener('beforeunload', () => {
-      const state = shapeObjects.map(shapeObj => shapeObj.keyframes);
+      const state = shapeObjects.map(obj => obj.keyframes);
       localStorage.setItem("animationState", JSON.stringify(state));
     });
     
+    /********* New: Background Color Editor *********/
+    function changeBackgroundColor() {
+      const newColor = prompt("Enter new background color (e.g., #ffffff or red):", "#ffffff");
+      if (newColor) {
+        container.style.backgroundColor = newColor;
+      }
+    }
+    
+    /********* New: Free Draw Mode *********/
+    function toggleFreeDraw() {
+      freeDrawActive = !freeDrawActive;
+      freeDrawCanvas.style.display = freeDrawActive ? 'block' : 'none';
+      if (freeDrawActive) freeDrawCtx.clearRect(0, 0, freeDrawCanvas.width, freeDrawCanvas.height);
+    }
+    
+    /********* New: FPS Controls *********/
+    function updateTargetFPS(val) {
+      targetFPS = parseInt(val);
+      document.getElementById('fpsDisplay').textContent = targetFPS + " FPS";
+    }
+    
+    /********* New: Duplicate, Lock, and Flip Controls *********/
+    function duplicateShape() { if(activeShape) duplicateShape(); } // duplicateShape() already defined above
+    // (duplicateShape() is available in extra controls below)
+    
+    /********* Preview All Shapes *********/
+    function previewAll() {
+      shapeObjects.forEach(obj => {
+        if (obj.keyframes.length >= 2) {
+          animateShapePlayback(obj);
+        }
+      });
+    }
+    function animateShapePlayback(shapeObj) {
+      let index = 0;
+      const animate = () => {
+        if (index < shapeObj.keyframes.length - 1) {
+          const startKF = shapeObj.keyframes[index];
+          const endKF = shapeObj.keyframes[index + 1];
+          const startTime = performance.now();
+          const duration = endKF.speed * 1000;
+          const step = () => {
+            const now = performance.now();
+            const t = (now - startTime) / duration;
+            if (t < 1) {
+              const lerp = (a, b, t) => a + (b - a) * t;
+              const posX = lerp(startKF.position.x, endKF.position.x, t);
+              const posY = lerp(startKF.position.y, endKF.position.y, t);
+              const rotation = lerp(parseFloat(startKF.rotate), parseFloat(endKF.rotate), t);
+              const scale = lerp(parseFloat(startKF.scale), parseFloat(endKF.scale), t);
+              const color = (t < 0.5) ? startKF.color : endKF.color;
+              shapeObj.element.style.left = posX + "px";
+              shapeObj.element.style.top = posY + "px";
+              let scaleX = shapeObj.flipH ? -scale : scale;
+              let scaleY = shapeObj.flipV ? -scale : scale;
+              shapeObj.element.style.transform = `rotate(${rotation}deg) scale(${scaleX}, ${scaleY})`;
+              shapeObj.element.style.backgroundColor = color;
+              if(endKF.image && endKF.image.trim() !== ""){
+                shapeObj.element.style.backgroundImage = `url('${endKF.image}')`;
+                shapeObj.element.style.backgroundSize = 'cover';
+                shapeObj.element.style.backgroundColor = 'transparent';
+              } else {
+                shapeObj.element.style.backgroundImage = 'none';
+              }
+              requestAnimationFrame(step);
+            } else {
+              index++;
+              if(index < shapeObj.keyframes.length - 1) {
+                animate();
+              }
+            }
+          };
+          step();
+        }
+      };
+      animate();
+    }
+    
     /********* Initialization *********/
-    // Automatically add one shape on load and load saved state if available
     window.addEventListener('load', () => {
       addNewShape();
       const state = localStorage.getItem("animationState");
-      if(state) {
+      if (state) {
         const allKeyframes = JSON.parse(state);
-        if(allKeyframes.length > 0) {
+        if (allKeyframes.length > 0) {
           shapeObjects[0].keyframes = allKeyframes[0];
           updateTimeline();
         }
