@@ -24,7 +24,7 @@
       display: flex;
       flex-direction: column;
     }
-    /* Chat container (left side) */
+    /* Chat container */
     #chatContainer {
       flex: 1;
       overflow-y: auto;
@@ -32,19 +32,18 @@
       background: var(--secondary-bg);
       position: relative;
     }
-    /* Chat log area with room for the step bar */
     #chatLog {
       max-height: calc(100% - 2rem);
       overflow-y: auto;
     }
-    /* Step bar at the bottom of chat container */
+    /* Step bar */
     #stepBar {
       padding: 0.5rem;
       text-align: center;
       background: var(--primary-bg);
       border-top: 1px solid #3d3d3d;
     }
-    /* Prompt bar – only text input and send button */
+    /* Prompt bar */
     #inputContainer {
       display: flex;
       gap: 0.3rem;
@@ -87,12 +86,12 @@
       grid-template-columns: 1fr 1fr;
       gap: 0.5rem;
     }
-    /* New Reset Model button placed in controls */
+    /* Reset Model button */
     #controls button.resetBtn {
       grid-column: span 2;
       background: #d9534f;
     }
-    /* Info panel for loss chart and step count (below controls) */
+    /* Info panel */
     #infoPanel {
       top: 300px;
       right: 1rem;
@@ -102,13 +101,13 @@
       width: 100%;
       height: 200px;
     }
-    /* Performance panel at bottom right */
+    /* Performance panel */
     #performancePanel {
       bottom: 1rem;
       right: 1rem;
       width: 280px;
     }
-    /* Style for feedback buttons */
+    /* Feedback button style */
     .feedbackBtn {
       background: transparent;
       border: none;
@@ -150,13 +149,12 @@
   
   <script>
     (function(){
-      // Set the backend to WebGL for GPU acceleration.
+      // Set backend to WebGL for GPU acceleration and force lower precision if needed.
       tf.setBackend('webgl');
-      // Force lower-precision textures if necessary.
       tf.env().set('WEBGL_FORCE_F16_TEXTURES', true);
 
       // Wrap all code in an IIFE.
-
+      
       // Define responses only once.
       const responses = [
         "Here's a joke: ",
@@ -199,7 +197,7 @@
         }
       }
 
-      // --- Safe Fetch Function with Fallback ---
+      // --- Safe Fetch with Fallback ---
       async function safeFetch(url, options = {}) {
         try {
           const response = await fetch(url, options);
@@ -319,14 +317,13 @@
       }
       function logEvent(msg) {
         console.log("[CHAT LOG]:", msg);
-        // Optionally, store recent logs in localStorage for later inspection.
         let logs = localStorage.getItem("chatLogs");
         logs = logs ? JSON.parse(logs) : [];
         logs.push({ time: new Date().toISOString(), msg });
         localStorage.setItem("chatLogs", JSON.stringify(logs.slice(-100)));
       }
 
-      // --- CommanderAgent Class ---
+      // --- CommanderAgent Class with Adaptive LR ---
       class CommanderAgent {
         constructor() {
           this.stepCount = 0;
@@ -342,7 +339,6 @@
             this.targetModel.setWeights(this.model.getWeights());
           } catch (err) {
             console.error("Model construction error:", err);
-            // Fallback: switch to lower precision if memory error occurs.
             tf.env().set('WEBGL_FORCE_F16_TEXTURES', true);
             this.model = this.buildCommanderDQN();
             this.targetModel = this.buildCommanderDQN();
@@ -350,10 +346,11 @@
           }
           this.lossHistory = [];
           this.lossData = [];
+          this.recentLossAvg = null;
         }
         buildCommanderDQN() {
           const model = tf.sequential();
-          // Original large model: hidden layers of 32768, 16384, 8192, 4096, 2048, 1024 units.
+          // Very large model: hidden layers of 32768, 16384, 8192, 4096, 2048, 1024 units.
           model.add(tf.layers.dense({ units: 32768, inputShape: [9] }));
           model.add(tf.layers.batchNormalization());
           model.add(tf.layers.leakyReLU({ alpha: 0.1 }));
@@ -438,9 +435,17 @@
             const loss = info.history.loss[0];
             this.lossHistory.push(loss);
             this.lossData.push(loss);
+            // Update moving average of loss.
+            const recentLosses = this.lossData.slice(-10);
+            this.recentLossAvg = recentLosses.reduce((a, b) => a + b, 0) / recentLosses.length;
             document.getElementById("lossDisplay").textContent = "Loss: " + loss.toFixed(4);
             updateLossChart(this.lossData);
-            if (loss > 0.1) this.learningRate *= 0.98; else this.learningRate *= 1.02;
+            // Adaptive learning rate: If recent loss is not improving, reduce LR slightly.
+            if (this.recentLossAvg && this.recentLossAvg > 0.1) {
+              this.learningRate *= 0.98;
+            } else {
+              this.learningRate *= 1.02;
+            }
             this.model.optimizer.learningRate = this.learningRate;
             if (this.stepCount % 100 === 0) {
               const tau = 0.1;
@@ -493,9 +498,9 @@
         }
       });
 
-      // Reset model: Clear current model and localStorage backup, then reload the page.
+      // Reset model: Clear localStorage backups and reload.
       window.resetModel = function() {
-        if (confirm("This will reset the model and clear backup data. Continue?")) {
+        if (confirm("This will reset the model and clear backups. Continue?")) {
           localStorage.removeItem("backup-model");
           localStorage.removeItem("performanceMetrics");
           location.reload();
@@ -561,10 +566,14 @@
       }
       preTrainChatbot();
 
-      // Background training every 30 seconds.
+      // Background training: every 30 seconds run extra training.
       setInterval(() => {
-        commander.trainExtra();
-        updatePerformancePanel();
+        // Randomize delay slightly (±20%) to avoid synchronized spikes.
+        const delay = 30000 * (0.8 + Math.random() * 0.4);
+        setTimeout(() => {
+          commander.trainExtra();
+          updatePerformancePanel();
+        }, delay);
       }, 30000);
 
       // Every 20 seconds, fetch random data from additional APIs.
@@ -593,7 +602,7 @@
 
       updatePerformancePanel();
 
-      // Auto-backup model and metrics to localStorage every 60 seconds.
+      // Auto-backup: every 60 seconds save model and performance metrics to localStorage.
       setInterval(async () => {
         try {
           await commander.model.save('localstorage://backup-model');
