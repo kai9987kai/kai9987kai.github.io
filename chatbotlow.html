@@ -1,0 +1,557 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Actively Improving AI Chatbot – Advanced & Optimized</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <!-- Chart.js for live loss chart -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <!-- TensorFlow.js -->
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest"></script>
+  <style>
+    :root {
+      --primary-bg: #1a1a1a;
+      --secondary-bg: #2d2d2d;
+      --accent: #4a90e2;
+    }
+    html, body {
+      margin: 0;
+      padding: 0;
+      background: var(--primary-bg);
+      color: #fff;
+      font-family: 'Segoe UI', sans-serif;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+    /* Chat container occupies most of the left side */
+    #chatContainer {
+      flex: 1;
+      overflow-y: auto;
+      padding: 1rem;
+      background: var(--secondary-bg);
+      position: relative;
+    }
+    /* Chat log area with room for the step bar */
+    #chatLog {
+      max-height: calc(100% - 2rem);
+      overflow-y: auto;
+    }
+    /* Step bar placed at the bottom of chat container */
+    #stepBar {
+      padding: 0.5rem;
+      text-align: center;
+      background: var(--primary-bg);
+      border-top: 1px solid #3d3d3d;
+    }
+    /* Prompt bar (input area) – only contains input and send button */
+    #inputContainer {
+      display: flex;
+      gap: 0.3rem;
+      padding: 0.5rem;
+      background: var(--primary-bg);
+    }
+    #userInput {
+      flex: 1;
+      padding: 0.4rem;
+      font-size: 14px;
+      border: 1px solid #3d3d3d;
+      border-radius: 4px;
+      background: var(--secondary-bg);
+      color: #fff;
+    }
+    #sendButton {
+      padding: 0.4rem 0.8rem;
+      background: var(--accent);
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 14px;
+      transition: opacity 0.2s;
+    }
+    #sendButton:hover { opacity: 0.9; }
+    /* Fixed panels: controls on the right, info panel (loss chart & step count) below controls, performance panel at bottom right */
+    #controls, #infoPanel, #performancePanel {
+      position: fixed;
+      background: rgba(0,0,0,0.8);
+      padding: 0.8rem;
+      border-radius: 4px;
+      font-size: 14px;
+      z-index: 1000;
+    }
+    #controls {
+      top: 1rem;
+      right: 1rem;
+      width: 280px;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0.5rem;
+    }
+    /* Info panel for loss chart and step count, placed under controls */
+    #infoPanel {
+      top: 300px;
+      right: 1rem;
+      width: 280px;
+    }
+    #lossChartContainer {
+      width: 100%;
+      height: 200px;
+    }
+    /* Performance panel at bottom right */
+    #performancePanel {
+      bottom: 1rem;
+      right: 1rem;
+      width: 280px;
+    }
+    /* Style for feedback buttons */
+    .feedbackBtn {
+      background: transparent;
+      border: none;
+      font-size: 14px;
+      cursor: pointer;
+      margin-left: 5px;
+      color: var(--accent);
+    }
+  </style>
+</head>
+<body>
+  <div id="chatContainer">
+    <div id="chatLog"></div>
+    <div id="stepBar">Steps: 0</div>
+  </div>
+  <div id="inputContainer">
+    <input type="text" id="userInput" placeholder="Type your message here..." />
+    <button id="sendButton">Send</button>
+  </div>
+  <div id="controls">
+    <div class="grid-col-span-2">
+      <label>LR: <input type="number" id="lrInput" value="0.0005" step="0.0001"></label>
+      <label>MutRate: <input type="number" id="mutRateInput" value="0.01" step="0.001"></label>
+      <label>Decay: <input type="number" id="decayInput" value="0.999" step="0.001"></label>
+      <label>Speed: <input type="range" id="speedInput" min="0.5" max="3" step="0.1" value="1"></label>
+    </div>
+    <button onclick="commander.trainExtra()">Train Extra</button>
+    <button onclick="exportModel()">Export Model</button>
+    <button onclick="document.getElementById('modelUpload').click()">Import Model</button>
+    <input type="file" id="modelUpload" style="display:none" accept=".json,.bin">
+  </div>
+  <div id="infoPanel">
+    <div id="lossChartContainer">
+      <canvas id="lossChart"></canvas>
+    </div>
+  </div>
+  <div id="performancePanel"></div>
+  
+  <script>
+    (function(){
+      // Wrap all code in an IIFE to avoid global namespace conflicts.
+
+      // Define responses only once.
+      const responses = [
+        "Here's a joke: ",
+        "Here's some advice: ",
+        "Here's a quote: ",
+        "Did you know? ",
+        "I see. Could you tell me more?",
+        "That's fascinating!",
+        "I'm learning—tell me more.",
+        "Let's change the topic. What else is on your mind?"
+      ];
+
+      // Chat UI elements.
+      const chatLog = document.getElementById("chatLog");
+      const userInput = document.getElementById("userInput");
+      const sendButton = document.getElementById("sendButton");
+      const stepBar = document.getElementById("stepBar");
+      const performancePanel = document.getElementById("performancePanel");
+
+      // Loss chart setup.
+      const lossChartCtx = document.getElementById("lossChart").getContext("2d");
+      const lossChart = new Chart(lossChartCtx, {
+        type: 'line',
+        data: {
+          labels: [],
+          datasets: [{
+            label: 'Training Loss',
+            data: [],
+            borderColor: 'rgba(74,144,226,1)',
+            backgroundColor: 'rgba(74,144,226,0.2)',
+            fill: true,
+            tension: 0.1
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          scales: { x: { display: false }, y: { beginAtZero: true } }
+        }
+      });
+
+      // Global simulation speed.
+      let simulationSpeed = 1;
+
+      // Public API functions.
+      async function fetchJoke() {
+        try {
+          const res = await fetch("https://icanhazdadjoke.com/", { headers: { "Accept": "text/plain" } });
+          if (res.ok) return await res.text();
+          return "Sorry, no joke available.";
+        } catch (err) {
+          console.error("Joke API error:", err);
+          return "Error fetching joke.";
+        }
+      }
+      async function fetchAdvice() {
+        try {
+          const res = await fetch("https://api.adviceslip.com/advice");
+          if (res.ok) {
+            const data = await res.json();
+            return data.slip.advice;
+          }
+          return "Sorry, no advice available.";
+        } catch (err) {
+          console.error("Advice API error:", err);
+          return "Error fetching advice.";
+        }
+      }
+      async function fetchQuote() {
+        try {
+          const res = await fetch("https://api.quotable.io/random");
+          if (res.ok) {
+            const data = await res.json();
+            return data.content;
+          }
+          return "Sorry, no quote available.";
+        } catch (err) {
+          console.error("Quote API error:", err);
+          return "Error fetching quote.";
+        }
+      }
+      async function fetchCatFact() {
+        try {
+          const res = await fetch("https://catfact.ninja/fact");
+          if (res.ok) {
+            const data = await res.json();
+            return data.fact;
+          }
+          return "Sorry, no cat fact available.";
+        } catch (err) {
+          console.error("Cat Fact API error:", err);
+          return "Error fetching cat fact.";
+        }
+      }
+      async function getResponse(action) {
+        if (action === 0) {
+          const joke = await fetchJoke();
+          if (!joke.startsWith("Error")) return responses[0] + joke;
+          else return responses[1] + await fetchAdvice();
+        } else if (action === 1) {
+          const advice = await fetchAdvice();
+          if (!advice.startsWith("Error")) return responses[1] + advice;
+          else return responses[0] + await fetchJoke();
+        } else if (action === 2) {
+          const quote = await fetchQuote();
+          return "Here's a quote: " + quote;
+        } else if (action === 3) {
+          const catFact = await fetchCatFact();
+          return "Did you know? " + catFact;
+        } else {
+          return responses[action];
+        }
+      }
+
+      // Append message to chat log. If sender is "Chatbot", include feedback buttons.
+      function appendMessage(sender, message, features = null) {
+        const msgElem = document.createElement("div");
+        msgElem.style.marginBottom = "10px";
+        msgElem.innerHTML = `<strong>${sender}:</strong> ${message}`;
+        if (sender === "Chatbot" && features) {
+          const upBtn = document.createElement("button");
+          upBtn.textContent = "👍";
+          upBtn.classList.add("feedbackBtn");
+          upBtn.addEventListener("click", () => recordFeedback(features, true));
+          const downBtn = document.createElement("button");
+          downBtn.textContent = "👎";
+          downBtn.classList.add("feedbackBtn");
+          downBtn.addEventListener("click", () => recordFeedback(features, false));
+          msgElem.appendChild(upBtn);
+          msgElem.appendChild(downBtn);
+        }
+        chatLog.appendChild(msgElem);
+        chatLog.scrollTop = chatLog.scrollHeight;
+      }
+
+      // Utility: Argmax.
+      function argmax(arr) {
+        let maxIndex = 0, maxValue = arr[0];
+        for (let i = 1; i < arr.length; i++) {
+          if (arr[i] > maxValue) { maxValue = arr[i]; maxIndex = i; }
+        }
+        return maxIndex;
+      }
+
+      // Reward function.
+      function calculateReward(message, action) {
+        const positiveKeywords = ["joke", "advice", "quote", "cat", "fascinating", "learn"];
+        let reward = 0;
+        for (let word of positiveKeywords) {
+          if (message.toLowerCase().includes(word)) reward += 1;
+        }
+        if (action >= 2) reward += 0.5;
+        return reward;
+      }
+
+      // Record feedback from thumbs up/down.
+      function recordFeedback(features, isPositive) {
+        const feedbackReward = isPositive ? 5 : -5;
+        commander.exp.push({ state: features, action: 0, reward: feedbackReward, nextState: features, done: false });
+        logEvent("Feedback recorded: " + (isPositive ? "👍" : "👎"));
+        commander.trainExtra();
+      }
+
+      // Update step count display.
+      function updateStepDisplay(steps) {
+        stepBar.textContent = "Steps: " + steps;
+      }
+
+      // CommanderAgent with a larger, optimized model.
+      class CommanderAgent {
+        constructor() {
+          this.stepCount = 0;
+          this.epsilon = 1.0;
+          this.exp = [];
+          this.learningRate = parseFloat(document.getElementById("lrInput").value);
+          this.mutationRate = parseFloat(document.getElementById("mutRateInput").value);
+          this.epsilonDecay = parseFloat(document.getElementById("decayInput").value);
+          // Model input: 9 features.
+          this.model = this.buildCommanderDQN();
+          this.targetModel = this.buildCommanderDQN();
+          this.targetModel.setWeights(this.model.getWeights());
+          this.lossHistory = [];
+          this.lossData = [];
+        }
+        buildCommanderDQN() {
+          const model = tf.sequential();
+          // Reduced large model: hidden layers of 4096, 2048, 1024, 512, 256, 128 units.
+          model.add(tf.layers.dense({ units: 4096, inputShape: [9] }));
+          model.add(tf.layers.batchNormalization());
+          model.add(tf.layers.leakyReLU({ alpha: 0.1 }));
+          model.add(tf.layers.dropout({ rate: 0.2 }));
+          model.add(tf.layers.dense({ units: 2048 }));
+          model.add(tf.layers.batchNormalization());
+          model.add(tf.layers.leakyReLU({ alpha: 0.1 }));
+          model.add(tf.layers.dropout({ rate: 0.2 }));
+          model.add(tf.layers.dense({ units: 1024 }));
+          model.add(tf.layers.batchNormalization());
+          model.add(tf.layers.leakyReLU({ alpha: 0.1 }));
+          model.add(tf.layers.dropout({ rate: 0.2 }));
+          model.add(tf.layers.dense({ units: 512 }));
+          model.add(tf.layers.batchNormalization());
+          model.add(tf.layers.leakyReLU({ alpha: 0.1 }));
+          model.add(tf.layers.dropout({ rate: 0.2 }));
+          model.add(tf.layers.dense({ units: 256 }));
+          model.add(tf.layers.batchNormalization());
+          model.add(tf.layers.leakyReLU({ alpha: 0.1 }));
+          model.add(tf.layers.dense({ units: 128, activation: 'linear' }));
+          model.add(tf.layers.dense({ units: 6, activation: 'linear' }));
+          model.compile({ optimizer: tf.train.adam(this.learningRate), loss: 'meanSquaredError' });
+          return model;
+        }
+        extractFeatures(message) {
+          const length = message.length;
+          const charSum = message.split("").reduce((sum, ch) => sum + ch.charCodeAt(0), 0);
+          const avgChar = length > 0 ? charSum / length : 0;
+          return [
+            length / 100,
+            avgChar / 128,
+            (message.split(" ").length) / 20,
+            Math.random(), Math.random(),
+            Math.random(), Math.random(),
+            Math.random(), Math.random()
+          ];
+        }
+        decideAction(features) {
+          let action;
+          if (Math.random() < this.epsilon) {
+            action = Math.floor(Math.random() * responses.length);
+          } else {
+            action = tf.tidy(() => {
+              const stT = tf.tensor2d([features]);
+              const out = this.model.predict(stT);
+              const arr = out.dataSync();
+              return argmax(arr);
+            });
+          }
+          return action;
+        }
+        async step(message) {
+          const features = this.extractFeatures(message);
+          const action = this.decideAction(features);
+          this.exp.push({ state: features, action, reward: calculateReward(message, action), nextState: features, done: false });
+          if (this.exp.length > 128) await this.learn();
+          if (this.epsilon > 0.05) this.epsilon *= this.epsilonDecay;
+          this.stepCount++;
+          updateStepDisplay(this.stepCount);
+          return { action, features };
+        }
+        async learn() {
+          const batchSize = 64;
+          const batch = this.exp.slice(-batchSize);
+          const states = batch.map(e => e.state);
+          const actions = batch.map(e => e.action);
+          const rewards = batch.map(e => e.reward);
+          const nextStates = batch.map(e => e.nextState);
+          const sT = tf.tensor2d(states);
+          const nsT = tf.tensor2d(nextStates);
+          const currQ = this.model.predict(sT);
+          const nextQ = this.targetModel.predict(nsT);
+          const currData = currQ.arraySync();
+          const nextData = nextQ.arraySync();
+          for (let i = 0; i < batch.length; i++) {
+            const maxNext = Math.max(...nextData[i]);
+            currData[i][actions[i]] = rewards[i] + 0.99 * maxNext;
+          }
+          const target = tf.tensor2d(currData);
+          try {
+            const info = await this.model.fit(sT, target, { epochs: 1, verbose: 0 });
+            const loss = info.history.loss[0];
+            this.lossHistory.push(loss);
+            this.lossData.push(loss);
+            document.getElementById("lossDisplay").textContent = "Loss: " + loss.toFixed(4);
+            updateLossChart(this.lossData);
+            if (loss > 0.1) this.learningRate *= 0.98; else this.learningRate *= 1.02;
+            this.model.optimizer.learningRate = this.learningRate;
+            if (this.stepCount % 100 === 0) {
+              const tau = 0.1;
+              const weights = this.model.getWeights();
+              const targetWeights = this.targetModel.getWeights();
+              const updated = weights.map((w, i) => tf.add(tf.mul(w, tau), tf.mul(targetWeights[i], 1 - tau)));
+              this.targetModel.setWeights(updated);
+              updated.forEach(t => t.dispose());
+            }
+          } catch (err) {
+            console.error("Learning error:", err);
+          } finally {
+            tf.dispose([sT, nsT, currQ, nextQ, target]);
+          }
+        }
+        trainExtra() {
+          for (let i = 0; i < 100; i++) {
+            this.step("dummy");
+          }
+          logEvent("Commander trained extra for 100 steps.");
+        }
+      }
+
+      // Instantiate the CommanderAgent.
+      const commander = new CommanderAgent();
+
+      // Export model function.
+      async function exportModel() {
+        try {
+          await commander.model.save('downloads://chatbot-model');
+          logEvent("Model exported successfully.");
+        } catch (e) {
+          console.error("Export error:", e);
+          logEvent("Failed to export model.");
+        }
+      }
+
+      // Import model functionality.
+      document.getElementById("modelUpload").addEventListener("change", async (evt) => {
+        const files = evt.target.files;
+        if (files.length === 0) return;
+        try {
+          const loadedModel = await tf.loadLayersModel(tf.io.browserFiles(files));
+          commander.model = loadedModel;
+          commander.targetModel = loadedModel;
+          logEvent("Model imported successfully.");
+        } catch (e) {
+          console.error("Import error:", e);
+          logEvent("Failed to import model.");
+        }
+      });
+
+      // Update loss chart.
+      function updateLossChart(lossData) {
+        lossChart.data.labels = lossData.map((v, i) => i);
+        lossChart.data.datasets[0].data = lossData;
+        lossChart.update();
+      }
+
+      // Update performance panel.
+      function updatePerformancePanel() {
+        performancePanel.innerHTML = `Steps: ${commander.stepCount} | Epsilon: ${commander.epsilon.toFixed(3)}`;
+      }
+
+      // Handle user message.
+      async function handleMessage() {
+        const message = userInput.value.trim();
+        if (!message) return;
+        appendMessage("User", message);
+        userInput.value = "";
+        const result = await commander.step(message);
+        const action = result.action;
+        const features = result.features;
+        const response = await getResponse(action);
+        appendMessage("Chatbot", response, features);
+        updatePerformancePanel();
+      }
+
+      sendButton.addEventListener("click", handleMessage);
+      userInput.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") handleMessage();
+      });
+
+      // Pre-training routine: increased to 500 samples over 40 epochs.
+      async function preTrainChatbot() {
+        const inputs = [];
+        const labels = [];
+        for (let i = 0; i < 500; i++) {
+          const text = "sample message " + i;
+          const features = commander.extractFeatures(text);
+          const action = Math.floor(Math.random() * responses.length);
+          const labelVec = Array(responses.length).fill(0);
+          labelVec[action] = 1;
+          inputs.push(features);
+          labels.push(labelVec);
+        }
+        const xs = tf.tensor2d(inputs);
+        const ys = tf.tensor2d(labels);
+        await commander.model.fit(xs, ys, { epochs: 40 });
+        xs.dispose();
+        ys.dispose();
+        logEvent("Pre-training complete.");
+      }
+      preTrainChatbot();
+
+      // Background training every 30 seconds.
+      setInterval(() => {
+        commander.trainExtra();
+        updatePerformancePanel();
+      }, 30000);
+
+      // Additionally, every 20 seconds fetch a random quote and a cat fact as training input.
+      setInterval(async () => {
+        const quote = await fetchQuote();
+        if (quote && !quote.startsWith("Error")) {
+          commander.step(quote);
+          logEvent("Background training with quote: " + quote.slice(0, 50) + "...");
+        }
+        const catFact = await fetchCatFact();
+        if (catFact && !catFact.startsWith("Error")) {
+          commander.step(catFact);
+          logEvent("Background training with cat fact: " + catFact.slice(0, 50) + "...");
+        }
+      }, 20000);
+
+      updatePerformancePanel();
+
+      // Log event utility.
+      function logEvent(msg) {
+        console.log("[CHAT LOG]:", msg);
+      }
+    })();
+  </script>
+</body>
+</html>
