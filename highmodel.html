@@ -24,7 +24,7 @@
       display: flex;
       flex-direction: column;
     }
-    /* Chat container occupies most of the left side */
+    /* Chat container (left side) */
     #chatContainer {
       flex: 1;
       overflow-y: auto;
@@ -32,19 +32,19 @@
       background: var(--secondary-bg);
       position: relative;
     }
-    /* Chat log area with room for step bar */
+    /* Chat log area with room for the step bar */
     #chatLog {
       max-height: calc(100% - 2rem);
       overflow-y: auto;
     }
-    /* Step bar placed at the bottom of chat container */
+    /* Step bar at the bottom of chat container */
     #stepBar {
       padding: 0.5rem;
       text-align: center;
       background: var(--primary-bg);
       border-top: 1px solid #3d3d3d;
     }
-    /* Prompt bar – contains only the text input and send button */
+    /* Prompt bar – only text input and send button */
     #inputContainer {
       display: flex;
       gap: 0.3rem;
@@ -70,7 +70,7 @@
       transition: opacity 0.2s;
     }
     #sendButton:hover { opacity: 0.9; }
-    /* Fixed panels: controls on the right, info panel (loss chart & step count) below controls, performance panel at bottom right */
+    /* Fixed panels */
     #controls, #infoPanel, #performancePanel {
       position: fixed;
       background: rgba(0,0,0,0.8);
@@ -87,7 +87,12 @@
       grid-template-columns: 1fr 1fr;
       gap: 0.5rem;
     }
-    /* Info panel for loss chart and step count, placed under controls */
+    /* New Reset Model button placed in controls */
+    #controls button.resetBtn {
+      grid-column: span 2;
+      background: #d9534f;
+    }
+    /* Info panel for loss chart and step count (below controls) */
     #infoPanel {
       top: 300px;
       right: 1rem;
@@ -133,6 +138,7 @@
     <button onclick="commander.trainExtra()">Train Extra</button>
     <button onclick="exportModel()">Export Model</button>
     <button onclick="document.getElementById('modelUpload').click()">Import Model</button>
+    <button class="resetBtn" onclick="resetModel()">Reset Model</button>
     <input type="file" id="modelUpload" style="display:none" accept=".json,.bin">
   </div>
   <div id="infoPanel">
@@ -144,14 +150,13 @@
   
   <script>
     (function(){
-      // Set backend to WebGL for GPU acceleration.
+      // Set the backend to WebGL for GPU acceleration.
       tf.setBackend('webgl');
-
-      // Use packed textures for better memory efficiency (this may use half-precision).
+      // Force lower-precision textures if necessary.
       tf.env().set('WEBGL_FORCE_F16_TEXTURES', true);
 
-      // Wrap all code in an IIFE to avoid global namespace conflicts.
-      
+      // Wrap all code in an IIFE.
+
       // Define responses only once.
       const responses = [
         "Here's a joke: ",
@@ -161,42 +166,40 @@
         "I see. Could you tell me more?",
         "That's fascinating!",
         "I'm learning—tell me more.",
-        "Let's change the topic. What else is on your mind?"
+        "Let's change the topic. What else is on your mind?",
+        "Chuck Norris says: ",
+        "Kanye says: "
       ];
 
-      // Chat UI elements.
-      const chatLog = document.getElementById("chatLog");
-      const userInput = document.getElementById("userInput");
-      const sendButton = document.getElementById("sendButton");
-      const stepBar = document.getElementById("stepBar");
-      const performancePanel = document.getElementById("performancePanel");
-
-      // Loss chart setup.
-      const lossChartCtx = document.getElementById("lossChart").getContext("2d");
-      const lossChart = new Chart(lossChartCtx, {
-        type: 'line',
-        data: {
-          labels: [],
-          datasets: [{
-            label: 'Training Loss',
-            data: [],
-            borderColor: 'rgba(74,144,226,1)',
-            backgroundColor: 'rgba(74,144,226,0.2)',
-            fill: true,
-            tension: 0.1
-          }]
-        },
-        options: {
-          responsive: true,
-          maintainAspectRatio: false,
-          scales: { x: { display: false }, y: { beginAtZero: true } }
+      // --- Additional API Functions ---
+      async function fetchChuckNorris() {
+        try {
+          const res = await safeFetch("https://api.chucknorris.io/jokes/random");
+          if (res) {
+            const data = JSON.parse(res);
+            return data.value;
+          }
+          return "Sorry, no Chuck Norris joke available.";
+        } catch (e) {
+          console.error("Chuck Norris API error:", e);
+          return "Error fetching Chuck Norris joke.";
         }
-      });
+      }
+      async function fetchKanye() {
+        try {
+          const res = await safeFetch("https://api.kanye.rest");
+          if (res) {
+            const data = JSON.parse(res);
+            return data.quote;
+          }
+          return "Sorry, no Kanye quote available.";
+        } catch (e) {
+          console.error("Kanye API error:", e);
+          return "Error fetching Kanye quote.";
+        }
+      }
 
-      // Global simulation speed.
-      let simulationSpeed = 1;
-
-      // --- Public API functions with safe error handling ---
+      // --- Safe Fetch Function with Fallback ---
       async function safeFetch(url, options = {}) {
         try {
           const response = await fetch(url, options);
@@ -205,7 +208,7 @@
         } catch (error) {
           console.error("Fetch error:", error);
           try {
-            console.warn("Attempting fallback fetch with no-cors mode.");
+            console.warn("Fallback: attempting fetch with no-cors mode.");
             const fallbackResponse = await fetch(url, { ...options, mode: "no-cors" });
             return await fallbackResponse.text();
           } catch (fallbackError) {
@@ -214,6 +217,8 @@
           }
         }
       }
+
+      // --- Public API Functions ---
       async function fetchJoke() {
         const data = await safeFetch("https://icanhazdadjoke.com/", { headers: { "Accept": "text/plain" } });
         return data || "Sorry, no joke available.";
@@ -248,6 +253,12 @@
         } else if (action === 3) {
           const catFact = await fetchCatFact();
           return "Did you know? " + catFact;
+        } else if (action === 4) {
+          const chuck = await fetchChuckNorris();
+          return "Chuck Norris says: " + chuck;
+        } else if (action === 5) {
+          const kanye = await fetchKanye();
+          return "Kanye says: " + kanye;
         } else {
           return responses[action];
         }
@@ -308,6 +319,11 @@
       }
       function logEvent(msg) {
         console.log("[CHAT LOG]:", msg);
+        // Optionally, store recent logs in localStorage for later inspection.
+        let logs = localStorage.getItem("chatLogs");
+        logs = logs ? JSON.parse(logs) : [];
+        logs.push({ time: new Date().toISOString(), msg });
+        localStorage.setItem("chatLogs", JSON.stringify(logs.slice(-100)));
       }
 
       // --- CommanderAgent Class ---
@@ -326,7 +342,7 @@
             this.targetModel.setWeights(this.model.getWeights());
           } catch (err) {
             console.error("Model construction error:", err);
-            // Attempt fallback: switch to lower precision if memory error occurs
+            // Fallback: switch to lower precision if memory error occurs.
             tf.env().set('WEBGL_FORCE_F16_TEXTURES', true);
             this.model = this.buildCommanderDQN();
             this.targetModel = this.buildCommanderDQN();
@@ -477,6 +493,15 @@
         }
       });
 
+      // Reset model: Clear current model and localStorage backup, then reload the page.
+      window.resetModel = function() {
+        if (confirm("This will reset the model and clear backup data. Continue?")) {
+          localStorage.removeItem("backup-model");
+          localStorage.removeItem("performanceMetrics");
+          location.reload();
+        }
+      };
+
       // Update loss chart.
       function updateLossChart(lossData) {
         lossChart.data.labels = lossData.map((v, i) => i);
@@ -542,7 +567,7 @@
         updatePerformancePanel();
       }, 30000);
 
-      // Every 20 seconds, fetch a random quote and a cat fact as training input.
+      // Every 20 seconds, fetch random data from additional APIs.
       setInterval(async () => {
         const quote = await fetchQuote();
         if (quote && !quote.startsWith("Error")) {
@@ -554,15 +579,31 @@
           commander.step(catFact);
           logEvent("Background training with cat fact: " + catFact.slice(0, 50) + "...");
         }
+        const chuck = await fetchChuckNorris();
+        if (chuck && !chuck.startsWith("Error")) {
+          commander.step(chuck);
+          logEvent("Background training with Chuck Norris: " + chuck.slice(0, 50) + "...");
+        }
+        const kanye = await fetchKanye();
+        if (kanye && !kanye.startsWith("Error")) {
+          commander.step(kanye);
+          logEvent("Background training with Kanye: " + kanye.slice(0, 50) + "...");
+        }
       }, 20000);
 
       updatePerformancePanel();
 
-      // Auto-backup model to localStorage every 60 seconds.
+      // Auto-backup model and metrics to localStorage every 60 seconds.
       setInterval(async () => {
         try {
           await commander.model.save('localstorage://backup-model');
-          logEvent("Model auto-backup saved to localStorage.");
+          const metrics = {
+            stepCount: commander.stepCount,
+            epsilon: commander.epsilon,
+            lossData: commander.lossData.slice(-20)
+          };
+          localStorage.setItem("performanceMetrics", JSON.stringify(metrics));
+          logEvent("Model and metrics auto-backup saved to localStorage.");
         } catch (e) {
           console.error("Auto-backup error:", e);
         }
@@ -574,6 +615,11 @@
           const backupModel = await tf.loadLayersModel('localstorage://backup-model');
           commander.model = backupModel;
           commander.targetModel = backupModel;
+          const metrics = localStorage.getItem("performanceMetrics");
+          if (metrics) {
+            const parsed = JSON.parse(metrics);
+            logEvent("Backup metrics loaded: " + JSON.stringify(parsed));
+          }
           logEvent("Backup model loaded from localStorage.");
         } catch (e) {
           console.log("No backup model found, starting fresh.");
@@ -582,10 +628,6 @@
 
       updatePerformancePanel();
 
-      // Log event utility.
-      function logEvent(msg) {
-        console.log("[CHAT LOG]:", msg);
-      }
     })();
   </script>
 </body>
