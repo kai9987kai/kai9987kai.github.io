@@ -1,0 +1,1020 @@
+
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Advanced Evolutionary Agent Simulation – Smart & Adaptive Plus (Advanced Model)</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <!-- Chart.js for live loss graph -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <!-- TensorFlow.js -->
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest"></script>
+  <style>
+    /* Basic styling */
+    html, body {
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+      background: #222;
+      color: #fefefe;
+      font-family: sans-serif;
+    }
+    #canvas { display: block; }
+    #log, #synergyPanel, #performancePanel, #agentControls, #lossChartContainer, #agentTooltip {
+      position: absolute;
+      z-index: 1000;
+    }
+    #log {
+      top: 20px;
+      left: 0;
+      width: 300px;
+      max-height: 200px;
+      overflow-y: auto;
+      background: rgba(0,0,0,0.7);
+      padding: 8px;
+      font-size: 14px;
+    }
+    #synergyPanel {
+      top: 20px;
+      right: 0;
+      width: 280px;
+      max-height: 250px;
+      overflow-y: auto;
+      background: rgba(0,0,0,0.7);
+      padding: 8px;
+      font-size: 14px;
+      text-align: right;
+    }
+    #performancePanel {
+      top: 240px;
+      left: 0;
+      width: 300px;
+      background: rgba(0,0,0,0.7);
+      padding: 8px;
+      font-size: 14px;
+    }
+    #agentControls {
+      bottom: 0;
+      left: 0;
+      width: 100%;
+      background: rgba(0,0,0,0.8);
+      padding: 10px;
+      font-size: 14px;
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 10px;
+    }
+    #agentControls input[type="range"],
+    #agentControls input[type="number"] { margin: 0 5px; }
+    #agentControls button {
+      padding: 5px 10px;
+      background-color: #3498db;
+      border: none;
+      color: #fff;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    #lossChartContainer {
+      bottom: 110px;
+      right: 0;
+      width: 300px;
+      height: 200px;
+      background: rgba(0,0,0,0.7);
+      padding: 8px;
+    }
+    #agentTooltip {
+      background: rgba(0,0,0,0.8);
+      padding: 5px 8px;
+      border-radius: 4px;
+      font-size: 12px;
+      pointer-events: none;
+      display: none;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="canvas"></canvas>
+  <div id="log"></div>
+  <div id="synergyPanel"></div>
+  <div id="performancePanel"></div>
+  <div id="agentControls">
+    <button onclick="commander.trainExtra()">Train Commander</button>
+    <button onclick="resetSimulation()">Reset Simulation</button>
+    <button onclick="toggleSimulation()">Pause Simulation</button>
+    <label>Sim Speed: <input type="range" id="speedInput" min="0.5" max="3" step="0.1" value="1" onchange="updateSimSpeed(this.value)"></label>
+    <label>LR: <input type="number" id="lrInput" value="0.0005" step="0.0001" onchange="updateLR(this.value)"></label>
+    <label>MutRate: <input type="number" id="mutRateInput" value="0.01" step="0.001" onchange="updateMutRate(this.value)"></label>
+    <label>Decay: <input type="number" id="decayInput" value="0.999" step="0.001" onchange="updateDecay(this.value)"></label>
+    <span id="lossDisplay">Loss: N/A</span>
+  </div>
+  <div id="lossChartContainer">
+    <canvas id="lossChart"></canvas>
+  </div>
+  <div id="agentTooltip"></div>
+  
+  <script>
+    (function(){
+      /**********************************************************************
+       * Advanced Evolutionary Agent Simulation – Smart & Adaptive Plus (Advanced)
+       *
+       * Enhancements:
+       * - CommanderAgent’s model is now doubled in size relative to the previous version.
+       *   Hidden layers now: 1024, 512, 256, 128, 64, and 32 units.
+       *   Batch normalization, LeakyReLU (α = 0.1), and dropout are applied for improved performance.
+       * - Input state vector (9 normalized features) remains the same.
+       * - Environment retains all previous features with added cloud overlay (drifting clouds) and
+       *   a dynamic sun.
+       * - All entity counts are preserved.
+       *
+       * Run on a local web server to avoid 403 errors.
+       **********************************************************************/
+
+      // Global canvas and context.
+      const canvas = document.getElementById("canvas");
+      const ctx = canvas.getContext("2d");
+      
+      // Declare terrain grid constants.
+      const zoneCols = 10, zoneRows = 10;
+      const terrainTypes = [
+        { type: "forest", color: "rgba(34,139,34,0.2)" },
+        { type: "desert", color: "rgba(210,180,140,0.2)" },
+        { type: "urban", color: "rgba(128,128,128,0.2)" },
+        { type: "mountain", color: "rgba(139,137,137,0.2)" },
+        { type: "plains", color: "rgba(144,238,144,0.2)" }
+      ];
+      let zones = [];
+
+      // Resize canvas and regenerate zones.
+      function resizeCanvas() {
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+        generateZones();
+      }
+      window.addEventListener("resize", resizeCanvas);
+      resizeCanvas();
+      
+      // Simulation settings.
+      const settings = {
+        threat: { baseSpeed: 0.5, aggressiveness: 1.0, spawnInterval: 20000 },
+        tasks: { synergyRequired: 3, megaTaskSynergyReq: 8 },
+        synergy: { distanceThreshold: 50, perNeighborGain: 0.01, maxSynergyPerAgent: 5, degradeFactor: 0.999 },
+        food: { decayTime: 30000 },
+        tribes: 2
+      };
+
+      // Global simulation variables.
+      let agents = [], threats = [], foods = [], waters = [], minerals = [], tasks = [], threatNests = [], obstacles = [];
+      let commander;
+      let lastTimestamp = performance.now();
+      let fps = 0, stepTime = 0, timeOfDay = 8, generation = 0;
+      let simulationSpeed = 1, paused = false;
+      let lastWeatherUpdate = performance.now();
+      let lastResourceSpawn = performance.now();
+      
+      // Weather system and wind.
+      let weather = { condition: "sunny", temperature: 25, humidity: 50 };
+      let wind = { speed: 2, direction: Math.random() * 2 * Math.PI };
+      const weatherSpeedFactors = { sunny: 1.0, rainy: 0.9, stormy: 0.7, foggy: 0.8 };
+
+      /**************** Environmental Zones ****************/
+      function generateZones() {
+        zones = [];
+        const cellWidth = canvas.width / zoneCols;
+        const cellHeight = canvas.height / zoneRows;
+        for (let i = 0; i < zoneCols; i++) {
+          for (let j = 0; j < zoneRows; j++) {
+            const terrain = terrainTypes[Math.floor(Math.random() * terrainTypes.length)];
+            zones.push({
+              x: i * cellWidth,
+              y: j * cellHeight,
+              width: cellWidth,
+              height: cellHeight,
+              type: terrain.type,
+              color: terrain.color
+            });
+          }
+        }
+      }
+      generateZones();
+
+      function drawEnvironmentalZones() {
+        zones.forEach(zone => {
+          ctx.fillStyle = zone.color;
+          ctx.fillRect(zone.x, zone.y, zone.width, zone.height);
+        });
+      }
+      
+      // New: Draw drifting clouds.
+      let clouds = [];
+      function initClouds() {
+        clouds = [];
+        const numClouds = 10;
+        for (let i = 0; i < numClouds; i++) {
+          clouds.push({
+            x: Math.random() * canvas.width,
+            y: Math.random() * canvas.height * 0.3,
+            radius: 30 + Math.random() * 20,
+            speed: 0.2 + Math.random() * 0.3
+          });
+        }
+      }
+      initClouds();
+      function drawClouds() {
+        ctx.fillStyle = "rgba(255,255,255,0.5)";
+        clouds.forEach(cloud => {
+          ctx.beginPath();
+          ctx.arc(cloud.x, cloud.y, cloud.radius, 0, Math.PI * 2);
+          ctx.fill();
+          // Update cloud position.
+          cloud.x += cloud.speed;
+          if (cloud.x - cloud.radius > canvas.width) {
+            cloud.x = -cloud.radius;
+            cloud.y = Math.random() * canvas.height * 0.3;
+          }
+        });
+      }
+      
+      // Draw dynamic sun.
+      function drawSun() {
+        const sunRadius = 40;
+        const sunX = canvas.width * 0.5;
+        const sunY = canvas.height * 0.8 - Math.sin((timeOfDay / 24) * Math.PI) * canvas.height * 0.6;
+        const sunGradient = ctx.createRadialGradient(sunX, sunY, sunRadius * 0.2, sunX, sunY, sunRadius);
+        sunGradient.addColorStop(0, "rgba(255,255,100,1)");
+        sunGradient.addColorStop(1, "rgba(255,150,0,0)");
+        ctx.fillStyle = sunGradient;
+        ctx.beginPath();
+        ctx.arc(sunX, sunY, sunRadius, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      
+      /**************** Utility Functions ****************/
+      function logEvent(msg) {
+        const logDiv = document.getElementById("log");
+        const line = document.createElement("div");
+        line.textContent = msg;
+        logDiv.appendChild(line);
+        logDiv.scrollTop = logDiv.scrollHeight;
+        console.log("[SIM LOG]:", msg);
+      }
+      
+      function updatePerformancePanel() {
+        const perfPanel = document.getElementById("performancePanel");
+        perfPanel.innerHTML = `Generation: ${generation} | FPS: ${fps} | Time: ${timeOfDay.toFixed(2)}h<br>
+                               Weather: ${weather.condition} | Temp: ${weather.temperature.toFixed(1)}°C | Humidity: ${weather.humidity}%<br>
+                               Wind: ${wind.speed.toFixed(1)} m/s, ${(wind.direction*(180/Math.PI)).toFixed(0)}°`;
+      }
+      
+      function argmax(arr) {
+        let maxIndex = 0, maxValue = arr[0];
+        for (let i = 1; i < arr.length; i++) {
+          if (arr[i] > maxValue) { maxValue = arr[i]; maxIndex = i; }
+        }
+        return maxIndex;
+      }
+      
+      function keepInBounds(entity) {
+        if (entity.x < entity.size) entity.x = entity.size;
+        if (entity.y < entity.size) entity.y = entity.size;
+        if (entity.x > canvas.width - entity.size) entity.x = canvas.width - entity.size;
+        if (entity.y > canvas.height - entity.size) entity.y = canvas.height - entity.size;
+      }
+      
+      function shareCooperation(agents) {
+        for (let i = 0; i < agents.length; i++) {
+          for (let j = i + 1; j < agents.length; j++) {
+            let a = agents[i], b = agents[j];
+            let dx = a.x - b.x, dy = a.y - b.y;
+            if (Math.hypot(dx, dy) < settings.synergy.distanceThreshold / 2) {
+              let avg = ((a.synergy + b.synergy) / 2) + 0.005;
+              a.synergy = avg;
+              b.synergy = avg;
+            }
+          }
+        }
+      }
+      
+      function getWeatherCode(condition) {
+        switch (condition) {
+          case "sunny": return 0;
+          case "rainy": return 1;
+          case "stormy": return 2;
+          case "foggy": return 3;
+          default: return 0;
+        }
+      }
+      
+      function updateWeather() {
+        const conditions = ["sunny", "rainy", "stormy", "foggy"];
+        let weights = (timeOfDay < 6 || timeOfDay > 18) ? [0.4, 0.2, 0.2, 0.2] : [0.6, 0.2, 0.1, 0.1];
+        let r = Math.random(), cumulative = 0, condition;
+        for (let i = 0; i < conditions.length; i++) {
+          cumulative += weights[i];
+          if (r < cumulative) { condition = conditions[i]; break; }
+        }
+        const temperature = 20 + 10 * Math.sin((timeOfDay / 24) * 2 * Math.PI);
+        const humidity = (condition === "rainy") ? 80 : (condition === "stormy" ? 70 : (condition === "foggy" ? 90 : 50));
+        weather = { condition, temperature, humidity };
+        wind.speed = Math.random() * 10;
+        wind.direction = Math.random() * 2 * Math.PI;
+        logEvent(`Weather updated: ${condition}, Temp: ${temperature.toFixed(1)}°C, Humidity: ${humidity}%; Wind: ${wind.speed.toFixed(1)} m/s, ${(wind.direction*(180/Math.PI)).toFixed(0)}°`);
+      }
+      
+      /**************** ENTITY CLASSES ****************/
+      class Entity {
+        constructor(x, y, size, color) {
+          this.x = x;
+          this.y = y;
+          this.size = size;
+          this.color = color;
+          this.alive = true;
+        }
+        draw(ctx) {
+          ctx.fillStyle = this.color;
+          ctx.beginPath();
+          ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+      
+      class Threat extends Entity {
+        constructor(x, y) {
+          super(x, y, 8, 'red');
+          this.lifetime = 30000 + Math.random() * 10000;
+        }
+        move(timeOfDay, dt) {
+          const speed = settings.threat.baseSpeed * settings.threat.aggressiveness * ((timeOfDay > 18 || timeOfDay < 6) ? 1.2 : 1);
+          this.x += (Math.random() - 0.5) * speed;
+          this.y += (Math.random() - 0.5) * speed;
+          this.x += wind.speed * Math.cos(wind.direction) * 0.02;
+          this.y += wind.speed * Math.sin(wind.direction) * 0.02;
+          keepInBounds(this);
+          this.lifetime -= dt;
+          if (this.lifetime <= 0) {
+            this.alive = false;
+            logEvent("A threat died of old age.");
+          }
+        }
+      }
+      
+      class ThreatNest extends Entity {
+        constructor(x, y) {
+          super(x, y, 10, 'darkred');
+          this.lastSpawn = performance.now();
+        }
+        spawnThreatIfNeeded(globalSynergy) {
+          const now = performance.now();
+          if (now - this.lastSpawn > settings.threat.spawnInterval) {
+            if (globalSynergy > settings.tasks.synergyRequired * 1.5) {
+              threats.push(new Threat(this.x + (Math.random() - 0.5) * 50, this.y + (Math.random() - 0.5) * 50));
+              logEvent("Threat Nest spawned a new Threat!");
+            }
+            this.lastSpawn = now;
+          }
+        }
+      }
+      
+      class Food extends Entity {
+        constructor(x, y) {
+          super(x, y, 5, 'green');
+          this.spawnTime = performance.now();
+        }
+        updateDecay() {
+          if (performance.now() - this.spawnTime > settings.food.decayTime)
+            this.alive = false;
+        }
+      }
+      
+      class Water extends Entity {
+        constructor(x, y) {
+          super(x, y, 5, 'aqua');
+          this.spawnTime = performance.now();
+        }
+        updateDecay() {
+          if (performance.now() - this.spawnTime > 40000)
+            this.alive = false;
+        }
+      }
+      
+      // New resource: Mineral.
+      class Mineral extends Entity {
+        constructor(x, y) {
+          super(x, y, 5, 'gold');
+          this.spawnTime = performance.now();
+          this.decayTime = 60000;
+        }
+        updateDecay() {
+          if (performance.now() - this.spawnTime > this.decayTime)
+            this.alive = false;
+        }
+      }
+      
+      class Task extends Entity {
+        constructor(x, y, requiresSynergy = false, isMegaTask = false, tribeForMegaTask = null) {
+          super(x, y, 6, isMegaTask ? 'violet' : (requiresSynergy ? 'cyan' : 'yellow'));
+          this.requiresSynergy = requiresSynergy;
+          this.isMegaTask = isMegaTask;
+          this.tribeForMegaTask = tribeForMegaTask;
+        }
+      }
+      
+      class Obstacle extends Entity {
+        constructor(x, y, size) {
+          super(x, y, size, 'grey');
+        }
+        draw(ctx) {
+          ctx.fillStyle = this.color;
+          ctx.fillRect(this.x - this.size, this.y - this.size, this.size * 2, this.size * 2);
+        }
+      }
+      
+      class Agent extends Entity {
+        constructor(x, y, tribe) {
+          super(x, y, 7, tribe === 0 ? 'blue' : 'orange');
+          this.energy = 100;
+          this.hydration = 100;
+          this.synergy = 0;
+          this.tribe = tribe;
+          this.synergyBuff = 1.0;
+        }
+        move() {
+          this.x += (Math.random() - 0.5) * 2;
+          this.y += (Math.random() - 0.5) * 2;
+          keepInBounds(this);
+          this.synergy *= settings.synergy.degradeFactor;
+          this.energy -= 0.05;
+          this.hydration -= 0.05;
+          if (this.energy <= 0 || this.hydration <= 0) this.alive = false;
+        }
+        updateSynergy(agents) {
+          for (let other of agents) {
+            if (other !== this && other.alive && other.tribe === this.tribe) {
+              const dx = other.x - this.x, dy = other.y - this.y;
+              if (Math.hypot(dx, dy) < settings.synergy.distanceThreshold)
+                this.synergy += settings.synergy.perNeighborGain * this.synergyBuff;
+            }
+          }
+          if (this.synergy > settings.synergy.maxSynergyPerAgent)
+            this.synergy = settings.synergy.maxSynergyPerAgent;
+        }
+        updateTarget() {
+          logEvent(`Agent (Tribe ${this.tribe}) updated target network!`);
+        }
+        mutate() {
+          this.synergyBuff *= (1 + (Math.random() - 0.5) * 0.05);
+        }
+      }
+      
+      class AdvancedAgent extends Agent {
+        constructor(x, y, tribe) {
+          super(x, y, tribe);
+        }
+        computeSteering(agents, foods, waters, minerals, threats) {
+          let steer = { x: 0, y: 0 };
+          let neighborCount = 0, avgX = 0, avgY = 0;
+          for (let other of agents) {
+            if (other !== this && other.alive && other.tribe === this.tribe) {
+              let d = Math.hypot(other.x - this.x, other.y - this.y);
+              if (d < 100) { avgX += other.x; avgY += other.y; neighborCount++; }
+            }
+          }
+          if (neighborCount > 0) {
+            avgX /= neighborCount; avgY /= neighborCount;
+            steer.x += (avgX - this.x) * 0.05;
+            steer.y += (avgY - this.y) * 0.05;
+          }
+          for (let other of agents) {
+            if (other !== this && other.alive && other.tribe === this.tribe) {
+              let d = Math.hypot(other.x - this.x, other.y - this.y);
+              if (d > 0 && d < 30) {
+                steer.x -= (other.x - this.x) * 0.1;
+                steer.y -= (other.y - this.y) * 0.1;
+              }
+            }
+          }
+          for (let threat of threats) {
+            let d = Math.hypot(threat.x - this.x, threat.y - this.y);
+            if (d < 80) {
+              steer.x -= (threat.x - this.x) * 0.2;
+              steer.y -= (threat.y - this.y) * 0.2;
+            }
+          }
+          if (this.energy < 50 && foods.length > 0) {
+            let closestFood = null, minDist = Infinity;
+            for (let food of foods) {
+              let d = Math.hypot(food.x - this.x, food.y - this.y);
+              if (d < minDist) { minDist = d; closestFood = food; }
+            }
+            if (closestFood) {
+              steer.x += (closestFood.x - this.x) * 0.05;
+              steer.y += (closestFood.y - this.y) * 0.05;
+            }
+          }
+          if (this.hydration < 50 && waters.length > 0) {
+            let closestWater = null, minDist = Infinity;
+            for (let water of waters) {
+              let d = Math.hypot(water.x - this.x, water.y - this.y);
+              if (d < minDist) { minDist = d; closestWater = water; }
+            }
+            if (closestWater) {
+              steer.x += (closestWater.x - this.x) * 0.05;
+              steer.y += (closestWater.y - this.y) * 0.05;
+            }
+          }
+          // Mineral seeking: increases synergy slightly.
+          if (minerals.length > 0) {
+            let closestMineral = null, minDist = Infinity;
+            for (let mineral of minerals) {
+              let d = Math.hypot(mineral.x - this.x, mineral.y - this.y);
+              if (d < minDist) { minDist = d; closestMineral = mineral; }
+            }
+            if (closestMineral) {
+              steer.x += (closestMineral.x - this.x) * 0.04;
+              steer.y += (closestMineral.y - this.y) * 0.04;
+            }
+          }
+          for (let obstacle of obstacles) {
+            let d = Math.hypot(obstacle.x - this.x, obstacle.y - this.y);
+            if (d < obstacle.size + this.size + 20) {
+              steer.x -= (obstacle.x - this.x) * 0.3;
+              steer.y -= (obstacle.y - this.y) * 0.3;
+            }
+          }
+          return steer;
+        }
+        move(agents, foods, waters, minerals, threats) {
+          const steer = this.computeSteering(agents, foods, waters, minerals, threats);
+          const speedFactor = weatherSpeedFactors[weather.condition] || 1;
+          this.x += (steer.x + (Math.random() - 0.5) * 2) * speedFactor + wind.speed * Math.cos(wind.direction) * 0.05;
+          this.y += (steer.y + (Math.random() - 0.5) * 2) * speedFactor + wind.speed * Math.sin(wind.direction) * 0.05;
+          keepInBounds(this);
+          this.synergy *= settings.synergy.degradeFactor;
+          this.energy -= 0.05;
+          this.hydration -= 0.05;
+          if (this.energy <= 0 || this.hydration <= 0) this.alive = false;
+        }
+      }
+      
+      class CommanderAgent {
+        constructor() {
+          this.stepCount = 0;
+          this.epsilon = 1.0;
+          this.exp = [];
+          this.learningRate = parseFloat(document.getElementById("lrInput").value);
+          this.mutationRate = parseFloat(document.getElementById("mutRateInput").value);
+          this.epsilonDecay = parseFloat(document.getElementById("decayInput").value);
+          // Input shape: 9 normalized features.
+          this.model = this.buildCommanderDQN();
+          this.targetModel = this.buildCommanderDQN();
+          this.targetModel.setWeights(this.model.getWeights());
+          this.lossHistory = [];
+          this.lossData = [];
+        }
+        buildCommanderDQN() {
+          const model = tf.sequential();
+          model.add(tf.layers.dense({ units: 1024, inputShape: [9] }));
+          model.add(tf.layers.batchNormalization());
+          model.add(tf.layers.leakyReLU({ alpha: 0.1 }));
+          model.add(tf.layers.dropout({ rate: 0.2 }));
+          model.add(tf.layers.dense({ units: 512 }));
+          model.add(tf.layers.batchNormalization());
+          model.add(tf.layers.leakyReLU({ alpha: 0.1 }));
+          model.add(tf.layers.dropout({ rate: 0.2 }));
+          model.add(tf.layers.dense({ units: 256 }));
+          model.add(tf.layers.batchNormalization());
+          model.add(tf.layers.leakyReLU({ alpha: 0.1 }));
+          model.add(tf.layers.dropout({ rate: 0.2 }));
+          model.add(tf.layers.dense({ units: 128 }));
+          model.add(tf.layers.batchNormalization());
+          model.add(tf.layers.leakyReLU({ alpha: 0.1 }));
+          model.add(tf.layers.dropout({ rate: 0.2 }));
+          model.add(tf.layers.dense({ units: 64 }));
+          model.add(tf.layers.batchNormalization());
+          model.add(tf.layers.leakyReLU({ alpha: 0.1 }));
+          model.add(tf.layers.dropout({ rate: 0.2 }));
+          model.add(tf.layers.dense({ units: 32 }));
+          model.add(tf.layers.batchNormalization());
+          model.add(tf.layers.leakyReLU({ alpha: 0.1 }));
+          model.add(tf.layers.dense({ units: 16 }));
+          model.add(tf.layers.batchNormalization());
+          model.add(tf.layers.leakyReLU({ alpha: 0.1 }));
+          model.add(tf.layers.dense({ units: 6, activation: 'linear' }));
+          model.compile({ optimizer: tf.train.adam(this.learningRate), loss: 'meanSquaredError' });
+          return model;
+        }
+        step(agents, threats, foods, waters, tasks, timeOfDay) {
+          this.stepCount++;
+          const avgHydration = agents.reduce((sum, ag) => sum + ag.hydration, 0) / (agents.length || 1);
+          const state = [
+            agents.length / 1620,
+            tasks.length / 45,
+            settings.tasks.synergyRequired / 5,
+            timeOfDay / 24,
+            settings.threat.aggressiveness / 5,
+            getWeatherCode(weather.condition) / 3,
+            avgHydration / 150,
+            wind.speed / 10,
+            wind.direction / (2 * Math.PI)
+          ];
+          let action;
+          if (Math.random() < this.epsilon) {
+            action = Math.floor(Math.random() * 6);
+          } else {
+            action = tf.tidy(() => {
+              const stT = tf.tensor2d([state]);
+              const out = this.model.predict(stT);
+              const arr = out.dataSync();
+              return argmax(arr);
+            });
+          }
+          let reward = 0;
+          switch (action) {
+            case 0:
+              if (Math.random() < 0.3) { spawnMultiStepCommanderTask(); reward += 2; }
+              break;
+            case 1:
+              if (settings.tasks.synergyRequired > 1) { settings.tasks.synergyRequired--; reward += 2; logEvent("Commander lowered synergy requirement!"); }
+              break;
+            case 2:
+              settings.threat.aggressiveness += 0.05; logEvent("Increased threat aggressiveness!"); reward -= 1;
+              break;
+            case 3:
+              agents.forEach(a => a.updateTarget()); reward += 3; logEvent("Forced agents to update target network!");
+              break;
+            case 4:
+              const randTribe = Math.floor(Math.random() * settings.tribes);
+              spawnMegaTask(randTribe); reward += 3;
+              break;
+            case 5:
+              const buffTribe = Math.floor(Math.random() * settings.tribes);
+              agents.forEach(a => { if (a.tribe === buffTribe) a.synergyBuff *= 1.2; });
+              reward += 2; logEvent(`Buffed synergy for Tribe ${buffTribe}!`);
+              break;
+          }
+          this.exp.push({ state, action, reward, nextState: [...state], done: false });
+          if (this.exp.length > 64) this.learn();
+          if (this.epsilon > 0.05) this.epsilon *= this.epsilonDecay;
+          if (Math.random() < this.mutationRate) {
+            agents.forEach(a => a.mutate());
+            logEvent("Agents mutated slightly.");
+          }
+          return state;
+        }
+        async learn() {
+          const batchSize = 64;
+          const batch = this.exp.slice(-batchSize);
+          const states = batch.map(e => e.state);
+          const actions = batch.map(e => e.action);
+          const rewards = batch.map(e => e.reward);
+          const nextStates = batch.map(e => e.nextState);
+          const sT = tf.tensor2d(states);
+          const nsT = tf.tensor2d(nextStates);
+          const currQ = this.model.predict(sT);
+          const nextQ = this.targetModel.predict(nsT);
+          const currData = currQ.arraySync();
+          const nextData = nextQ.arraySync();
+          for (let i = 0; i < batch.length; i++) {
+            const maxNext = Math.max(...nextData[i]);
+            currData[i][actions[i]] = rewards[i] + 0.99 * maxNext;
+          }
+          const target = tf.tensor2d(currData);
+          try {
+            const info = await this.model.fit(sT, target, { epochs: 1, verbose: 0 });
+            const loss = info.history.loss[0];
+            this.lossHistory.push(loss);
+            this.lossData.push(loss);
+            document.getElementById("lossDisplay").textContent = "Loss: " + loss.toFixed(4);
+            updateLossChart(this.lossData);
+            if (loss > 0.1) { this.learningRate *= 0.98; } else { this.learningRate *= 1.02; }
+            this.model.optimizer.learningRate = this.learningRate;
+            console.log(`Step ${this.stepCount}: loss = ${loss.toFixed(4)}, epsilon = ${this.epsilon.toFixed(4)}`);
+            if (this.stepCount % 100 === 0) {
+              const tau = 0.1;
+              const weights = this.model.getWeights();
+              const targetWeights = this.targetModel.getWeights();
+              const updated = weights.map((w, i) => tf.add(tf.mul(w, tau), tf.mul(targetWeights[i], 1 - tau)));
+              this.targetModel.setWeights(updated);
+              updated.forEach(t => t.dispose());
+            }
+          } catch (err) {
+            console.error("Learning error:", err);
+          } finally {
+            tf.dispose([sT, nsT, currQ, nextQ, target]);
+          }
+        }
+        trainExtra() {
+          for (let i = 0; i < 100; i++) {
+            this.step(agents, threats, foods, waters, tasks, timeOfDay);
+          }
+          logEvent("Commander trained extra for 100 steps.");
+        }
+      }
+      
+      /**************** SPAWN FUNCTIONS ****************/
+      function spawnMultiStepCommanderTask() {
+        tasks.push(new Task(Math.random() * canvas.width, Math.random() * canvas.height, true, false, null));
+        logEvent("Multi-step Commander task spawned!");
+      }
+      function spawnMegaTask(tribe) {
+        tasks.push(new Task(Math.random() * canvas.width, Math.random() * canvas.height, true, true, tribe));
+        logEvent(`MegaTask spawned for Tribe ${tribe}!`);
+      }
+      function spawnFood() {
+        foods.push(new Food(Math.random() * canvas.width, Math.random() * canvas.height));
+      }
+      function spawnWater() {
+        waters.push(new Water(Math.random() * canvas.width, Math.random() * canvas.height));
+      }
+      function spawnMineral() {
+        minerals.push(new Mineral(Math.random() * canvas.width, Math.random() * canvas.height));
+      }
+      
+      /**************** RESOURCE CONSUMPTION & REPRODUCTION ****************/
+      function consumeResources() {
+        agents.forEach(agent => {
+          for (let i = foods.length - 1; i >= 0; i--) {
+            let food = foods[i];
+            if (Math.hypot(agent.x - food.x, agent.y - food.y) < agent.size + food.size) {
+              agent.energy = Math.min(agent.energy + 20, 150);
+              foods.splice(i, 1);
+              logEvent(`Agent (Tribe ${agent.tribe}) consumed food.`);
+            }
+          }
+          for (let i = waters.length - 1; i >= 0; i--) {
+            let water = waters[i];
+            if (Math.hypot(agent.x - water.x, agent.y - water.y) < agent.size + water.size) {
+              agent.hydration = Math.min(agent.hydration + 20, 150);
+              waters.splice(i, 1);
+              logEvent(`Agent (Tribe ${agent.tribe}) consumed water.`);
+            }
+          }
+          for (let i = minerals.length - 1; i >= 0; i--) {
+            let mineral = minerals[i];
+            if (Math.hypot(agent.x - mineral.x, agent.y - mineral.y) < agent.size + mineral.size) {
+              agent.synergy += 0.2;
+              minerals.splice(i, 1);
+              logEvent(`Agent (Tribe ${agent.tribe}) consumed a mineral for synergy.`);
+            }
+          }
+        });
+      }
+      
+      function checkReproduction() {
+        let newAgents = [];
+        agents.forEach(agent => {
+          if (agent.energy > 120 && Math.random() < 0.05) {
+            let newX = agent.x + (Math.random() - 0.5) * 20;
+            let newY = agent.y + (Math.random() - 0.5) * 20;
+            let newAgent = new AdvancedAgent(newX, newY, agent.tribe);
+            newAgent.synergyBuff = agent.synergyBuff * (1 + (Math.random() - 0.5) * 0.1);
+            agent.energy -= 50;
+            newAgents.push(newAgent);
+            logEvent(`Agent (Tribe ${agent.tribe}) reproduced!`);
+          }
+        });
+        agents = agents.concat(newAgents);
+      }
+      
+      /**************** INITIALIZE SIMULATION ****************/
+      function initializeSimulation() {
+        agents = []; threats = []; foods = []; waters = []; minerals = []; tasks = []; threatNests = []; obstacles = [];
+        generation = 0;
+        timeOfDay = 8;
+        commander = new CommanderAgent();
+        // 1620 agents remain our baseline.
+        const totalAgents = 1620;
+        for (let i = 0; i < totalAgents; i++) {
+          const tribe = i % settings.tribes;
+          agents.push(new AdvancedAgent(Math.random() * canvas.width, Math.random() * canvas.height, tribe));
+        }
+        // 135 threats
+        for (let i = 0; i < 135; i++) {
+          threats.push(new Threat(Math.random() * canvas.width, Math.random() * canvas.height));
+        }
+        // 225 foods
+        for (let i = 0; i < 225; i++) {
+          foods.push(new Food(Math.random() * canvas.width, Math.random() * canvas.height));
+        }
+        // 135 waters
+        for (let i = 0; i < 135; i++) {
+          waters.push(new Water(Math.random() * canvas.width, Math.random() * canvas.height));
+        }
+        // 45 tasks
+        for (let i = 0; i < 45; i++) {
+          tasks.push(new Task(Math.random() * canvas.width, Math.random() * canvas.height, true, false, null));
+        }
+        // 90 threat nests
+        for (let i = 0; i < 90; i++) {
+          threatNests.push(new ThreatNest(Math.random() * canvas.width, Math.random() * canvas.height));
+        }
+        // 135 obstacles
+        for (let i = 0; i < 135; i++) {
+          obstacles.push(new Obstacle(Math.random() * canvas.width, Math.random() * canvas.height, 30 + Math.random() * 20));
+        }
+        // 135 minerals
+        for (let i = 0; i < 135; i++) {
+          spawnMineral();
+        }
+        generateZones();
+        logEvent("Simulation initialized.");
+      }
+      
+      /**************** UPDATE SIMULATION LOOP ****************/
+      function updateSimulation(timestamp) {
+        if (paused) { lastTimestamp = timestamp; requestAnimationFrame(updateSimulation); return; }
+        const dt = (timestamp - lastTimestamp) * simulationSpeed;
+        lastTimestamp = timestamp;
+        fps = (1000 / dt).toFixed(1);
+        stepTime += dt / 1000;
+        if (stepTime > 1) {
+          timeOfDay += 0.05;
+          if (timeOfDay >= 24) timeOfDay = 0;
+          stepTime = 0;
+          generation++;
+        }
+        
+        if (timestamp - lastWeatherUpdate > 10000) {
+          updateWeather();
+          lastWeatherUpdate = timestamp;
+        }
+        if (timestamp - lastResourceSpawn > 5000) {
+          spawnFood();
+          spawnWater();
+          if (Math.random() < 0.5) spawnMineral();
+          lastResourceSpawn = timestamp;
+        }
+        
+        const dayColor = { r: 135, g: 206, b: 235 };
+        const nightColor = { r: 10, g: 10, b: 40 };
+        const tDay = (Math.sin(timeOfDay / 24 * Math.PI * 2) + 1) / 2;
+        const bgR = Math.round(nightColor.r * (1 - tDay) + dayColor.r * tDay);
+        const bgG = Math.round(nightColor.g * (1 - tDay) + dayColor.g * tDay);
+        const bgB = Math.round(nightColor.b * (1 - tDay) + dayColor.b * tDay);
+        canvas.style.backgroundColor = `rgb(${bgR},${bgG},${bgB})`;
+  
+        commander.step(agents, threats, foods, waters, tasks, timeOfDay);
+        agents.forEach(agent => {
+          if (agent.alive) {
+            agent.updateSynergy(agents);
+            agent.move(agents, foods, waters, minerals, threats);
+          }
+        });
+        shareCooperation(agents);
+        threats.forEach(t => t.move(timeOfDay, dt));
+        foods.forEach(f => f.updateDecay());
+        waters.forEach(w => w.updateDecay());
+        minerals.forEach(m => m.updateDecay());
+        agents = agents.filter(a => a.alive);
+        foods = foods.filter(f => f.alive);
+        waters = waters.filter(w => w.alive);
+        threats = threats.filter(t => t.alive);
+        minerals = minerals.filter(m => m.alive);
+        completeSynergyTasksIfReady(agents);
+        const globalSynergy = agents.reduce((sum, ag) => sum + ag.synergy, 0);
+        threatNests.forEach(nest => nest.spawnThreatIfNeeded(globalSynergy));
+  
+        consumeResources();
+        checkReproduction();
+  
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        drawEnvironmentalZones();
+        drawSun();
+        drawClouds();
+        threatNests.forEach(nest => nest.draw(ctx));
+        threats.forEach(t => t.draw(ctx));
+        foods.forEach(f => f.draw(ctx));
+        waters.forEach(w => w.draw(ctx));
+        minerals.forEach(m => m.draw(ctx));
+        tasks.forEach(task => task.draw(ctx));
+        obstacles.forEach(obstacle => obstacle.draw(ctx));
+        agents.forEach(a => a.draw(ctx));
+        updateSynergyPanel(agents);
+        updatePerformancePanel();
+  
+        requestAnimationFrame(updateSimulation);
+      }
+      
+      function completeSynergyTasksIfReady(agentArray) {
+        const globalSynergy = agentArray.reduce((sum, ag) => sum + ag.synergy, 0);
+        const synergyByTribe = new Array(settings.tribes).fill(0);
+        agentArray.forEach(ag => { synergyByTribe[ag.tribe] += ag.synergy; });
+        tasks = tasks.filter(task => {
+          if (!task.requiresSynergy) return true;
+          if (!task.isMegaTask) {
+            if (globalSynergy >= settings.tasks.synergyRequired) { logEvent("Synergy task completed!"); return false; }
+            return true;
+          } else {
+            const req = settings.tasks.megaTaskSynergyReq;
+            const tribe = task.tribeForMegaTask;
+            if (tribe !== null) {
+              if (synergyByTribe[tribe] >= req) {
+                logEvent(`MegaTask for Tribe ${tribe} completed!`);
+                agentArray.forEach(a => { if (a.tribe === tribe) a.synergy = Math.min(a.synergy + 1, settings.synergy.maxSynergyPerAgent); });
+                return false;
+              }
+              return true;
+            } else {
+              if (globalSynergy >= req) { logEvent("Global MegaTask completed!"); return false; }
+              return true;
+            }
+          }
+        });
+      }
+      
+      function updateSynergyPanel(agentArray) {
+        const synergyPanel = document.getElementById("synergyPanel");
+        synergyPanel.innerHTML = "";
+        const synergyByTribe = new Array(settings.tribes).fill(0);
+        agentArray.forEach(a => { synergyByTribe[a.tribe] += a.synergy; });
+        const globalSynergy = synergyByTribe.reduce((sum, val) => sum + val, 0);
+        const globalLine = document.createElement("div");
+        globalLine.textContent = `Global Synergy: ${globalSynergy.toFixed(2)}`;
+        synergyPanel.appendChild(globalLine);
+        synergyByTribe.forEach((val, tribe) => {
+          const line = document.createElement("div");
+          line.textContent = `Tribe ${tribe} Synergy: ${val.toFixed(2)}`;
+          synergyPanel.appendChild(line);
+        });
+        const timeLine = document.createElement("div");
+        timeLine.textContent = `Time: ${timeOfDay.toFixed(2)}h | FPS: ${fps}`;
+        synergyPanel.appendChild(timeLine);
+      }
+      
+      const agentTooltip = document.getElementById("agentTooltip");
+      canvas.addEventListener("mousemove", (e) => {
+        updateAgentTooltip(e);
+      });
+      function updateAgentTooltip(e) {
+        let found = false;
+        for (let agent of agents) {
+          const dx = e.clientX - agent.x, dy = e.clientY - agent.y;
+          if (Math.hypot(dx, dy) < agent.size + 5) {
+            agentTooltip.style.display = "block";
+            agentTooltip.style.left = (e.clientX + 10) + "px";
+            agentTooltip.style.top = (e.clientY + 10) + "px";
+            agentTooltip.textContent = `Tribe: ${agent.tribe} | Energy: ${agent.energy.toFixed(1)} | Hydration: ${agent.hydration.toFixed(1)} | Synergy: ${agent.synergy.toFixed(2)}`;
+            found = true;
+            break;
+          }
+        }
+        if (!found) agentTooltip.style.display = "none";
+      }
+      
+      const lossChartCtx = document.getElementById("lossChart").getContext("2d");
+      const lossChart = new Chart(lossChartCtx, {
+        type: 'line',
+        data: {
+          labels: [],
+          datasets: [{
+            label: 'Training Loss',
+            data: [],
+            borderColor: 'rgba(52,152,219,1)',
+            backgroundColor: 'rgba(52,152,219,0.2)',
+            fill: true,
+            tension: 0.1
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          scales: { x: { display: false }, y: { beginAtZero: true } }
+        }
+      });
+      function updateLossChart(lossData) {
+        lossChart.data.labels = lossData.map((v, i) => i);
+        lossChart.data.datasets[0].data = lossData;
+        lossChart.update();
+      }
+      
+      function resetSimulation() {
+        initializeSimulation();
+        logEvent("Simulation reset.");
+      }
+      function updateLR(val) { 
+        commander.learningRate = parseFloat(val); 
+        commander.model.optimizer.learningRate = parseFloat(val); 
+      }
+      function updateMutRate(val) { commander.mutationRate = parseFloat(val); }
+      function updateDecay(val) { commander.epsilonDecay = parseFloat(val); }
+      function updateSimSpeed(val) { simulationSpeed = parseFloat(val); }
+      function toggleSimulation() {
+        paused = !paused;
+        const btn = document.querySelector("#agentControls button:nth-child(3)");
+        btn.textContent = paused ? "Resume Simulation" : "Pause Simulation";
+        logEvent(paused ? "Simulation paused." : "Simulation resumed.");
+      }
+      
+      window.updateLR = updateLR;
+      window.updateMutRate = updateMutRate;
+      window.updateDecay = updateDecay;
+      window.resetSimulation = resetSimulation;
+      
+      initializeSimulation();
+      requestAnimationFrame(updateSimulation);
+      
+    })();
+  </script>
+</body>
+</html>
