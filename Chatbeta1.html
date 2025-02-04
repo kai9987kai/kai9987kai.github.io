@@ -1,0 +1,678 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Actively Improving AI Chatbot – Advanced & Optimized</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <!-- Chart.js for live loss chart -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <!-- TensorFlow.js -->
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest"></script>
+  <style>
+    :root {
+      --primary-bg: #1a1a1a;
+      --secondary-bg: #2d2d2d;
+      --accent: #4a90e2;
+    }
+    html, body {
+      margin: 0;
+      padding: 0;
+      background: var(--primary-bg);
+      color: #fff;
+      font-family: 'Segoe UI', sans-serif;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+    /* Chat container */
+    #chatContainer {
+      flex: 1;
+      overflow-y: auto;
+      padding: 1rem;
+      background: var(--secondary-bg);
+      position: relative;
+    }
+    #chatLog {
+      max-height: calc(100% - 2rem);
+      overflow-y: auto;
+    }
+    #stepBar {
+      padding: 0.5rem;
+      text-align: center;
+      background: var(--primary-bg);
+      border-top: 1px solid #3d3d3d;
+    }
+    /* Input area */
+    #inputContainer {
+      display: flex;
+      gap: 0.3rem;
+      padding: 0.5rem;
+      background: var(--primary-bg);
+    }
+    #userInput {
+      flex: 1;
+      padding: 0.4rem;
+      font-size: 14px;
+      border: 1px solid #3d3d3d;
+      border-radius: 4px;
+      background: var(--secondary-bg);
+      color: #fff;
+    }
+    #sendButton {
+      padding: 0.4rem 0.8rem;
+      background: var(--accent);
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 14px;
+      transition: opacity 0.2s;
+    }
+    #sendButton:hover { opacity: 0.9; }
+    /* Fixed panels */
+    #controls, #infoPanel, #performancePanel {
+      position: fixed;
+      background: rgba(0,0,0,0.8);
+      padding: 0.8rem;
+      border-radius: 4px;
+      font-size: 14px;
+      z-index: 1000;
+    }
+    #controls {
+      top: 1rem;
+      right: 1rem;
+      width: 280px;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0.5rem;
+    }
+    #controls button.resetBtn {
+      grid-column: span 2;
+      background: #d9534f;
+    }
+    #infoPanel {
+      top: 300px;
+      right: 1rem;
+      width: 280px;
+    }
+    #lossChartContainer {
+      width: 100%;
+      height: 200px;
+    }
+    #lossDisplay {
+      margin-top: 0.5rem;
+      text-align: center;
+    }
+    #dalleImage {
+      width: 100%;
+      margin-top: 1rem;
+      border: 2px solid var(--accent);
+    }
+    #performancePanel {
+      bottom: 1rem;
+      right: 1rem;
+      width: 280px;
+    }
+    .feedbackBtn {
+      background: transparent;
+      border: none;
+      font-size: 14px;
+      cursor: pointer;
+      margin-left: 5px;
+      color: var(--accent);
+    }
+  </style>
+</head>
+<body>
+  <div id="chatContainer">
+    <div id="chatLog"></div>
+    <div id="stepBar">Steps: 0</div>
+  </div>
+  <div id="inputContainer">
+    <input type="text" id="userInput" placeholder="Type your message here..." />
+    <button id="sendButton">Send</button>
+  </div>
+  <div id="controls">
+    <div class="grid-col-span-2">
+      <label>LR: <input type="number" id="lrInput" value="0.0005" step="0.0001"></label>
+      <label>MutRate: <input type="number" id="mutRateInput" value="0.01" step="0.001"></label>
+      <label>Decay: <input type="number" id="decayInput" value="0.999" step="0.001"></label>
+      <label>Speed: <input type="range" id="speedInput" min="0.5" max="3" step="0.1" value="1"></label>
+    </div>
+    <button onclick="commander.trainExtra()">Train Extra</button>
+    <button onclick="exportModel()">Export Model</button>
+    <button onclick="document.getElementById('modelUpload').click()">Import Model</button>
+    <button class="resetBtn" onclick="resetModel()">Reset Model</button>
+    <input type="file" id="modelUpload" style="display:none" accept=".json,.bin">
+  </div>
+  <div id="infoPanel">
+    <div id="lossChartContainer">
+      <canvas id="lossChart"></canvas>
+    </div>
+    <div id="lossDisplay">Loss: N/A</div>
+    <!-- DALL·E generated image placeholder -->
+    <img id="dalleImage" src="https://via.placeholder.com/280x200?text=DALL-E+Generated+Image" alt="DALL-E Generated Image">
+  </div>
+  <div id="performancePanel"></div>
+
+  <script>
+    // Custom LambdaLayer to wrap arbitrary functions in a tf.layers.Layer.
+    class LambdaLayer extends tf.layers.Layer {
+      constructor(func, config) {
+        super(config || {});
+        this.func = func;
+      }
+      call(inputs, kwargs) {
+        return this.func(inputs);
+      }
+      computeOutputShape(inputShape) {
+        return inputShape;
+      }
+      getClassName() {
+        return 'LambdaLayer';
+      }
+    }
+
+    (function(){
+      // Set TensorFlow backend to WebGL and force lower precision if needed.
+      tf.setBackend('webgl');
+      tf.env().set('WEBGL_FORCE_F16_TEXTURES', true);
+
+      // Predefined responses.
+      const responses = [
+        "Here's a joke: ",
+        "Here's some advice: ",
+        "Here's a quote: ",
+        "Did you know? ",
+        "Chuck Norris says: ",
+        "Kanye says: "
+      ];
+
+      // --- API Fetch Functions ---
+      async function safeFetch(url, options = {}) {
+        try {
+          const response = await fetch(url, options);
+          if (!response.ok) throw new Error(`HTTP error! Status: ${response.status}`);
+          return await response.text();
+        } catch (error) {
+          console.error("Fetch error:", error);
+          try {
+            const fallbackResponse = await fetch(url, { ...options, mode: "no-cors" });
+            return await fallbackResponse.text();
+          } catch (fallbackError) {
+            console.error("Fallback fetch error:", fallbackError);
+            return null;
+          }
+        }
+      }
+      async function fetchJoke() {
+        const data = await safeFetch("https://icanhazdadjoke.com/", { headers: { "Accept": "text/plain" } });
+        return data || "Sorry, no joke available.";
+      }
+      async function fetchAdvice() {
+        const data = await safeFetch("https://api.adviceslip.com/advice");
+        try { return data ? JSON.parse(data).slip.advice : "Sorry, no advice available."; }
+        catch (e) { return "Sorry, no advice available."; }
+      }
+      async function fetchQuote() {
+        const data = await safeFetch("https://api.quotable.io/random");
+        try { return data ? JSON.parse(data).content : "Sorry, no quote available."; }
+        catch (e) { return "Sorry, no quote available."; }
+      }
+      async function fetchCatFact() {
+        const data = await safeFetch("https://catfact.ninja/fact");
+        try { return data ? JSON.parse(data).fact : "Sorry, no cat fact available."; }
+        catch (e) { return "Sorry, no cat fact available."; }
+      }
+      async function fetchChuckNorris() {
+        try {
+          const res = await safeFetch("https://api.chucknorris.io/jokes/random");
+          if (res) {
+            const data = JSON.parse(res);
+            return data.value;
+          }
+          return "Sorry, no Chuck Norris joke available.";
+        } catch (e) {
+          console.error("Chuck Norris API error:", e);
+          return "Error fetching Chuck Norris joke.";
+        }
+      }
+      async function fetchKanye() {
+        try {
+          const res = await safeFetch("https://api.kanye.rest");
+          if (res) {
+            const data = JSON.parse(res);
+            return data.quote;
+          }
+          return "Sorry, no Kanye quote available.";
+        } catch (e) {
+          console.error("Kanye API error:", e);
+          return "Error fetching Kanye quote.";
+        }
+      }
+      async function getResponse(action) {
+        if (action === 0) {
+          const joke = await fetchJoke();
+          if (joke && !joke.startsWith("Error")) return responses[0] + joke;
+          else return responses[1] + await fetchAdvice();
+        } else if (action === 1) {
+          const advice = await fetchAdvice();
+          if (advice && !advice.startsWith("Error")) return responses[1] + advice;
+          else return responses[0] + await fetchJoke();
+        } else if (action === 2) {
+          const quote = await fetchQuote();
+          return responses[2] + quote;
+        } else if (action === 3) {
+          const catFact = await fetchCatFact();
+          return responses[3] + catFact;
+        } else if (action === 4) {
+          const chuck = await fetchChuckNorris();
+          return responses[4] + chuck;
+        } else if (action === 5) {
+          const kanye = await fetchKanye();
+          return responses[5] + kanye;
+        } else {
+          return responses[action];
+        }
+      }
+
+      // --- UI Helper Functions ---
+      const chatLog = document.getElementById("chatLog");
+      const stepBar = document.getElementById("stepBar");
+      const userInput = document.getElementById("userInput");
+      const sendButton = document.getElementById("sendButton");
+      const performancePanel = document.getElementById("performancePanel");
+      const lossDisplay = document.getElementById("lossDisplay");
+      const lossChartCtx = document.getElementById("lossChart").getContext("2d");
+      let lossChart = new Chart(lossChartCtx, {
+        type: 'line',
+        data: { labels: [], datasets: [{ label: 'Loss', data: [], borderColor: 'var(--accent)', fill: false }] },
+        options: { responsive: true, maintainAspectRatio: false }
+      });
+      function appendMessage(sender, message, features = null) {
+        const msgElem = document.createElement("div");
+        msgElem.style.marginBottom = "10px";
+        msgElem.innerHTML = `<strong>${sender}:</strong> ${message}`;
+        if (sender === "Chatbot" && features) {
+          const upBtn = document.createElement("button");
+          upBtn.textContent = "👍";
+          upBtn.classList.add("feedbackBtn");
+          upBtn.addEventListener("click", () => recordFeedback(features, true));
+          const downBtn = document.createElement("button");
+          downBtn.textContent = "👎";
+          downBtn.classList.add("feedbackBtn");
+          downBtn.addEventListener("click", () => recordFeedback(features, false));
+          msgElem.appendChild(upBtn);
+          msgElem.appendChild(downBtn);
+        }
+        chatLog.appendChild(msgElem);
+        chatLog.scrollTop = chatLog.scrollHeight;
+      }
+      function argmax(arr) {
+        let maxIndex = 0, maxValue = arr[0];
+        for (let i = 1; i < arr.length; i++) {
+          if (arr[i] > maxValue) { maxValue = arr[i]; maxIndex = i; }
+        }
+        return maxIndex;
+      }
+      function calculateReward(message, action) {
+        const positiveKeywords = ["joke", "advice", "quote", "cat", "fascinating", "learn"];
+        let reward = 0;
+        for (let word of positiveKeywords) {
+          if (message.toLowerCase().includes(word)) reward += 1;
+        }
+        if (action >= 2) reward += 0.5;
+        return reward;
+      }
+      function recordFeedback(features, isPositive) {
+        const feedbackReward = isPositive ? 5 : -5;
+        commander.exp.push({ state: features, action: 0, reward: feedbackReward, nextState: features, done: false });
+        logEvent("Feedback recorded: " + (isPositive ? "👍" : "👎"));
+        commander.trainExtra();
+      }
+      function updateStepDisplay(steps) {
+        stepBar.textContent = "Steps: " + steps;
+      }
+      function updateLossChart(lossData) {
+        lossChart.data.labels = lossData.map((v, i) => i);
+        lossChart.data.datasets[0].data = lossData;
+        lossChart.update();
+      }
+      function updatePerformancePanel() {
+        performancePanel.innerHTML = `Steps: ${commander.stepCount} | Epsilon: ${commander.epsilon.toFixed(3)}`;
+      }
+      function logEvent(msg) {
+        console.log("[CHAT LOG]:", msg);
+        let logs = localStorage.getItem("chatLogs");
+        logs = logs ? JSON.parse(logs) : [];
+        logs.push({ time: new Date().toISOString(), msg });
+        localStorage.setItem("chatLogs", JSON.stringify(logs.slice(-100)));
+      }
+
+      // --- CommanderAgent with Stacked Adaptive Self-Attention ---
+      class CommanderAgent {
+        constructor() {
+          this.stepCount = 0;
+          this.epsilon = 1.0;
+          this.exp = [];
+          this.learningRate = parseFloat(document.getElementById("lrInput").value);
+          this.mutationRate = parseFloat(document.getElementById("mutRateInput").value);
+          this.epsilonDecay = parseFloat(document.getElementById("decayInput").value);
+          try {
+            this.model = this.buildDuelingDQN();
+            this.targetModel = this.buildDuelingDQN();
+            this.targetModel.setWeights(this.model.getWeights());
+          } catch (err) {
+            console.error("Model construction error:", err);
+            tf.env().set('WEBGL_FORCE_F16_TEXTURES', true);
+            this.model = this.buildDuelingDQN();
+            this.targetModel = this.buildDuelingDQN();
+            this.targetModel.setWeights(this.model.getWeights());
+          }
+          this.lossHistory = [];
+          this.lossData = [];
+        }
+        // Multi-head self-attention block with dropout and layer normalization.
+        multiHeadSelfAttention(inputTensor, numHeads, dropoutRate = 0.1) {
+          const tokenDim = inputTensor.shape[2];
+          const depth = Math.floor(tokenDim / numHeads);
+          const headOutputs = [];
+          for (let i = 0; i < numHeads; i++) {
+            // Use custom LambdaLayer to slice tokens.
+            const sliceLayer = new LambdaLayer(x => tf.slice(x, [0, 0, i * depth], [-1, -1, depth]));
+            const headInput = sliceLayer.apply(inputTensor);
+            const Q = tf.layers.dense({ units: depth, useBias: false }).apply(headInput);
+            const K = tf.layers.dense({ units: depth, useBias: false }).apply(headInput);
+            const V = tf.layers.dense({ units: depth, useBias: false }).apply(headInput);
+            const scores = tf.layers.dot({ axes: -1 }).apply([Q, K]);
+            // Instead of direct tf.div, wrap the scaling in a LambdaLayer.
+            const divisor = tf.scalar(Math.sqrt(depth));
+            const scaleLayer = new LambdaLayer(x => tf.div(x, divisor));
+            const scaledScores = scaleLayer.apply(scores);
+            const softmaxScores = tf.layers.activation({ activation: 'softmax' }).apply(scaledScores);
+            const headOutput = tf.layers.dot({ axes: [2, 1] }).apply([softmaxScores, V]);
+            headOutputs.push(headOutput);
+          }
+          const concat = tf.layers.concatenate({ axis: -1 }).apply(headOutputs);
+          const output = tf.layers.dense({ units: tokenDim, useBias: false }).apply(concat);
+          const dropped = tf.layers.dropout({ rate: dropoutRate }).apply(output);
+          const added = tf.layers.add().apply([inputTensor, dropped]);
+          const norm = tf.layers.layerNormalization().apply(added);
+          return norm;
+        }
+        // Build the dueling network with two stacked self-attention blocks.
+        buildDuelingDQN() {
+          const input = tf.input({ shape: [9] });
+          let x = tf.layers.dense({ units: 96, activation: 'relu' }).apply(input);
+          x = tf.layers.dense({ units: 96, activation: 'relu' }).apply(x);
+          let reshaped = tf.layers.reshape({ targetShape: [4, 24] }).apply(x);
+          let attnOut1 = this.multiHeadSelfAttention(reshaped, 4, 0.1);
+          let attnOut2 = this.multiHeadSelfAttention(attnOut1, 4, 0.1);
+          let flattened = tf.layers.flatten().apply(attnOut2);
+          const valueStream = tf.layers.dense({ units: 48, activation: 'relu' }).apply(flattened);
+          const value = tf.layers.dense({ units: 1, activation: 'linear' }).apply(valueStream);
+          const advantageStream = tf.layers.dense({ units: 48, activation: 'relu' }).apply(flattened);
+          const advantage = tf.layers.dense({ units: responses.length, activation: 'linear' }).apply(advantageStream);
+          // Use LambdaLayer to subtract the mean of the advantage.
+          const meanAdvantageLayer = new LambdaLayer(a => tf.sub(a, tf.mean(a, 1, true)));
+          const meanAdvantage = meanAdvantageLayer.apply(advantage);
+          const qValues = tf.layers.add().apply([value, meanAdvantage]);
+          const model = tf.model({ inputs: input, outputs: qValues });
+          model.compile({ optimizer: tf.train.adam(this.learningRate), loss: 'meanSquaredError' });
+          return model;
+        }
+        // Feature extraction from text.
+        extractFeatures(message) {
+          const length = message.length;
+          const charSum = message.split("").reduce((sum, ch) => sum + ch.charCodeAt(0), 0);
+          const avgChar = length > 0 ? charSum / length : 0;
+          return [
+            length / 100,
+            avgChar / 128,
+            (message.split(" ").length) / 20,
+            Math.random(), Math.random(),
+            Math.random(), Math.random(),
+            Math.random(), Math.random()
+          ];
+        }
+        // Epsilon-greedy action selection.
+        decideAction(features) {
+          let action;
+          if (Math.random() < this.epsilon) {
+            action = Math.floor(Math.random() * responses.length);
+          } else {
+            action = tf.tidy(() => {
+              const stT = tf.tensor2d([features]);
+              const out = this.model.predict(stT);
+              const arr = out.dataSync();
+              return argmax(arr);
+            });
+          }
+          return action;
+        }
+        // Process message and store experience.
+        async step(message) {
+          const features = this.extractFeatures(message);
+          const action = this.decideAction(features);
+          this.exp.push({ state: features, action, reward: calculateReward(message, action), nextState: features, done: false });
+          if (this.exp.length > 128) await this.learn();
+          if (this.epsilon > 0.05) this.epsilon *= this.epsilonDecay;
+          this.stepCount++;
+          updateStepDisplay(this.stepCount);
+          return { action, features };
+        }
+        // Learn using Double DQN update.
+        async learn() {
+          const batchSize = 64;
+          const batch = this.exp.slice(-batchSize);
+          const states = batch.map(e => e.state);
+          const actions = batch.map(e => e.action);
+          const rewards = batch.map(e => e.reward);
+          const nextStates = batch.map(e => e.nextState);
+          const sT = tf.tensor2d(states);
+          const nsT = tf.tensor2d(nextStates);
+          const currQ = this.model.predict(sT);
+          const nextTargetQ = this.targetModel.predict(nsT);
+          const nextMainQ = this.model.predict(nsT);
+          const currData = currQ.arraySync();
+          const nextTargetData = nextTargetQ.arraySync();
+          const nextMainData = nextMainQ.arraySync();
+          for (let i = 0; i < batch.length; i++) {
+            const doubleAction = argmax(nextMainData[i]);
+            currData[i][actions[i]] = rewards[i] + 0.99 * nextTargetData[i][doubleAction];
+          }
+          const target = tf.tensor2d(currData);
+          try {
+            const info = await this.model.fit(sT, target, { epochs: 1, verbose: 0 });
+            const loss = info.history.loss[0];
+            this.lossHistory.push(loss);
+            this.lossData.push(loss);
+            lossDisplay.textContent = "Loss: " + loss.toFixed(4);
+            updateLossChart(this.lossData);
+            if (loss > 0.1) this.learningRate *= 0.98; else this.learningRate *= 1.02;
+            this.model.optimizer.learningRate = this.learningRate;
+            if (this.stepCount % 100 === 0) {
+              const tau = 0.1;
+              const weights = this.model.getWeights();
+              const targetWeights = this.targetModel.getWeights();
+              const updated = weights.map((w, i) => tf.add(tf.mul(w, tau), tf.mul(targetWeights[i], 1 - tau)));
+              this.targetModel.setWeights(updated);
+              updated.forEach(t => t.dispose());
+            }
+          } catch (err) {
+            console.error("Learning error:", err);
+          } finally {
+            tf.dispose([sT, nsT, currQ, nextTargetQ, nextMainQ, target]);
+          }
+        }
+        // Extra training routine.
+        trainExtra() {
+          for (let i = 0; i < 100; i++) {
+            this.step("dummy");
+          }
+          logEvent("Commander trained extra for 100 steps.");
+        }
+      }
+
+      // Instantiate CommanderAgent.
+      const commander = new CommanderAgent();
+
+      // Export model functionality.
+      async function exportModel() {
+        try {
+          await commander.model.save('downloads://chatbot-model');
+          logEvent("Model exported successfully.");
+        } catch (e) {
+          console.error("Export error:", e);
+          logEvent("Failed to export model.");
+        }
+      }
+
+      // Import model from file.
+      document.getElementById("modelUpload").addEventListener("change", async (evt) => {
+        const files = evt.target.files;
+        if (files.length === 0) return;
+        try {
+          const loadedModel = await tf.loadLayersModel(tf.io.browserFiles(files));
+          commander.model = loadedModel;
+          commander.targetModel = loadedModel;
+          logEvent("Model imported successfully.");
+        } catch (e) {
+          console.error("Import error:", e);
+          logEvent("Failed to import model.");
+        }
+      });
+
+      // Reset model and clear backups.
+      window.resetModel = function() {
+        if (confirm("This will reset the model and clear backup data. Continue?")) {
+          localStorage.removeItem("backup-model");
+          localStorage.removeItem("performanceMetrics");
+          location.reload();
+        }
+      };
+
+      // Handle incoming user message.
+      async function handleMessage() {
+        const message = userInput.value.trim();
+        if (!message) return;
+        appendMessage("User", message);
+        userInput.value = "";
+        try {
+          const result = await commander.step(message);
+          const action = result.action;
+          const features = result.features;
+          const response = await getResponse(action);
+          appendMessage("Chatbot", response, features);
+        } catch (error) {
+          console.error("Error processing message:", error);
+          appendMessage("Chatbot", "Sorry, I encountered an error and could not respond.");
+          logEvent("Error during message processing: " + error.message);
+        } finally {
+          updatePerformancePanel();
+        }
+      }
+
+      sendButton.addEventListener("click", handleMessage);
+      userInput.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") handleMessage();
+      });
+
+      // Pre-training routine.
+      async function preTrainChatbot() {
+        const inputs = [];
+        const labels = [];
+        for (let i = 0; i < 500; i++) {
+          const text = "sample message " + i;
+          const features = commander.extractFeatures(text);
+          const action = Math.floor(Math.random() * responses.length);
+          const labelVec = Array(responses.length).fill(0);
+          labelVec[action] = 1;
+          inputs.push(features);
+          labels.push(labelVec);
+        }
+        const xs = tf.tensor2d(inputs);
+        const ys = tf.tensor2d(labels);
+        try {
+          await commander.model.fit(xs, ys, { epochs: 40 });
+          logEvent("Pre-training complete.");
+        } catch (err) {
+          console.error("Pre-training error:", err);
+          logEvent("Pre-training encountered an error.");
+        } finally {
+          xs.dispose();
+          ys.dispose();
+        }
+      }
+      preTrainChatbot();
+
+      // Background training every 30 seconds.
+      setInterval(() => {
+        commander.trainExtra();
+        updatePerformancePanel();
+      }, 30000);
+
+      // Every 20 seconds, fetch random API data for background training.
+      setInterval(async () => {
+        const quote = await fetchQuote();
+        if (quote && !quote.startsWith("Error")) {
+          commander.step(quote);
+          logEvent("Background training with quote: " + quote.slice(0, 50) + "...");
+        }
+        const catFact = await fetchCatFact();
+        if (catFact && !catFact.startsWith("Error")) {
+          commander.step(catFact);
+          logEvent("Background training with cat fact: " + catFact.slice(0, 50) + "...");
+        }
+        const chuck = await fetchChuckNorris();
+        if (chuck && !chuck.startsWith("Error")) {
+          commander.step(chuck);
+          logEvent("Background training with Chuck Norris: " + chuck.slice(0, 50) + "...");
+        }
+        const kanye = await fetchKanye();
+        if (kanye && !kanye.startsWith("Error")) {
+          commander.step(kanye);
+          logEvent("Background training with Kanye: " + kanye.slice(0, 50) + "...");
+        }
+      }, 20000);
+
+      updatePerformancePanel();
+
+      // Auto-backup model and metrics every 60 seconds.
+      setInterval(async () => {
+        try {
+          await commander.model.save('localstorage://backup-model');
+          const metrics = {
+            stepCount: commander.stepCount,
+            epsilon: commander.epsilon,
+            lossData: commander.lossData.slice(-20)
+          };
+          localStorage.setItem("performanceMetrics", JSON.stringify(metrics));
+          logEvent("Model and metrics auto-backup saved to localStorage.");
+        } catch (e) {
+          console.error("Auto-backup error:", e);
+        }
+      }, 60000);
+
+      // On startup, load backup if available.
+      (async function loadBackup() {
+        try {
+          const backupModel = await tf.loadLayersModel('localstorage://backup-model');
+          commander.model = backupModel;
+          commander.targetModel = backupModel;
+          const metrics = localStorage.getItem("performanceMetrics");
+          if (metrics) {
+            const parsed = JSON.parse(metrics);
+            logEvent("Backup metrics loaded: " + JSON.stringify(parsed));
+          }
+          logEvent("Backup model loaded from localStorage.");
+        } catch (e) {
+          console.log("No backup model found, starting fresh.");
+        }
+      })();
+
+      updatePerformancePanel();
+
+    })();
+  </script>
+</body>
+</html>
