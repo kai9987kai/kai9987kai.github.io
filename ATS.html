@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Advanced Next‑Gen ATS for DOCX – Scanner & Injector</title>
+  <style>
+    /* Reset & Basic Styling */
+    body {
+      font-family: Arial, sans-serif;
+      background: #f0f4f8;
+      margin: 2em;
+      color: #333;
+      line-height: 1.6;
+    }
+    h1, h2 {
+      color: #0056b3;
+    }
+    .container {
+      background: #fff;
+      padding: 1.5em;
+      border-radius: 6px;
+      box-shadow: 0 0 10px rgba(0,0,0,0.1);
+      margin-bottom: 2em;
+    }
+    label {
+      display: block;
+      font-weight: bold;
+      margin-bottom: 0.5em;
+    }
+    input[type="file"],
+    button {
+      padding: 0.7em 1.2em;
+      background: #0056b3;
+      color: #fff;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 1em;
+      margin-bottom: 1em;
+    }
+    button:hover,
+    input[type="file"]:hover {
+      background: #003d80;
+    }
+    textarea {
+      width: 100%;
+      min-height: 150px;
+      padding: 0.5em;
+      font-family: Consolas, monospace;
+      border: 1px solid #bbb;
+      border-radius: 4px;
+      box-sizing: border-box;
+      margin-bottom: 1em;
+    }
+    .checkbox-group {
+      margin-bottom: 1em;
+    }
+    .checkbox-group label {
+      font-weight: normal;
+      margin-right: 1em;
+    }
+    #scanResults ul {
+      list-style-type: disc;
+      padding-left: 1.5em;
+    }
+    .hidden-doc {
+      color: #fff;
+      background: #fff;
+    }
+    .button-group button {
+      margin-right: 0.5em;
+    }
+  </style>
+  <!-- Include external libraries -->
+  <!-- Mammoth.js for DOCX parsing -->
+  <script src="https://cdn.jsdelivr.net/npm/mammoth@1.4.8/mammoth.browser.min.js"></script>
+  <!-- DOCX.js for generating DOCX files (using unpkg as an alternative source) -->
+  <script src="https://unpkg.com/docx@7.8.0/build/index.js"></script>
+  <!-- FileSaver.js for download functionality -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+</head>
+<body>
+  <!-- Scanner Section -->
+  <div class="container" id="scannerSection">
+    <h1>ATS DOCX Scanner</h1>
+    <p>This tool extracts text from a DOCX file and scans for hidden exploit techniques.</p>
+    <label for="scannerFile">Upload DOCX file to scan:</label>
+    <input type="file" id="scannerFile" accept=".docx" />
+    <button id="scanButton">Scan DOCX for Exploits</button>
+    <label for="extractedText">Extracted Text:</label>
+    <textarea id="extractedText" readonly placeholder="Extracted text will appear here..."></textarea>
+    <div id="scanResults"></div>
+  </div>
+
+  <!-- Injector Section -->
+  <div class="container" id="injectorSection">
+    <h1>ATS DOCX Injector</h1>
+    <p>
+      This tool injects a suite of exploit techniques into your DOCX’s text. Use the checkboxes below to choose which exploit(s) to apply, then generate a new DOCX file for download.
+    </p>
+    <label for="injectorFile">Upload DOCX file to inject exploits:</label>
+    <input type="file" id="injectorFile" accept=".docx" />
+    
+    <div class="checkbox-group">
+      <label><input type="checkbox" id="cbZalgo" checked> Zalgo (Unicode anomalies)</label>
+      <label><input type="checkbox" id="cbHiddenHTML" checked> Hidden HTML</label>
+      <label><input type="checkbox" id="cbStego" checked> Steganographic Data</label>
+      <label><input type="checkbox" id="cbMetadata" checked> Invisible Metadata</label>
+      <label><input type="checkbox" id="cbNeural" checked> Neural Noise</label>
+      <label><input type="checkbox" id="cbMultiDoc" checked> Multi‑Document Layering</label>
+      <label><input type="checkbox" id="cbDynamic" checked> Dynamic Keyword Shuffling</label>
+    </div>
+    <div class="button-group">
+      <button id="injectButton">Inject Selected Exploits</button>
+      <button id="resetInjector">Reset Injector</button>
+    </div>
+    <label for="injectedText">Injected Text Output:</label>
+    <textarea id="injectedText" readonly placeholder="Injected text will appear here..."></textarea>
+    <button id="downloadButton" style="display:none;">Download Injected DOCX</button>
+  </div>
+
+  <script>
+    window.addEventListener("load", function() {
+      // Use the global DOCX.js library from unpkg
+      const docxLib = window.docx;
+      if (!docxLib) {
+        alert("DOCX.js library failed to load. Please check your network or try a different browser.");
+        return;
+      }
+
+      /***********************************************************************
+       *                   Utility & Detection Functions
+       ***********************************************************************/
+      function normalizeText(text) {
+        return text.normalize("NFC");
+      }
+
+      function detectZalgo(text) {
+        text = normalizeText(text);
+        const regex = /[\u0300-\u036F\u20D0-\u20FF]/g;
+        const matches = text.match(regex);
+        return matches ? matches.length : 0;
+      }
+
+      function detectHiddenHTML(text) {
+        const hiddenDivRegex = /<div[^>]+style\s*=\s*["'][^"']*(display\s*:\s*none|visibility\s*:\s*hidden)[^"']*["'][^>]*>(.*?)<\/div>/gi;
+        const hiddenSpanRegex = /<span[^>]+style\s*=\s*["'][^"']*visibility\s*:\s*hidden[^"']*["'][^>]*>(.*?)<\/span>/gi;
+        const commentRegex = /<!--\s*Keywords:[^>]*-->/gi;
+        const count1 = (text.match(hiddenDivRegex) || []).length;
+        const count2 = (text.match(hiddenSpanRegex) || []).length;
+        const count3 = (text.match(commentRegex) || []).length;
+        return count1 + count2 + count3;
+      }
+
+      function detectMetadataInjection(text) {
+        const altMatches = (text.match(/alt\s*=\s*["'][^"']+["']/gi) || []).length;
+        const xmlMatches = (text.match(/<\?xml[\s\S]*?\?>/gi) || []).length;
+        const customTagMatches = (text.match(/<metadata>[\s\S]*?<\/metadata>/gi) || []).length;
+        return altMatches + xmlMatches + customTagMatches;
+      }
+
+      function detectNeuralNoise(text) {
+        const keywords = ["Python", "TensorFlow", "SQL", "Data", "AI", "Cybersecurity", "Analysis", "Machine Learning"];
+        const words = text.split(/\s+/);
+        let keywordCount = 0;
+        keywords.forEach(word => {
+          const regex = new RegExp("\\b" + word + "\\b", "gi");
+          keywordCount += (text.match(regex) || []).length;
+        });
+        return (keywordCount / words.length > 0.2 || keywordCount > 50) ? keywordCount : 0;
+      }
+
+      function detectMultiDocumentLayering(text) {
+        const hiddenSectionRegex = /<div[^>]+style\s*=\s*["'][^"']*(display\s*:\s*none|visibility\s*:\s*hidden|color\s*:\s*#fff)[^"']*["'][^>]*>(.*?)<\/div>/gi;
+        let count = 0;
+        while (hiddenSectionRegex.exec(text) !== null) { count++; }
+        return count;
+      }
+
+      function detectDynamicKeywordShuffling(text) {
+        const regex = /dynamic\s*keyword\s*shuffling|auto[- ]?adjust/i;
+        return regex.test(text) ? 1 : 0;
+      }
+
+      function scanDocument(text) {
+        let results = [];
+        const zalgoCount = detectZalgo(text);
+        if (zalgoCount > 0) results.push("Zalgo anomalies: " + zalgoCount);
+        const hiddenHTMLCount = detectHiddenHTML(text);
+        if (hiddenHTMLCount > 0) results.push("Hidden HTML: " + hiddenHTMLCount);
+        const metadataCount = detectMetadataInjection(text);
+        if (metadataCount > 0) results.push("Metadata injection: " + metadataCount);
+        const neuralNoiseCount = detectNeuralNoise(text);
+        if (neuralNoiseCount > 0) results.push("Neural noise: " + neuralNoiseCount);
+        const multiDocCount = detectMultiDocumentLayering(text);
+        if (multiDocCount > 0) results.push("Multi‑document layering: " + multiDocCount);
+        const dynamicKeywordFlag = detectDynamicKeywordShuffling(text);
+        if (dynamicKeywordFlag > 0) results.push("Dynamic keyword shuffling detected");
+        if (results.length === 0) results.push("No exploit techniques detected.");
+        return results;
+      }
+
+      /***********************************************************************
+       *                    Injection Functions
+       ***********************************************************************/
+      function injectZalgo(text) {
+        let result = "";
+        for (let char of text) {
+          if (/[a-zA-Z]/.test(char) && Math.random() < 0.12) {
+            const diacritics = [0x0301, 0x0327, 0x0308];
+            const count = Math.random() < 0.5 ? 1 : 2;
+            for (let i = 0; i < count; i++) {
+              char += String.fromCharCode(diacritics[Math.floor(Math.random() * diacritics.length)]);
+            }
+          }
+          result += char;
+        }
+        return result;
+      }
+
+      function injectHiddenHTML(text) {
+        const hiddenDiv1 = '<div style="display:none;">Java, SQL, Cybersecurity, TensorFlow</div>';
+        const hiddenDiv2 = '<span style="visibility:hidden;">Python, AI, Data Science</span>';
+        return text + "\n" + hiddenDiv1 + "\n" + hiddenDiv2;
+      }
+
+      function injectSteganographicData(text) {
+        const stegoComment = '<!-- Keywords: Java, SQL, Cybersecurity, TensorFlow -->';
+        return text + "\n" + stegoComment;
+      }
+
+      function injectMetadata(text) {
+        const metadata = '<?xml version="1.0" encoding="UTF-8"?>\n' +
+                         '<metadata>\n' +
+                         '  <keywords>Python, Data, AI, SQL, TensorFlow</keywords>\n' +
+                         '  <version>1.0</version>\n' +
+                         '  <note>Injected Metadata</note>\n' +
+                         '</metadata>';
+        return text + "\n" + metadata;
+      }
+
+      function injectNeuralNoise(text) {
+        const fragments = [
+          "The algorithm of Python AI in TensorFlow processes vast amounts of data",
+          "Machine Learning models extract insights using SQL and advanced analytics",
+          "Cybersecurity protocols integrate with AI to secure real-time applications",
+          "Data-driven approaches fuel innovation in Data Science and Python development"
+        ];
+        const noise = fragments[Math.floor(Math.random() * fragments.length)] + ".";
+        return text + "\n" + noise;
+      }
+
+      function injectMultiDocumentLayer(text) {
+        const hiddenDoc = '<div class="hidden-doc">Hidden ATS section: Python Python Python, SQL SQL SQL, AI AI AI, TensorFlow TensorFlow TensorFlow.</div>';
+        return text + "\n" + hiddenDoc;
+      }
+
+      function injectDynamicKeywordShuffling(text) {
+        const keywords = ["Python", "TensorFlow", "Data Analysis", "SQL", "Cybersecurity", "AI", "Machine Learning", "Big Data", "Cloud"];
+        let words = text.split(" ");
+        for (let i = 0; i < words.length; i++) {
+          if (Math.random() < 0.06) {
+            const randomKeyword = keywords[Math.floor(Math.random() * keywords.length)];
+            words.splice(i, 0, randomKeyword);
+          }
+        }
+        words.push("auto-adjust-dynamic-keyword-shuffling");
+        return words.join(" ");
+      }
+
+      function injectSelectedExploits(text) {
+        let result = text;
+        if (document.getElementById('cbZalgo').checked) {
+          result = injectZalgo(result);
+        }
+        if (document.getElementById('cbHiddenHTML').checked) {
+          result = injectHiddenHTML(result);
+        }
+        if (document.getElementById('cbStego').checked) {
+          result = injectSteganographicData(result);
+        }
+        if (document.getElementById('cbMetadata').checked) {
+          result = injectMetadata(result);
+        }
+        if (document.getElementById('cbNeural').checked) {
+          result = injectNeuralNoise(result);
+        }
+        if (document.getElementById('cbMultiDoc').checked) {
+          result = injectMultiDocumentLayer(result);
+        }
+        if (document.getElementById('cbDynamic').checked) {
+          result = injectDynamicKeywordShuffling(result);
+        }
+        return result;
+      }
+
+      /***********************************************************************
+       *                    DOCX File Processing with Mammoth.js
+       ***********************************************************************/
+      function readDocxFile(file, callback) {
+        const reader = new FileReader();
+        reader.onload = function() {
+          const arrayBuffer = reader.result;
+          mammoth.extractRawText({ arrayBuffer: arrayBuffer })
+            .then(function(result) {
+              callback(result.value);
+            })
+            .catch(function(err) {
+              console.error("Error extracting DOCX text:", err);
+              callback("");
+            });
+        };
+        reader.readAsArrayBuffer(file);
+      }
+
+      /***********************************************************************
+       *                    Event Handlers: Scanner Section
+       ***********************************************************************/
+      const scannerFileInput = document.getElementById('scannerFile');
+      const scanButton = document.getElementById('scanButton');
+      const extractedTextArea = document.getElementById('extractedText');
+      const scanResultsDiv = document.getElementById('scanResults');
+
+      scanButton.addEventListener('click', function() {
+        const file = scannerFileInput.files[0];
+        if (!file) {
+          alert("Please select a DOCX file to scan.");
+          return;
+        }
+        readDocxFile(file, function(extractedText) {
+          extractedTextArea.value = extractedText;
+          const results = scanDocument(extractedText);
+          scanResultsDiv.innerHTML = "<ul><li>" + results.join("</li><li>") + "</li></ul>";
+        });
+      });
+
+      /***********************************************************************
+       *                    Event Handlers: Injector Section
+       ***********************************************************************/
+      const injectorFileInput = document.getElementById('injectorFile');
+      const injectButton = document.getElementById('injectButton');
+      const resetButton = document.getElementById('resetInjector');
+      const injectedTextArea = document.getElementById('injectedText');
+      const downloadButton = document.getElementById('downloadButton');
+
+      injectButton.addEventListener('click', function() {
+        const file = injectorFileInput.files[0];
+        if (!file) {
+          alert("Please select a DOCX file to inject exploits.");
+          return;
+        }
+        readDocxFile(file, function(originalText) {
+          const injected = injectSelectedExploits(originalText);
+          injectedTextArea.value = injected;
+          downloadButton.style.display = "block";
+        });
+      });
+
+      resetButton.addEventListener('click', function() {
+        injectorFileInput.value = "";
+        injectedTextArea.value = "";
+        downloadButton.style.display = "none";
+        document.querySelectorAll('.checkbox-group input[type="checkbox"]').forEach(cb => cb.checked = true);
+      });
+
+      downloadButton.addEventListener('click', function() {
+        const injectedText = injectedTextArea.value;
+        if (!injectedText) {
+          alert("No injected text available. Please run the injector first.");
+          return;
+        }
+        // Create a new DOCX document using the injected text.
+        const doc = new docxLib.Document({
+          sections: [{
+            properties: {},
+            children: [new docxLib.Paragraph(injectedText)]
+          }]
+        });
+        docxLib.Packer.toBlob(doc).then(function(blob) {
+          saveAs(blob, "Injected_CV.docx");
+        }).catch(err => console.error("Error generating DOCX:", err));
+      });
+    });
+  </script>
+</body>
+</html>
