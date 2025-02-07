@@ -1,0 +1,901 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Advanced 3D UV Toolkit</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <!-- Three.js and supporting libraries -->
+  <script src="https://cdn.jsdelivr.net/npm/three@0.141.0/build/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.141.0/examples/js/controls/OrbitControls.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.141.0/examples/js/loaders/OBJLoader.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.141.0/examples/js/exporters/OBJExporter.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.141.0/examples/js/utils/BufferGeometryUtils.js"></script>
+  <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+  <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.7.1/chart.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/animejs/3.2.1/anime.min.js"></script>
+  <script src="https://apis.google.com/js/api:client.js"></script>
+  <style>
+    /* Root variables and base styles */
+    :root {
+      --primary-bg: #1a1a1a;
+      --secondary-bg: #2d2d2d;
+      --accent-color: #4a90e2;
+      --success-color: #00cc66;
+      --error-color: #e74c3c;
+      --text-color: #fff;
+      --light-mode-bg: #f0f0f0;
+      --light-mode-text: #333;
+      --panel-bg-alpha: rgba(0, 0, 0, 0.85);
+      --panel-padding: 15px;
+      --panel-border-radius: 8px;
+      --font-family: 'Segoe UI', sans-serif;
+      --transition-speed: 0.3s;
+    }
+    html, body {
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+      background-color: var(--primary-bg);
+      color: var(--text-color);
+      font-family: var(--font-family);
+      height: 100vh;
+      transition: background-color var(--transition-speed), color var(--transition-speed);
+    }
+    body.light-mode {
+      background-color: var(--light-mode-bg);
+      color: var(--light-mode-text);
+    }
+    /* Header */
+    header {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      padding: 10px 20px;
+      background: var(--secondary-bg);
+      color: var(--text-color);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      z-index: 15000;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.5);
+    }
+    header h1 {
+      margin: 0;
+      font-size: 1.8em;
+    }
+    header .header-buttons {
+      display: flex;
+      gap: 10px;
+    }
+    header button {
+      background: var(--accent-color);
+      color: var(--text-color);
+      border: none;
+      padding: 8px 12px;
+      border-radius: 4px;
+      cursor: pointer;
+      transition: background var(--transition-speed);
+    }
+    header button:hover {
+      background: var(--success-color);
+    }
+    /* 3D Scene Container */
+    #container {
+      width: 100vw;
+      height: 100vh;
+      position: relative;
+      padding-top: 60px;
+    }
+    /* Panels */
+    .panel {
+      position: absolute;
+      background: var(--panel-bg-alpha);
+      padding: var(--panel-padding);
+      border-radius: var(--panel-border-radius);
+      z-index: 11000;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.6);
+    }
+    #control-panel {
+      top: 70px;
+      left: 10px;
+      max-width: 320px;
+      overflow-y: auto;
+      max-height: 80vh;
+    }
+    #info-panel {
+      bottom: 10px;
+      right: 10px;
+      max-width: 320px;
+    }
+    /* Debug Panels */
+    #log-panel, #fps-counter, #stats-panel {
+      position: absolute;
+      z-index: 15000;
+      background: rgba(0,0,0,0.7);
+      padding: 8px;
+      font-size: 0.8em;
+      border-radius: var(--panel-border-radius);
+    }
+    #log-panel { top: 70px; right: 10px; display: none; }
+    #fps-counter { bottom: 10px; left: 10px; }
+    #stats-panel { top: 70px; left: 10px; color: #0ff; }
+    /* Control Panel Elements */
+    #control-panel h3, #control-panel h4 {
+      margin: 0 0 10px;
+      font-size: 1.2em;
+    }
+    #control-panel label {
+      display: block;
+      margin-bottom: 5px;
+      font-size: 0.9em;
+    }
+    #control-panel input[type="file"],
+    #control-panel select,
+    #control-panel button,
+    #control-panel input[type="range"],
+    #control-panel input[type="checkbox"] {
+      width: calc(100% - 12px);
+      padding: 8px;
+      margin-bottom: 10px;
+      border: 1px solid #444;
+      border-radius: 4px;
+      background-color: var(--secondary-bg);
+      color: var(--text-color);
+      font-size: 0.9em;
+      box-sizing: border-box;
+    }
+    #control-panel button {
+      cursor: pointer;
+      transition: background-color var(--transition-speed);
+    }
+    #control-panel button:hover {
+      background-color: var(--accent-color);
+      color: black;
+    }
+    /* Advanced Options Container (shown only in advanced mode) */
+    #advanced-options {
+      border: 1px dashed #555;
+      padding: 10px;
+      margin-bottom: 10px;
+      display: none;
+    }
+    /* Chat Widget (for help) */
+    #chat-toggle-button {
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      background: var(--accent-color);
+      color: var(--text-color);
+      border-radius: 50%;
+      width: 45px;
+      height: 45px;
+      text-align: center;
+      line-height: 45px;
+      cursor: pointer;
+      z-index: 11000;
+      font-size: 1.2em;
+      box-shadow: 2px 2px 5px rgba(0,0,0,0.3);
+      transition: background-color var(--transition-speed);
+    }
+    #chat-toggle-button:hover {
+      background-color: #3a70b2;
+    }
+    #chat-container {
+      position: fixed;
+      bottom: 70px;
+      right: 20px;
+      background: var(--panel-bg-alpha);
+      padding: var(--panel-padding);
+      border-radius: var(--panel-border-radius);
+      z-index: 11000;
+      display: none;
+      width: 320px;
+      max-height: 400px;
+      overflow-y: auto;
+      box-shadow: 2px 2px 5px rgba(0,0,0,0.3);
+    }
+    /* Debug Output */
+    #debug-output {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      width: 100%;
+      max-height: 150px;
+      overflow-y: auto;
+      background: rgba(0,0,0,0.85);
+      color: #0f0;
+      font-family: monospace;
+      font-size: 0.8em;
+      padding: 10px;
+      z-index: 15000;
+    }
+  </style>
+</head>
+<body class="dark-mode">
+  <!-- Header -->
+  <header>
+    <h1>Advanced 3D UV Toolkit</h1>
+    <div class="header-buttons">
+      <button id="toggle-mode">Toggle Light/Dark</button>
+    </div>
+  </header>
+  
+  <!-- 3D Scene Container -->
+  <div id="container"></div>
+  
+  <!-- Control Panel -->
+  <div id="control-panel" class="panel">
+    <h3>UV Unwrapper Controls</h3>
+    <label for="fileInput">Upload OBJ Model:</label>
+    <input type="file" id="fileInput" accept=".obj">
+    <button id="load-button">Load Model</button>
+    <hr>
+    <label for="unwrap-mode">Unwrap Mode:</label>
+    <!-- Advanced option is now the first item and selected by default -->
+    <select id="unwrap-mode">
+      <option value="advanced" selected>Advanced (Correction Exponent)</option>
+      <option value="spherical">Spherical Projection</option>
+      <option value="cylindrical">Cylindrical Projection</option>
+    </select>
+    <div class="tooltip">
+      Advanced mode applies a correction exponent and optional smoothing.
+    </div>
+    <!-- Advanced options container -->
+    <div id="advanced-options">
+      <label for="correction-exponent-slider">Correction Exponent: <span id="correction-exponent-value">0.80</span></label>
+      <input type="range" id="correction-exponent-slider" min="0.5" max="1.5" step="0.01" value="0.80">
+      <label for="advanced-smoothing-slider">Smoothing Iterations: <span id="advanced-smoothing-value">10</span></label>
+      <input type="range" id="advanced-smoothing-slider" min="1" max="20" step="1" value="10">
+      <button id="reset-advanced-options">Reset Advanced Options</button>
+    </div>
+    <label for="normalize-uv">Normalize UV Coordinates</label>
+    <input type="checkbox" id="normalize-uv" checked>
+    <label for="smart-seams">Enable Smart Seam Placement</label>
+    <input type="checkbox" id="smart-seams">
+    <button id="unwrap-button">Auto UV Unwrap</button>
+    <button id="optimize-unwrap-btn">Optimize UV Unwrap</button>
+    <button id="relax-uv-button">Relax UV</button>
+    <hr>
+    <button id="download-button">Download Unwrapped Model (OBJ)</button>
+    <button id="reset-button">Reset to Default Model</button>
+    <button id="screenshot-button">Capture Screenshot</button>
+    <button id="reset-camera-button">Reset Camera</button>
+    <button id="toggle-grid-button">Toggle Grid</button>
+    <button id="toggle-wireframe-button">Toggle Wireframe</button>
+  </div>
+  
+  <!-- Info Panel -->
+  <div id="info-panel" class="panel">
+    <div id="uv-info">UV Info: Not unwrapped yet</div>
+    <div id="model-info">Model: Default Sphere</div>
+    <div id="vertex-info">Vertices: N/A</div>
+    <div id="distortion-info">Distortion Metric: N/A</div>
+  </div>
+  
+  <!-- Debug Panels -->
+  <div id="log-panel"></div>
+  <div id="fps-counter">FPS: 0</div>
+  <div id="stats-panel"></div>
+  
+  <!-- Chat Widget (for help) -->
+  <div id="chat-toggle-button">HELP</div>
+  <div id="chat-container">
+    <div id="chat-header">Help Chat</div>
+    <div id="chat-body"></div>
+    <div id="chat-footer">
+      <input type="text" id="user-input" placeholder="Type your message...">
+      <button id="send-button">Send</button>
+    </div>
+  </div>
+  
+  <!-- Debug Output -->
+  <div id="debug-output"></div>
+  
+  <!-- Main JavaScript -->
+  <script>
+    // Helper: check for WebGL support
+    function isWebGLAvailable() {
+      try {
+        const canvas = document.createElement('canvas');
+        return !!(window.WebGLRenderingContext && (canvas.getContext('webgl') || canvas.getContext('experimental-webgl')));
+      } catch (e) {
+        return false;
+      }
+    }
+    
+    class UVUnwrapper {
+      constructor(containerId, logPanelId, infoPanelId, modelInfoId, vertexInfoId, uvInfoId, distortionInfoId) {
+        this.container = document.getElementById(containerId);
+        this.logPanel = document.getElementById(logPanelId);
+        this.infoPanel = document.getElementById(infoPanelId);
+        this.modelInfoDisplay = document.getElementById(modelInfoId);
+        this.vertexInfoDisplay = document.getElementById(vertexInfoId);
+        this.uvInfoDisplay = document.getElementById(uvInfoId);
+        this.distortionInfoDisplay = document.getElementById(distortionInfoId);
+        this.scene = null;
+        this.camera = null;
+        this.renderer = null;
+        this.controls = null;
+        this.currentMesh = null;
+        this.correctionExponent = 0.80;
+        this.lastFrameTime = performance.now();
+        this.frameCount = 0;
+        this.fps = 0;
+        this.debugInterval = null;
+        this.gridHelper = null;
+        this.init();
+        this.animate();
+        this.startDebugUpdates();
+      }
+      init() {
+        try {
+          if (!isWebGLAvailable()) {
+            this.logMessage("WebGL not supported. Preview disabled.");
+          }
+          this.scene = new THREE.Scene();
+          this.scene.background = new THREE.Color(0x1a1a1a);
+          this.camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+          this.camera.position.set(3, 3, 3);
+          this.renderer = new THREE.WebGLRenderer({ antialias: true });
+          this.renderer.setSize(window.innerWidth, window.innerHeight);
+          if (this.container) this.container.appendChild(this.renderer.domElement);
+          try {
+            this.controls = new THREE.OrbitControls(this.camera, this.renderer.domElement);
+          } catch (e) {
+            this.logMessage("Error initializing OrbitControls: " + e.message);
+            this.controls = null;
+          }
+          this.scene.add(new THREE.AmbientLight(0xffffff, 0.8));
+          const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
+          directionalLight.position.set(5, 10, 7.5);
+          directionalLight.castShadow = true;
+          this.scene.add(directionalLight);
+          this.createDefaultModel();
+          window.addEventListener('resize', this.onWindowResize.bind(this), false);
+        } catch (err) {
+          this.logMessage("Initialization error: " + err.message);
+        }
+      }
+      createDefaultModel() {
+        try {
+          const geometry = new THREE.SphereGeometry(1, 32, 32);
+          const count = geometry.attributes.position.count;
+          geometry.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(count * 2), 2));
+          const material = new THREE.MeshStandardMaterial({
+            color: 0x4a90e2,
+            metalness: 0.3,
+            roughness: 0.8
+          });
+          if (this.currentMesh) {
+            this.scene.remove(this.currentMesh);
+            this.disposeMesh(this.currentMesh);
+          }
+          this.currentMesh = new THREE.Mesh(geometry, material);
+          this.scene.add(this.currentMesh);
+          if (this.modelInfoDisplay) this.modelInfoDisplay.textContent = "Model: Default Sphere";
+          if (this.vertexInfoDisplay) this.vertexInfoDisplay.textContent = `Vertices: ${count}`;
+        } catch (err) {
+          this.logMessage("Error creating default model: " + err.message);
+        }
+      }
+      onWindowResize() {
+        try {
+          this.camera.aspect = window.innerWidth / window.innerHeight;
+          this.camera.updateProjectionMatrix();
+          this.renderer.setSize(window.innerWidth, window.innerHeight);
+        } catch (err) {
+          this.logMessage("Window resize error: " + err.message);
+        }
+      }
+      animate() {
+        try {
+          requestAnimationFrame(() => this.animate());
+          if (this.controls && typeof this.controls.update === 'function') {
+            try { this.controls.update(); } catch (e) { this.logMessage("OrbitControls update error: " + e.message); }
+          }
+          this.renderer.render(this.scene, this.camera);
+          this.updateFPS();
+        } catch (err) {
+          this.logMessage("Render error: " + err.message);
+        }
+      }
+      logMessage(msg) {
+        console.log(msg);
+        if (this.logPanel) {
+          this.logPanel.textContent = msg;
+          this.logPanel.style.display = "block";
+          setTimeout(() => { if (this.logPanel) this.logPanel.style.display = "none"; }, 3000);
+        }
+        const debugOut = document.getElementById('debug-output');
+        if (debugOut) {
+          debugOut.textContent += msg + "\n";
+          debugOut.scrollTop = debugOut.scrollHeight;
+        }
+      }
+      updateFPS() {
+        this.frameCount++;
+        const now = performance.now();
+        if (now - this.lastFrameTime >= 1000) {
+          this.fps = Math.round((this.frameCount * 1000) / (now - this.lastFrameTime));
+          const fpsElem = document.getElementById('fps-counter');
+          if (fpsElem) { fpsElem.textContent = `FPS: ${this.fps}`; }
+          this.lastFrameTime = now;
+          this.frameCount = 0;
+        }
+      }
+      startDebugUpdates() {
+        this.debugInterval = setInterval(() => {
+          const pos = this.camera.position;
+          const stats = document.getElementById('stats-panel');
+          if (stats) {
+            stats.textContent = `Camera: x=${pos.x.toFixed(2)} y=${pos.y.toFixed(2)} z=${pos.z.toFixed(2)}`;
+          }
+        }, 1000);
+      }
+      calculateDistortion(geometry) {
+        try {
+          const posAttr = geometry.attributes.position;
+          const uvAttr = geometry.attributes.uv;
+          const indices = geometry.index ? geometry.index.array : null;
+          if (!indices) return 0;
+          let sum = 0, sumSq = 0, n = 0;
+          for (let i = 0; i < indices.length; i += 3) {
+            const i0 = indices[i], i1 = indices[i + 1], i2 = indices[i + 2];
+            const u0 = uvAttr.getX(i0), v0 = uvAttr.getY(i0),
+                  u1 = uvAttr.getX(i1), v1 = uvAttr.getY(i1),
+                  u2 = uvAttr.getX(i2), v2 = uvAttr.getY(i2);
+            const x0 = posAttr.getX(i0), y0 = posAttr.getY(i0), z0 = posAttr.getZ(i0),
+                  x1 = posAttr.getX(i1), y1 = posAttr.getY(i1), z1 = posAttr.getZ(i1),
+                  x2 = posAttr.getX(i2), y2 = posAttr.getY(i2), z2 = posAttr.getZ(i2);
+            const area3D = 0.5 * Math.abs((x1 - x0) * (y2 - y0) - (x2 - x0) * (y1 - y0));
+            const areaUV = 0.5 * Math.abs((u1 - u0) * (v2 - v0) - (u2 - u0) * (v1 - v0));
+            const ratio = areaUV / (area3D + 1e-6);
+            sum += ratio;
+            sumSq += ratio * ratio;
+            n++;
+          }
+          const mean = sum / n, variance = (sumSq / n) - (mean * mean);
+          const stdDev = Math.sqrt(variance);
+          return parseFloat(stdDev.toFixed(4));
+        } catch (err) {
+          this.logMessage("Error calculating distortion: " + err.message);
+          return 0;
+        }
+      }
+      autoUVUnwrap(geometry) {
+        try {
+          const mode = document.getElementById('unwrap-mode').value;
+          const posAttr = geometry.attributes.position;
+          const count = posAttr.count;
+          const uv = new Float32Array(count * 2);
+          if (mode === "cylindrical") {
+            let minY = Infinity, maxY = -Infinity;
+            for (let i = 0; i < count; i++) {
+              const y = posAttr.getY(i);
+              minY = Math.min(minY, y);
+              maxY = Math.max(maxY, y);
+            }
+            for (let i = 0; i < count; i++) {
+              const x = posAttr.getX(i), y = posAttr.getY(i), z = posAttr.getZ(i);
+              const theta = Math.atan2(z, x);
+              const u = (theta + Math.PI) / (2 * Math.PI);
+              const v = (y - minY) / ((maxY - minY) || 1);
+              uv[2 * i] = u;
+              uv[2 * i + 1] = v;
+            }
+          } else if (mode === "spherical") {
+            for (let i = 0; i < count; i++) {
+              const x = posAttr.getX(i), y = posAttr.getY(i), z = posAttr.getZ(i);
+              const r = Math.hypot(x, y, z);
+              let theta = Math.acos(y / r);
+              let phi = Math.atan2(z, x);
+              phi = (phi < 0) ? phi + 2 * Math.PI : phi;
+              const u = phi / (2 * Math.PI);
+              const v = theta / Math.PI;
+              uv[2 * i] = u;
+              uv[2 * i + 1] = v;
+            }
+          } else if (mode === "advanced") {
+            for (let i = 0; i < count; i++) {
+              const x = posAttr.getX(i), y = posAttr.getY(i), z = posAttr.getZ(i);
+              const r = Math.hypot(x, y, z);
+              let theta = Math.acos(y / r);
+              let phi = Math.atan2(z, x);
+              phi = (phi < 0) ? phi + 2 * Math.PI : phi;
+              // Apply correction exponent
+              const correction = Math.pow(Math.sin(theta), this.correctionExponent);
+              theta *= correction;
+              phi *= correction;
+              const u = phi / (2 * Math.PI);
+              const v = theta / Math.PI;
+              uv[2 * i] = u;
+              uv[2 * i + 1] = v;
+            }
+          }
+          // Normalize UV Coordinates if enabled
+          const normCheckbox = document.getElementById('normalize-uv');
+          if (normCheckbox && normCheckbox.checked) {
+            let uMin = Infinity, uMax = -Infinity, vMin = Infinity, vMax = -Infinity;
+            for (let i = 0; i < count; i++) {
+              const u = uv[2 * i], v = uv[2 * i + 1];
+              uMin = Math.min(uMin, u);
+              uMax = Math.max(uMax, u);
+              vMin = Math.min(vMin, v);
+              vMax = Math.max(vMax, v);
+            }
+            const uRange = uMax - uMin, vRange = vMax - vMin;
+            for (let i = 0; i < count; i++) {
+              uv[2 * i] = (uv[2 * i] - uMin) / (uRange || 1);
+              uv[2 * i + 1] = (uv[2 * i + 1] - vMin) / (vRange || 1);
+            }
+          }
+          // Experimental: Smart Seam Placement
+          const seamCheckbox = document.getElementById('smart-seams');
+          if (seamCheckbox && seamCheckbox.checked) {
+            for (let i = 0; i < count; i++) {
+              let u = uv[2 * i];
+              uv[2 * i] = (u < 0.5) ? u * 1.05 : u * 0.95;
+            }
+          }
+          geometry.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
+          geometry.attributes.uv.needsUpdate = true;
+          if (!normCheckbox || !normCheckbox.checked) {
+            let uMin = Infinity, uMax = -Infinity, vMin = Infinity, vMax = -Infinity;
+            for (let i = 0; i < count; i++) {
+              const u = uv[2 * i], v = uv[2 * i + 1];
+              uMin = Math.min(uMin, u);
+              uMax = Math.max(uMax, u);
+              vMin = Math.min(vMin, v);
+              vMax = Math.max(vMax, v);
+            }
+            if (this.uvInfoDisplay) {
+              this.uvInfoDisplay.textContent = `UV Info: U [${uMin.toFixed(2)}, ${uMax.toFixed(2)}], V [${vMin.toFixed(2)}, ${vMax.toFixed(2)}]`;
+            }
+          } else {
+            if (this.uvInfoDisplay) {
+              this.uvInfoDisplay.textContent = "UV Info: Normalized [0,1]";
+            }
+          }
+          const distortion = this.calculateDistortion(geometry);
+          if (this.distortionInfoDisplay) {
+            this.distortionInfoDisplay.textContent = `Distortion Metric: ${distortion}`;
+          }
+          this.logMessage(`UV Unwrap complete (${mode}). Distortion: ${distortion}`);
+          // If in advanced mode, perform additional relaxation automatically using the advanced smoothing slider value.
+          if (mode === "advanced") {
+            const smoothingIterations = parseInt(document.getElementById('advanced-smoothing-slider').value, 10);
+            if (smoothingIterations > 0) {
+              this.relaxUV(smoothingIterations);
+            }
+          }
+        } catch (err) {
+          this.logMessage("Unwrap error: " + err.message);
+        }
+      }
+      relaxUV(iterations = 10) {
+        try {
+          const geometry = this.currentMesh.geometry;
+          const uvAttr = geometry.attributes.uv;
+          const vertexCount = uvAttr.count;
+          let neighbors = [];
+          for (let i = 0; i < vertexCount; i++) {
+            neighbors[i] = new Set();
+          }
+          if (geometry.index) {
+            const indices = geometry.index.array;
+            for (let i = 0; i < indices.length; i += 3) {
+              let a = indices[i], b = indices[i+1], c = indices[i+2];
+              neighbors[a].add(b); neighbors[a].add(c);
+              neighbors[b].add(a); neighbors[b].add(c);
+              neighbors[c].add(a); neighbors[c].add(b);
+            }
+          } else {
+            for (let i = 0; i < vertexCount; i += 3) {
+              let a = i, b = i+1, c = i+2;
+              neighbors[a].add(b); neighbors[a].add(c);
+              neighbors[b].add(a); neighbors[b].add(c);
+              neighbors[c].add(a); neighbors[c].add(b);
+            }
+          }
+          for (let iter = 0; iter < iterations; iter++) {
+            let newUVs = new Float32Array(vertexCount * 2);
+            for (let i = 0; i < vertexCount; i++) {
+              let sumU = 0, sumV = 0, count = 0;
+              neighbors[i].forEach(n => {
+                sumU += uvAttr.getX(n);
+                sumV += uvAttr.getY(n);
+                count++;
+              });
+              if (count > 0) {
+                let avgU = sumU / count;
+                let avgV = sumV / count;
+                newUVs[2 * i] = uvAttr.getX(i) * 0.5 + avgU * 0.5;
+                newUVs[2 * i + 1] = uvAttr.getY(i) * 0.5 + avgV * 0.5;
+              } else {
+                newUVs[2 * i] = uvAttr.getX(i);
+                newUVs[2 * i + 1] = uvAttr.getY(i);
+              }
+            }
+            geometry.setAttribute('uv', new THREE.BufferAttribute(newUVs, 2));
+          }
+          geometry.attributes.uv.needsUpdate = true;
+          this.logMessage("UV relaxation complete.");
+        } catch (err) {
+          this.logMessage("UV relaxation error: " + err.message);
+        }
+      }
+      disposeMesh(mesh) {
+        try {
+          if (mesh.geometry) mesh.geometry.dispose();
+          if (mesh.material) {
+            if (Array.isArray(mesh.material)) {
+              mesh.material.forEach(mat => mat.dispose());
+            } else {
+              mesh.material.dispose();
+            }
+          }
+        } catch (err) {
+          this.logMessage("Error disposing mesh: " + err.message);
+        }
+      }
+      loadModel(file) {
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          try {
+            const object = new THREE.OBJLoader().parse(e.target.result);
+            if (this.currentMesh) {
+              this.scene.remove(this.currentMesh);
+              this.disposeMesh(this.currentMesh);
+            }
+            let meshes = [];
+            object.traverse(child => {
+              if (child.isMesh) {
+                if (!child.geometry.attributes.normal) {
+                  child.geometry.computeVertexNormals();
+                }
+                const count = child.geometry.attributes.position.count;
+                child.geometry.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(count * 2), 2));
+                meshes.push(child);
+              }
+            });
+            if (meshes.length > 1) {
+              const geometries = meshes.map(m => m.geometry);
+              const mergedGeometry = THREE.BufferGeometryUtils.mergeBufferGeometries(geometries);
+              this.currentMesh = new THREE.Mesh(mergedGeometry, new THREE.MeshStandardMaterial({
+                color: 0x4a90e2,
+                metalness: 0.3,
+                roughness: 0.8
+              }));
+            } else if (meshes.length === 1) {
+              this.currentMesh = meshes[0];
+            }
+            if (this.currentMesh) {
+              this.scene.add(this.currentMesh);
+              this.fitCameraToObject(this.currentMesh);
+              if (this.modelInfoDisplay) {
+                this.modelInfoDisplay.textContent = `Model: ${file.name}`;
+              }
+              if (this.vertexInfoDisplay) {
+                const count = this.currentMesh.geometry.attributes.position.count;
+                this.vertexInfoDisplay.textContent = `Vertices: ${count}`;
+              }
+              this.logMessage("Model loaded successfully.");
+            }
+          } catch (err) {
+            this.logMessage("Error loading model: " + err.message);
+            console.error(err);
+          }
+        };
+        reader.readAsText(file);
+      }
+      fitCameraToObject(object) {
+        try {
+          const box = new THREE.Box3().setFromObject(object);
+          const size = box.getSize(new THREE.Vector3()).length();
+          const center = box.getCenter(new THREE.Vector3());
+          const offset = size * 1.5;
+          this.camera.position.copy(center).add(new THREE.Vector3(offset, offset, offset));
+          this.camera.lookAt(center);
+          if (this.controls) {
+            this.controls.target.copy(center);
+            this.controls.update();
+          }
+        } catch (err) {
+          this.logMessage("Camera fitting error: " + err.message);
+        }
+      }
+      resetCamera() {
+        if (this.currentMesh) {
+          this.fitCameraToObject(this.currentMesh);
+        }
+      }
+      toggleGrid() {
+        if (this.gridHelper) {
+          this.scene.remove(this.gridHelper);
+          this.gridHelper = null;
+        } else {
+          this.gridHelper = new THREE.GridHelper(10, 10);
+          this.scene.add(this.gridHelper);
+        }
+      }
+      toggleWireframe() {
+        if (this.currentMesh && this.currentMesh.material) {
+          this.currentMesh.material.wireframe = !this.currentMesh.material.wireframe;
+        }
+      }
+      downloadModel() {
+        if (!this.currentMesh) { 
+          alert("No model available to download.");
+          return; 
+        }
+        try {
+          const exporter = new THREE.OBJExporter();
+          const geom = this.currentMesh.geometry.index ? this.currentMesh.geometry.toNonIndexed() : this.currentMesh.geometry;
+          const meshToExport = new THREE.Mesh(geom, this.currentMesh.material);
+          const result = exporter.parse(meshToExport);
+          const blob = new Blob([result], { type: 'text/plain' });
+          const link = document.createElement('a');
+          link.href = URL.createObjectURL(blob);
+          link.download = "unwrapped_model.obj";
+          link.click();
+          URL.revokeObjectURL(link.href);
+          this.logMessage("Model downloaded successfully.");
+        } catch (err) {
+          this.logMessage("Export error: " + err.message);
+          console.error(err);
+        }
+      }
+      resetModel() {
+        try {
+          this.createDefaultModel();
+        } catch (err) {
+          this.logMessage("Reset model error: " + err.message);
+        }
+      }
+      unwrap() {
+        if (!this.currentMesh || !this.currentMesh.geometry) { 
+          alert("Load a model first!"); 
+          return; 
+        }
+        try {
+          this.autoUVUnwrap(this.currentMesh.geometry);
+        } catch (err) {
+          this.logMessage("Unwrap error: " + err.message);
+          console.error(err);
+        }
+      }
+      optimizeUnwrap() {
+        if (!this.currentMesh || !this.currentMesh.geometry) { 
+          alert("Load a model first!"); 
+          return; 
+        }
+        try {
+          const originalGeometry = this.currentMesh.geometry;
+          let bestExp = this.correctionExponent;
+          let bestDist = Infinity;
+          for (let exp = 0.5; exp <= 1.5; exp += 0.1) {
+            this.correctionExponent = parseFloat(exp.toFixed(2));
+            const testGeometry = originalGeometry.clone();
+            const count = testGeometry.attributes.position.count;
+            testGeometry.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(count * 2), 2));
+            this.autoUVUnwrap(testGeometry);
+            const dist = this.calculateDistortion(testGeometry);
+            console.log(`Test correctionExponent=${this.correctionExponent.toFixed(2)} gives distortion ${dist}`);
+            if (dist < bestDist) { bestDist = dist; bestExp = this.correctionExponent; }
+          }
+          this.correctionExponent = bestExp;
+          this.autoUVUnwrap(originalGeometry);
+          this.logMessage(`Optimized correctionExponent set to ${bestExp.toFixed(2)} with distortion ${bestDist}`);
+        } catch (err) {
+          this.logMessage("Optimize unwrap error: " + err.message);
+        }
+      }
+      captureScreenshot() {
+        try {
+          const dataURL = this.renderer.domElement.toDataURL("image/png");
+          const link = document.createElement('a');
+          link.href = dataURL;
+          link.download = 'screenshot.png';
+          link.click();
+          this.logMessage("Screenshot captured.");
+        } catch (err) {
+          this.logMessage("Screenshot error: " + err.message);
+        }
+      }
+    }
+    
+    // Event listeners and additional controls
+    document.addEventListener("DOMContentLoaded", () => {
+      try {
+        window.uvUnwrapper = new UVUnwrapper(
+          'container', 'log-panel', 'info-panel', 'model-info', 'vertex-info', 'uv-info', 'distortion-info'
+        );
+      } catch (err) {
+        console.error("UVUnwrapper initialization error:", err);
+      }
+      // Show/hide advanced options based on unwrap mode selection
+      const unwrapModeSelect = document.getElementById('unwrap-mode');
+      const advancedOptionsDiv = document.getElementById('advanced-options');
+      function updateAdvancedOptionsVisibility() {
+        if (unwrapModeSelect.value === "advanced") {
+          advancedOptionsDiv.style.display = "block";
+        } else {
+          advancedOptionsDiv.style.display = "none";
+        }
+      }
+      unwrapModeSelect.addEventListener('change', updateAdvancedOptionsVisibility);
+      updateAdvancedOptionsVisibility(); // Initialize on load
+
+      // Update correction exponent display
+      const exponentSlider = document.getElementById('correction-exponent-slider');
+      const exponentDisplay = document.getElementById('correction-exponent-value');
+      exponentSlider.addEventListener('input', (event) => {
+        uvUnwrapper.correctionExponent = parseFloat(event.target.value);
+        if (exponentDisplay) {
+          exponentDisplay.textContent = parseFloat(event.target.value).toFixed(2);
+        }
+      });
+      // Update advanced smoothing iterations display
+      const smoothingSlider = document.getElementById('advanced-smoothing-slider');
+      const smoothingDisplay = document.getElementById('advanced-smoothing-value');
+      smoothingSlider.addEventListener('input', (event) => {
+        if (smoothingDisplay) {
+          smoothingDisplay.textContent = event.target.value;
+        }
+      });
+      // Reset advanced options button
+      document.getElementById('reset-advanced-options').addEventListener('click', () => {
+        exponentSlider.value = 0.80;
+        smoothingSlider.value = 10;
+        exponentDisplay.textContent = "0.80";
+        smoothingDisplay.textContent = "10";
+        uvUnwrapper.correctionExponent = 0.80;
+      });
+      
+      document.getElementById('load-button').addEventListener('click', () => {
+        document.getElementById('fileInput').click();
+      });
+      document.getElementById('fileInput').addEventListener('change', (event) => {
+        uvUnwrapper.loadModel(event.target.files[0]);
+      });
+      document.getElementById('download-button').addEventListener('click', () => uvUnwrapper.downloadModel());
+      document.getElementById('reset-button').addEventListener('click', () => uvUnwrapper.resetModel());
+      document.getElementById('unwrap-button').addEventListener('click', () => uvUnwrapper.unwrap());
+      document.getElementById('optimize-unwrap-btn').addEventListener('click', () => uvUnwrapper.optimizeUnwrap());
+      document.getElementById('screenshot-button').addEventListener('click', () => uvUnwrapper.captureScreenshot());
+      document.getElementById('relax-uv-button').addEventListener('click', () => uvUnwrapper.relaxUV(10));
+      document.getElementById('reset-camera-button').addEventListener('click', () => uvUnwrapper.resetCamera());
+      document.getElementById('toggle-grid-button').addEventListener('click', () => uvUnwrapper.toggleGrid());
+      document.getElementById('toggle-wireframe-button').addEventListener('click', () => uvUnwrapper.toggleWireframe());
+      document.getElementById('toggle-mode').addEventListener('click', () => {
+        document.body.classList.toggle("light-mode");
+      });
+    });
+    
+    // Chat Widget functionality (basic simulation)
+    document.getElementById('chat-toggle-button').addEventListener('click', () => {
+      const chatContainer = document.getElementById('chat-container');
+      chatContainer.style.display = (chatContainer.style.display === "block") ? "none" : "block";
+    });
+    document.getElementById('send-button').addEventListener('click', () => {
+      const input = document.getElementById('user-input');
+      const chatBody = document.getElementById('chat-body');
+      if (input.value.trim() !== "") {
+        const msg = document.createElement('div');
+        msg.textContent = "User: " + input.value;
+        chatBody.appendChild(msg);
+        // Simulated interpreter response
+        const response = document.createElement('div');
+        response.textContent = "Bot: This is a simulated response.";
+        response.style.fontStyle = "italic";
+        chatBody.appendChild(response);
+        input.value = "";
+        chatBody.scrollTop = chatBody.scrollHeight;
+      }
+    });
+  </script>
+</body>
+</html>
