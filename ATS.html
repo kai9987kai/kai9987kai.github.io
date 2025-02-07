@@ -4,13 +4,14 @@
   <meta charset="UTF-8">
   <title>Advanced Next‑Gen ATS for DOCX – Scanner & Injector</title>
   <style>
-    /* Reset & Basic Styling */
+    /* Base Reset & Styling */
     body {
       font-family: Arial, sans-serif;
       background: #f0f4f8;
       margin: 2em;
       color: #333;
       line-height: 1.6;
+      transition: background 0.3s, color 0.3s;
     }
     h1, h2 {
       color: #0056b3;
@@ -21,6 +22,7 @@
       border-radius: 6px;
       box-shadow: 0 0 10px rgba(0,0,0,0.1);
       margin-bottom: 2em;
+      position: relative;
     }
     label {
       display: block;
@@ -50,8 +52,15 @@
       border: 1px solid #bbb;
       border-radius: 4px;
       box-sizing: border-box;
-      margin-bottom: 1em;
+      margin-bottom: 0.3em;
+      resize: vertical;
       white-space: pre-wrap;
+    }
+    .counter {
+      font-size: 0.8em;
+      color: #666;
+      text-align: right;
+      margin-bottom: 0.5em;
     }
     .checkbox-group {
       margin-bottom: 1em;
@@ -71,34 +80,197 @@
     .button-group button {
       margin-right: 0.5em;
     }
+    /* History Panel */
+    .history-panel {
+      background: #e9ecef;
+      border: 1px solid #ccc;
+      padding: 1em;
+      border-radius: 4px;
+      max-height: 200px;
+      overflow-y: auto;
+      margin-top: 1em;
+    }
+    .history-item {
+      margin-bottom: 0.5em;
+      font-size: 0.9em;
+    }
+    /* Modal for Live Chain‑of‑Thought Preview */
+    .modal {
+      display: none;
+      position: fixed;
+      z-index: 40;
+      left: 0;
+      top: 0;
+      width: 100%;
+      height: 100%;
+      overflow: auto;
+      background-color: rgba(0,0,0,0.6);
+    }
+    .modal-content {
+      background: #fff;
+      margin: 10% auto;
+      padding: 1em;
+      border: 1px solid #888;
+      width: 80%;
+      max-width: 600px;
+      border-radius: 6px;
+      color: #333;
+      font-family: Consolas, monospace;
+      white-space: pre-wrap;
+      word-wrap: break-word;
+    }
+    .close-modal {
+      float: right;
+      font-size: 1.2em;
+      cursor: pointer;
+      color: #0056b3;
+    }
+    /* Modal for Settings */
+    .modal-settings {
+      display: none;
+      position: fixed;
+      z-index: 50;
+      left: 0;
+      top: 0;
+      width: 100%;
+      height: 100%;
+      overflow: auto;
+      background-color: rgba(0,0,0,0.7);
+    }
+    .modal-settings-content {
+      background: #fff;
+      margin: 10% auto;
+      padding: 1em;
+      border: 1px solid #888;
+      width: 80%;
+      max-width: 500px;
+      border-radius: 6px;
+      color: #333;
+      font-family: Arial, sans-serif;
+    }
+    .modal-settings-content label {
+      margin-top: 1em;
+      display: block;
+    }
+    /* Drag & Drop */
+    .dropzone {
+      border: 2px dashed #0056b3;
+      border-radius: 4px;
+      padding: 1em;
+      text-align: center;
+      margin-bottom: 1em;
+      color: #0056b3;
+      font-size: 0.9em;
+    }
+    .dropzone.dragover {
+      background: #d0e4f7;
+    }
+    /* Toast Notifications */
+    .toast {
+      position: fixed;
+      bottom: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(0,0,0,0.8);
+      color: #fff;
+      padding: 0.8em 1.2em;
+      border-radius: 4px;
+      z-index: 100;
+      opacity: 0;
+      transition: opacity 0.5s ease-in-out;
+    }
+    /* Dark Mode Styles */
+    body.dark {
+      background: #222;
+      color: #ddd;
+    }
+    body.dark h1, body.dark h2 {
+      color: #88c;
+    }
+    body.dark .container {
+      background: #333;
+      box-shadow: 0 0 10px rgba(0,0,0,0.5);
+    }
+    body.dark button, body.dark input[type="file"] {
+      background: #88c;
+    }
+    body.dark button:hover, body.dark input[type="file"]:hover {
+      background: #66a;
+    }
+    /* Header */
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 1em;
+    }
+    header button {
+      font-size: 0.9em;
+      padding: 0.5em 1em;
+      margin-left: 0.5em;
+    }
   </style>
-  <!-- Include external libraries -->
+  <!-- External Libraries -->
   <script src="https://cdn.jsdelivr.net/npm/mammoth@1.4.8/mammoth.browser.min.js"></script>
   <script src="https://unpkg.com/docx@7.8.0/build/index.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
 </head>
 <body>
+  <!-- Header with Controls -->
+  <header>
+    <div>
+      <h1>Advanced ATS DOCX Tool</h1>
+    </div>
+    <div>
+      <button id="toggleDarkMode">Toggle Dark Mode (D)</button>
+      <button id="openSettings">Settings (S)</button>
+      <button id="resetAll">Reset All (R)</button>
+    </div>
+  </header>
+
+  <!-- Settings Modal -->
+  <div id="settingsModal" class="modal-settings">
+    <div class="modal-settings-content">
+      <span class="close-modal" id="closeSettings" style="cursor:pointer; float:right;">&times;</span>
+      <h2>Injection Settings</h2>
+      <label for="zAlgoRange">Zalgo Probability (0.1 to 0.3): <span id="zAlgoValue">0.12</span></label>
+      <input type="range" id="zAlgoRange" min="0.1" max="0.3" step="0.01" value="0.12">
+      <label for="obfuscationRange">Obfuscation Probability (0.05 to 0.2): <span id="obfuscationValue">0.10</span></label>
+      <input type="range" id="obfuscationRange" min="0.05" max="0.2" step="0.01" value="0.10">
+      <button id="saveSettings">Save Settings</button>
+    </div>
+  </div>
+
   <!-- Scanner Section -->
   <div class="container" id="scannerSection">
-    <h1>ATS DOCX Scanner</h1>
+    <h2>ATS DOCX Scanner</h2>
     <p>This tool extracts text from a DOCX file and scans for hidden exploit techniques.</p>
-    <label for="scannerFile">Upload DOCX file to scan:</label>
-    <input type="file" id="scannerFile" accept=".docx" />
+    <div class="dropzone" id="scannerDropzone">Drag & Drop DOCX file here or click to select</div>
+    <input type="file" id="scannerFile" accept=".docx" style="display:none;" />
     <button id="scanButton">Scan DOCX for Exploits</button>
     <label for="extractedText">Extracted Text:</label>
     <textarea id="extractedText" readonly placeholder="Extracted text will appear here..."></textarea>
+    <div class="counter" id="extractedCounter">0 characters</div>
     <div id="scanResults"></div>
+    <div class="feedback-group">
+      <button id="scannerLike">Feedback: Like</button>
+      <button id="scannerDislike" class="dislike">Feedback: Dislike</button>
+      <button id="exportScannerHistory" class="small-button">Export History</button>
+      <button id="resetScannerHistory" class="small-button">Reset History</button>
+    </div>
+    <h3>Scan History</h3>
+    <div id="scannerHistory" class="history-panel"></div>
   </div>
 
   <!-- Injector Section -->
   <div class="container" id="injectorSection">
-    <h1>ATS DOCX Injector</h1>
+    <h2>ATS DOCX Injector</h2>
     <p>
-      This tool injects a suite of exploit techniques into your DOCX’s text. Use the checkboxes below to choose which exploit(s) to apply, then generate a new DOCX file for download.
+      This tool injects a suite of exploit techniques into your DOCX’s text.
+      Use the checkboxes below to choose which exploits to apply, then generate a new DOCX file for download.
     </p>
-    <label for="injectorFile">Upload DOCX file to inject exploits:</label>
-    <input type="file" id="injectorFile" accept=".docx" />
-    
+    <div class="dropzone" id="injectorDropzone">Drag & Drop DOCX file here or click to select</div>
+    <input type="file" id="injectorFile" accept=".docx" style="display:none;" />
     <div class="checkbox-group">
       <label><input type="checkbox" id="cbZalgo" checked> Zalgo (Unicode anomalies)</label>
       <label><input type="checkbox" id="cbHiddenHTML" checked> Hidden HTML</label>
@@ -113,382 +285,535 @@
       <label><input type="checkbox" id="cbJobData" checked> Advanced Job Data Injection</label>
       <label><input type="checkbox" id="cbRandomAcronyms" checked> Random Acronym Injection</label>
     </div>
+    <div class="checkbox-group">
+      <label for="intensitySlider">Injection Intensity (affects some exploit randomness):</label>
+      <input type="range" id="intensitySlider" min="1" max="5" value="3" step="1">
+    </div>
     <div class="button-group">
       <button id="injectButton">Inject Selected Exploits</button>
       <button id="resetInjector">Reset Injector</button>
+      <button id="previewInjected" class="small-button">Live Preview (Chain‑of‑Thought)</button>
     </div>
     <label for="injectedText">Injected Text Output:</label>
     <textarea id="injectedText" readonly placeholder="Injected text will appear here..."></textarea>
+    <div class="counter" id="injectedCounter">0 characters</div>
     <button id="downloadButton" style="display:none;">Download Injected DOCX</button>
+    <div class="feedback-group">
+      <button id="injectorLike">Feedback: Like</button>
+      <button id="injectorDislike" class="dislike">Feedback: Dislike</button>
+      <button id="exportInjectorHistory" class="small-button">Export History</button>
+      <button id="resetInjectorHistory" class="small-button">Reset History</button>
+    </div>
+    <h3>Injection History</h3>
+    <div id="injectorHistory" class="history-panel"></div>
   </div>
 
+  <!-- Modal for Live Chain‑of‑Thought Preview -->
+  <div id="modalPreview" class="modal">
+    <div class="modal-content">
+      <span class="close-modal" id="closeModal">&times;</span>
+      <h2>Chain‑of‑Thought Live Preview</h2>
+      <pre id="modalText"></pre>
+    </div>
+  </div>
+
+  <!-- Toast Notification Container -->
+  <div id="toastContainer"></div>
+
   <script>
-    window.addEventListener("load", function() {
-      // Use the global DOCX.js library from unpkg
-      const docxLib = window.docx;
-      if (!docxLib) {
-        alert("DOCX.js library failed to load. Please check your network or try a different browser.");
-        return;
+    /***********************
+     * Global Settings
+     ***********************/
+    let zAlgoProbability = 0.12; // Default probability for Zalgo injection
+    let obfuscationProbability = 0.1; // Default probability for advanced obfuscation
+
+    /***********************
+     * Toast Notification
+     ***********************/
+    const showToast = message => {
+      const toast = document.createElement("div");
+      toast.className = "toast";
+      toast.textContent = message;
+      document.body.appendChild(toast);
+      // Force reflow to enable CSS transition
+      toast.offsetWidth;
+      toast.style.opacity = 1;
+      setTimeout(() => {
+        toast.style.opacity = 0;
+        setTimeout(() => document.body.removeChild(toast), 500);
+      }, 2000);
+    };
+
+    /***********************
+     * Dark Mode & Settings Modals & Keyboard Shortcuts
+     ***********************/
+    const toggleDarkMode = () => document.body.classList.toggle('dark');
+    document.getElementById('toggleDarkMode').addEventListener('click', () => {
+      toggleDarkMode();
+      showToast("Dark mode toggled");
+    });
+
+    // Settings modal functions
+    const openSettingsModal = () => document.getElementById('settingsModal').style.display = "block";
+    const closeSettingsModal = () => document.getElementById('settingsModal').style.display = "none";
+    document.getElementById('openSettings').addEventListener('click', openSettingsModal);
+    document.getElementById('closeSettings').addEventListener('click', closeSettingsModal);
+    document.getElementById('saveSettings').addEventListener('click', () => {
+      zAlgoProbability = parseFloat(document.getElementById('zAlgoRange').value);
+      obfuscationProbability = parseFloat(document.getElementById('obfuscationRange').value);
+      showToast("Settings saved");
+      closeSettingsModal();
+    });
+
+    // Keyboard shortcuts: D = dark mode, S = settings, R = reset all
+    document.addEventListener('keydown', e => {
+      if (e.key.toLowerCase() === 'd') toggleDarkMode();
+      if (e.key.toLowerCase() === 's') openSettingsModal();
+      if (e.key.toLowerCase() === 'r') {
+        // Reset both scanner and injector histories and file inputs
+        document.getElementById('scannerFile').value = "";
+        document.getElementById('injectorFile').value = "";
+        document.getElementById('extractedText').value = "";
+        document.getElementById('injectedText').value = "";
+        document.getElementById('downloadButton').style.display = "none";
+        document.getElementById('scannerHistory').innerHTML = "";
+        document.getElementById('injectorHistory').innerHTML = "";
+        showToast("All data reset");
       }
+    });
 
-      /***********************************************************************
-       *                   Utility & Detection Functions
-       ***********************************************************************/
-      function normalizeText(text) {
-        return text.normalize("NFC");
-      }
+    /***********************
+     * Utility Functions
+     ***********************/
+    const normalizeText = text => text.normalize("NFC");
 
-      function detectZalgo(text) {
-        text = normalizeText(text);
-        const regex = /[\u0300-\u036F\u20D0-\u20FF]/g;
-        const matches = text.match(regex);
-        return matches ? matches.length : 0;
-      }
+    const detectZalgo = text => {
+      text = normalizeText(text);
+      const regex = /[\u0300-\u036F\u20D0-\u20FF]/g;
+      const matches = text.match(regex);
+      return matches ? matches.length : 0;
+    };
 
-      function detectHiddenHTML(text) {
-        const hiddenDivRegex = /<div[^>]+style\s*=\s*["'][^"']*(display\s*:\s*none|visibility\s*:\s*hidden)[^"']*["'][^>]*>(.*?)<\/div>/gi;
-        const hiddenSpanRegex = /<span[^>]+style\s*=\s*["'][^"']*visibility\s*:\s*hidden[^"']*["'][^>]*>(.*?)<\/span>/gi;
-        const commentRegex = /<!--\s*Keywords:[^>]*-->/gi;
-        const count1 = (text.match(hiddenDivRegex) || []).length;
-        const count2 = (text.match(hiddenSpanRegex) || []).length;
-        const count3 = (text.match(commentRegex) || []).length;
-        return count1 + count2 + count3;
-      }
+    const detectHiddenHTML = text => {
+      const hiddenDivRegex = /<div[^>]+style\s*=\s*["'][^"']*(display\s*:\s*none|visibility\s*:\s*hidden)[^"']*["'][^>]*>(.*?)<\/div>/gi;
+      const hiddenSpanRegex = /<span[^>]+style\s*=\s*["'][^"']*visibility\s*:\s*hidden[^"']*["'][^>]*>(.*?)<\/span>/gi;
+      const commentRegex = /<!--\s*Keywords:[^>]*-->/gi;
+      return (text.match(hiddenDivRegex) || []).length +
+             (text.match(hiddenSpanRegex) || []).length +
+             (text.match(commentRegex) || []).length;
+    };
 
-      function detectMetadataInjection(text) {
-        const altMatches = (text.match(/alt\s*=\s*["'][^"']+["']/gi) || []).length;
-        const xmlMatches = (text.match(/<\?xml[\s\S]*?\?>/gi) || []).length;
-        const customTagMatches = (text.match(/<metadata>[\s\S]*?<\/metadata>/gi) || []).length;
-        return altMatches + xmlMatches + customTagMatches;
-      }
+    const detectMetadataInjection = text => {
+      const altMatches = (text.match(/alt\s*=\s*["'][^"']+["']/gi) || []).length;
+      const xmlMatches = (text.match(/<\?xml[\s\S]*?\?>/gi) || []).length;
+      const customTagMatches = (text.match(/<metadata>[\s\S]*?<\/metadata>/gi) || []).length;
+      return altMatches + xmlMatches + customTagMatches;
+    };
 
-      function detectNeuralNoise(text) {
-        const keywords = ["Python", "TensorFlow", "SQL", "Data", "AI", "Cybersecurity", "Analysis", "Machine Learning"];
-        const words = text.split(/\s+/);
-        let keywordCount = 0;
-        keywords.forEach(word => {
-          const regex = new RegExp("\\b" + word + "\\b", "gi");
-          keywordCount += (text.match(regex) || []).length;
-        });
-        return (keywordCount / words.length > 0.2 || keywordCount > 50) ? keywordCount : 0;
-      }
-
-      function detectMultiDocumentLayering(text) {
-        const hiddenSectionRegex = /<div[^>]+style\s*=\s*["'][^"']*(display\s*:\s*none|visibility\s*:\s*hidden|color\s*:\s*#fff)[^"']*["'][^>]*>(.*?)<\/div>/gi;
-        let count = 0;
-        while (hiddenSectionRegex.exec(text) !== null) { count++; }
-        return count;
-      }
-
-      function detectDynamicKeywordShuffling(text) {
-        const regex = /dynamic\s*keyword\s*shuffling|auto[- ]?adjust/i;
-        return regex.test(text) ? 1 : 0;
-      }
-
-      function scanDocument(text) {
-        let results = [];
-        const zalgoCount = detectZalgo(text);
-        if (zalgoCount > 0) results.push("Zalgo anomalies: " + zalgoCount);
-        const hiddenHTMLCount = detectHiddenHTML(text);
-        if (hiddenHTMLCount > 0) results.push("Hidden HTML: " + hiddenHTMLCount);
-        const metadataCount = detectMetadataInjection(text);
-        if (metadataCount > 0) results.push("Metadata injection: " + metadataCount);
-        const neuralNoiseCount = detectNeuralNoise(text);
-        if (neuralNoiseCount > 0) results.push("Neural noise: " + neuralNoiseCount);
-        const multiDocCount = detectMultiDocumentLayering(text);
-        if (multiDocCount > 0) results.push("Multi‑document layering: " + multiDocCount);
-        const dynamicKeywordFlag = detectDynamicKeywordShuffling(text);
-        if (dynamicKeywordFlag > 0) results.push("Dynamic keyword shuffling detected");
-        if (results.length === 0) results.push("No exploit techniques detected.");
-        return results;
-      }
-
-      /***********************************************************************
-       *                    Injection Functions
-       ***********************************************************************/
-      function injectZalgo(text) {
-        let result = "";
-        for (let char of text) {
-          if (/[a-zA-Z]/.test(char) && Math.random() < 0.12) {
-            const diacritics = [0x0301, 0x0327, 0x0308];
-            const count = Math.random() < 0.5 ? 1 : 2;
-            for (let i = 0; i < count; i++) {
-              char += String.fromCharCode(diacritics[Math.floor(Math.random() * diacritics.length)]);
-            }
-          }
-          result += char;
-        }
-        return result;
-      }
-
-      function injectHiddenHTML(text) {
-        const hiddenDiv1 = '<div style="display:none;">Java, SQL, Cybersecurity, TensorFlow</div>';
-        const hiddenDiv2 = '<span style="visibility:hidden;">Python, AI, Data Science</span>';
-        return text + "\n" + hiddenDiv1 + "\n" + hiddenDiv2;
-      }
-
-      function injectSteganographicData(text) {
-        const stegoComment = '<!-- Keywords: Java, SQL, Cybersecurity, TensorFlow -->';
-        return text + "\n" + stegoComment;
-      }
-
-      function injectMetadata(text) {
-        const metadata = '<?xml version="1.0" encoding="UTF-8"?>\n' +
-                         '<metadata>\n' +
-                         '  <keywords>Python, Data, AI, SQL, TensorFlow</keywords>\n' +
-                         '  <version>1.0</version>\n' +
-                         '  <note>Injected Metadata</note>\n' +
-                         '</metadata>';
-        return text + "\n" + metadata;
-      }
-
-      function injectNeuralNoise(text) {
-        const fragments = [
-          "The algorithm of Python AI in TensorFlow processes vast amounts of data",
-          "Machine Learning models extract insights using SQL and advanced analytics",
-          "Cybersecurity protocols integrate with AI to secure real-time applications",
-          "Data-driven approaches fuel innovation in Data Science and Python development"
-        ];
-        const noise = fragments[Math.floor(Math.random() * fragments.length)] + ".";
-        return text + "\n" + noise;
-      }
-
-      function injectMultiDocumentLayer(text) {
-        const hiddenDoc = '<div class="hidden-doc">Hidden ATS section: Python Python Python, SQL SQL SQL, AI AI AI, TensorFlow TensorFlow TensorFlow.</div>';
-        return text + "\n" + hiddenDoc;
-      }
-
-      function injectDynamicKeywordShuffling(text) {
-        const keywords = ["Python", "TensorFlow", "Data Analysis", "SQL", "Cybersecurity", "AI", "Machine Learning", "Big Data", "Cloud"];
-        let words = text.split(" ");
-        for (let i = 0; i < words.length; i++) {
-          if (Math.random() < 0.06) {
-            const randomKeyword = keywords[Math.floor(Math.random() * keywords.length)];
-            words.splice(i, 0, randomKeyword);
-          }
-        }
-        words.push("auto-adjust-dynamic-keyword-shuffling");
-        return words.join(" ");
-      }
-
-      // Updated Injection Function: Advanced Skill Qualification Injection with Expanded Real Skills
-      function injectSkillQualification(text) {
-        const realSkills = [
-          "Project Management", "Data Analysis & Interpretation", "Software Engineering", "Machine Learning & AI Development", "Cloud Computing (AWS, Azure, GCP)",
-          "Cybersecurity & Risk Management", "Agile & Scrum Methodologies", "DevOps & Continuous Integration", "UI/UX Design Principles", "Full‑Stack Web Development",
-          "Database Administration (SQL/NoSQL)", "Technical Writing & Documentation", "Digital Marketing & SEO", "Business Development & Growth Strategies",
-          "Customer Relationship Management (CRM)", "Advanced Negotiation Skills", "Time Management & Prioritization", "Financial Modeling & Analysis",
-          "Quality Assurance & Testing", "Risk Management & Compliance", "Vendor Management", "Supply Chain Management", "Product Lifecycle Management",
-          "Data Science & Big Data Analytics", "Artificial Intelligence & Deep Learning", "Internet of Things (IoT)", "Blockchain Technology", "Augmented Reality",
-          "Virtual Reality", "Mobile Application Development", "Game Development", "Embedded Systems", "Networking & System Administration",
-          "ITIL & IT Service Management", "Penetration Testing & Information Security", "Cloud Architecture & Microservices", "Software Architecture",
-          "Containerization (Docker, Kubernetes)", "Scripting & Automation", "Programming Languages (Python, Java, C++, C#, JavaScript, PHP)",
-          "Front-End Development (React, Angular, Vue)", "Back-End Development (Node.js, Express, Django)", "API Development (REST, GraphQL)",
-          "Agile Testing & Automation", "Business Analysis", "Strategic Planning & Execution", "Data Visualization (Tableau, Power BI)", "Excel & SAP",
-          "Salesforce & CRM Solutions", "Customer Service & Support", "Leadership & Team Management", "Interpersonal & Communication Skills",
-          "Problem-Solving & Critical Thinking", "Innovation & Creativity", "Research & Development", "Statistical Analysis", "Deep Learning Algorithms",
-          "Natural Language Processing", "Computer Vision", "Robotics", "Systems Engineering", "Network Security", "Cloud Security", "Information Governance",
-          "Data Privacy & GDPR Compliance", "Change Management", "Process Improvement", "Lean Six Sigma", "Design Thinking", "Innovation Management"
-        ];
-        const skillDiv = '<div style="display:none;">' + realSkills.join(", ") + '</div>';
-        return text + "\n" + skillDiv;
-      }
-
-      // New Injection Function: Advanced Job Data Injection (comprehensive skills, qualifications, and job positions)
-      function injectJobData(text) {
-        const jobData = [
-          "Project Management", "Data Analysis & Interpretation", "Software Engineering", "Machine Learning & AI Development", "Cloud Computing (AWS, Azure, GCP)",
-          "Cybersecurity & Risk Management", "Agile & Scrum Methodologies", "DevOps & Continuous Integration", "UI/UX Design Principles", "Full‑Stack Web Development",
-          "Database Administration (SQL/NoSQL)", "Technical Writing & Documentation", "Digital Marketing & SEO", "Business Development & Growth Strategies",
-          "Customer Relationship Management (CRM)", "Advanced Negotiation Skills", "Time Management & Prioritization", "Financial Modeling & Analysis",
-          "Quality Assurance & Testing", "Risk Management & Compliance", "Vendor Management", "Supply Chain Management", "Product Lifecycle Management",
-          "Data Science & Big Data Analytics", "Artificial Intelligence & Deep Learning", "Internet of Things (IoT)", "Blockchain Technology", "Augmented Reality",
-          "Virtual Reality", "Mobile Application Development", "Game Development", "Embedded Systems", "Networking & System Administration",
-          "ITIL & IT Service Management", "Penetration Testing & Information Security", "Cloud Architecture & Microservices", "Software Architecture",
-          "Containerization (Docker, Kubernetes)", "Scripting & Automation", "Programming Languages (Python, Java, C++, C#, JavaScript, PHP)",
-          "Front-End Development (React, Angular, Vue)", "Back-End Development (Node.js, Express, Django)", "API Development (REST, GraphQL)",
-          // Job Positions & Roles
-          "Software Developer", "Data Scientist", "Systems Engineer", "Network Administrator", "Project Manager", "Business Analyst", "Product Manager",
-          "QA Engineer", "DevOps Engineer", "IT Consultant", "Cybersecurity Analyst", "Database Administrator", "Full‑Stack Developer", "Front-End Developer",
-          "Back-End Developer", "Cloud Solutions Architect", "Technical Support Specialist", "Customer Success Manager", "Digital Marketing Manager",
-          "SEO Specialist", "Content Strategist", "UX Designer", "UI Developer", "Mobile Application Developer", "Game Developer", "Blockchain Developer",
-          "Embedded Systems Engineer", "Research Scientist", "R&D Engineer", "Sales Manager", "Account Manager", "Operations Manager", "Human Resources Manager",
-          "Finance Manager", "Legal Counsel", "Compliance Officer", "Risk Manager", "Supply Chain Manager", "Procurement Specialist", "Data Engineer",
-          "Machine Learning Engineer", "AI Researcher", "IT Security Specialist"
-        ];
-        const jobDiv = '<div style="display:none;">' + jobData.join(", ") + '</div>';
-        return text + "\n" + jobDiv;
-      }
-
-      // New Injection Function: Advanced Obfuscation Injection (inserts zero‑width spaces)
-      function injectAdvObfuscation(text) {
-        let words = text.split(" ");
-        for (let i = 0; i < words.length; i++) {
-          if (Math.random() < 0.1) {
-            words[i] = words[i].split("").join("\u200B");
-          }
-        }
-        return words.join(" ");
-      }
-
-      // New Injection Function: Semantic Noise Injection (randomly shuffles words in some sentences)
-      function injectSemanticNoise(text) {
-        let sentences = text.split(/(?<=[.!?])\s+/);
-        let noisySentences = sentences.map(sentence => {
-          if (sentence.split(" ").length > 5 && Math.random() < 0.1) {
-            let words = sentence.split(" ");
-            for (let i = words.length - 1; i > 0; i--) {
-              const j = Math.floor(Math.random() * (i + 1));
-              [words[i], words[j]] = [words[j], words[i]];
-            }
-            return words.join(" ");
-          } else {
-            return sentence;
-          }
-        });
-        return noisySentences.join(" ");
-      }
-
-      // New Injection Function: Random Acronym Injection (inserts industry acronyms)
-      function injectRandomAcronyms(text) {
-        const acronyms = [
-          "AI", "ML", "IoT", "RPA", "VR", "AR", "5G", "SaaS", "PaaS", "IaaS", "API", "UI", "UX", "CRM", "ERP", "BI", "SQL", "NoSQL", "CI", "CD"
-        ];
-        const randomAcronyms = acronyms.sort(() => Math.random() - 0.5).slice(0, acronyms.length);
-        const acronymsDiv = '<div style="display:none;">' + randomAcronyms.join(", ") + '</div>';
-        return text + "\n" + acronymsDiv;
-      }
-
-      // Combine selected exploits into the injected text.
-      function injectSelectedExploits(text) {
-        let result = text;
-        if (document.getElementById('cbZalgo').checked) {
-          result = injectZalgo(result);
-        }
-        if (document.getElementById('cbHiddenHTML').checked) {
-          result = injectHiddenHTML(result);
-        }
-        if (document.getElementById('cbStego').checked) {
-          result = injectSteganographicData(result);
-        }
-        if (document.getElementById('cbMetadata').checked) {
-          result = injectMetadata(result);
-        }
-        if (document.getElementById('cbNeural').checked) {
-          result = injectNeuralNoise(result);
-        }
-        if (document.getElementById('cbMultiDoc').checked) {
-          result = injectMultiDocumentLayer(result);
-        }
-        if (document.getElementById('cbDynamic').checked) {
-          result = injectDynamicKeywordShuffling(result);
-        }
-        if (document.getElementById('cbSkillQual').checked) {
-          result = injectSkillQualification(result);
-        }
-        if (document.getElementById('cbAdvObfuscation').checked) {
-          result = injectAdvObfuscation(result);
-        }
-        if (document.getElementById('cbSemantic').checked) {
-          result = injectSemanticNoise(result);
-        }
-        if (document.getElementById('cbJobData').checked) {
-          result = injectJobData(result);
-        }
-        if (document.getElementById('cbRandomAcronyms').checked) {
-          result = injectRandomAcronyms(result);
-        }
-        return result;
-      }
-
-      /***********************************************************************
-       *                    DOCX File Processing with Mammoth.js
-       ***********************************************************************/
-      function readDocxFile(file, callback) {
-        const reader = new FileReader();
-        reader.onload = function() {
-          const arrayBuffer = reader.result;
-          mammoth.extractRawText({ arrayBuffer: arrayBuffer })
-            .then(function(result) {
-              callback(result.value);
-            })
-            .catch(function(err) {
-              console.error("Error extracting DOCX text:", err);
-              callback("");
-            });
-        };
-        reader.readAsArrayBuffer(file);
-      }
-
-      /***********************************************************************
-       *                    Event Handlers: Scanner Section
-       ***********************************************************************/
-      const scannerFileInput = document.getElementById('scannerFile');
-      const scanButton = document.getElementById('scanButton');
-      const extractedTextArea = document.getElementById('extractedText');
-      const scanResultsDiv = document.getElementById('scanResults');
-
-      scanButton.addEventListener('click', function() {
-        const file = scannerFileInput.files[0];
-        if (!file) {
-          alert("Please select a DOCX file to scan.");
-          return;
-        }
-        readDocxFile(file, function(extractedText) {
-          extractedTextArea.value = extractedText;
-          const results = scanDocument(extractedText);
-          scanResultsDiv.innerHTML = "<ul><li>" + results.join("</li><li>") + "</li></ul>";
-        });
+    const detectNeuralNoise = text => {
+      const keywords = ["Python", "TensorFlow", "SQL", "Data", "AI", "Cybersecurity", "Analysis", "Machine Learning"];
+      const words = text.split(/\s+/);
+      let keywordCount = 0;
+      keywords.forEach(word => {
+        const regex = new RegExp("\\b" + word + "\\b", "gi");
+        keywordCount += (text.match(regex) || []).length;
       });
+      return (keywordCount / words.length > 0.2 || keywordCount > 50) ? keywordCount : 0;
+    };
 
-      /***********************************************************************
-       *                    Event Handlers: Injector Section
-       ***********************************************************************/
-      const injectorFileInput = document.getElementById('injectorFile');
-      const injectButton = document.getElementById('injectButton');
-      const resetButton = document.getElementById('resetInjector');
-      const injectedTextArea = document.getElementById('injectedText');
-      const downloadButton = document.getElementById('downloadButton');
+    const detectMultiDocumentLayering = text => {
+      const regex = /<div[^>]+style\s*=\s*["'][^"']*(display\s*:\s*none|visibility\s*:\s*hidden|color\s*:\s*#fff)[^"']*["'][^>]*>(.*?)<\/div>/gi;
+      let count = 0;
+      while (regex.exec(text) !== null) count++;
+      return count;
+    };
 
-      injectButton.addEventListener('click', function() {
-        const file = injectorFileInput.files[0];
-        if (!file) {
-          alert("Please select a DOCX file to inject exploits.");
-          return;
+    const detectDynamicKeywordShuffling = text => /dynamic\s*keyword\s*shuffling|auto[- ]?adjust/i.test(text) ? 1 : 0;
+
+    const scanDocument = text => {
+      let results = [];
+      const zalgoCount = detectZalgo(text);
+      if (zalgoCount > 0) results.push("Zalgo anomalies: " + zalgoCount);
+      const hiddenHTMLCount = detectHiddenHTML(text);
+      if (hiddenHTMLCount > 0) results.push("Hidden HTML: " + hiddenHTMLCount);
+      const metadataCount = detectMetadataInjection(text);
+      if (metadataCount > 0) results.push("Metadata injection: " + metadataCount);
+      const neuralNoiseCount = detectNeuralNoise(text);
+      if (neuralNoiseCount > 0) results.push("Neural noise: " + neuralNoiseCount);
+      const multiDocCount = detectMultiDocumentLayering(text);
+      if (multiDocCount > 0) results.push("Multi‑document layering: " + multiDocCount);
+      if (detectDynamicKeywordShuffling(text)) results.push("Dynamic keyword shuffling detected");
+      if (results.length === 0) results.push("No exploit techniques detected.");
+      return results;
+    };
+
+    /***********************
+     * Injection Functions
+     ***********************/
+    // Original Injections
+    const injectZalgo = text => {
+      let result = "";
+      for (let char of text) {
+        if (/[a-zA-Z]/.test(char) && Math.random() < zAlgoProbability) {
+          const diacritics = [0x0301, 0x0327, 0x0308];
+          const count = Math.random() < 0.5 ? 1 : 2;
+          for (let i = 0; i < count; i++) {
+            char += String.fromCharCode(diacritics[Math.floor(Math.random() * diacritics.length)]);
+          }
         }
-        readDocxFile(file, function(originalText) {
-          const injected = injectSelectedExploits(originalText);
-          injectedTextArea.value = injected;
-          downloadButton.style.display = "block";
-        });
-      });
+        result += char;
+      }
+      return result;
+    };
 
-      resetButton.addEventListener('click', function() {
-        injectorFileInput.value = "";
-        injectedTextArea.value = "";
-        downloadButton.style.display = "none";
-        document.querySelectorAll('.checkbox-group input[type="checkbox"]').forEach(cb => cb.checked = true);
-      });
+    const injectHiddenHTML = text => {
+      const hiddenDiv1 = '<div style="display:none;">Java, SQL, Cybersecurity, TensorFlow</div>';
+      const hiddenDiv2 = '<span style="visibility:hidden;">Python, AI, Data Science</span>';
+      return text + "\n" + hiddenDiv1 + "\n" + hiddenDiv2;
+    };
 
-      downloadButton.addEventListener('click', function() {
-        const injectedText = injectedTextArea.value;
-        if (!injectedText) {
-          alert("No injected text available. Please run the injector first.");
-          return;
+    const injectSteganographicData = text => '<!-- Keywords: Java, SQL, Cybersecurity, TensorFlow -->\n' + text;
+
+    const injectMetadata = text => {
+      const meta = '<?xml version="1.0" encoding="UTF-8"?>\n' +
+                   '<metadata>\n  <keywords>Python, Data, AI, SQL, TensorFlow</keywords>\n' +
+                   '  <version>1.0</version>\n  <note>Injected Metadata</note>\n</metadata>';
+      return text + "\n" + meta;
+    };
+
+    const injectNeuralNoise = text => {
+      const fragments = [
+        "The algorithm of Python AI in TensorFlow processes vast amounts of data",
+        "Machine Learning models extract insights using SQL and advanced analytics",
+        "Cybersecurity protocols integrate with AI to secure real-time applications",
+        "Data-driven approaches fuel innovation in Data Science and Python development"
+      ];
+      const noise = fragments[Math.floor(Math.random() * fragments.length)] + ".";
+      return text + "\n" + noise;
+    };
+
+    const injectMultiDocumentLayer = text => {
+      const hiddenDoc = '<div class="hidden-doc">Hidden ATS section: Python Python Python, SQL SQL SQL, AI AI AI, TensorFlow TensorFlow TensorFlow.</div>';
+      return text + "\n" + hiddenDoc;
+    };
+
+    const injectDynamicKeywordShuffling = text => {
+      const keywords = ["Python", "TensorFlow", "Data Analysis", "SQL", "Cybersecurity", "AI", "Machine Learning", "Big Data", "Cloud"];
+      let words = text.split(" ");
+      for (let i = 0; i < words.length; i++) {
+        if (Math.random() < 0.06) {
+          words.splice(i, 0, keywords[Math.floor(Math.random() * keywords.length)]);
         }
-        // Preserve formatting by splitting the injected text into paragraphs.
-        const paragraphs = injectedText.split('\n').map(line => new docxLib.Paragraph(line));
-        const doc = new docxLib.Document({
-          sections: [{
-            properties: {},
-            children: paragraphs
-          }]
-        });
-        docxLib.Packer.toBlob(doc).then(function(blob) {
-          saveAs(blob, "Injected_CV.docx");
-        }).catch(err => console.error("Error generating DOCX:", err));
+      }
+      words.push("auto-adjust-dynamic-keyword-shuffling");
+      return words.join(" ");
+    };
+
+    // Advanced Injections
+    const injectSkillQualification = text => {
+      const skills = [
+        "Project Management", "Data Analysis", "Software Engineering", "Machine Learning", "Cloud Computing",
+        "Cybersecurity", "Agile Methodologies", "DevOps", "UI/UX Design", "Full‑Stack Development"
+      ];
+      return text + "\n[Advanced Skill Qualification Injection: " + skills.join(", ") + "]";
+    };
+
+    const injectAdvObfuscation = text => {
+      let words = text.split(" ");
+      for (let i = 0; i < words.length; i++) {
+        if (Math.random() < obfuscationProbability) {
+          words[i] = words[i].split("").join("\u200B");
+        }
+      }
+      return words.join(" ") + "\n[Advanced Obfuscation Injection applied]";
+    };
+
+    const injectSemanticNoise = text => {
+      let sentences = text.split(/(?<=[.!?])\s+/);
+      let noisySentences = sentences.map(sentence => {
+        if (sentence.split(" ").length > 5 && Math.random() < 0.1) {
+          let words = sentence.split(" ");
+          for (let i = words.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [words[i], words[j]] = [words[j], words[i]];
+          }
+          return words.join(" ");
+        } else {
+          return sentence;
+        }
+      });
+      return noisySentences.join(" ");
+    };
+
+    const injectJobData = text => {
+      const jobData = [
+        "Senior AI Engineer", "Project Manager", "Data Scientist", "DevOps Engineer", "Full‑Stack Developer"
+      ];
+      return text + "\n[Advanced Job Data Injection: " + jobData.join(", ") + "]";
+    };
+
+    const injectRandomAcronyms = text => {
+      const acronyms = ["AI", "ML", "IoT", "RPA", "VR", "AR", "5G", "SaaS", "PaaS", "IaaS", "API", "UI", "UX"];
+      const shuffled = acronyms.sort(() => Math.random() - 0.5).slice(0, acronyms.length);
+      return text + "\n[Random Acronym Injection: " + shuffled.join(", ") + "]";
+    };
+
+    // Combine all injections
+    const injectSelectedExploits = text => {
+      let result = text;
+      if (document.getElementById('cbZalgo').checked) result = injectZalgo(result);
+      if (document.getElementById('cbHiddenHTML').checked) result = injectHiddenHTML(result);
+      if (document.getElementById('cbStego').checked) result = injectSteganographicData(result);
+      if (document.getElementById('cbMetadata').checked) result = injectMetadata(result);
+      if (document.getElementById('cbNeural').checked) result = injectNeuralNoise(result);
+      if (document.getElementById('cbMultiDoc').checked) result = injectMultiDocumentLayer(result);
+      if (document.getElementById('cbDynamic').checked) result = injectDynamicKeywordShuffling(result);
+      if (document.getElementById('cbSkillQual').checked) result = injectSkillQualification(result);
+      if (document.getElementById('cbAdvObfuscation').checked) result = injectAdvObfuscation(result);
+      if (document.getElementById('cbSemantic').checked) result = injectSemanticNoise(result);
+      if (document.getElementById('cbJobData').checked) result = injectJobData(result);
+      if (document.getElementById('cbRandomAcronyms').checked) result = injectRandomAcronyms(result);
+      return result;
+    };
+
+    /***********************
+     * DOCX Processing with Mammoth.js
+     ***********************/
+    const readDocxFile = (file, callback) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const arrayBuffer = reader.result;
+        mammoth.extractRawText({ arrayBuffer })
+          .then(result => callback(result.value))
+          .catch(err => {
+            console.error("Error extracting DOCX text:", err);
+            callback("");
+          });
+      };
+      reader.readAsArrayBuffer(file);
+    };
+
+    /***********************
+     * Drag & Drop Setup
+     ***********************/
+    const setupDropzone = (dropzoneId, fileInputId) => {
+      const dropzone = document.getElementById(dropzoneId);
+      const fileInput = document.getElementById(fileInputId);
+      dropzone.addEventListener("click", () => fileInput.click());
+      dropzone.addEventListener("dragover", e => {
+        e.preventDefault();
+        dropzone.classList.add("dragover");
+      });
+      dropzone.addEventListener("dragleave", () => dropzone.classList.remove("dragover"));
+      dropzone.addEventListener("drop", e => {
+        e.preventDefault();
+        dropzone.classList.remove("dragover");
+        if (e.dataTransfer.files.length) {
+          fileInput.files = e.dataTransfer.files;
+        }
+      });
+    };
+
+    setupDropzone("scannerDropzone", "scannerFile");
+    setupDropzone("injectorDropzone", "injectorFile");
+
+    /***********************
+     * Character Counters
+     ***********************/
+    const updateCounter = (textareaId, counterId) => {
+      const text = document.getElementById(textareaId).value;
+      document.getElementById(counterId).textContent = text.length + " characters";
+    };
+
+    document.getElementById("extractedText").addEventListener("input", () => updateCounter("extractedText", "extractedCounter"));
+    document.getElementById("injectedText").addEventListener("input", () => updateCounter("injectedText", "injectedCounter"));
+
+    /***********************
+     * History Management
+     ***********************/
+    const addHistoryItem = (section, content) => {
+      const timestamp = new Date().toLocaleString();
+      const historyDiv = document.getElementById(section + "History");
+      const newItem = document.createElement("div");
+      newItem.className = "history-item";
+      newItem.textContent = `[${timestamp}] ${content.substring(0, 100)}...`;
+      historyDiv.prepend(newItem);
+    };
+
+    const exportHistory = section => {
+      const historyDiv = document.getElementById(section + "History");
+      const items = Array.from(historyDiv.querySelectorAll(".history-item")).map(item => item.textContent);
+      const blob = new Blob([JSON.stringify(items, null, 2)], {type: "application/json"});
+      saveAs(blob, section + "-history.json");
+    };
+
+    const resetHistory = section => {
+      document.getElementById(section + "History").innerHTML = "";
+    };
+
+    /***********************
+     * Simulated Chain‑of‑Thought Animation
+     ***********************/
+    const simulateChainOfThought = async () => {
+      const chainLines = [
+        "- Analyzing input text...",
+        "- Detecting anomalies and patterns...",
+        "- Selecting optimal injection parameters..."
+      ];
+      let simulation = "";
+      for (const line of chainLines) {
+        simulation += line + "\n";
+        document.getElementById("modalText").innerHTML = simulation + "\nThinking<span class='thinking'>...</span>";
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      }
+      return simulation;
+    };
+
+    /***********************
+     * Scanner Event Handlers
+     ***********************/
+    const scannerFileInput = document.getElementById('scannerFile');
+    const scanButton = document.getElementById('scanButton');
+    const extractedTextArea = document.getElementById('extractedText');
+    const scanResultsDiv = document.getElementById('scanResults');
+    const scannerLikeBtn = document.getElementById('scannerLike');
+    const scannerDislikeBtn = document.getElementById('scannerDislike');
+    const scannerHistoryDiv = document.getElementById('scannerHistory');
+    const exportScannerHistoryBtn = document.getElementById('exportScannerHistory');
+    const resetScannerHistoryBtn = document.getElementById('resetScannerHistory');
+
+    scanButton.addEventListener('click', () => {
+      const file = scannerFileInput.files[0];
+      if (!file) { showToast("Please select a DOCX file to scan."); return; }
+      readDocxFile(file, extractedText => {
+        extractedTextArea.value = extractedText;
+        updateCounter("extractedText", "extractedCounter");
+        const results = scanDocument(extractedText);
+        scanResultsDiv.innerHTML = "<ul><li>" + results.join("</li><li>") + "</li></ul>";
+        addHistoryItem("scanner", "Scanned DOCX file. Results: " + results.join(", "));
+        showToast("Scan complete.");
       });
     });
+
+    scannerLikeBtn.addEventListener('click', () => {
+      let score = parseInt(localStorage.getItem("scannerFeedbackScore") || "0") + 1;
+      localStorage.setItem("scannerFeedbackScore", score);
+      showToast("Scanner feedback recorded.");
+    });
+    scannerDislikeBtn.addEventListener('click', () => {
+      let score = parseInt(localStorage.getItem("scannerFeedbackScore") || "0") - 1;
+      localStorage.setItem("scannerFeedbackScore", score);
+      showToast("Scanner feedback recorded.");
+    });
+    exportScannerHistoryBtn.addEventListener('click', () => exportHistory("scanner"));
+    resetScannerHistoryBtn.addEventListener('click', () => resetHistory("scanner"));
+
+    /***********************
+     * Injector Event Handlers
+     ***********************/
+    const injectorFileInput = document.getElementById('injectorFile');
+    const injectButton = document.getElementById('injectButton');
+    const resetButton = document.getElementById('resetInjector');
+    const injectedTextArea = document.getElementById('injectedText');
+    const downloadButton = document.getElementById('downloadButton');
+    const intensitySlider = document.getElementById('intensitySlider');
+    const injectorLikeBtn = document.getElementById('injectorLike');
+    const injectorDislikeBtn = document.getElementById('injectorDislike');
+    const injectorHistoryDiv = document.getElementById('injectorHistory');
+    const exportInjectorHistoryBtn = document.getElementById('exportInjectorHistory');
+    const resetInjectorHistoryBtn = document.getElementById('resetInjectorHistory');
+    const previewInjectedBtn = document.getElementById('previewInjected');
+
+    // Modal for Live Chain‑of‑Thought Preview
+    const modalPreview = document.getElementById('modalPreview');
+    const modalText = document.getElementById('modalText');
+    const closeModal = document.getElementById('closeModal');
+
+    injectButton.addEventListener('click', async () => {
+      const file = injectorFileInput.files[0];
+      if (!file) { showToast("Please select a DOCX file to inject exploits."); return; }
+      readDocxFile(file, async originalText => {
+        const intensity = parseInt(intensitySlider.value);
+        modalText.textContent = "";
+        modalPreview.style.display = "block";
+        const chainSimulation = await simulateChainOfThought();
+        const injected = injectSelectedExploits(originalText);
+        injectedTextArea.value = injected;
+        updateCounter("injectedText", "injectedCounter");
+        modalText.textContent = chainSimulation + "\n--- Final Injected Output ---\n" + injected;
+        downloadButton.style.display = "block";
+        addHistoryItem("injector", "Injected DOCX file with intensity " + intensity);
+        showToast("Injection complete.");
+      });
+    });
+
+    resetButton.addEventListener('click', () => {
+      injectorFileInput.value = "";
+      injectedTextArea.value = "";
+      updateCounter("injectedText", "injectedCounter");
+      downloadButton.style.display = "none";
+      document.querySelectorAll('.checkbox-group input[type="checkbox"]').forEach(cb => cb.checked = true);
+      intensitySlider.value = 3;
+      showToast("Injector reset.");
+    });
+
+    downloadButton.addEventListener('click', () => {
+      const injectedText = injectedTextArea.value;
+      if (!injectedText) { showToast("No injected text available. Please run the injector first."); return; }
+      const paragraphs = injectedText.split('\n').map(line => new docxLib.Paragraph(line));
+      const doc = new docxLib.Document({
+        sections: [{
+          properties: {},
+          children: paragraphs
+        }]
+      });
+      docxLib.Packer.toBlob(doc)
+        .then(blob => {
+          saveAs(blob, "Injected_CV.docx");
+          showToast("DOCX downloaded.");
+        })
+        .catch(err => console.error("Error generating DOCX:", err));
+    });
+
+    previewInjectedBtn.addEventListener('click', () => {
+      if (!injectedTextArea.value) { showToast("No injected text available to preview."); return; }
+      modalPreview.style.display = "block";
+    });
+
+    closeModal.addEventListener('click', () => modalPreview.style.display = "none");
+    window.addEventListener('click', e => { if (e.target == modalPreview) modalPreview.style.display = "none"; });
+
+    injectorLikeBtn.addEventListener('click', () => {
+      let score = parseInt(localStorage.getItem("injectorFeedbackScore") || "0") + 1;
+      localStorage.setItem("injectorFeedbackScore", score);
+      showToast("Injector feedback recorded.");
+    });
+    injectorDislikeBtn.addEventListener('click', () => {
+      let score = parseInt(localStorage.getItem("injectorFeedbackScore") || "0") - 1;
+      localStorage.setItem("injectorFeedbackScore", score);
+      showToast("Injector feedback recorded.");
+    });
+    exportInjectorHistoryBtn.addEventListener('click', () => exportHistory("injector"));
+    resetInjectorHistoryBtn.addEventListener('click', () => resetHistory("injector"));
+
+    /***********************
+     * Reset All Functionality (Header Button)
+     ***********************/
+    document.getElementById('resetAll').addEventListener('click', () => {
+      // Reset file inputs, text areas, history panels, and settings to defaults
+      document.getElementById('scannerFile').value = "";
+      document.getElementById('injectorFile').value = "";
+      document.getElementById('extractedText').value = "";
+      document.getElementById('injectedText').value = "";
+      document.getElementById('downloadButton').style.display = "none";
+      document.getElementById('scannerHistory').innerHTML = "";
+      document.getElementById('injectorHistory').innerHTML = "";
+      // Reset checkboxes
+      document.querySelectorAll('.checkbox-group input[type="checkbox"]').forEach(cb => cb.checked = true);
+      intensitySlider.value = 3;
+      showToast("All data reset.");
+    });
+
   </script>
 </body>
 </html>
