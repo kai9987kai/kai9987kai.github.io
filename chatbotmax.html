@@ -2,12 +2,14 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Actively Improving AI Chatbot – Advanced & Optimized</title>
+  <title>Advanced AI Chatbot – Optimized, Adaptive & Research-Driven</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <!-- Chart.js for live loss chart -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <!-- TensorFlow.js -->
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest"></script>
+  <!-- Universal Sentence Encoder for natural language embeddings -->
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/universal-sentence-encoder"></script>
   <style>
     :root {
       --primary-bg: #1a1a1a;
@@ -24,7 +26,7 @@
       display: flex;
       flex-direction: column;
     }
-    /* Chat container (left side) */
+    /* Chat container */
     #chatContainer {
       flex: 1;
       overflow-y: auto;
@@ -36,14 +38,13 @@
       max-height: calc(100% - 2rem);
       overflow-y: auto;
     }
-    /* Step bar at bottom of chat container */
     #stepBar {
       padding: 0.5rem;
       text-align: center;
       background: var(--primary-bg);
       border-top: 1px solid #3d3d3d;
     }
-    /* Prompt bar – only input and send button */
+    /* Input area */
     #inputContainer {
       display: flex;
       gap: 0.3rem;
@@ -72,7 +73,7 @@
     /* Fixed panels */
     #controls, #infoPanel, #performancePanel {
       position: fixed;
-      background: rgba(0,0,0,0.8);
+      background: rgba(0,0,0,0.85);
       padding: 0.8rem;
       border-radius: 4px;
       font-size: 14px;
@@ -81,28 +82,42 @@
     #controls {
       top: 1rem;
       right: 1rem;
-      width: 280px;
+      width: 460px;
       display: grid;
-      grid-template-columns: 1fr 1fr;
+      grid-template-columns: repeat(4, 1fr);
       gap: 0.5rem;
     }
-    /* Info panel for loss chart and step count */
+    #controls button.resetBtn {
+      grid-column: span 4;
+      background: #d9534f;
+    }
+    /* Innovation buttons styling */
+    #controls button.extraBtn {
+      background: #5cb85c;
+    }
     #infoPanel {
-      top: 300px;
+      top: 320px;
       right: 1rem;
-      width: 280px;
+      width: 320px;
     }
     #lossChartContainer {
       width: 100%;
       height: 200px;
     }
-    /* Performance panel at bottom right */
+    #lossDisplay {
+      margin-top: 0.5rem;
+      text-align: center;
+    }
+    #dalleImage {
+      width: 100%;
+      margin-top: 1rem;
+      border: 2px solid var(--accent);
+    }
     #performancePanel {
       bottom: 1rem;
       right: 1rem;
-      width: 280px;
+      width: 320px;
     }
-    /* Feedback buttons style */
     .feedbackBtn {
       background: transparent;
       border: none;
@@ -120,122 +135,340 @@
   </div>
   <div id="inputContainer">
     <input type="text" id="userInput" placeholder="Type your message here..." />
-    <button id="sendButton">Send</button>
+    <button id="sendButton" title="Send your message">Send</button>
   </div>
   <div id="controls">
-    <div class="grid-col-span-2">
-      <label>LR: <input type="number" id="lrInput" value="0.0005" step="0.0001"></label>
-      <label>MutRate: <input type="number" id="mutRateInput" value="0.01" step="0.001"></label>
-      <label>Decay: <input type="number" id="decayInput" value="0.999" step="0.001"></label>
-      <label>Speed: <input type="range" id="speedInput" min="0.5" max="3" step="0.1" value="1"></label>
+    <div style="grid-column: span 4;">
+      <label>LR: <input type="number" id="lrInput" value="0.0005" step="0.0001" title="Learning Rate"></label>
+      <label>MutRate: <input type="number" id="mutRateInput" value="0.01" step="0.001" title="Mutation Rate"></label>
+      <label>Decay: <input type="number" id="decayInput" value="0.999" step="0.001" title="Epsilon Decay"></label>
+      <label>Speed: <input type="range" id="speedInput" min="0.5" max="3" step="0.1" value="1" title="Training Speed"></label>
     </div>
-    <button onclick="commander.trainExtra()">Train Extra</button>
-    <button onclick="exportModel()">Export Model</button>
-    <button onclick="document.getElementById('modelUpload').click()">Import Model</button>
+    <button class="extraBtn" onclick="commander.trainExtra()" title="Extra training steps">Train Extra</button>
+    <button onclick="exportModel()" title="Export the current model">Export Model</button>
+    <button onclick="document.getElementById('modelUpload').click()" title="Import a saved model">Import Model</button>
+    <button onclick="deepSeek()" title="Deep search your conversation memory">Deep Seek</button>
+    <button class="extraBtn" onclick="showMemory()" title="Show recent memory">Show Memory</button>
+    <button class="extraBtn" onclick="saveChat()" title="Save the current chat history">Save Chat</button>
+    <button class="extraBtn" onclick="clearChat()" title="Clear the chat log">Clear Chat</button>
+    <button class="extraBtn" onclick="toggleBackgroundTraining()" title="Toggle background training">Toggle BG Training</button>
+    <button class="extraBtn" onclick="showDebugInfo()" title="Display debug information">Show Debug Info</button>
+    <button onclick="downloadDebugLog()" title="Download debug log">Download Debug Log</button>
+    <button onclick="resetDebugLog()" title="Clear debug log">Reset Debug Log</button>
+    <button class="resetBtn" onclick="resetModel()" title="Reset the model">Reset Model</button>
     <input type="file" id="modelUpload" style="display:none" accept=".json,.bin">
   </div>
   <div id="infoPanel">
     <div id="lossChartContainer">
       <canvas id="lossChart"></canvas>
     </div>
+    <div id="lossDisplay">Loss: N/A</div>
+    <!-- DALL·E image updated with AI art from Unsplash -->
+    <img id="dalleImage" src="https://source.unsplash.com/320x200/?ai,art" alt="DALL-E Generated Image">
   </div>
   <div id="performancePanel"></div>
-  
-  <script>
-    (function(){
-      // Use the WebGL backend explicitly for GPU acceleration.
-      tf.setBackend('webgl');
 
-      // --- Safe Fetch Function for Robust Error Handling ---
+  <script>
+    "use strict";
+    // Global conversation history, error log, and research-driven memory module.
+    let conversationHistory = [];
+    let globalErrorLog = [];
+    let useModel = null;
+    let backgroundTrainingActive = true;
+    let backgroundTrainingInterval;
+
+    // Global feedback counters.
+    let totalFeedback = 0, positiveFeedback = 0, negativeFeedback = 0;
+
+    // Global debug data.
+    function getDebugInfo() {
+      return {
+        stepCount: commander.stepCount,
+        epsilon: commander.epsilon,
+        learningRate: commander.learningRate,
+        lossHistoryLength: commander.lossHistory.length,
+        memoryCount: memoryModule.memories.length,
+        totalFeedback,
+        positiveFeedback,
+        negativeFeedback,
+        backgroundTraining: backgroundTrainingActive
+      };
+    }
+
+    // Global error handler.
+    window.onerror = function(message, source, lineno, colno, error) {
+      const errMsg = `[Global Error] ${message} at ${source}:${lineno}:${colno}`;
+      console.error(errMsg, error);
+      globalErrorLog.push(errMsg);
+      updatePerformancePanel();
+    };
+
+    // AdvancedMemoryModule for conversation embeddings.
+    class AdvancedMemoryModule {
+      constructor() { this.memories = []; }
+      addMemory(embedding, text) {
+        try {
+          this.memories.push({ embedding: embedding, text: text });
+        } catch (err) { console.error("Error storing memory:", err); }
+      }
+      async searchMemory(query) {
+        try {
+          if (!useModel) return "";
+          const queryEmb = await useModel.embed(query);
+          const queryVec = (await queryEmb.array())[0];
+          queryEmb.dispose();
+          let bestSim = -Infinity, bestText = "";
+          for (let mem of this.memories) {
+            let sim = cosineSimilarity(queryVec, mem.embedding);
+            if (sim > bestSim) { bestSim = sim; bestText = mem.text; }
+          }
+          return bestText;
+        } catch (err) {
+          console.error("Memory search error:", err);
+          globalErrorLog.push("Memory search error: " + err.message);
+          return "";
+        }
+      }
+    }
+    const memoryModule = new AdvancedMemoryModule();
+
+    // PriorityReplayBuffer for experience replay.
+    class PriorityReplayBuffer {
+      constructor(maxSize) { this.buffer = []; this.maxSize = maxSize; }
+      add(exp) {
+        try {
+          if (this.buffer.length >= this.maxSize) { this.buffer.shift(); }
+          this.buffer.push(exp);
+        } catch (err) { console.error("Error adding experience:", err); }
+      }
+      sample(batchSize) {
+        try {
+          let priorities = this.buffer.map(e => Math.abs(e.reward) + 0.01);
+          let total = priorities.reduce((a, b) => a + b, 0);
+          let probs = priorities.map(p => p / total);
+          let batch = [];
+          for (let i = 0; i < batchSize; i++) {
+            let rand = Math.random(), cumulative = 0;
+            for (let j = 0; j < probs.length; j++) {
+              cumulative += probs[j];
+              if (rand < cumulative) { batch.push(this.buffer[j]); break; }
+            }
+          }
+          return batch;
+        } catch (err) { console.error("Sampling error:", err); return []; }
+      }
+      size() { return this.buffer.length; }
+    }
+
+    // Utility: cosine similarity between two vectors.
+    function cosineSimilarity(vecA, vecB) {
+      let dot = 0, normA = 0, normB = 0;
+      for (let i = 0; i < vecA.length; i++) {
+        dot += vecA[i] * vecB[i];
+        normA += vecA[i] * vecA[i];
+        normB += vecB[i] * vecB[i];
+      }
+      return dot / (Math.sqrt(normA) * Math.sqrt(normB) + 1e-8);
+    }
+
+    // Load Universal Sentence Encoder.
+    (async function loadUSE() {
+      try {
+        useModel = await use.load();
+        console.log("Universal Sentence Encoder loaded.");
+      } catch (err) {
+        console.error("Error loading USE:", err);
+        globalErrorLog.push("Error loading USE: " + err.message);
+      }
+    })();
+
+    // Custom LambdaLayer – optionally accepts an outputShape.
+    class LambdaLayer extends tf.layers.Layer {
+      constructor(func, outputShape, config) {
+        super(config || {});
+        this.func = func;
+        this._outputShape = outputShape;
+      }
+      // Ensure proper handling of input tensors
+      call(inputs, kwargs) {
+        const x = Array.isArray(inputs) ? inputs[0] : inputs;
+        return this.func(x);
+      }
+      computeOutputShape(inputShape) {
+        if (this._outputShape) {
+          if (typeof this._outputShape === 'function') { return this._outputShape(inputShape); }
+          return this._outputShape;
+        }
+        return inputShape;
+      }
+      getClassName() { return 'LambdaLayer'; }
+    }
+
+    (function(){
+      // Set TensorFlow backend to WebGL with lower precision textures.
+      tf.setBackend('webgl');
+      tf.env().set('WEBGL_FORCE_F16_TEXTURES', true);
+
+      // Predefined responses.
+      const responses = [
+        "Here's a joke: ",
+        "Here's some advice: ",
+        "Here's a quote: ",
+        "Did you know? ",
+        "Chuck Norris says: ",
+        "Kanye says: "
+      ];
+
+      // --- API Fetch Functions with extra error handling ---
       async function safeFetch(url, options = {}) {
         try {
           const response = await fetch(url, options);
-          if (!response.ok) {
-            throw new Error(`HTTP error! Status: ${response.status}`);
-          }
+          if (!response.ok) throw new Error(`HTTP error! Status: ${response.status}`);
           return await response.text();
         } catch (error) {
           console.error("Fetch error:", error);
-          // Fallback to no-cors mode (results will be opaque)
           try {
-            console.warn("Attempting fallback fetch with no-cors mode.");
             const fallbackResponse = await fetch(url, { ...options, mode: "no-cors" });
             return await fallbackResponse.text();
           } catch (fallbackError) {
             console.error("Fallback fetch error:", fallbackError);
+            globalErrorLog.push("safeFetch error for " + url + ": " + fallbackError.message);
             return null;
           }
         }
       }
-
-      // --- Public API Functions using safeFetch ---
       async function fetchJoke() {
-        const data = await safeFetch("https://icanhazdadjoke.com/", { headers: { "Accept": "text/plain" } });
-        return data || "Sorry, no joke available.";
+        try {
+          const data = await safeFetch("https://icanhazdadjoke.com/", { headers: { "Accept": "text/plain" } });
+          return data || "Sorry, no joke available.";
+        } catch (err) { return "Error fetching joke."; }
       }
       async function fetchAdvice() {
-        const data = await safeFetch("https://api.adviceslip.com/advice");
         try {
+          const data = await safeFetch("https://api.adviceslip.com/advice");
           return data ? JSON.parse(data).slip.advice : "Sorry, no advice available.";
-        } catch (e) {
-          return "Sorry, no advice available.";
-        }
+        } catch (e) { return "Sorry, no advice available."; }
       }
       async function fetchQuote() {
-        const data = await safeFetch("https://api.quotable.io/random");
         try {
+          const data = await safeFetch("https://api.quotable.io/random");
           return data ? JSON.parse(data).content : "Sorry, no quote available.";
-        } catch (e) {
-          return "Sorry, no quote available.";
-        }
+        } catch (e) { return "Sorry, no quote available."; }
       }
       async function fetchCatFact() {
-        const data = await safeFetch("https://catfact.ninja/fact");
         try {
+          const data = await safeFetch("https://catfact.ninja/fact");
           return data ? JSON.parse(data).fact : "Sorry, no cat fact available.";
+        } catch (e) { return "Sorry, no cat fact available."; }
+      }
+      async function fetchChuckNorris() {
+        try {
+          const res = await safeFetch("https://api.chucknorris.io/jokes/random");
+          if (res) return JSON.parse(res).value;
+          return "Sorry, no Chuck Norris joke available.";
         } catch (e) {
-          return "Sorry, no cat fact available.";
+          console.error("Chuck Norris API error:", e);
+          return "Error fetching Chuck Norris joke.";
+        }
+      }
+      async function fetchKanye() {
+        try {
+          const res = await safeFetch("https://api.kanye.rest");
+          if (res) return JSON.parse(res).quote;
+          return "Sorry, no Kanye quote available.";
+        } catch (e) {
+          console.error("Kanye API error:", e);
+          return "Error fetching Kanye quote.";
         }
       }
       async function getResponse(action) {
-        if (action === 0) {
-          const joke = await fetchJoke();
-          if (joke && !joke.startsWith("Error")) return responses[0] + joke;
-          else return responses[1] + await fetchAdvice();
-        } else if (action === 1) {
-          const advice = await fetchAdvice();
-          if (advice && !advice.startsWith("Error")) return responses[1] + advice;
-          else return responses[0] + await fetchJoke();
-        } else if (action === 2) {
-          const quote = await fetchQuote();
-          return "Here's a quote: " + quote;
-        } else if (action === 3) {
-          const catFact = await fetchCatFact();
-          return "Did you know? " + catFact;
-        } else {
-          return responses[action];
+        try {
+          if (action === 0) {
+            const joke = await fetchJoke();
+            return (joke && !joke.startsWith("Error") ? responses[0] + joke : responses[1] + await fetchAdvice());
+          } else if (action === 1) {
+            const advice = await fetchAdvice();
+            return (advice && !advice.startsWith("Error") ? responses[1] + advice : responses[0] + await fetchJoke());
+          } else if (action === 2) {
+            const quote = await fetchQuote();
+            return responses[2] + quote;
+          } else if (action === 3) {
+            const catFact = await fetchCatFact();
+            return responses[3] + catFact;
+          } else if (action === 4) {
+            const chuck = await fetchChuckNorris();
+            return responses[4] + chuck;
+          } else if (action === 5) {
+            const kanye = await fetchKanye();
+            return responses[5] + kanye;
+          } else {
+            return responses[action];
+          }
+        } catch (err) {
+          console.error("Error in getResponse:", err);
+          return "Sorry, an error occurred.";
         }
       }
 
-      // --- UI Helpers ---
+      // --- UI Helper Functions ---
+      const chatLog = document.getElementById("chatLog");
+      const stepBar = document.getElementById("stepBar");
+      const userInput = document.getElementById("userInput");
+      const sendButton = document.getElementById("sendButton");
+      const performancePanel = document.getElementById("performancePanel");
+      const lossDisplay = document.getElementById("lossDisplay");
+      const lossChartCtx = document.getElementById("lossChart").getContext("2d");
+      let lossChart = new Chart(lossChartCtx, {
+        type: 'line',
+        data: { 
+          labels: [], 
+          datasets: [{ 
+            label: 'Loss', 
+            data: [], 
+            borderColor: '#ffffff',  // Loss graph line color set to white
+            fill: false 
+          }] 
+        },
+        options: { responsive: true, maintainAspectRatio: false }
+      });
       function appendMessage(sender, message, features = null) {
-        const msgElem = document.createElement("div");
-        msgElem.style.marginBottom = "10px";
-        msgElem.innerHTML = `<strong>${sender}:</strong> ${message}`;
-        if (sender === "Chatbot" && features) {
-          const upBtn = document.createElement("button");
-          upBtn.textContent = "👍";
-          upBtn.classList.add("feedbackBtn");
-          upBtn.addEventListener("click", () => recordFeedback(features, true));
-          const downBtn = document.createElement("button");
-          downBtn.textContent = "👎";
-          downBtn.classList.add("feedbackBtn");
-          downBtn.addEventListener("click", () => recordFeedback(features, false));
-          msgElem.appendChild(upBtn);
-          msgElem.appendChild(downBtn);
+        try {
+          const msgElem = document.createElement("div");
+          msgElem.style.marginBottom = "10px";
+          msgElem.innerHTML = `<strong>${sender}:</strong> ${message}`;
+          // For Chatbot responses, add feedback buttons if features are provided.
+          if (sender === "Chatbot" && features) {
+            const upBtn = document.createElement("button");
+            upBtn.textContent = "👍";
+            upBtn.classList.add("feedbackBtn");
+            upBtn.title = "Good response";
+            upBtn.addEventListener("click", (e) => {
+              disableFeedbackButtons(e.target.parentElement);
+              recordFeedback(e, features, true);
+            });
+            const downBtn = document.createElement("button");
+            downBtn.textContent = "👎";
+            downBtn.classList.add("feedbackBtn");
+            downBtn.title = "Bad response";
+            downBtn.addEventListener("click", (e) => {
+              disableFeedbackButtons(e.target.parentElement);
+              recordFeedback(e, features, false);
+            });
+            msgElem.appendChild(upBtn);
+            msgElem.appendChild(downBtn);
+          }
+          chatLog.appendChild(msgElem);
+          chatLog.scrollTop = chatLog.scrollHeight;
+        } catch (err) {
+          console.error("appendMessage error:", err);
+          globalErrorLog.push("appendMessage error: " + err.message);
         }
-        chatLog.appendChild(msgElem);
-        chatLog.scrollTop = chatLog.scrollHeight;
+      }
+      function disableFeedbackButtons(parentElem) {
+        try {
+          const btns = parentElem.querySelectorAll("button.feedbackBtn");
+          btns.forEach(btn => btn.disabled = true);
+        } catch (err) { console.error("Error disabling feedback buttons:", err); }
       }
       function argmax(arr) {
         let maxIndex = 0, maxValue = arr[0];
@@ -245,7 +478,7 @@
         return maxIndex;
       }
       function calculateReward(message, action) {
-        const positiveKeywords = ["joke", "advice", "quote", "cat", "fascinating", "learn"];
+        const positiveKeywords = ["joke", "advice", "quote", "cat", "fascinating", "learn", "awesome", "good"];
         let reward = 0;
         for (let word of positiveKeywords) {
           if (message.toLowerCase().includes(word)) reward += 1;
@@ -253,14 +486,24 @@
         if (action >= 2) reward += 0.5;
         return reward;
       }
-      function recordFeedback(features, isPositive) {
-        const feedbackReward = isPositive ? 5 : -5;
-        commander.exp.push({ state: features, action: 0, reward: feedbackReward, nextState: features, done: false });
-        logEvent("Feedback recorded: " + (isPositive ? "👍" : "👎"));
-        commander.trainExtra();
+      function recordFeedback(e, features, isPositive) {
+        try {
+          const feedbackReward = isPositive ? 5 : -5;
+          // Record feedback as an experience.
+          commander.exp.push({ state: features, action: 0, reward: feedbackReward, nextState: features, done: false });
+          commander.priorityBuffer.add({ state: features, action: 0, reward: feedbackReward, nextState: features, done: false });
+          totalFeedback++;
+          if (isPositive) { positiveFeedback++; } else { negativeFeedback++; }
+          logEvent("Feedback recorded: " + (isPositive ? "👍" : "👎"));
+          // Trigger extra training on feedback.
+          commander.trainExtra();
+          updatePerformancePanel();
+        } catch (err) { console.error("Feedback recording error:", err); }
       }
-      function updateStepDisplay(steps) {
-        stepBar.textContent = "Steps: " + steps;
+      function updateStepDisplay(steps) { 
+        stepBar.textContent = "Steps: " + steps; 
+        // Change background color if steps exceed 1000
+        stepBar.style.backgroundColor = (steps > 1000) ? "#4caf50" : "var(--primary-bg)";
       }
       function updateLossChart(lossData) {
         lossChart.data.labels = lossData.map((v, i) => i);
@@ -268,95 +511,180 @@
         lossChart.update();
       }
       function updatePerformancePanel() {
-        performancePanel.innerHTML = `Steps: ${commander.stepCount} | Epsilon: ${commander.epsilon.toFixed(3)}`;
+        performancePanel.innerHTML = `
+          Steps: ${commander.stepCount} | Epsilon: ${commander.epsilon.toFixed(3)}<br>
+          Learning Rate: ${commander.learningRate.toExponential(2)}<br>
+          Feedback: ${positiveFeedback} 👍, ${negativeFeedback} 👎 (Total: ${totalFeedback})<br>
+          Errors Logged: ${globalErrorLog.length}<br>
+          BG Training: ${backgroundTrainingActive ? 'Active' : 'Paused'}
+        `;
       }
       function logEvent(msg) {
         console.log("[CHAT LOG]:", msg);
+        try {
+          let logs = localStorage.getItem("chatLogs");
+          logs = logs ? JSON.parse(logs) : [];
+          logs.push({ time: new Date().toISOString(), msg });
+          localStorage.setItem("chatLogs", JSON.stringify(logs.slice(-100)));
+        } catch (err) { console.error("logEvent error:", err); }
+      }
+      function downloadDebugLog() {
+        try {
+          const blob = new Blob([globalErrorLog.join("\n")], { type: "text/plain" });
+          const link = document.createElement("a");
+          link.href = URL.createObjectURL(blob);
+          link.download = "debug_log.txt";
+          link.click();
+        } catch (err) { console.error("Download Debug Log error:", err); }
+      }
+      function resetDebugLog() {
+        globalErrorLog = [];
+        logEvent("Debug log cleared.");
+        updatePerformancePanel();
       }
 
-      // --- CommanderAgent Class ---
+      // --- CommanderAgent with advanced self-attention and error-handling ---
       class CommanderAgent {
         constructor() {
           this.stepCount = 0;
           this.epsilon = 1.0;
           this.exp = [];
+          this.priorityBuffer = new PriorityReplayBuffer(512);
           this.learningRate = parseFloat(document.getElementById("lrInput").value);
           this.mutationRate = parseFloat(document.getElementById("mutRateInput").value);
           this.epsilonDecay = parseFloat(document.getElementById("decayInput").value);
-          // Model input: 9 features.
-          this.model = this.buildCommanderDQN();
-          this.targetModel = this.buildCommanderDQN();
-          this.targetModel.setWeights(this.model.getWeights());
           this.lossHistory = [];
           this.lossData = [];
+          this.lossVarianceWindow = [];
+          try {
+            this.model = this.buildDuelingDQN();
+            this.targetModel = this.buildDuelingDQN();
+            this.targetModel.setWeights(this.model.getWeights());
+          } catch (err) {
+            console.error("Model construction error:", err);
+            tf.env().set('WEBGL_FORCE_F16_TEXTURES', true);
+            this.model = this.buildDuelingDQN();
+            this.targetModel = this.buildDuelingDQN();
+            this.targetModel.setWeights(this.model.getWeights());
+          }
         }
-        buildCommanderDQN() {
-          const model = tf.sequential();
-          // Original large model hidden layers.
-          model.add(tf.layers.dense({ units: 32768, inputShape: [9] }));
-          model.add(tf.layers.batchNormalization());
-          model.add(tf.layers.leakyReLU({ alpha: 0.1 }));
-          model.add(tf.layers.dropout({ rate: 0.2 }));
-          model.add(tf.layers.dense({ units: 16384 }));
-          model.add(tf.layers.batchNormalization());
-          model.add(tf.layers.leakyReLU({ alpha: 0.1 }));
-          model.add(tf.layers.dropout({ rate: 0.2 }));
-          model.add(tf.layers.dense({ units: 8192 }));
-          model.add(tf.layers.batchNormalization());
-          model.add(tf.layers.leakyReLU({ alpha: 0.1 }));
-          model.add(tf.layers.dropout({ rate: 0.2 }));
-          model.add(tf.layers.dense({ units: 4096 }));
-          model.add(tf.layers.batchNormalization());
-          model.add(tf.layers.leakyReLU({ alpha: 0.1 }));
-          model.add(tf.layers.dropout({ rate: 0.2 }));
-          model.add(tf.layers.dense({ units: 2048 }));
-          model.add(tf.layers.batchNormalization());
-          model.add(tf.layers.leakyReLU({ alpha: 0.1 }));
-          model.add(tf.layers.dense({ units: 1024, activation: 'linear' }));
-          model.add(tf.layers.dense({ units: 6, activation: 'linear' }));
-          model.compile({ optimizer: tf.train.adam(this.learningRate), loss: 'meanSquaredError' });
-          return model;
+        multiHeadSelfAttention(inputTensor, numHeads, dropoutRate = 0.1) {
+          try {
+            const tokenDim = inputTensor.shape[2];
+            const depth = Math.floor(tokenDim / numHeads);
+            let headOutputs = [];
+            for (let i = 0; i < numHeads; i++) {
+              // LambdaLayer to slice the tensor correctly
+              const sliceLayer = new LambdaLayer(
+                x => tf.slice(x, [0, 0, i * depth], [-1, -1, depth]),
+                function(inputShape) {
+                  return [inputShape[0], inputShape[1], depth];
+                }
+              );
+              const headInput = sliceLayer.apply(inputTensor);
+              const Q = tf.layers.dense({ units: depth, useBias: false }).apply(headInput);
+              const K = tf.layers.dense({ units: depth, useBias: false }).apply(headInput);
+              const V = tf.layers.dense({ units: depth, useBias: false }).apply(headInput);
+              const scores = tf.layers.dot({ axes: -1 }).apply([Q, K]);
+              const divisor = tf.scalar(Math.sqrt(depth));
+              const scaleLayer = new LambdaLayer(x => tf.div(x, divisor), null);
+              const scaledScores = scaleLayer.apply(scores);
+              const softmaxScores = tf.layers.activation({ activation: 'softmax' }).apply(scaledScores);
+              const headOutput = tf.layers.dot({ axes: [2, 1] }).apply([softmaxScores, V]);
+              headOutputs.push(headOutput);
+            }
+            const concat = tf.layers.concatenate({ axis: -1 }).apply(headOutputs);
+            const output = tf.layers.dense({ units: tokenDim, useBias: false }).apply(concat);
+            const dropped = tf.layers.dropout({ rate: dropoutRate }).apply(output);
+            const added = tf.layers.add().apply([inputTensor, dropped]);
+            const norm = tf.layers.layerNormalization().apply(added);
+            return norm;
+          } catch (err) { console.error("Self-attention error:", err); throw err; }
         }
-        extractFeatures(message) {
-          const length = message.length;
-          const charSum = message.split("").reduce((sum, ch) => sum + ch.charCodeAt(0), 0);
-          const avgChar = length > 0 ? charSum / length : 0;
-          return [
-            length / 100,
-            avgChar / 128,
-            (message.split(" ").length) / 20,
-            Math.random(), Math.random(),
-            Math.random(), Math.random(),
-            Math.random(), Math.random()
-          ];
+        buildDuelingDQN() {
+          try {
+            const input = tf.input({ shape: [512] });
+            let x = tf.layers.dense({ units: 512, activation: 'relu' }).apply(input);
+            let reshaped = tf.layers.reshape({ targetShape: [8, 64] }).apply(x);
+            let attnOut1 = this.multiHeadSelfAttention(reshaped, 4, 0.1);
+            let attnOut2 = this.multiHeadSelfAttention(attnOut1, 4, 0.1);
+            let flattened = tf.layers.flatten().apply(attnOut2);
+            const valueStream = tf.layers.dense({ units: 64, activation: 'relu' }).apply(flattened);
+            const value = tf.layers.dense({ units: 1, activation: 'linear' }).apply(valueStream);
+            const advantageStream = tf.layers.dense({ units: 64, activation: 'relu' }).apply(flattened);
+            const advantage = tf.layers.dense({ units: responses.length, activation: 'linear' }).apply(advantageStream);
+            const meanAdvantageLayer = new LambdaLayer(a => tf.sub(a, tf.mean(a, 1, true)), null);
+            const meanAdvantage = meanAdvantageLayer.apply(advantage);
+            const qValues = tf.layers.add().apply([value, meanAdvantage]);
+            const model = tf.model({ inputs: input, outputs: qValues });
+            model.compile({ optimizer: tf.train.adam(this.learningRate), loss: 'meanSquaredError' });
+            return model;
+          } catch (err) { console.error("buildDuelingDQN error:", err); throw err; }
+        }
+        async extractFeatures(message) {
+          let combinedMessage = message;
+          return new Promise(async (resolve) => {
+            try {
+              if (useModel) {
+                const embedding = await useModel.embed(combinedMessage);
+                const embArray = await embedding.array();
+                memoryModule.addMemory(embArray[0], combinedMessage);
+                embedding.dispose();
+                resolve(embArray[0]);
+              } else {
+                const fallback = Array(512).fill(0);
+                fallback[0] = combinedMessage.length / 100;
+                resolve(fallback);
+              }
+            } catch (err) {
+              console.error("Error in USE embedding:", err);
+              globalErrorLog.push("USE embedding error: " + err.message);
+              const fallback = Array(512).fill(0);
+              fallback[0] = combinedMessage.length / 100;
+              resolve(fallback);
+            }
+          });
         }
         decideAction(features) {
-          let action;
-          if (Math.random() < this.epsilon) {
-            action = Math.floor(Math.random() * responses.length);
-          } else {
-            action = tf.tidy(() => {
-              const stT = tf.tensor2d([features]);
-              const out = this.model.predict(stT);
-              const arr = out.dataSync();
-              return argmax(arr);
-            });
+          try {
+            if (Math.random() < this.epsilon) {
+              return Math.floor(Math.random() * responses.length);
+            } else {
+              return tf.tidy(() => {
+                const stT = tf.tensor2d([features]);
+                const out = this.model.predict(stT);
+                const arr = out.dataSync();
+                return argmax(arr);
+              });
+            }
+          } catch (err) {
+            console.error("Error in decideAction:", err);
+            globalErrorLog.push("decideAction error: " + err.message);
+            return 0;
           }
-          return action;
         }
         async step(message) {
-          const features = this.extractFeatures(message);
-          const action = this.decideAction(features);
-          this.exp.push({ state: features, action, reward: calculateReward(message, action), nextState: features, done: false });
-          if (this.exp.length > 128) await this.learn();
-          if (this.epsilon > 0.05) this.epsilon *= this.epsilonDecay;
-          this.stepCount++;
-          updateStepDisplay(this.stepCount);
-          return { action, features };
+          try {
+            const features = await this.extractFeatures(message);
+            const action = this.decideAction(features);
+            const reward = calculateReward(message, action);
+            const experience = { state: features, action: action, reward: reward, nextState: features, done: false };
+            this.exp.push(experience);
+            this.priorityBuffer.add(experience);
+            if (this.priorityBuffer.size() > 64) await this.learn();
+            if (this.epsilon > 0.05) this.epsilon *= this.epsilonDecay;
+            this.stepCount++;
+            updateStepDisplay(this.stepCount);
+            return { action, features };
+          } catch (err) {
+            console.error("step error:", err);
+            globalErrorLog.push("step error: " + err.message);
+            throw err;
+          }
         }
         async learn() {
           const batchSize = 64;
-          const batch = this.exp.slice(-batchSize);
+          const batch = this.priorityBuffer.sample(batchSize);
           const states = batch.map(e => e.state);
           const actions = batch.map(e => e.action);
           const rewards = batch.map(e => e.reward);
@@ -364,12 +692,14 @@
           const sT = tf.tensor2d(states);
           const nsT = tf.tensor2d(nextStates);
           const currQ = this.model.predict(sT);
-          const nextQ = this.targetModel.predict(nsT);
+          const nextTargetQ = this.targetModel.predict(nsT);
+          const nextMainQ = this.model.predict(nsT);
           const currData = currQ.arraySync();
-          const nextData = nextQ.arraySync();
+          const nextTargetData = nextTargetQ.arraySync();
+          const nextMainData = nextMainQ.arraySync();
           for (let i = 0; i < batch.length; i++) {
-            const maxNext = Math.max(...nextData[i]);
-            currData[i][actions[i]] = rewards[i] + 0.99 * maxNext;
+            const doubleAction = argmax(nextMainData[i]);
+            currData[i][actions[i]] = rewards[i] + 0.99 * nextTargetData[i][doubleAction];
           }
           const target = tf.tensor2d(currData);
           try {
@@ -377,10 +707,15 @@
             const loss = info.history.loss[0];
             this.lossHistory.push(loss);
             this.lossData.push(loss);
-            document.getElementById("lossDisplay").textContent = "Loss: " + loss.toFixed(4);
-            updateLossChart(this.lossData);
-            if (loss > 0.1) this.learningRate *= 0.98; else this.learningRate *= 1.02;
+            this.lossVarianceWindow.push(loss);
+            if (this.lossVarianceWindow.length > 5) this.lossVarianceWindow.shift();
+            const meanLoss = this.lossVarianceWindow.reduce((a, b) => a + b, 0) / this.lossVarianceWindow.length;
+            const variance = this.lossVarianceWindow.reduce((sum, l) => sum + Math.pow(l - meanLoss, 2), 0) / this.lossVarianceWindow.length;
+            if (variance > 0.01) { this.learningRate *= 0.98; }
+            else { this.learningRate *= 1.01; }
             this.model.optimizer.learningRate = this.learningRate;
+            lossDisplay.textContent = "Loss: " + loss.toFixed(4);
+            updateLossChart(this.lossData);
             if (this.stepCount % 100 === 0) {
               const tau = 0.1;
               const weights = this.model.getWeights();
@@ -391,36 +726,38 @@
             }
           } catch (err) {
             console.error("Learning error:", err);
+            globalErrorLog.push("Learning error: " + err.message);
           } finally {
-            tf.dispose([sT, nsT, currQ, nextQ, target]);
+            tf.dispose([sT, nsT, currQ, nextTargetQ, nextMainQ, target]);
           }
         }
         trainExtra() {
           for (let i = 0; i < 100; i++) {
-            this.step("dummy");
+            this.step("dummy").catch(err => console.error("Train extra error:", err));
           }
           logEvent("Commander trained extra for 100 steps.");
         }
       }
 
-      // Instantiate the CommanderAgent.
+      // Instantiate CommanderAgent.
       const commander = new CommanderAgent();
 
-      // Export model function.
+      // Export model.
       async function exportModel() {
         try {
           await commander.model.save('downloads://chatbot-model');
           logEvent("Model exported successfully.");
         } catch (e) {
           console.error("Export error:", e);
+          globalErrorLog.push("Export error: " + e.message);
           logEvent("Failed to export model.");
         }
       }
 
-      // Import model functionality.
+      // Import model.
       document.getElementById("modelUpload").addEventListener("change", async (evt) => {
         const files = evt.target.files;
-        if (files.length === 0) return;
+        if (!files.length) return;
         try {
           const loadedModel = await tf.loadLayersModel(tf.io.browserFiles(files));
           commander.model = loadedModel;
@@ -428,99 +765,241 @@
           logEvent("Model imported successfully.");
         } catch (e) {
           console.error("Import error:", e);
+          globalErrorLog.push("Import error: " + e.message);
           logEvent("Failed to import model.");
         }
       });
 
-      // Pre-training routine: 500 samples over 40 epochs.
-      async function preTrainChatbot() {
-        const inputs = [];
-        const labels = [];
-        for (let i = 0; i < 500; i++) {
-          const text = "sample message " + i;
-          const features = commander.extractFeatures(text);
-          const action = Math.floor(Math.random() * responses.length);
-          const labelVec = Array(responses.length).fill(0);
-          labelVec[action] = 1;
-          inputs.push(features);
-          labels.push(labelVec);
+      // Reset model.
+      window.resetModel = function() {
+        if (confirm("This will reset the model and clear backup data. Continue?")) {
+          localStorage.removeItem("backup-model");
+          localStorage.removeItem("performanceMetrics");
+          location.reload();
         }
-        const xs = tf.tensor2d(inputs);
-        const ys = tf.tensor2d(labels);
-        await commander.model.fit(xs, ys, { epochs: 40 });
-        xs.dispose();
-        ys.dispose();
-        logEvent("Pre-training complete.");
-      }
-      preTrainChatbot();
+      };
 
-      // Background training every 30 seconds.
+      // Deep Seek using memory retrieval.
+      async function deepSeek() {
+        try {
+          const query = prompt("Enter your deep seek query:");
+          if (!query) return;
+          const result = await memoryModule.searchMemory(query);
+          appendMessage("DeepSeek", result ? "Most similar context: " + result : "No similar context found.");
+        } catch (err) {
+          console.error("Deep Seek error:", err);
+          globalErrorLog.push("Deep Seek error: " + err.message);
+        }
+      }
+
+      // Save chat history.
+      function saveChat() {
+        try {
+          const chatText = conversationHistory.join("\n");
+          const blob = new Blob([chatText], { type: "text/plain" });
+          const link = document.createElement("a");
+          link.href = URL.createObjectURL(blob);
+          link.download = "chat_history.txt";
+          link.click();
+        } catch (err) { console.error("Save Chat error:", err); }
+      }
+
+      // Show last 10 memory texts.
+      function showMemory() {
+        try {
+          if (!memoryModule.memories.length) { alert("No memory stored yet."); }
+          else {
+            const recentMemory = memoryModule.memories.slice(-10).map(m => m.text).join("\n");
+            alert("Recent Memory:\n" + recentMemory);
+          }
+        } catch (err) { console.error("Show Memory error:", err); }
+      }
+
+      // Clear chat history and chat log.
+      function clearChat() {
+        try {
+          conversationHistory = [];
+          chatLog.innerHTML = "";
+          logEvent("Chat cleared.");
+        } catch (err) { console.error("Clear Chat error:", err); }
+      }
+
+      // Toggle background training.
+      function toggleBackgroundTraining() {
+        try {
+          backgroundTrainingActive = !backgroundTrainingActive;
+          if (backgroundTrainingActive) {
+            startBackgroundTraining();
+            logEvent("Background training resumed.");
+          } else {
+            stopBackgroundTraining();
+            logEvent("Background training paused.");
+          }
+          updatePerformancePanel();
+        } catch (err) { console.error("Toggle BG Training error:", err); }
+      }
+
+      // Show debug information.
+      function showDebugInfo() {
+        try {
+          alert("Debug Info:\n" + JSON.stringify(getDebugInfo(), null, 2));
+        } catch (err) { console.error("Show Debug Info error:", err); }
+      }
+
+      // Background training function.
+      function startBackgroundTraining() {
+        backgroundTrainingInterval = setInterval(async () => {
+          try {
+            const quote = await fetchQuote();
+            if (quote && !quote.startsWith("Error")) {
+              commander.step(quote);
+              logEvent("BG training with quote: " + quote.slice(0, 50) + "...");
+            }
+            const catFact = await fetchCatFact();
+            if (catFact && !catFact.startsWith("Error")) {
+              commander.step(catFact);
+              logEvent("BG training with cat fact: " + catFact.slice(0, 50) + "...");
+            }
+            const chuck = await fetchChuckNorris();
+            if (chuck && !chuck.startsWith("Error")) {
+              commander.step(chuck);
+              logEvent("BG training with Chuck Norris: " + chuck.slice(0, 50) + "...");
+            }
+            const kanye = await fetchKanye();
+            if (kanye && !kanye.startsWith("Error")) {
+              commander.step(kanye);
+              logEvent("BG training with Kanye: " + kanye.slice(0, 50) + "...");
+            }
+          } catch (err) {
+            console.error("Background training error:", err);
+            globalErrorLog.push("BG training error: " + err.message);
+          }
+        }, 20000);
+      }
+      function stopBackgroundTraining() {
+        clearInterval(backgroundTrainingInterval);
+      }
+      // Start background training if active.
+      startBackgroundTraining();
+
+      // Update performance panel every 30 seconds.
       setInterval(() => {
-        commander.trainExtra();
-        updatePerformancePanel();
+        try {
+          commander.trainExtra();
+          updatePerformancePanel();
+        } catch (err) { console.error("Periodic training error:", err); }
       }, 30000);
 
-      // Additionally, every 20 seconds fetch a random quote and a cat fact.
-      setInterval(async () => {
-        const quote = await fetchQuote();
-        if (quote && !quote.startsWith("Error")) {
-          commander.step(quote);
-          logEvent("Background training with quote: " + quote.slice(0, 50) + "...");
-        }
-        const catFact = await fetchCatFact();
-        if (catFact && !catFact.startsWith("Error")) {
-          commander.step(catFact);
-          logEvent("Background training with cat fact: " + catFact.slice(0, 50) + "...");
-        }
-      }, 20000);
-
-      updatePerformancePanel();
-
-      // Auto-backup model to localStorage every 60 seconds.
+      // Auto-backup model and metrics every 60 seconds.
       setInterval(async () => {
         try {
           await commander.model.save('localstorage://backup-model');
-          logEvent("Model auto-backup saved to localStorage.");
+          const metrics = {
+            stepCount: commander.stepCount,
+            epsilon: commander.epsilon,
+            lossData: commander.lossData.slice(-20)
+          };
+          localStorage.setItem("performanceMetrics", JSON.stringify(metrics));
+          logEvent("Auto-backup saved to localStorage.");
         } catch (e) {
           console.error("Auto-backup error:", e);
+          globalErrorLog.push("Auto-backup error: " + e.message);
         }
       }, 60000);
 
-      // On startup, try to load backup from localStorage.
       (async function loadBackup() {
         try {
           const backupModel = await tf.loadLayersModel('localstorage://backup-model');
           commander.model = backupModel;
           commander.targetModel = backupModel;
+          const metrics = localStorage.getItem("performanceMetrics");
+          if (metrics) {
+            const parsed = JSON.parse(metrics);
+            logEvent("Backup metrics loaded: " + JSON.stringify(parsed));
+          }
           logEvent("Backup model loaded from localStorage.");
         } catch (e) {
           console.log("No backup model found, starting fresh.");
         }
       })();
 
-      // Handle user message.
+      // Update DALL·E image periodically.
+      function updateDalleImage() {
+        try {
+          const dalleImg = document.getElementById("dalleImage");
+          dalleImg.src = "https://source.unsplash.com/320x200/?ai,art&" + Date.now();
+        } catch (err) { console.error("DALL·E image update error:", err); }
+      }
+      setInterval(updateDalleImage, 60000);
+      updateDalleImage();
+
+      updatePerformancePanel();
+
+      // Handle incoming user message.
       async function handleMessage() {
-        const message = userInput.value.trim();
-        if (!message) return;
-        appendMessage("User", message);
-        userInput.value = "";
-        const result = await commander.step(message);
-        const action = result.action;
-        const features = result.features;
-        const response = await getResponse(action);
-        appendMessage("Chatbot", response, features);
-        updatePerformancePanel();
+        try {
+          const message = userInput.value.trim();
+          if (!message) return;
+          appendMessage("User", message);
+          conversationHistory.push("User: " + message);
+          userInput.value = "";
+          // Use the last 3 conversation turns as context.
+          const contextMessage = conversationHistory.slice(-3).join(" ");
+          try {
+            const result = await commander.step(contextMessage);
+            const action = result.action;
+            const features = result.features;
+            const response = await getResponse(action);
+            appendMessage("Chatbot", response, features);
+            conversationHistory.push("Chatbot: " + response);
+          } catch (error) {
+            console.error("Error processing message:", error);
+            appendMessage("Chatbot", "Sorry, I encountered an error and could not respond.");
+            logEvent("Error during message processing: " + error.message);
+          } finally {
+            updatePerformancePanel();
+          }
+        } catch (err) {
+          console.error("handleMessage error:", err);
+        }
       }
 
       sendButton.addEventListener("click", handleMessage);
-      userInput.addEventListener("keydown", (e) => {
-        if (e.key === "Enter") handleMessage();
-      });
-
-      // Update performance panel.
-      function updatePerformancePanel() {
-        performancePanel.innerHTML = `Steps: ${commander.stepCount} | Epsilon: ${commander.epsilon.toFixed(3)}`;
+      userInput.addEventListener("keydown", (e) => { if (e.key === "Enter") handleMessage(); });
+      
+      // Pre-train chatbot with sample messages.
+      async function preTrainChatbot() {
+        const inputs = [];
+        const labels = [];
+        try {
+          for (let i = 0; i < 500; i++) {
+            const text = "sample message " + i;
+            const features = await commander.extractFeatures(text);
+            const action = Math.floor(Math.random() * responses.length);
+            const labelVec = Array(responses.length).fill(0);
+            labelVec[action] = 1;
+            inputs.push(features);
+            labels.push(labelVec);
+            // Yield to the event loop every 50 iterations to keep the UI responsive.
+            if (i % 50 === 0) await new Promise(resolve => setTimeout(resolve, 1));
+          }
+          const xs = tf.tensor2d(inputs);
+          const ys = tf.tensor2d(labels);
+          try {
+            await commander.model.fit(xs, ys, { epochs: 40 });
+            logEvent("Pre-training complete.");
+          } catch (err) {
+            console.error("Pre-training error:", err);
+            logEvent("Pre-training encountered an error.");
+          } finally {
+            xs.dispose();
+            ys.dispose();
+          }
+        } catch (err) {
+          console.error("Error in preTrainChatbot loop:", err);
+        }
       }
+      preTrainChatbot();
     })();
   </script>
 </body>
