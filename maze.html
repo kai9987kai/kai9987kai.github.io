@@ -1,152 +1,237 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Advanced Maze Generator</title>
+  <style>
+    /* Page styles for a dark, centered layout */
+    body {
+      margin: 0;
+      background: #222;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+      color: #fff;
+      font-family: sans-serif;
+    }
+    canvas {
+      border: 2px solid #fff;
+      background: #000;
+    }
+    button {
+      margin-top: 20px;
+      padding: 10px 20px;
+      font-size: 16px;
+      cursor: pointer;
+      border: none;
+      border-radius: 5px;
+      background: #444;
+      color: #fff;
+    }
+    button:hover {
+      background: #666;
+    }
+  </style>
+</head>
 <body>
-    <canvas id="canvas" width="400" height="400"></canvas>
-    <script>
-        var canvas = document.getElementById('canvas');
-        var ctx = canvas.getContext('2d');
-        var cellSize = 20;
-        var grid = [];
-        var stack = [];
-        var currentCell;
+  <!-- Canvas for maze drawing -->
+  <canvas id="canvas" width="400" height="400"></canvas>
+  <!-- Button to restart maze generation -->
+  <button id="newMazeBtn">New Maze</button>
+  
+  <!--
+    DALL·E Image Note:
+    To generate a DALL·E illustration of a futuristic labyrinth, you might use a prompt such as:
+    "A highly detailed, futuristic maze with glowing neon walls rendered in a digital art style on a dark background."
+    (This image isn’t embedded here; you may use your preferred DALL·E interface to generate and download such an image.)
+  -->
+  
+  <script>
+    // Get the canvas element and its 2D context.
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
 
-        function Cell(x, y) {
-            this.x = x;
-            this.y = y;
-            this.walls = [true, true, true, true]; // top, right, bottom, left
-            this.visited = false;
+    // Maze parameters.
+    const cellSize = 20;
+    // Compute the number of columns and rows based on canvas dimensions.
+    const cols = Math.floor(canvas.width / cellSize);
+    const rows = Math.floor(canvas.height / cellSize);
 
-            this.highlight = function() {
-                var x = this.x * cellSize;
-                var y = this.y * cellSize;
-                ctx.fillStyle = 'purple';
-                ctx.fillRect(x, y, cellSize, cellSize);
-            }
+    let grid = [];
+    let stack = [];
+    let currentCell;
+
+    // Cell constructor: each cell knows its grid coordinates,
+    // which walls it has (top, right, bottom, left), and whether it's been visited.
+    function Cell(x, y) {
+      this.x = x; // column index
+      this.y = y; // row index
+      this.walls = [true, true, true, true]; // [top, right, bottom, left]
+      this.visited = false;
+    }
+
+    // Draw the cell: draw its walls and fill it if visited.
+    Cell.prototype.draw = function() {
+      const x = this.x * cellSize;
+      const y = this.y * cellSize;
+      ctx.strokeStyle = 'white';
+      ctx.lineWidth = 2;
+      
+      // Top wall.
+      if (this.walls[0]) {
+        ctx.beginPath();
+        ctx.moveTo(x, y);
+        ctx.lineTo(x + cellSize, y);
+        ctx.stroke();
+      }
+      // Right wall.
+      if (this.walls[1]) {
+        ctx.beginPath();
+        ctx.moveTo(x + cellSize, y);
+        ctx.lineTo(x + cellSize, y + cellSize);
+        ctx.stroke();
+      }
+      // Bottom wall.
+      if (this.walls[2]) {
+        ctx.beginPath();
+        ctx.moveTo(x + cellSize, y + cellSize);
+        ctx.lineTo(x, y + cellSize);
+        ctx.stroke();
+      }
+      // Left wall.
+      if (this.walls[3]) {
+        ctx.beginPath();
+        ctx.moveTo(x, y + cellSize);
+        ctx.lineTo(x, y);
+        ctx.stroke();
+      }
+      
+      // Fill visited cells.
+      if (this.visited) {
+        ctx.fillStyle = 'grey';
+        ctx.fillRect(x, y, cellSize, cellSize);
+      }
+    };
+
+    // Highlight the current cell in purple.
+    Cell.prototype.highlight = function() {
+      const x = this.x * cellSize;
+      const y = this.y * cellSize;
+      ctx.fillStyle = 'purple';
+      ctx.fillRect(x, y, cellSize, cellSize);
+    };
+
+    // Check for unvisited neighbors (top, right, bottom, left).
+    Cell.prototype.checkNeighbors = function() {
+      let neighbors = [];
+      const top    = grid[index(this.x, this.y - 1)];
+      const right  = grid[index(this.x + 1, this.y)];
+      const bottom = grid[index(this.x, this.y + 1)];
+      const left   = grid[index(this.x - 1, this.y)];
+
+      if (top && !top.visited) neighbors.push(top);
+      if (right && !right.visited) neighbors.push(right);
+      if (bottom && !bottom.visited) neighbors.push(bottom);
+      if (left && !left.visited) neighbors.push(left);
+
+      if (neighbors.length > 0) {
+        const r = Math.floor(Math.random() * neighbors.length);
+        return neighbors[r];
+      } else {
+        return undefined;
+      }
+    };
+
+    // The index function converts (x, y) grid coordinates to the index in the 1D grid array.
+    function index(x, y) {
+      if (x < 0 || y < 0 || x >= cols || y >= rows) {
+        return -1;
+      }
+      return x + y * cols;
+    }
+
+    // Remove the wall between two adjacent cells a and b.
+    function removeWalls(a, b) {
+      const x = a.x - b.x;
+      if (x === 1) {
+        a.walls[3] = false; // Remove left wall of a.
+        b.walls[1] = false; // Remove right wall of b.
+      } else if (x === -1) {
+        a.walls[1] = false; // Remove right wall of a.
+        b.walls[3] = false; // Remove left wall of b.
+      }
+      const y = a.y - b.y;
+      if (y === 1) {
+        a.walls[0] = false; // Remove top wall of a.
+        b.walls[2] = false; // Remove bottom wall of b.
+      } else if (y === -1) {
+        a.walls[2] = false; // Remove bottom wall of a.
+        b.walls[0] = false; // Remove top wall of b.
+      }
+    }
+
+    // Initialize the grid, reset the stack, and set the current cell.
+    function initGrid() {
+      grid = [];
+      stack = [];
+      for (let y = 0; y < rows; y++) {
+        for (let x = 0; x < cols; x++) {
+          grid.push(new Cell(x, y));
         }
+      }
+      currentCell = grid[0];
+    }
 
-        Cell.prototype.draw = function() {
-            var x = this.x * cellSize;
-            var y = this.y * cellSize;
-            ctx.strokeStyle = 'white';
-            ctx.lineWidth = 2;
-            if (this.walls[0]) {
-                ctx.beginPath();
-                ctx.moveTo(x, y);
-                ctx.lineTo(x + cellSize, y);
-                ctx.stroke();
-            }
-            if (this.walls[1]) {
-                ctx.beginPath();
-                ctx.moveTo(x + cellSize, y);
-                ctx.lineTo(x + cellSize, y + cellSize);
-                ctx.stroke();
-            }
-            if (this.walls[2]) {
-                ctx.beginPath();
-                ctx.moveTo(x + cellSize, y + cellSize);
-                ctx.lineTo(x, y + cellSize);
-                ctx.stroke();
-            }
-            if (this.walls[3]) {
-                ctx.beginPath();
-                ctx.moveTo(x, y + cellSize);
-                ctx.lineTo(x, y);
-                ctx.stroke();
-            }
-            if (this.visited) {
-                ctx.fillStyle = 'grey';
-                ctx.fillRect(x, y, cellSize, cellSize);
-            }
-        }
+    // The draw() function performs one step of the maze-generation algorithm (depth-first search with backtracking)
+    // and redraws the entire maze on the canvas.
+    function draw() {
+      // Clear the canvas.
+      ctx.fillStyle = 'black';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-        Cell.prototype.checkNeighbors = function() {
-            var neighbors = [];
-            var top = grid[index(this.x, this.y - 1)];
-            var right = grid[index(this.x + 1, this.y)];
-            var bottom = grid[index(this.x, this.y + 1)];
-            var left = grid[index(this.x - 1, this.y)];
-            if (top && !top.visited) {
-                neighbors.push(top);
-            }
-            if (right && !right.visited) {
-                neighbors.push(right);
-            }
-            if (bottom && !bottom.visited) {
-                neighbors.push(bottom);
-            }
-            if (left && !left.visited) {
-                neighbors.push(left);
-            }
-            if (neighbors.length > 0) {
-                var r = Math.floor(Math.random() * neighbors.length);
-                return neighbors[r];
-            } else {
-                return undefined;
-            }
-        }
+      // Draw every cell.
+      grid.forEach(cell => cell.draw());
 
-        function index(x, y) {
-            if (x < 0 || y < 0 || x > cellSize - 1 || y > cellSize - 1) {
-                return -1;
-            }
-            return x + y * cellSize;
-        }
+      // Mark the current cell as visited and highlight it.
+      currentCell.visited = true;
+      currentCell.highlight();
 
-        function removeWalls(a, b) {
-            var x = a.x - b.x;
-            if (x === 1) {
-                a.walls[3] = false;
-                b.walls[1] = false;
-            } else if (x === -1) {
-                a.walls[1] = false;
+      // Step: choose a random unvisited neighbor.
+      const nextCell = currentCell.checkNeighbors();
+      if (nextCell) {
+        nextCell.visited = true;
+        // Push the current cell onto the stack for backtracking.
+        stack.push(currentCell);
+        // Remove the wall between the current cell and the chosen neighbor.
+        removeWalls(currentCell, nextCell);
+        // Set the chosen neighbor as the new current cell.
+        currentCell = nextCell;
+      } else if (stack.length > 0) {
+        // If no unvisited neighbors, backtrack.
+        currentCell = stack.pop();
+      }
 
+      // Continue the animation until the maze is complete.
+      if (stack.length > 0 || currentCell.checkNeighbors()) {
+        requestAnimationFrame(draw);
+      } else {
+        console.log("Maze generation complete.");
+      }
+    }
 
-                b.walls[3] = false;
-            }
-            var y = a.y - b.y;
-            if (y === 1) {
-                a.walls[0] = false;
-                b.walls[2] = false;
-            } else if (y === -1) {
-                a.walls[2] = false;
-                b.walls[0] = false;
-            }
-        }
+    // Start the maze generation.
+    initGrid();
+    draw();
+    console.log("Columns:", cols, "Rows:", rows, "Total cells:", grid.length);
 
-        for (var j = 0; j < canvas.width / cellSize; j++) {
-            for (var i = 0; i < canvas.height / cellSize; i++) {
-                var cell = new Cell(i, j);
-                grid.push(cell);
-            }
-        }
-
-        currentCell = grid[0];
-
-        function draw() {
-            ctx.fillStyle = 'black';
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
-            for (var i = 0; i < grid.length; i++) {
-                grid[i].draw();
-            }
-            currentCell.visited = true;
-            currentCell.highlight();
-            var nextCell = currentCell.checkNeighbors();
-            if (nextCell) {
-                nextCell.visited = true;
-                stack.push(currentCell);
-                removeWalls(currentCell, nextCell);
-                currentCell = nextCell;
-            } else if (stack.length > 0) {
-                currentCell = stack.pop();
-            }
-            requestAnimationFrame(draw);
-        }
-
-        draw();
-    </script>
+    // New Maze button: reset and start a new maze.
+    document.getElementById('newMazeBtn').addEventListener('click', () => {
+      initGrid();
+      draw();
+      console.log("New maze started.");
+    });
+  </script>
 </body>
 </html>
-
-This script creates a random maze using a depth-first search algorithm. It starts with a grid of cells, then randomly removes walls to create a maze. The current cell is highlighted in purple. When the algorithm has visited all cells and there are no more cells to visit, it backtracks using a stack to find the next unvisited cell.
-
-This script doesn't include a maze-solving algorithm or a dot character that moves through the maze. Implementing these features would require a more advanced understanding of JavaScript and algorithms. You might want to look into pathfinding algorithms like A* or Dijkstra's algorithm for more advanced maze-solving techniques
