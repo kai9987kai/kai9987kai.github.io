@@ -23,7 +23,7 @@
       --btn-font-size: 16px;
       --btn-padding: 14px 20px;
       --toggle-size: 48px;
-      --node-height: 80px; /* increased height for node buttons */
+      --node-height: 80px;
       --node-width: 80px;
     }
     body.light-mode {
@@ -190,6 +190,34 @@
       box-shadow: 0 0 20px var(--quantum-primary);
     }
     
+    /* Quantum Gates Section */
+    .quantum-gates {
+      margin: 16px 0;
+    }
+    .gates-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
+    }
+    .gate-btn {
+      background: var(--quantum-gradient);
+      color: var(--cyber-dark);
+      border: none;
+      border-radius: 6px;
+      padding: 10px;
+      cursor: pointer;
+      font-family: 'Space Mono', monospace;
+      font-size: 14px;
+      transition: transform 0.2s, box-shadow 0.2s;
+    }
+    .gate-btn:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(0,255,170,0.3);
+    }
+    .gate-btn.selected {
+      box-shadow: 0 0 10px var(--quantum-primary);
+    }
+    
     .quantum-console {
       background: rgba(10,10,31,0.9);
       border: 1px solid var(--neural-accent);
@@ -331,9 +359,21 @@
       
       <div class="neural-grid" id="neuralGrid"></div>
       
+      <div class="quantum-gates">
+        <h3>Quantum Gates</h3>
+        <div class="gates-grid">
+          <button class="gate-btn" data-gate="H">H</button>
+          <button class="gate-btn" data-gate="X">X</button>
+          <button class="gate-btn" data-gate="Y">Y</button>
+          <button class="gate-btn" data-gate="Z">Z</button>
+          <button class="gate-btn" data-gate="CNOT">CNOT</button>
+          <button class="gate-btn" data-gate="Measure">Measure</button>
+        </div>
+      </div>
+      
       <div class="command-interface">
-        <input type="text" class="quantum-input" placeholder="Enter command (reset, status, entangle, superpose, synergy, research)...">
-        <button class="voice-button" id="voiceBtn">&#127908;</button>
+        <input type="text" class="quantum-input" placeholder="Enter command (reset, status, entangle, superpose, synergy, research, help)...">
+        <button class="voice-button" id="voiceBtn">🎤</button>
         <button class="quantum-button" id="executeBtn">Execute</button>
       </div>
       
@@ -350,7 +390,7 @@
   <!-- Research Modal -->
   <div id="researchModal" class="research-modal">
     <div class="research-modal-content">
-      <span class="research-close" id="modalCloseBtn">&times;</span>
+      <span class="research-close" id="modalCloseBtn">×</span>
       <h2>Recent Research Papers</h2>
       <ul id="researchList">
         <li><a href="https://www.mdpi.com/1099-4300/25/4/694" target="_blank">Programming Quantum Neural Networks on NISQ Systems</a> cite</li>
@@ -364,7 +404,7 @@
   <!-- Chat Modal -->
   <div id="chatModal" class="chat-modal">
     <div class="chat-modal-content">
-      <span class="chat-close" id="chatCloseBtn">&times;</span>
+      <span class="chat-close" id="chatCloseBtn">×</span>
       <h2>Quantum Chat Assistant</h2>
       <div class="chat-messages" id="chatMessages"></div>
       <input type="text" class="chat-input" id="chatInput" placeholder="Type your message...">
@@ -386,10 +426,14 @@
           { particle: 'rgba(255,100,0,0.8)', nodeBorder: '#ff124f' },
           { particle: 'rgba(150,0,200,0.8)', nodeBorder: '#9b59b6' }
         ];
+        this.currentGate = null;
+        this.selectedNodes = [];
         this.initialize();
       }
+
       initialize() {
         this.setupNeuralGrid();
+        this.setupGateButtons();
         this.loadState();
         this.initializeVisualizer();
         this.setupEventListeners();
@@ -400,19 +444,124 @@
         this.startAnomalyEvents();
         this.setupKeyboardShortcuts();
       }
+
       setupNeuralGrid() {
         const grid = document.getElementById('neuralGrid');
-        const nodeTypes = ['quantum','neural','temporal','spatial','entangle','collapse','superpose','teleport'];
+        const nodeTypes = ['quantum', 'neural', 'temporal', 'spatial', 'entangle', 'collapse', 'superpose', 'teleport'];
         nodeTypes.forEach(type => {
           const node = document.createElement('div');
           node.className = 'neural-node';
           node.dataset.type = type;
           node.dataset.tooltip = `${type} node: inactive`;
-          node.addEventListener('click', () => this.activateNode(node));
+          node.addEventListener('click', () => {
+            if (this.currentGate) {
+              this.applyGateToNode(node);
+            } else {
+              this.activateNode(node);
+            }
+          });
           grid.appendChild(node);
           this.nodes.set(type, { active: false, energy: 100 });
         });
       }
+
+      setupGateButtons() {
+        const gateBtns = document.querySelectorAll('.gate-btn');
+        gateBtns.forEach(btn => {
+          btn.addEventListener('click', () => {
+            this.currentGate = btn.dataset.gate;
+            document.querySelectorAll('.gate-btn').forEach(b => b.classList.remove('selected'));
+            btn.classList.add('selected');
+            if (this.currentGate === 'CNOT') {
+              this.selectedNodes = [];
+              this.logQuantumEvent('Select control node for CNOT');
+            } else if (this.currentGate === 'Measure') {
+              this.logQuantumEvent('Select node to measure');
+            } else {
+              this.logQuantumEvent(`Select node to apply ${this.currentGate} gate`);
+            }
+          });
+        });
+      }
+
+      applyGateToNode(node) {
+        const type = node.dataset.type;
+        const state = this.nodes.get(type);
+        if (!state.active) {
+          this.logQuantumEvent('Node must be active to apply gate');
+          return;
+        }
+        if (this.currentGate === 'CNOT') {
+          if (this.selectedNodes.length < 2) {
+            if (!this.selectedNodes.includes(type)) {
+              this.selectedNodes.push(type);
+              if (this.selectedNodes.length === 1) {
+                this.logQuantumEvent(`Control node selected: ${type}. Select target node.`);
+              } else if (this.selectedNodes.length === 2) {
+                this.applyCNOT(this.selectedNodes[0], type);
+                this.selectedNodes = [];
+                this.currentGate = null;
+                document.querySelectorAll('.gate-btn').forEach(b => b.classList.remove('selected'));
+              }
+            } else {
+              this.logQuantumEvent('Cannot select the same node twice for CNOT');
+            }
+          }
+        } else {
+          if (this.currentGate === 'Measure') {
+            this.measureNode(type);
+          } else {
+            this.applySingleQubitGate(this.currentGate, type);
+          }
+          this.currentGate = null;
+          document.querySelectorAll('.gate-btn').forEach(b => b.classList.remove('selected'));
+        }
+      }
+
+      applySingleQubitGate(gate, type) {
+        switch (gate) {
+          case 'H':
+            this.quantumState.coherence += 10;
+            this.quantumState.energy -= 5;
+            this.logQuantumEvent(`Applied Hadamard gate to ${type} node`);
+            break;
+          case 'X':
+            const stateX = this.nodes.get(type);
+            stateX.active = !stateX.active;
+            this.updateNodesUI();
+            this.logQuantumEvent(`Applied X gate to ${type} node, toggled activation`);
+            break;
+          case 'Y':
+            this.quantumState.coherence -= 5;
+            this.quantumState.energy -= 3;
+            this.logQuantumEvent(`Applied Y gate to ${type} node`);
+            break;
+          case 'Z':
+            this.quantumState.coherence -= 3;
+            this.quantumState.energy -= 2;
+            this.logQuantumEvent(`Applied Z gate to ${type} node`);
+            break;
+        }
+        this.saveState();
+      }
+
+      applyCNOT(controlType, targetType) {
+        this.quantumState.entanglement += 15;
+        this.quantumState.coherence -= 5;
+        this.logQuantumEvent(`Applied CNOT gate with control ${controlType} and target ${targetType}`);
+        this.saveState();
+      }
+
+      measureNode(type) {
+        const state = this.nodes.get(type);
+        state.active = false;
+        this.updateNodesUI();
+        this.quantumState.coherence -= 10;
+        this.quantumState.energy += 20;
+        this.logQuantumEvent(`Measured ${type} node, deactivated and gained energy`);
+        this.saveState();
+      }
+
       updateNodesUI() {
         let activeCount = 0;
         this.nodes.forEach((state, type) => {
@@ -430,23 +579,33 @@
         });
         this.activeNodesCount = activeCount;
       }
+
       loadState() {
         const savedState = localStorage.getItem('quantumState');
-        if (savedState) { this.quantumState = JSON.parse(savedState); }
+        if (savedState) {
+          this.quantumState = JSON.parse(savedState);
+        }
         const savedNodes = localStorage.getItem('nodesState');
         if (savedNodes) {
           const nodesState = JSON.parse(savedNodes);
           this.nodes.forEach((state, type) => {
-            if (nodesState[type]) { state.active = nodesState[type].active; state.energy = nodesState[type].energy; }
+            if (nodesState[type]) {
+              state.active = nodesState[type].active;
+              state.energy = nodesState[type].energy;
+            }
           });
         }
       }
+
       saveState() {
         localStorage.setItem('quantumState', JSON.stringify(this.quantumState));
         const nodesState = {};
-        this.nodes.forEach((state, type) => { nodesState[type] = { active: state.active, energy: state.energy }; });
+        this.nodes.forEach((state, type) => {
+          nodesState[type] = { active: state.active, energy: state.energy };
+        });
         localStorage.setItem('nodesState', JSON.stringify(nodesState));
       }
+
       initializeVisualizer() {
         const viz = document.getElementById('neuralViz');
         const canvas = document.createElement('canvas');
@@ -457,12 +616,14 @@
         window.addEventListener('resize', () => this.resizeCanvas());
         this.initializeParticles();
       }
+
       resizeCanvas() {
-        if(this.canvas && this.ctx) {
+        if (this.canvas && this.ctx) {
           this.canvas.width = document.getElementById('neuralViz').clientWidth;
           this.canvas.height = document.getElementById('neuralViz').clientHeight;
         }
       }
+
       initializeParticles() {
         this.particles = Array.from({ length: 50 }, () => ({
           x: Math.random() * this.canvas.width,
@@ -473,15 +634,15 @@
           color: this.themes[this.themeIndex].particle
         }));
       }
+
       startQuantumSimulation() {
         let lastTime = 0;
         const animate = (timestamp) => {
           const delta = (timestamp - lastTime) * this.simulationSpeed;
           lastTime = timestamp;
           if (!this.trailsEnabled) {
-            this.ctx.clearRect(0,0,this.canvas.width, this.canvas.height);
+            this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
           } else {
-            // draw semi-transparent overlay for trails effect
             this.ctx.fillStyle = 'rgba(10,10,31,0.05)';
             this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
           }
@@ -493,6 +654,7 @@
         };
         requestAnimationFrame(animate);
       }
+
       updateParticles(delta) {
         const activeCount = this.activeNodesCount || 0;
         this.particles.forEach(p => {
@@ -502,6 +664,7 @@
           if (p.y < 0 || p.y > this.canvas.height) p.vy *= -1;
         });
       }
+
       renderVisualizer() {
         this.particles.forEach(p => {
           const gradient = this.ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, p.radius);
@@ -513,10 +676,11 @@
           this.ctx.fill();
         });
       }
+
       activateNode(node) {
         const type = node.dataset.type;
         const state = this.nodes.get(type);
-        if(state) {
+        if (state) {
           state.active = !state.active;
           node.classList.toggle('active');
           node.dataset.tooltip = `${type} node: ${state.active ? 'active' : 'inactive'}`;
@@ -527,6 +691,7 @@
           this.playBeep();
         }
       }
+
       updateQuantumState() {
         const activeNodes = Array.from(this.nodes.values()).filter(state => state.active);
         this.quantumState.energy = Math.max(0, 100 - activeNodes.length * 0.5);
@@ -543,10 +708,12 @@
         }
         this.saveState();
       }
+
       updateSimInfo() {
         const simInfo = document.getElementById('simInfo');
         simInfo.textContent = `Energy: ${this.quantumState.energy.toFixed(2)} | Coherence: ${this.quantumState.coherence.toFixed(2)} | Entanglement: ${this.quantumState.entanglement.toFixed(2)} | Synergy: ${this.quantumState.synergy.toFixed(2)} | Speed: ${this.simulationSpeed}x | Active Nodes: ${this.activeNodesCount || 0}`;
       }
+
       logQuantumEvent(message) {
         const consoleEl = document.getElementById('quantumConsole');
         const log = document.createElement('div');
@@ -554,6 +721,7 @@
         consoleEl.appendChild(log);
         consoleEl.scrollTop = consoleEl.scrollHeight;
       }
+
       setupEventListeners() {
         const input = document.querySelector('.quantum-input');
         const executeBtn = document.getElementById('executeBtn');
@@ -561,9 +729,14 @@
         const voiceBtn = document.getElementById('voiceBtn');
         executeBtn.addEventListener('click', () => {
           const command = input.value.trim();
-          if(command) { this.executeCommand(command); input.value = ''; }
+          if (command) {
+            this.executeCommand(command);
+            input.value = '';
+          }
         });
-        input.addEventListener('keypress', (e) => { if(e.key === 'Enter') executeBtn.click(); });
+        input.addEventListener('keypress', (e) => {
+          if (e.key === 'Enter') executeBtn.click();
+        });
         clearConsoleBtn.addEventListener('click', () => {
           document.getElementById('quantumConsole').innerHTML = '';
           this.logQuantumEvent('Console cleared');
@@ -585,6 +758,7 @@
         document.getElementById('toggleTrailsBtn').addEventListener('click', () => this.toggleTrails());
         document.getElementById('cycleThemeBtn').addEventListener('click', () => this.cycleTheme());
       }
+
       executeCommand(command) {
         this.logQuantumEvent(`Executing command: ${command}`);
         const commandEffects = {
@@ -593,12 +767,19 @@
           entangle: () => this.entangleNodes(),
           superpose: () => this.superpose(),
           synergy: () => this.synergizeNodes(),
-          research: () => this.showResearchModal()
+          research: () => this.showResearchModal(),
+          help: () => this.showHelp()
         };
         const effect = commandEffects[command.toLowerCase()];
         if (effect) effect();
         else this.logQuantumEvent('Unknown command');
       }
+
+      showHelp() {
+        this.logQuantumEvent('Available commands: reset, status, entangle, superpose, synergy, research, help');
+        this.logQuantumEvent('Available gates: H, X, Y, Z, CNOT, Measure');
+      }
+
       resetSystem() {
         this.nodes.forEach((state, type) => {
           state.active = false;
@@ -610,12 +791,14 @@
         this.saveState();
         this.updateNodesUI();
       }
+
       showStatus() {
         const status = Object.entries(this.quantumState)
-          .map(([k,v]) => `${k}: ${v.toFixed(2)}`)
+          .map(([k, v]) => `${k}: ${v.toFixed(2)}`)
           .join(', ');
         this.logQuantumEvent(`System Status – ${status}`);
       }
+
       entangleNodes() {
         const activeNodes = Array.from(this.nodes.entries()).filter(([_, state]) => state.active);
         if (activeNodes.length >= 2) {
@@ -626,6 +809,7 @@
         }
         this.saveState();
       }
+
       superpose() {
         const activeNode = Array.from(this.nodes.entries()).find(([_, state]) => state.active);
         if (activeNode) {
@@ -636,6 +820,7 @@
         }
         this.saveState();
       }
+
       synergizeNodes() {
         const activeNodes = Array.from(this.nodes.entries()).filter(([_, state]) => state.active);
         if (activeNodes.length >= 2) {
@@ -647,20 +832,25 @@
         }
         this.saveState();
       }
+
       showResearchModal() {
         this.logQuantumEvent("Displaying recent research papers");
         document.getElementById('researchModal').style.display = 'flex';
       }
+
       hideResearchModal() {
         document.getElementById('researchModal').style.display = 'none';
       }
+
       showChatModal() {
         this.logQuantumEvent("Opening Quantum Chat Assistant");
         document.getElementById('chatModal').style.display = 'flex';
       }
+
       hideChatModal() {
         document.getElementById('chatModal').style.display = 'none';
       }
+
       sendChatMessage() {
         const chatInput = document.getElementById('chatInput');
         const message = chatInput.value.trim();
@@ -673,6 +863,7 @@
           chatInput.value = '';
         }
       }
+
       appendChatMessage(sender, message) {
         const chatMessages = document.getElementById('chatMessages');
         const msgDiv = document.createElement('div');
@@ -680,12 +871,17 @@
         chatMessages.appendChild(msgDiv);
         chatMessages.scrollTop = chatMessages.scrollHeight;
       }
+
       generateChatResponse(userMsg) {
         userMsg = userMsg.toLowerCase();
         if (userMsg.includes('hello')) return "Hello! How can I assist with quantum operations today?";
         if (userMsg.includes('status')) return `Current state: Energy ${this.quantumState.energy.toFixed(2)}, Coherence ${this.quantumState.coherence.toFixed(2)}.`;
-        return "I'm learning—could you elaborate?";
+        if (userMsg.includes('gate')) return "Quantum gates like H, X, Y, Z, CNOT can be applied to active nodes to manipulate the quantum state.";
+        if (userMsg.includes('measure')) return "Measuring a node collapses its state, deactivating it and affecting the system's coherence and energy.";
+        if (userMsg.includes('help')) return "Available commands: reset, status, entangle, superpose, synergy, research, help. Available gates: H, X, Y, Z, CNOT, Measure.";
+        return "I'm still learning—could you elaborate on your query?";
       }
+
       startVoiceRecognition() {
         if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
           alert("Voice recognition not supported in this browser.");
@@ -706,6 +902,7 @@
           this.logQuantumEvent(`Voice recognition error: ${event.error}`);
         };
       }
+
       playBeep() {
         const ctx = new (window.AudioContext || window.webkitAudioContext)();
         const oscillator = ctx.createOscillator();
@@ -715,6 +912,7 @@
         oscillator.start();
         oscillator.stop(ctx.currentTime + 0.1);
       }
+
       startAnomalyEvents() {
         setInterval(() => {
           this.particles.forEach(p => {
@@ -725,27 +923,27 @@
           });
         }, 5000);
       }
+
       setupKeyboardShortcuts() {
         document.addEventListener('keydown', (e) => {
-          switch(e.key.toLowerCase()){
+          switch (e.key.toLowerCase()) {
             case 'r': this.resetSystem(); break;
             case 's': this.showStatus(); break;
             case 'e': this.entangleNodes(); break;
             case 'p': this.superpose(); break;
             case 'y': this.synergizeNodes(); break;
-            case 'd': {
+            case 'd':
               const researchModal = document.getElementById('researchModal');
               researchModal.style.display = (researchModal.style.display === 'flex') ? 'none' : 'flex';
               break;
-            }
-            case 'c': {
+            case 'c':
               const chatModal = document.getElementById('chatModal');
               chatModal.style.display = (chatModal.style.display === 'flex') ? 'none' : 'flex';
               break;
-            }
           }
         });
       }
+
       saveSnapshot() {
         const snapshot = {
           quantumState: this.quantumState,
@@ -761,6 +959,7 @@
         dlAnchorElem.remove();
         this.logQuantumEvent("Snapshot saved.");
       }
+
       toggleAmbientSound() {
         if (!this.audioCtx) {
           this.audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -781,13 +980,14 @@
           this.logQuantumEvent("Ambient sound disabled.");
         }
       }
+
       toggleTrails() {
         this.trailsEnabled = !this.trailsEnabled;
         this.logQuantumEvent(`Particle trails ${this.trailsEnabled ? 'enabled' : 'disabled'}`);
       }
+
       cycleTheme() {
         this.themeIndex = (this.themeIndex + 1) % this.themes.length;
-        // Update particle colors and node border colors
         const newTheme = this.themes[this.themeIndex];
         this.particles.forEach(p => p.color = newTheme.particle);
         document.querySelectorAll('.neural-node').forEach(node => {
@@ -796,13 +996,15 @@
         this.logQuantumEvent(`Theme cycled to index ${this.themeIndex}`);
       }
     }
-    
+
     // Initialize the Quantum Neural Core
     const quantumCore = new QuantumNeuralCore();
-    
+
     // Chat input Enter key handler
     document.getElementById('chatInput').addEventListener('keypress', function(e) {
-      if(e.key === 'Enter') { document.getElementById('sendChatBtn').click(); }
+      if (e.key === 'Enter') {
+        document.getElementById('sendChatBtn').click();
+      }
     });
   </script>
 </body>
