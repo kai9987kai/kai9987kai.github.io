@@ -1,0 +1,922 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Adaptive Ribbon Interface</title>
+    <style>
+        body {
+            font-family: sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f4f4f4;
+            color: #333;
+            transition: background-color 0.3s, color 0.3s;
+        }
+
+        /* Dark Theme */
+        body.theme-dark {
+            background-color: #333;
+            color: #f4f4f4;
+        }
+
+        .ribbon {
+            background-color: #e0e0e0;
+            border-radius: 5px;
+            padding: 10px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            display: flex;
+            flex-direction: column;
+            transition: height 0.3s ease-out, padding 0.3s ease-out; /* Changed from max-height to height */
+            overflow: hidden; /* Keep overflow hidden for collapsed state */
+            height: auto; /* Default to auto height */
+        }
+
+        .ribbon.ribbon-collapsed {
+            height: 50px; /* Fixed height for collapsed state, adjust as needed */
+            padding: 10px;
+        }
+
+        .ribbon-collapse-button {
+            position: absolute;
+            top: 5px;
+            right: 5px;
+            background: none;
+            border: none;
+            cursor: pointer;
+            width: 20px;
+            height: 20px;
+            opacity: 0.7;
+            transition: opacity 0.3s;
+        }
+
+        .ribbon-collapse-button:hover, .ribbon-collapse-button:focus {
+            opacity: 1;
+            outline: none;
+        }
+
+
+        .ribbon-tabs {
+            display: flex;
+            margin-bottom: 10px;
+            border-bottom: 1px solid #ccc;
+        }
+
+        .ribbon-tab {
+            background: none;
+            border: none;
+            padding: 8px 15px;
+            cursor: pointer;
+            font-weight: bold;
+            color: #555;
+            border-bottom: 2px solid transparent;
+            transition: color 0.3s, border-bottom-color 0.3s;
+            outline: none; /* Remove default focus outline */
+        }
+
+        .ribbon-tab:hover, .ribbon-tab:focus {
+            color: #222;
+            outline: none; /* Remove default focus outline on hover as well */
+        }
+
+        .ribbon-tab.active {
+            color: #007bff;
+            border-bottom-color: #007bff;
+        }
+
+        .ribbon-sections {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 15px;
+        }
+
+        .ribbon-content {
+            display: none; /* Initially hide all content */
+            flex: 1 1 100%; /* Full width by default */
+            display: none; /* Hidden by default */
+            overflow: visible; /* Ensure content inside can expand */
+        }
+
+        .ribbon-content.active {
+            display: flex; /* Show active content */
+            flex-wrap: wrap;
+            gap: 15px;
+        }
+
+
+        .ribbon-group {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            padding: 10px;
+            text-align: center;
+            min-width: 80px; /* Minimum width for groups */
+        }
+
+        .ribbon-group-label {
+            font-size: 0.8em;
+            margin-bottom: 5px;
+            color: #777;
+        }
+
+        .ribbon-button-large, .ribbon-button-small, .ribbon-toggle-button, .ribbon-dropdown-button, .ribbon-color-item, .theme-switcher button {
+            background-color: #f9f9f9;
+            border: 1px solid #ccc;
+            border-radius: 3px;
+            padding: 8px 12px;
+            cursor: pointer;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            margin: 2px;
+            text-align: center;
+            color: #555;
+            transition: background-color 0.3s, border-color 0.3s, color 0.3s, outline-color 0.3s;
+            outline-style: solid;
+            outline-width: 2px;
+            outline-color: transparent;
+        }
+
+        .ribbon-button-large:hover, .ribbon-button-small:hover, .ribbon-toggle-button:hover, .ribbon-dropdown-button:hover, .ribbon-color-item:hover, .theme-switcher button:hover,
+        .ribbon-button-large:focus, .ribbon-button-small:focus, .ribbon-toggle-button:focus, .ribbon-dropdown-button:focus, .ribbon-color-item:focus, .theme-switcher button:focus {
+            background-color: #e6e6e6;
+            border-color: #bbb;
+            color: #333;
+            outline-color: rgba(0, 123, 255, 0.5);
+            outline-offset: -2px;
+        }
+
+        .ribbon-button-large svg, .ribbon-button-small svg {
+            width: 24px;
+            height: 24px;
+            margin-bottom: 5px;
+            fill: #555;
+        }
+
+        .ribbon-button-text {
+            font-size: 0.8em;
+        }
+
+        .ribbon-toggle-button.active {
+            background-color: #007bff;
+            color: white;
+            border-color: #007bff;
+        }
+        .ribbon-toggle-button.active svg {
+            fill: white;
+        }
+
+        .ribbon-dropdown {
+            position: relative;
+        }
+
+        .ribbon-dropdown-button {
+            display: flex;
+            align-items: center;
+            padding-right: 25px; /* Space for arrow */
+        }
+
+        .ribbon-dropdown-button svg {
+            position: absolute;
+            right: 8px;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 10px;
+            height: 10px;
+            fill: #555;
+            pointer-events: none;
+        }
+
+        .ribbon-dropdown-menu {
+            position: absolute;
+            top: 100%;
+            left: 0;
+            background-color: white;
+            border: 1px solid #ccc;
+            border-radius: 3px;
+            padding: 5px 0;
+            min-width: 120px;
+            z-index: 10;
+            display: none;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+        }
+
+        .ribbon-dropdown.active .ribbon-dropdown-menu {
+            display: block;
+        }
+
+        .ribbon-dropdown-item {
+            display: block;
+            width: 100%;
+            padding: 8px 15px;
+            text-align: left;
+            background: none;
+            border: none;
+            cursor: pointer;
+            color: #333;
+            transition: background-color 0.3s, color 0.3s, outline-color 0.3s;
+            outline-style: solid;
+            outline-width: 2px;
+            outline-color: transparent;
+        }
+
+        .ribbon-dropdown-item:hover, .ribbon-dropdown-item:focus {
+            background-color: #f0f0f0;
+            color: #000;
+            outline-color: rgba(0, 123, 255, 0.5);
+            outline-offset: -2px;
+        }
+
+        .ribbon-color-picker {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .ribbon-color-preview {
+            width: 30px;
+            height: 30px;
+            border: 1px solid #ccc;
+            margin-bottom: 5px;
+            border-radius: 3px;
+        }
+
+        .ribbon-color-hex-input {
+            width: 60px;
+            padding: 5px;
+            font-size: 0.7em;
+            text-align: center;
+            border: 1px solid #ccc;
+            border-radius: 3px;
+            margin-bottom: 5px;
+            outline-color: transparent;
+            outline-style: solid;
+            outline-width: 2px;
+        }
+        .ribbon-color-hex-input:focus {
+            outline-color: rgba(0, 123, 255, 0.5);
+            outline-offset: -2px;
+        }
+
+        .ribbon-color-palette, .ribbon-color-swatches {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 2px;
+            margin-bottom: 5px;
+            justify-content: center;
+        }
+
+        .ribbon-color-item {
+            width: 20px;
+            height: 20px;
+            border: 1px solid #ccc;
+            cursor: pointer;
+            border-radius: 3px;
+            padding: 0; /* Reset padding */
+        }
+
+        .ribbon-color-item.selected {
+            border: 2px solid #007bff; /* Highlight selected color */
+        }
+
+        .theme-switcher {
+            display: flex;
+            gap: 5px;
+        }
+
+        .theme-switcher button {
+            padding: 8px 15px;
+            border-radius: 3px;
+            border: 1px solid #ccc;
+            background-color: #f9f9f9;
+            color: #555;
+            cursor: pointer;
+            transition: background-color 0.3s, border-color 0.3s, color 0.3s, outline-color 0.3s;
+            outline-style: solid;
+            outline-width: 2px;
+            outline-color: transparent;
+        }
+
+        .theme-switcher button:hover, .theme-switcher button:focus {
+            background-color: #e6e6e6;
+            border-color: #bbb;
+            color: #333;
+            outline-color: rgba(0, 123, 255, 0.5);
+            outline-offset: -2px;
+        }
+
+
+        .content-area {
+            background-color: white;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            padding: 20px;
+            min-height: 200px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            transition: background-color 0.3s;
+            font-family: sans-serif;
+            color: #333;
+        }
+
+        body.theme-dark .content-area {
+            background-color: #444;
+            color: #f4f4f4;
+            border-color: #666;
+        }
+
+        .content-area table {
+            border-collapse: collapse;
+            width: 100%;
+            margin-top: 10px;
+        }
+
+        .content-area table, .content-area th, .content-area td {
+            border: 1px solid #ccc;
+            padding: 8px;
+            text-align: left;
+        }
+        body.theme-dark .content-area table, body.theme-dark .content-area th, body.theme-dark .content-area td {
+            border-color: #666;
+            color: #f4f4f4;
+        }
+
+        .content-area.bold-text {
+            font-weight: bold;
+        }
+
+        /* Tooltip Styling */
+        .ribbon-tooltip {
+            position: absolute;
+            background-color: #333;
+            color: white;
+            padding: 5px 10px;
+            border-radius: 3px;
+            font-size: 0.9em;
+            z-index: 1000;
+            opacity: 0.9;
+            pointer-events: none; /* Allow clicks to pass through */
+        }
+
+        /* Responsive adjustments (example for smaller screens) */
+        @media (max-width: 768px) {
+            .ribbon-sections {
+                flex-direction: column; /* Stack groups vertically on smaller screens */
+            }
+            .ribbon-group {
+                width: 100%; /* Groups take full width on smaller screens */
+                min-width: auto;
+            }
+            .ribbon-button-large, .ribbon-button-small {
+                padding: 6px 10px; /* Slightly smaller padding on small screens */
+            }
+            .ribbon-button-text {
+                font-size: 0.75em; /* Smaller font size for button text on small screens */
+            }
+            .ribbon-tabs {
+                flex-direction: column; /* Stack tabs vertically on very small screens if needed */
+            }
+            .ribbon-tab {
+                text-align: center; /* Center align tab text if stacked */
+                border-bottom: none; /* Remove bottom border for stacked tabs */
+                border-right: 2px solid transparent; /* Use right border instead */
+                margin-bottom: 2px;
+            }
+            .ribbon-tab.active {
+                border-right-color: #007bff; /* Active tab border on right */
+            }
+        }
+    </style>
+</head>
+<body class="theme-light">
+
+    <div id="ribbon" class="ribbon">
+        <button class="ribbon-collapse-button" aria-expanded="true" title="Collapse Ribbon">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" focusable="false" style="pointer-events: none; display: block; width: 100%; height: 100%;">
+                <path fill-rule="evenodd" d="M12 3.75a.75.75 0 01.75.75v15a.75.75 0 01-1.5 0v-15a.75.75 0 01.75-.75zM7.5 8.25a.75.75 0 01.75-.75h7.5a.75.75 0 010 1.5h-7.5a.75.75 0 01-.75-.75zM7.5 12a.75.75 0 01.75-.75h7.5a.75.75 0 010 1.5h-7.5a.75.75 0 01-.75-.75zM7.5 15.75a.75.75 0 01.75-.75h7.5a.75.75 0 010 1.5h-7.5a.75.75 0 01-.75-.75z" clip-rule="evenodd" />
+            </svg>
+        </button>
+
+        <nav class="ribbon-tabs" role="tablist" aria-label="Ribbon Tabs">
+            <button class="ribbon-tab active" role="tab" aria-selected="true" aria-controls="home-content" data-tab="home" tabindex="0">Home</button>
+            <button class="ribbon-tab" role="tab" aria-selected="false" aria-controls="insert-content" data-tab="insert" tabindex="0">Insert</button>
+            <button class="ribbon-tab" role="tab" aria-selected="false" aria-controls="view-content" data-tab="view" tabindex="0">View</button>
+        </nav>
+
+        <div class="ribbon-sections">
+            <div class="ribbon-content active" id="home-content" role="tabpanel" aria-labelledby="home-tab" data-tab-content="home" aria-hidden="false">
+                <div class="ribbon-group">
+                    <span class="ribbon-group-label">Clipboard</span>
+                    <button class="ribbon-button-large" title="Cut (Ctrl+X)" tabindex="0">
+                        <svg aria-hidden="true" focusable="false" style="pointer-events: none; display: block; width: 24px; height: 24px;"><!-- Cut Icon SVG --><path d="M19 7v-2h-14v2h14zM19 9v9h-14v-9h14zM17 11h-10v5h10v-5zM17 11l-5 5m5-5l-5-5"/></svg>
+                        <span class="ribbon-button-text">Cut</span>
+                    </button>
+                    <button class="ribbon-button-large" title="Copy (Ctrl+C)" tabindex="0">
+                        <svg aria-hidden="true" focusable="false" style="pointer-events: none; display: block; width: 24px; height: 24px;"><!-- Copy Icon SVG --><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2v-7h12V3h-7V1h7zm3 2H8v16h11c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2z"/></svg>
+                        <span class="ribbon-button-text">Copy</span>
+                    </button>
+                    <button class="ribbon-button-large" title="Paste (Ctrl+V)" tabindex="0">
+                        <svg aria-hidden="true" focusable="false" style="pointer-events: none; display: block; width: 24px; height: 24px;"><!-- Paste Icon SVG --><path d="M19 2h-14c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2v-16c0-1.1-.9-2-2-2zm-1 18h-12v-6h4v6h4v-6h4v6zm0-8h-12v-8h12v8z"/></svg>
+                        <span class="ribbon-button-text">Paste</span>
+                    </button>
+                </div>
+
+                <div class="ribbon-group">
+                    <span class="ribbon-group-label">Font</span>
+                    <div class="ribbon-dropdown">
+                        <button class="ribbon-dropdown-button" role="button" aria-haspopup="true" aria-expanded="false" tabindex="0">
+                            Font <svg aria-hidden="true" focusable="false" style="pointer-events: none; display: block; margin-left: 4px; width: 12px; height: 12px;"><!-- Dropdown Arrow SVG --><path d="M7 10l5 5 5-5z"/></svg>
+                        </button>
+                        <div class="ribbon-dropdown-menu" role="menu" aria-label="Font Options">
+                            <button class="ribbon-dropdown-item" role="menuitem">Arial</button>
+                            <button class="ribbon-dropdown-item" role="menuitem">Times New Roman</button>
+                            <button class="ribbon-dropdown-item" role="menuitem">Verdana</button>
+                        </div>
+                    </div>
+                    <div class="ribbon-dropdown">
+                        <button class="ribbon-dropdown-button" role="button" aria-haspopup="true" aria-expanded="false" tabindex="0">
+                            Size <svg aria-hidden="true" focusable="false" style="pointer-events: none; display: block; margin-left: 4px; width: 12px; height: 12px;"><!-- Dropdown Arrow SVG --><path d="M7 10l5 5 5-5z"/></svg>
+                        </button>
+                        <div class="ribbon-dropdown-menu" role="menu" aria-label="Font Size Options">
+                            <button class="ribbon-dropdown-item" role="menuitem">10</button>
+                            <button class="ribbon-dropdown-item" role="menuitem">12</button>
+                            <button class="ribbon-dropdown-item" role="menuitem">14</button>
+                            <button class="ribbon-dropdown-item" role="menuitem">16</button>
+                        </div>
+                    </div>
+                    <button class="ribbon-toggle-button" role="button" aria-pressed="false" title="Bold (Ctrl+B)" tabindex="0"><b>B</b></button>
+                    <button class="ribbon-toggle-button" role="button" aria-pressed="false" title="Italic (Ctrl+I)" tabindex="0"><i>I</i></button>
+                    <button class="ribbon-toggle-button" role="button" aria-pressed="false" title="Underline (Ctrl+U)" tabindex="0"><u>U</u></button>
+                    <div class="ribbon-color-picker">
+                        <div class="ribbon-color-preview" style="background-color: black;"></div>
+                        <input type="text" class="ribbon-color-hex-input" value="#000000" aria-label="Hex color code">
+                        <div class="ribbon-color-palette" aria-label="Recent Colors"></div>
+                        <div class="ribbon-color-swatches" aria-label="Color Palette">
+                            <div class="ribbon-color-item selected" style="background-color: black;" data-color="#000000" role="button" tabindex="0" aria-label="Color Black"></div>
+                            <div class="ribbon-color-item" style="background-color: white;" data-color="#FFFFFF" role="button" tabindex="0" aria-label="Color White"></div>
+                            <div class="ribbon-color-item" style="background-color: red;" data-color="#FF0000" role="button" tabindex="0" aria-label="Color Red"></div>
+                            <div class="ribbon-color-item" style="background-color: green;" data-color="#00FF00" role="button" tabindex="0" aria-label="Color Green"></div>
+                            <div class="ribbon-color-item" style="background-color: blue;" data-color="#0000FF" role="button" tabindex="0" aria-label="Color Blue"></div>
+                            <div class="ribbon-color-item" style="background-color: yellow;" data-color="#FFFF00" role="button" tabindex="0" aria-label="Color Yellow"></div>
+                            <div class="ribbon-color-item" style="background-color: cyan;" data-color="#00FFFF" role="button" tabindex="0" aria-label="Color Cyan"></div>
+                            <div class="ribbon-color-item" style="background-color: magenta;" data-color="#FF00FF" role="button" tabindex="0" aria-label="Color Magenta"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="ribbon-content" id="insert-content" role="tabpanel" aria-labelledby="insert-tab" data-tab-content="insert" aria-hidden="true">
+                <div class="ribbon-group">
+                    <span class="ribbon-group-label">Tables</span>
+                    <button class="ribbon-button-large" title="Insert Table" tabindex="0">
+                        <svg aria-hidden="true" focusable="false" style="pointer-events: none; display: block; width: 24px; height: 24px;"><!-- Table Icon SVG --><path d="M2 4v16h20V4H2zm18 14H4v-4h16v4zm0-6H4V6h16v4z"/></svg>
+                        <span class="ribbon-button-text">Table</span>
+                    </button>
+                </div>
+                <div class="ribbon-group">
+                    <span class="ribbon-group-label">Illustrations</span>
+                    <button class="ribbon-button-large" title="Insert Picture" tabindex="0">
+                        <svg aria-hidden="true" focusable="false" style="pointer-events: none; display: block; width: 24px; height: 24px;"><!-- Picture Icon SVG --><path d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3 3.5-4.5 4.5 6H5l3.5-5 2.5 3z"/></svg>
+                        <span class="ribbon-button-text">Picture</span>
+                    </button>
+                    <button class="ribbon-button-large" title="Insert Shapes" tabindex="0">
+                        <svg aria-hidden="true" focusable="false" style="pointer-events: none; display: block; width: 24px; height: 24px;"><!-- Shapes Icon SVG --><path d="M12 2L1 21h22L12 2zm0 3.96L19.55 19H4.45L12 5.96zM6.5 9.5h3v3h-3v-3zm5 0h3v3h-3v-3zm5 0h3v3h-3v-3z"/></svg>
+                        <span class="ribbon-button-text">Shapes</span>
+                    </button>
+                </div>
+            </div>
+
+            <div class="ribbon-content" id="view-content" role="tabpanel" aria-labelledby="view-tab" data-tab-content="view" aria-hidden="true">
+                <div class="ribbon-group">
+                    <span class="ribbon-group-label">Themes</span>
+                    <div class="theme-switcher">
+                        <button data-theme="light" title="Light Theme" tabindex="0">Light</button>
+                        <button data-theme="dark" title="Dark Theme" tabindex="0">Dark</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="content-area">
+        <p>This is the main content area. The ribbon bar now adapts to the height of the buttons and sections within it. Try adding more buttons or content to a section to see the ribbon expand.</p>
+    </div>
+
+    <script>
+        class RibbonTab {
+            constructor(tabElement, contentElement) {
+                this.tabElement = tabElement;
+                this.contentElement = contentElement;
+                this.tabElement.addEventListener('click', () => this.activate());
+                this.tabElement.addEventListener('keydown', (event) => {
+                    if (event.key === 'Enter' || event.key === ' ') {
+                        event.preventDefault(); // Prevent scrolling
+                        this.activate();
+                    }
+                });
+            }
+
+            activate() {
+                RibbonTab.deactivateAll();
+                RibbonContent.deactivateAll();
+                this.tabElement.classList.add('active');
+                this.contentElement.classList.add('active');
+                this.tabElement.setAttribute('aria-selected', 'true'); // ARIA
+                this.contentElement.setAttribute('aria-hidden', 'false'); // ARIA
+            }
+
+            static deactivateAll() {
+                const tabs = document.querySelectorAll('.ribbon-tab');
+                tabs.forEach(tab => {
+                    tab.classList.remove('active');
+                    tab.setAttribute('aria-selected', 'false'); // ARIA
+                });
+            }
+        }
+
+        class RibbonContent {
+            constructor(contentElement) {
+                this.contentElement = contentElement;
+            }
+
+            static deactivateAll() {
+                const contents = document.querySelectorAll('.ribbon-content');
+                contents.forEach(content => {
+                    content.classList.remove('active');
+                    content.setAttribute('aria-hidden', 'true'); // ARIA
+                });
+            }
+        }
+
+        class RibbonDropdown {
+            constructor(dropdownElement) {
+                this.dropdownElement = dropdownElement;
+                this.button = dropdownElement.querySelector('.ribbon-dropdown-button');
+                this.menu = dropdownElement.querySelector('.ribbon-dropdown-menu'); // Assuming menu class
+                this.button.addEventListener('click', (e) => this.toggle(e));
+                this.button.addEventListener('keydown', (event) => {
+                    if (event.key === 'Enter' || event.key === ' ' || event.key === 'ArrowDown') {
+                        event.preventDefault();
+                        this.toggle(event);
+                        if (this.dropdownElement.classList.contains('active') && this.menu) {
+                            this.menu.querySelector('button, a, .ribbon-dropdown-item')?.focus(); // Focus first item
+                        }
+                    }
+                });
+                if (this.menu) {
+                    this.menu.addEventListener('keydown', (event) => {
+                        if (event.key === 'Escape') {
+                            this.close();
+                            this.button.focus(); // Return focus to button
+                        }
+                    });
+                }
+            }
+
+            toggle(e) {
+                e.stopPropagation();
+                RibbonDropdown.closeAllExcept(this);
+                this.dropdownElement.classList.toggle('active');
+                this.button.setAttribute('aria-expanded', this.dropdownElement.classList.contains('active').toString()); // ARIA
+            }
+
+            close() {
+                this.dropdownElement.classList.remove('active');
+                this.button.setAttribute('aria-expanded', 'false'); // ARIA
+            }
+
+
+            static closeAllExcept(currentDropdown) {
+                const dropdowns = document.querySelectorAll('.ribbon-dropdown');
+                dropdowns.forEach(dropdown => {
+                    if (dropdown !== currentDropdown) {
+                        dropdown.classList.remove('active');
+                        dropdown.querySelector('.ribbon-dropdown-button').setAttribute('aria-expanded', 'false'); // ARIA
+                    }
+                });
+            }
+        }
+
+        class RibbonToggleButton {
+            constructor(buttonElement) {
+                this.buttonElement = buttonElement;
+                this.buttonElement.addEventListener('click', () => this.toggle());
+                this.buttonElement.addEventListener('keydown', (event) => {
+                    if (event.key === 'Enter' || event.key === ' ') {
+                        event.preventDefault();
+                        this.toggle();
+                    }
+                });
+            }
+
+            toggle() {
+                this.buttonElement.classList.toggle('active');
+                this.buttonElement.setAttribute('aria-pressed', this.buttonElement.classList.contains('active').toString()); // ARIA
+            }
+        }
+
+        class RibbonColorPicker {
+            constructor(containerElement, contentAreaElement) {
+                this.containerElement = containerElement;
+                this.contentAreaElement = contentAreaElement;
+                this.colorItems = containerElement.querySelectorAll('.ribbon-color-item');
+                this.colorInput = containerElement.querySelector('.ribbon-color-hex-input'); // Hex input
+                this.colorPreview = containerElement.querySelector('.ribbon-color-preview'); // Preview area
+                this.colorPalette = containerElement.querySelector('.ribbon-color-palette'); // Palette container
+                this.recentColors = []; // Store recent colors
+
+                this.colorItems.forEach(item => {
+                    item.addEventListener('click', () => this.selectColor(item.dataset.color));
+                    item.addEventListener('keydown', (event) => {
+                        if (event.key === 'Enter' || event.key === ' ') {
+                            event.preventDefault();
+                            this.selectColor(item.dataset.color);
+                        }
+                    });
+                });
+
+                if (this.colorInput) {
+                    this.colorInput.addEventListener('input', () => this.updateColorFromInput());
+                }
+            }
+
+            selectColor(color) {
+                this.colorItems.forEach(item => item.classList.remove('selected'));
+                const selectedItem = Array.from(this.colorItems).find(item => item.dataset.color === color);
+                if (selectedItem) {
+                    selectedItem.classList.add('selected');
+                }
+
+                this.contentAreaElement.style.backgroundColor = color;
+                if (this.colorInput) {
+                    this.colorInput.value = color; // Update hex input
+                }
+                if (this.colorPreview) {
+                    this.colorPreview.style.backgroundColor = color; // Update preview
+                }
+                this.addToRecentColors(color);
+                this.updateRecentColorPalette();
+            }
+
+            updateColorFromInput() {
+                const color = this.colorInput.value;
+                if (isValidColor(color)) { // Basic validation
+                    this.selectColor(color);
+                } else {
+                    // Optionally handle invalid input (e.g., visual feedback)
+                }
+            }
+
+            addToRecentColors(color) {
+                const index = this.recentColors.indexOf(color);
+                if (index !== -1) {
+                    this.recentColors.splice(index, 1); // Remove if already exists and move to front
+                }
+                this.recentColors.unshift(color); // Add to the beginning
+                this.recentColors = this.recentColors.slice(0, 5); // Limit to 5 recent colors
+            }
+
+            updateRecentColorPalette() {
+                if (!this.colorPalette) return;
+                this.colorPalette.innerHTML = ''; // Clear existing palette
+                this.recentColors.forEach(color => {
+                    const colorItem = document.createElement('div');
+                    colorItem.classList.add('ribbon-color-item', 'recent-color');
+                    colorItem.style.backgroundColor = color;
+                    colorItem.dataset.color = color;
+                    colorItem.setAttribute('tabindex', '0'); // Make focusable
+                    colorItem.setAttribute('role', 'button'); // ARIA
+                    colorItem.setAttribute('aria-label', `Recent Color: ${color}`); // ARIA
+                    colorItem.addEventListener('click', () => this.selectColor(color));
+                    colorItem.addEventListener('keydown', (event) => {
+                        if (event.key === 'Enter' || event.key === ' ') {
+                            event.preventDefault();
+                            this.selectColor(color);
+                        }
+                    });
+                    this.colorPalette.appendChild(colorItem);
+                });
+                this.colorItems = this.containerElement.querySelectorAll('.ribbon-color-item'); // Re-query to include recent colors
+            }
+        }
+
+        function isValidColor(strColor) { // Simple hex and named color validation
+            const s = new Option().style;
+            s.color = strColor;
+            return s.color !== '';
+        }
+
+
+        class ThemeSwitcher {
+            constructor(containerElement) {
+                this.containerElement = containerElement;
+                this.themeButtons = containerElement.querySelectorAll('button');
+                this.themeButtons.forEach(button => {
+                    button.addEventListener('click', () => this.switchTheme(button));
+                    button.addEventListener('keydown', (event) => {
+                        if (event.key === 'Enter' || event.key === ' ') {
+                            event.preventDefault();
+                            this.switchTheme(button);
+                        }
+                    });
+                });
+                this.loadThemeFromStorage(); // Load theme on init
+            }
+
+            switchTheme(button) {
+                const theme = button.dataset.theme;
+                document.body.className = `theme-${theme}`;
+                localStorage.setItem('selectedTheme', theme); // Store in local storage
+            }
+
+            loadThemeFromStorage() {
+                const storedTheme = localStorage.getItem('selectedTheme');
+                if (storedTheme) {
+                    document.body.className = `theme-${storedTheme}`;
+                    // Optionally, visually mark the selected theme button as active
+                    this.themeButtons.forEach(button => {
+                        if (button.dataset.theme === storedTheme) {
+                            button.classList.add('active'); // You might need to add a visual 'active' class in CSS
+                        } else {
+                            button.classList.remove('active');
+                        }
+                    });
+                }
+            }
+        }
+
+        class CollapsibleRibbon {
+            constructor(ribbonElement) {
+                this.ribbonElement = ribbonElement;
+                this.collapseButton = ribbonElement.querySelector('.ribbon-collapse-button');
+                this.collapseButton.addEventListener('click', () => this.toggleCollapse());
+                this.collapseButton.addEventListener('keydown', (event) => {
+                    if (event.key === 'Enter' || event.key === ' ') {
+                        event.preventDefault();
+                        this.toggleCollapse();
+                    }
+                });
+            }
+
+            toggleCollapse() {
+                this.ribbonElement.classList.toggle('ribbon-collapsed');
+                const isCollapsed = this.ribbonElement.classList.contains('ribbon-collapsed');
+                this.collapseButton.setAttribute('aria-expanded', (!isCollapsed).toString()); // ARIA
+            }
+        }
+
+        class RibbonButton {
+            constructor(buttonElement) {
+                this.buttonElement = buttonElement;
+                this.buttonElement.addEventListener('click', () => this.executeAction());
+                this.buttonElement.addEventListener('keydown', (event) => {
+                    if (event.key === 'Enter' || event.key === ' ') {
+                        event.preventDefault();
+                        this.executeAction();
+                    }
+                });
+            }
+
+            executeAction() {
+                const actionText = this.buttonElement.querySelector('.ribbon-button-text').textContent;
+                console.log(`Button clicked: ${actionText}`);
+                if (actionText === 'Table') {
+                    this.insertTable();
+                } else if (actionText === 'Bold') {
+                    this.toggleBold(); // Example action
+                } // Add more actions here
+            }
+
+            insertTable() {
+                const contentArea = document.querySelector('.content-area');
+                if (!contentArea) return;
+
+                const tableHTML = '<table border="1"><tr><td>Cell 1</td><td>Cell 2</td></tr><tr><td>Cell 3</td><td>Cell 4</td></tr></table>';
+                const previousContent = contentArea.innerHTML;
+                contentArea.innerHTML = tableHTML;
+
+                // Basic Undo - Store previous content in history (very simple example)
+                history.pushState({ content: previousContent }, null, null);
+            }
+
+            toggleBold() { // Example toggle action
+                const contentArea = document.querySelector('.content-area');
+                if (!contentArea) return;
+                contentArea.classList.toggle('bold-text'); // Example: Toggle a class, you can modify this
+            }
+        }
+
+        // Undo functionality using browser history API (very basic, for demonstration)
+        window.addEventListener('popstate', function(event) {
+            if (event.state && event.state.content !== undefined) {
+                document.querySelector('.content-area').innerHTML = event.state.content;
+            }
+        });
+
+
+        class Tooltip {
+            constructor(element, text) {
+                this.element = element;
+                this.text = text;
+                this.tooltipElement = null;
+
+                this.element.addEventListener('mouseover', () => this.showTooltip());
+                this.element.addEventListener('mouseout', () => this.hideTooltip());
+                this.element.addEventListener('focus', () => this.showTooltip()); // For keyboard focus
+                this.element.addEventListener('blur', () => this.hideTooltip());  // For keyboard blur
+            }
+
+            showTooltip() {
+                if (!this.tooltipElement) {
+                    this.tooltipElement = document.createElement('div');
+                    this.tooltipElement.classList.add('ribbon-tooltip');
+                    this.tooltipElement.textContent = this.text;
+                    document.body.appendChild(this.tooltipElement);
+
+                    const rect = this.element.getBoundingClientRect();
+                    this.tooltipElement.style.top = `${rect.bottom + window.scrollY + 5}px`; // Position below element
+                    this.tooltipElement.style.left = `${rect.left + window.scrollX}px`; // Align left
+                }
+            }
+
+            hideTooltip() {
+                if (this.tooltipElement) {
+                    this.tooltipElement.remove();
+                    this.tooltipElement = null;
+                }
+            }
+        }
+
+
+        document.addEventListener('DOMContentLoaded', () => {
+            // Initialize Tabs
+            const tabElements = document.querySelectorAll('.ribbon-tab');
+            const contentElements = document.querySelectorAll('.ribbon-content');
+            tabElements.forEach((tab, index) => {
+                const content = contentElements[index];
+                if (content) {
+                    new RibbonTab(tab, content);
+                }
+            });
+
+            // Initialize Dropdowns
+            const dropdownElements = document.querySelectorAll('.ribbon-dropdown');
+            dropdownElements.forEach(dropdown => {
+                new RibbonDropdown(dropdown);
+            });
+
+            // Initialize Toggle Buttons
+            const toggleButtonElements = document.querySelectorAll('.ribbon-toggle-button');
+            toggleButtonElements.forEach(button => {
+                new RibbonToggleButton(button);
+            });
+
+            // Initialize Color Picker
+            const colorPickerContainer = document.querySelector('.ribbon-color-picker');
+            const contentArea = document.querySelector('.content-area');
+            if (colorPickerContainer && contentArea) {
+                new RibbonColorPicker(colorPickerContainer, contentArea);
+            }
+
+            // Initialize Theme Switcher
+            const themeSwitcherContainer = document.querySelector('.theme-switcher');
+            if (themeSwitcherContainer) {
+                new ThemeSwitcher(themeSwitcherContainer);
+            }
+
+            // Initialize Collapsible Ribbon
+            const ribbonElement = document.getElementById('ribbon');
+            if (ribbonElement) {
+                new CollapsibleRibbon(ribbonElement);
+            }
+
+            // Initialize Buttons (Large and Small) and Tooltips
+            const buttonElements = document.querySelectorAll('.ribbon-button-large, .ribbon-button-small');
+            buttonElements.forEach(button => {
+                new RibbonButton(button);
+                const tooltipText = button.getAttribute('title'); // Get tooltip text from title attribute
+                if (tooltipText) {
+                    new Tooltip(button, tooltipText);
+                    button.removeAttribute('title'); // Remove default browser tooltip
+                }
+            });
+
+
+            // Global listener to close dropdowns
+            document.addEventListener('click', () => {
+                RibbonDropdown.closeAllExcept(null);
+            });
+
+            // Initialize first tab as active (optional)
+            const firstTab = document.querySelector('.ribbon-tab');
+            if (firstTab) {
+                firstTab.click(); // Programmatically click the first tab
+            }
+        });
+    </script>
+</body>
+</html>
