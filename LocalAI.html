@@ -1,147 +1,351 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<title>Local AI Full Real Training Interface</title>
-<style>
-* { box-sizing: border-box; margin: 0; padding: 0; }
-body { font-family: Arial, sans-serif; background: #f5f5f5; padding: 20px; line-height: 1.6; }
-h1, h2, h3 { text-align: center; margin-bottom: 20px; }
-#training-container { background: #fff; max-width: 980px; margin: 0 auto; padding: 20px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
-.section { margin-bottom: 20px; }
-label { display: block; margin-bottom: 5px; font-weight: bold; }
-input[type="number"], input[type="text"], input[type="file"], textarea { width: 100%; padding: 8px; margin-bottom: 10px; border: 1px solid #ccc; border-radius: 4px; }
-button { display: block; width: 100%; background: #007acc; color: #fff; border: none; padding: 10px; font-size: 16px; border-radius: 4px; cursor: pointer; margin-bottom: 10px; }
-button:hover { background: #005fa3; }
-#progress-container { width: 100%; background: #eee; border-radius: 4px; overflow: hidden; margin-top: 10px; height: 25px; }
-#progress-bar { height: 100%; width: 0%; background: #007acc; transition: width 0.3s ease; }
-#log { background: #333; color: #eee; padding: 10px; height: 150px; overflow-y: auto; font-family: monospace; font-size: 14px; border-radius: 4px; }
-#loss-chart { background: #fff; border: 1px solid #ccc; border-radius: 4px; display: block; margin: 0 auto; }
-#model-runner-section, #continue-training-section, #refine-section { display: none; background: #f0f8ff; padding: 15px; border: 1px solid #ccc; border-radius: 4px; margin-bottom: 20px; }
-#model-output, #batch-output, #refine-output { margin-top: 10px; padding: 10px; background: #eee; border-radius: 4px; min-height: 40px; font-family: monospace; }
-</style>
-<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest"></script>
-<script src="https://cdn.jsdelivr.net/npm/papaparse@5.3.2/papaparse.min.js"></script>
+  <meta charset="UTF-8">
+  <title>Local AI Full Real Training Interface</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: Arial, sans-serif; background: #f5f5f5; padding: 20px; line-height: 1.6; }
+    h1, h2, h3 { text-align: center; margin-bottom: 20px; }
+    #training-container { background: #fff; max-width: 980px; margin: 0 auto; padding: 20px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+    .section { margin-bottom: 20px; }
+    label { display: block; margin-bottom: 5px; font-weight: bold; }
+    input[type="number"], input[type="text"], input[type="file"], textarea { width: 100%; padding: 8px; margin-bottom: 10px; border: 1px solid #ccc; border-radius: 4px; }
+    button { display: block; width: 100%; background: #007acc; color: #fff; border: none; padding: 10px; font-size: 16px; border-radius: 4px; cursor: pointer; margin-bottom: 10px; }
+    button:hover { background: #005fa3; }
+    #progress-container { width: 100%; background: #eee; border-radius: 4px; overflow: hidden; margin-top: 10px; height: 25px; }
+    #progress-bar { height: 100%; width: 0%; background: #007acc; transition: width 0.3s ease; }
+    #log { background: #333; color: #eee; padding: 10px; height: 150px; overflow-y: auto; font-family: monospace; font-size: 14px; border-radius: 4px; }
+    #loss-chart { background: #fff; border: 1px solid #ccc; border-radius: 4px; display: block; margin: 0 auto; }
+    #model-runner-section, #continue-training-section, #refine-section { display: none; background: #f0f8ff; padding: 15px; border: 1px solid #ccc; border-radius: 4px; margin-bottom: 20px; }
+    #model-output, #batch-output, #refine-output { margin-top: 10px; padding: 10px; background: #eee; border-radius: 4px; min-height: 40px; font-family: monospace; }
+  </style>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest"></script>
+  <script src="https://cdn.jsdelivr.net/npm/papaparse@5.3.2/papaparse.min.js"></script>
 </head>
 <body>
-<div id="training-container">
-  <h1>Local AI Full Real Training Interface</h1>
-  <div class="section" id="upload-section">
-    <label for="dataset">Upload Dataset (CSV with numeric features, last column = label):</label>
-    <input type="file" id="dataset" accept=".csv,.json,.txt">
+  <div id="training-container">
+    <h1>Local AI Full Real Training Interface</h1>
+    <div class="section" id="upload-section">
+      <label for="dataset">Upload Dataset (CSV with numeric features, last column = label):</label>
+      <input type="file" id="dataset" accept=".csv">
+    </div>
+    <div class="section" id="model-load-section">
+      <label for="model-file">Load Pretrained Model (JSON):</label>
+      <input type="file" id="model-file" accept=".json">
+      <button id="load-local">Load Model from LocalStorage</button>
+      <button id="clear-local">Clear Cached Model</button>
+    </div>
+    <div class="section" id="parameters-section">
+      <label for="epochs">Number of Epochs:</label>
+      <input type="number" id="epochs" value="20" min="1">
+      <label for="learningRate">Initial Learning Rate:</label>
+      <input type="number" id="learningRate" value="0.01" step="0.001">
+      <label for="earlyStopPatience">Early Stop Patience (epochs):</label>
+      <input type="number" id="earlyStopPatience" value="3" min="1">
+    </div>
+    <button id="start-training">Start Training</button>
+    <button id="save-model" style="display:none;">Save Model (JSON & Local Cache)</button>
+    <button id="reset-training">Reset Training</button>
+    <div id="progress-container">
+      <div id="progress-bar"></div>
+    </div>
+    <div class="section">
+      <h2>Training Log</h2>
+      <div id="log"></div>
+    </div>
+    <div class="section">
+      <h2>Training Chart</h2>
+      <canvas id="loss-chart" width="900" height="300"></canvas>
+    </div>
+    <div class="section" id="continue-training-section">
+      <h2>Continue Training (Model Update)</h2>
+      <label for="addEpochs">Additional Epochs:</label>
+      <input type="number" id="addEpochs" value="10" min="1">
+      <label for="addLearningRate">Additional Learning Rate:</label>
+      <input type="number" id="addLearningRate" value="0.005" step="0.001">
+      <button id="continue-training">Continue Training</button>
+    </div>
+    <div class="section" id="refine-section">
+      <h2>Refine Model (Enhance AI Intelligence)</h2>
+      <button id="refine-model">Refine Model with Advanced Updates</button>
+      <div id="refine-output"></div>
+    </div>
+    <div class="section" id="model-runner-section">
+      <h2>Run Trained Model</h2>
+      <label for="model-input">Single Input (comma-separated numbers):</label>
+      <input type="text" id="model-input" placeholder="e.g. 1.0,2.0,3.0">
+      <button id="run-model">Run Model</button>
+      <div id="model-output"></div>
+      <h3>Batch Inference</h3>
+      <label for="batch-input">Enter multiple inputs (one per line, comma-separated numbers):</label>
+      <textarea id="batch-input" rows="5" placeholder="e.g.&#10;1.0,2.0,3.0&#10;4.0,5.0,6.0"></textarea>
+      <button id="run-batch">Run Batch Inference</button>
+      <div id="batch-output"></div>
+    </div>
   </div>
-  <div class="section" id="model-load-section">
-    <label for="model-file">Load Pretrained Model (JSON):</label>
-    <input type="file" id="model-file" accept=".json">
-    <button id="load-local">Load Model from LocalStorage</button>
-    <button id="clear-local">Clear Cached Model</button>
-  </div>
-  <div class="section" id="parameters-section">
-    <label for="epochs">Number of Epochs:</label>
-    <input type="number" id="epochs" value="20" min="1">
-    <label for="learningRate">Initial Learning Rate:</label>
-    <input type="number" id="learningRate" value="0.01" step="0.001">
-    <label for="earlyStopPatience">Early Stop Patience (epochs):</label>
-    <input type="number" id="earlyStopPatience" value="3" min="1">
-  </div>
-  <button id="start-training">Start Training</button>
-  <button id="save-model" style="display:none;">Save Model (JSON & Local Cache)</button>
-  <button id="reset-training">Reset Training</button>
-  <div id="progress-container">
-    <div id="progress-bar"></div>
-  </div>
-  <div class="section">
-    <h2>Training Log</h2>
-    <div id="log"></div>
-  </div>
-  <div class="section">
-    <h2>Training Chart</h2>
-    <canvas id="loss-chart" width="900" height="300"></canvas>
-  </div>
-  <div class="section" id="continue-training-section">
-    <h2>Continue Training (Model Update)</h2>
-    <label for="addEpochs">Additional Epochs:</label>
-    <input type="number" id="addEpochs" value="10" min="1">
-    <label for="addLearningRate">Additional Learning Rate:</label>
-    <input type="number" id="addLearningRate" value="0.005" step="0.001">
-    <button id="continue-training">Continue Training</button>
-  </div>
-  <div class="section" id="refine-section">
-    <h2>Refine Model (Enhance AI Intelligence)</h2>
-    <button id="refine-model">Refine Model with Advanced Updates</button>
-    <div id="refine-output"></div>
-  </div>
-  <div class="section" id="model-runner-section">
-    <h2>Run Trained Model</h2>
-    <label for="model-input">Single Input (comma-separated numbers):</label>
-    <input type="text" id="model-input" placeholder="e.g. 1.0,2.0,3.0">
-    <button id="run-model">Run Model</button>
-    <div id="model-output"></div>
-    <h3>Batch Inference</h3>
-    <label for="batch-input">Enter multiple inputs (one per line, comma-separated numbers):</label>
-    <textarea id="batch-input" rows="5" placeholder="e.g.\n1.0,2.0,3.0\n4.0,5.0,6.0"></textarea>
-    <button id="run-batch">Run Batch Inference</button>
-    <div id="batch-output"></div>
-  </div>
-</div>
-<script>
-let model, trainingData, trainXs, trainYs;
-let finalModelParams = {};
-let isModelLoaded = false;
-let lossData = [], epochData = [];
-const datasetInput = document.getElementById("dataset");
-const modelFileInput = document.getElementById("model-file");
-const loadLocalButton = document.getElementById("load-local");
-const clearLocalButton = document.getElementById("clear-local");
-const epochsInput = document.getElementById("epochs");
-const learningRateInput = document.getElementById("learningRate");
-const earlyStopInput = document.getElementById("earlyStopPatience");
-const startButton = document.getElementById("start-training");
-const saveModelButton = document.getElementById("save-model");
-const resetTrainingButton = document.getElementById("reset-training");
-const progressBar = document.getElementById("progress-bar");
-const logContainer = document.getElementById("log");
-const lossChart = document.getElementById("loss-chart");
-const ctx = lossChart.getContext("2d");
-const continueSection = document.getElementById("continue-training-section");
-const addEpochsInput = document.getElementById("addEpochs");
-const addLearningRateInput = document.getElementById("addLearningRate");
-const continueButton = document.getElementById("continue-training");
-const refineSection = document.getElementById("refine-section");
-const refineButton = document.getElementById("refine-model");
-const refineOutput = document.getElementById("refine-output");
-const modelRunnerSection = document.getElementById("model-runner-section");
-const modelInput = document.getElementById("model-input");
-const runModelButton = document.getElementById("run-model");
-const modelOutput = document.getElementById("model-output");
-const batchInput = document.getElementById("batch-input");
-const runBatchButton = document.getElementById("run-batch");
-const batchOutput = document.getElementById("batch-output");
-function appendLog(msg){const t=new Date().toLocaleTimeString();logContainer.innerHTML+="["+t+"] "+msg+"<br>";logContainer.scrollTop=logContainer.scrollHeight;}
-function updateChart(){ctx.clearRect(0,0,lossChart.width,lossChart.height);ctx.beginPath();if(lossData.length>0){ctx.moveTo(0,lossChart.height-(lossData[0]/10)*lossChart.height);for(let i=0;i<lossData.length;i++){let x=(i/(lossData.length-1))*lossChart.width;let y=lossChart.height-(lossData[i]/10)*lossChart.height;ctx.lineTo(x,y);}ctx.strokeStyle="#007acc";ctx.lineWidth=2;ctx.stroke();}}
-function resetTraining(){model=null;finalModelParams={};isModelLoaded=false;lossData=[];epochData=[];progressBar.style.width="0%";logContainer.innerHTML="";ctx.clearRect(0,0,lossChart.width,lossChart.height);modelRunnerSection.style.display="none";saveModelButton.style.display="none";continueSection.style.display="none";refineSection.style.display="none";}
-async function loadDataset(file){return new Promise(resolve=>{Papa.parse(file,{header:true,dynamicTyping:true,complete:results=>{resolve(results.data);}});});}
-function prepareData(data){const samples=data.filter(row=>Object.values(row).every(v=>v!==null && v!==""));const keys=Object.keys(samples[0]);const featureKeys=keys.slice(0,-1);const labelKey=keys[keys.length-1];const xs=samples.map(r=>featureKeys.map(k=>r[k]));const ys=samples.map(r=>r[labelKey]);return {xs: tf.tensor2d(xs), ys: tf.tensor2d(ys, [ys.length,1])};}
-function createModel(inputShape, learningRate){const m=tf.sequential();m.add(tf.layers.dense({units:16, activation:'relu', inputShape:[inputShape]}));m.add(tf.layers.dense({units:1}));m.compile({optimizer:tf.train.adam(learningRate), loss:'meanSquaredError', metrics:['mse']});return m;}
-async function trainModel(m, xs, ys, epochs, earlyStop){let stopCounter=0;let bestLoss=Infinity;for(let i=1;i<=epochs;i++){const h=await m.fit(xs,ys,{epochs:1,shuffle:true});const loss=h.history.loss[0];appendLog("Epoch "+i+"/"+epochs+": Loss = "+loss.toFixed(4));lossData.push(loss);epochData.push(i);updateChart();if(loss<bestLoss){bestLoss=loss;stopCounter=0;} else {stopCounter++; if(stopCounter>=earlyStop){appendLog("Early stopping triggered."); break;} } } return bestLoss; }
-async function startTrainingFunc(){if(!datasetInput.files.length){appendLog("Please upload a dataset file.");return;} const file=datasetInput.files[0]; const data=await loadDataset(file); const prepared=prepareData(data); trainXs=prepared.xs; trainYs=prepared.ys; model=createModel(trainXs.shape[1],parseFloat(learningRateInput.value)); const loss=await trainModel(model, trainXs, trainYs, parseInt(epochsInput.value), parseInt(earlyStopInput.value)); finalModelParams = {inputDim: trainXs.shape[1]}; finalModelParams.weights = await model.save(tf.io.withSaveHandler(async(modelArtifacts)=>{return modelArtifacts;})); isModelLoaded=true; appendLog("Training completed. Final loss: "+loss.toFixed(4)); showInferenceAndAdvanced(); }
-async function continueTrainingFunc(){if(!model){appendLog("No model available.");return;} const extraEpochs = parseInt(addEpochsInput.value); const newLR = parseFloat(addLearningRateInput.value); model.compile({optimizer:tf.train.adam(newLR), loss:'meanSquaredError', metrics:['mse']}); const loss = await trainModel(model, trainXs, trainYs, extraEpochs, 1000); appendLog("Continued training completed. Loss: "+loss.toFixed(4)); }
-async function refineModelFunc(){if(!model){appendLog("No model available.");return;} model.compile({optimizer:tf.train.adam(0.0005), loss:'meanSquaredError', metrics:['mse']}); const loss = await trainModel(model, trainXs, trainYs, 5, 1000); appendLog("Refinement completed. Loss: "+loss.toFixed(4)); }
-async function saveModelFunc(){if(!model){appendLog("No model available.");return;} await model.save('localstorage://my-model'); const saveRes = await model.save(tf.io.download()); appendLog("Model saved to localStorage and as a file."); showInferenceAndAdvanced(); }
-async function loadModelFunc(){try{model = await tf.loadLayersModel('localstorage://my-model'); isModelLoaded=true; appendLog("Model loaded from localStorage."); showInferenceAndAdvanced();}catch(e){appendLog("No model in localStorage.");} }
-function showInferenceAndAdvanced(){modelRunnerSection.style.display="block";saveModelButton.style.display="block";continueSection.style.display="block";refineSection.style.display="block";}
-async function runSingleInferenceFunc(){if(!model){appendLog("No model available.");return;} const inp = modelInput.value.trim(); if(!inp){modelOutput.innerHTML="Please enter input data.";return;} const nums = inp.split(",").map(Number); const tensor = tf.tensor2d([nums]); const pred = model.predict(tensor); const val = (await pred.data())[0]; modelOutput.innerHTML = "Predicted Output: "+val.toFixed(4); }
-async function runBatchInferenceFunc(){if(!model){appendLog("No model available.");return;} const data = batchInput.value.trim(); if(!data){batchOutput.innerHTML="Please enter batch inputs.";return;} const lines = data.split("\n").filter(l=>l.trim()!==""); let resStr = "<ul>"; for(let line of lines){const nums = line.split(",").map(Number); const tensor = tf.tensor2d([nums]); const pred = model.predict(tensor); const val = (await pred.data())[0]; resStr += "<li>Input: "+line+" → Predicted Output: "+val.toFixed(4)+"</li>"; } resStr += "</ul>"; batchOutput.innerHTML = resStr; }
-resetTrainingButton.addEventListener("click", resetTraining);
-startButton.addEventListener("click", startTrainingFunc);
-continueButton.addEventListener("click", continueTrainingFunc);
-refineButton.addEventListener("click", refineModelFunc);
-runModelButton.addEventListener("click", runSingleInferenceFunc);
-runBatchButton.addEventListener("click", runBatchInferenceFunc);
-saveModelButton.addEventListener("click", saveModelFunc);
-modelFileInput.addEventListener("change", loadModelFromFile);
-loadLocalButton.addEventListener("click", loadModelFunc);
-clearLocalButton.addEventListener("click", clearCachedModel);
-</script>
+  <script>
+    let model, trainXs, trainYs;
+    let isModelLoaded = false;
+    let lossData = [], epochData = [];
+    const datasetInput = document.getElementById("dataset");
+    const modelFileInput = document.getElementById("model-file");
+    const loadLocalButton = document.getElementById("load-local");
+    const clearLocalButton = document.getElementById("clear-local");
+    const epochsInput = document.getElementById("epochs");
+    const learningRateInput = document.getElementById("learningRate");
+    const earlyStopInput = document.getElementById("earlyStopPatience");
+    const startButton = document.getElementById("start-training");
+    const saveModelButton = document.getElementById("save-model");
+    const resetTrainingButton = document.getElementById("reset-training");
+    const progressBar = document.getElementById("progress-bar");
+    const logContainer = document.getElementById("log");
+    const lossChart = document.getElementById("loss-chart");
+    const ctx = lossChart.getContext("2d");
+    const continueSection = document.getElementById("continue-training-section");
+    const addEpochsInput = document.getElementById("addEpochs");
+    const addLearningRateInput = document.getElementById("addLearningRate");
+    const continueButton = document.getElementById("continue-training");
+    const refineSection = document.getElementById("refine-section");
+    const refineButton = document.getElementById("refine-model");
+    const refineOutput = document.getElementById("refine-output");
+    const modelRunnerSection = document.getElementById("model-runner-section");
+    const modelInput = document.getElementById("model-input");
+    const runModelButton = document.getElementById("run-model");
+    const modelOutput = document.getElementById("model-output");
+    const batchInput = document.getElementById("batch-input");
+    const runBatchButton = document.getElementById("run-batch");
+    const batchOutput = document.getElementById("batch-output");
+    
+    function appendLog(msg) {
+      const t = new Date().toLocaleTimeString();
+      logContainer.innerHTML += "[" + t + "] " + msg + "<br>";
+      logContainer.scrollTop = logContainer.scrollHeight;
+    }
+    
+    function updateChart() {
+      ctx.clearRect(0, 0, lossChart.width, lossChart.height);
+      ctx.beginPath();
+      if (lossData.length > 0) {
+        const maxLoss = Math.max(...lossData);
+        ctx.moveTo(0, lossChart.height - (lossData[0] / maxLoss) * lossChart.height);
+        for (let i = 0; i < lossData.length; i++) {
+          let x = (i / (lossData.length - 1)) * lossChart.width;
+          let y = lossChart.height - (lossData[i] / maxLoss) * lossChart.height;
+          ctx.lineTo(x, y);
+        }
+        ctx.strokeStyle = "#007acc";
+        ctx.lineWidth = 2;
+        ctx.stroke();
+      }
+    }
+    
+    function resetTraining() {
+      model = null;
+      lossData = [];
+      epochData = [];
+      progressBar.style.width = "0%";
+      logContainer.innerHTML = "";
+      ctx.clearRect(0, 0, lossChart.width, lossChart.height);
+      modelRunnerSection.style.display = "none";
+      saveModelButton.style.display = "none";
+      continueSection.style.display = "none";
+      refineSection.style.display = "none";
+      isModelLoaded = false;
+    }
+    
+    async function loadDataset(file) {
+      return new Promise(resolve => {
+        Papa.parse(file, {
+          header: true,
+          dynamicTyping: true,
+          complete: results => { resolve(results.data); }
+        });
+      });
+    }
+    
+    function prepareData(data) {
+      const samples = data.filter(row => {
+        return Object.values(row).every(v => v !== null && v !== "" && !isNaN(parseFloat(v)));
+      });
+      if(samples.length === 0){
+        appendLog("No valid numeric samples found in the dataset.");
+        return null;
+      }
+      const keys = Object.keys(samples[0]);
+      const featureKeys = keys.slice(0, -1);
+      const labelKey = keys[keys.length - 1];
+      const xsArr = samples.map(r => featureKeys.map(k => parseFloat(r[k])));
+      const ysArr = samples.map(r => parseFloat(r[labelKey]));
+      return { xs: tf.tensor2d(xsArr), ys: tf.tensor2d(ysArr, [ysArr.length, 1]) };
+    }
+    
+    function createModel(inputShape, learningRate) {
+      const m = tf.sequential();
+      m.add(tf.layers.dense({ units: 16, activation: 'relu', inputShape: [inputShape] }));
+      m.add(tf.layers.dropout({ rate: 0.2 }));
+      m.add(tf.layers.dense({ units: 1 }));
+      m.compile({ optimizer: tf.train.adam(learningRate), loss: 'meanSquaredError' });
+      return m;
+    }
+    
+    async function trainModel(m, xs, ys, epochs, patience) {
+      let bestLoss = Infinity, noImprove = 0;
+      for (let epoch = 1; epoch <= epochs; epoch++) {
+        const history = await m.fit(xs, ys, { epochs: 1, shuffle: true });
+        const loss = history.history.loss[0];
+        appendLog("Epoch " + epoch + "/" + epochs + ": Loss = " + loss.toFixed(4));
+        lossData.push(loss);
+        epochData.push(epoch);
+        updateChart();
+        if (loss < bestLoss) {
+          bestLoss = loss;
+          noImprove = 0;
+        } else {
+          noImprove++;
+          if (noImprove >= patience) {
+            appendLog("Early stopping triggered at epoch " + epoch);
+            break;
+          }
+        }
+      }
+      return bestLoss;
+    }
+    
+    async function startTrainingFunc() {
+      if (!datasetInput.files.length) {
+        appendLog("Please upload a dataset file.");
+        return;
+      }
+      const file = datasetInput.files[0];
+      const data = await loadDataset(file);
+      const prepared = prepareData(data);
+      if (!prepared) return;
+      trainXs = prepared.xs;
+      trainYs = prepared.ys;
+      model = createModel(trainXs.shape[1], parseFloat(learningRateInput.value));
+      const loss = await trainModel(model, trainXs, trainYs, parseInt(epochsInput.value), parseInt(earlyStopInput.value));
+      isModelLoaded = true;
+      appendLog("Training completed. Final loss: " + loss.toFixed(4));
+      showInferenceAndAdvanced();
+    }
+    
+    async function continueTrainingFunc() {
+      if (!model) {
+        appendLog("No model available.");
+        return;
+      }
+      const extraEpochs = parseInt(addEpochsInput.value);
+      const newLR = parseFloat(addLearningRateInput.value);
+      model.compile({ optimizer: tf.train.adam(newLR), loss: 'meanSquaredError' });
+      const loss = await trainModel(model, trainXs, trainYs, extraEpochs, 1000);
+      appendLog("Continued training completed. Loss: " + loss.toFixed(4));
+    }
+    
+    async function refineModelFunc() {
+      if (!model) {
+        appendLog("No model available.");
+        return;
+      }
+      model.compile({ optimizer: tf.train.adam(0.0005), loss: 'meanSquaredError' });
+      const loss = await trainModel(model, trainXs, trainYs, 5, 1000);
+      appendLog("Refinement completed. Loss: " + loss.toFixed(4));
+    }
+    
+    async function saveModelFunc() {
+      if (!model) {
+        appendLog("No model available.");
+        return;
+      }
+      await model.save('localstorage://my-model');
+      appendLog("Model saved to localStorage.");
+      showInferenceAndAdvanced();
+    }
+    
+    async function loadModelFromFile(e) {
+      const files = e.target.files;
+      if (!files || files.length === 0) return;
+      try {
+        model = await tf.loadLayersModel(tf.io.browserFiles(files));
+        isModelLoaded = true;
+        appendLog("Model loaded from file.");
+        showInferenceAndAdvanced();
+      } catch (err) {
+        appendLog("Error loading model: " + err);
+      }
+    }
+    
+    async function loadModelFunc() {
+      try {
+        model = await tf.loadLayersModel('localstorage://my-model');
+        isModelLoaded = true;
+        appendLog("Model loaded from localStorage.");
+        showInferenceAndAdvanced();
+      } catch (e) {
+        appendLog("No model in localStorage.");
+      }
+    }
+    
+    function showInferenceAndAdvanced() {
+      modelRunnerSection.style.display = "block";
+      saveModelButton.style.display = "block";
+      continueSection.style.display = "block";
+      refineSection.style.display = "block";
+    }
+    
+    async function runSingleInferenceFunc() {
+      if (!model) {
+        appendLog("No model available.");
+        return;
+      }
+      const inp = modelInput.value.trim();
+      if (!inp) {
+        modelOutput.innerHTML = "Please enter input data.";
+        return;
+      }
+      const nums = inp.split(",").map(v => parseFloat(v));
+      const tensor = tf.tensor2d([nums]);
+      const pred = model.predict(tensor);
+      const val = (await pred.data())[0];
+      modelOutput.innerHTML = "Predicted Output: " + val.toFixed(4);
+    }
+    
+    async function runBatchInferenceFunc() {
+      if (!model) {
+        appendLog("No model available.");
+        return;
+      }
+      const data = batchInput.value.trim();
+      if (!data) {
+        batchOutput.innerHTML = "Please enter batch inputs.";
+        return;
+      }
+      const lines = data.split("\n").filter(l => l.trim() !== "");
+      let resStr = "<ul>";
+      for (let line of lines) {
+        const nums = line.split(",").map(v => parseFloat(v));
+        const tensor = tf.tensor2d([nums]);
+        const pred = model.predict(tensor);
+        const val = (await pred.data())[0];
+        resStr += "<li>Input: " + line + " → Predicted Output: " + val.toFixed(4) + "</li>";
+      }
+      resStr += "</ul>";
+      batchOutput.innerHTML = resStr;
+    }
+    
+    resetTrainingButton.addEventListener("click", resetTraining);
+    startButton.addEventListener("click", startTrainingFunc);
+    continueButton.addEventListener("click", continueTrainingFunc);
+    refineButton.addEventListener("click", refineModelFunc);
+    runModelButton.addEventListener("click", runSingleInferenceFunc);
+    runBatchButton.addEventListener("click", runBatchInferenceFunc);
+    saveModelButton.addEventListener("click", saveModelFunc);
+    modelFileInput.addEventListener("change", loadModelFromFile);
+    loadLocalButton.addEventListener("click", loadModelFunc);
+    clearLocalButton.addEventListener("click", function() {
+      localStorage.removeItem("my-model");
+      appendLog("Local model cache cleared.");
+    });
+  </script>
 </body>
 </html>
