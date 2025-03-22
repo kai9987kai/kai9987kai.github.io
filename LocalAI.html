@@ -2,8 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Enhanced AI Interface</title>
+  <title>Enhanced AI Interface (Debug Logging)</title>
   <style>
     #app {
       max-width: 800px;
@@ -57,354 +56,463 @@
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
-  <div id="app">
-    <h1>Enhanced AI Interface</h1>
-    <!-- Language Model Section -->
-    <div id="language-model-section" class="section">
-      <h2>Language Model</h2>
-      <textarea id="text-input" placeholder="Enter text..."></textarea>
-      <input type="file" id="image-input" accept="image/*">
-      <div>
-        <button id="pretrain-btn">Pre-train</button>
-        <button id="finetune-btn">Fine-tune</button>
-        <button id="generate-btn">Generate Response</button>
-        <button id="save-language-btn">Save Language Model</button>
-        <button id="load-language-btn">Load Language Model</button>
-      </div>
-      <div id="response"></div>
+<div id="app">
+  <h1>Enhanced AI Interface (Debug Logging)</h1>
+
+  <!-- Language Model Section -->
+  <div id="language-model-section" class="section">
+    <h2>Language Model</h2>
+    <textarea id="text-input" placeholder="Enter text..."></textarea>
+    <input type="file" id="image-input" accept="image/*">
+    <div>
+      <button id="pretrain-btn">Pre-train</button>
+      <button id="finetune-btn">Fine-tune</button>
+      <button id="generate-btn">Generate Response</button>
+      <button id="save-language-btn">Save Language Model</button>
+      <button id="load-language-btn">Load Language Model</button>
     </div>
-    <!-- Tabular Data Training Section -->
-    <div id="tabular-section" class="section">
-      <h2>Tabular Data Training</h2>
-      <input type="file" id="csv-input" accept=".csv">
-      <select id="task-type">
-        <option value="classification">Classification</option>
-        <option value="regression">Regression</option>
-      </select>
-      <input type="number" id="epochs" value="10" min="1" placeholder="Epochs">
-      <input type="number" id="batch-size" value="32" min="1" placeholder="Batch Size">
-      <input type="number" id="learning-rate" value="0.001" step="0.0001" placeholder="Learning Rate">
-      <input type="number" id="val-split" value="0.2" step="0.1" min="0" max="1" placeholder="Validation Split">
-      <div>
-        <button id="train-tabular-btn">Train Tabular Model</button>
-        <button id="predict-tabular-btn">Predict</button>
-        <button id="save-tabular-btn">Save Tabular Model</button>
-        <button id="load-tabular-btn">Load Tabular Model</button>
-      </div>
-      <input type="text" id="predict-input" placeholder="Enter features (comma-separated)">
-      <div id="predict-output"></div>
-      <canvas id="loss-chart" width="400" height="200"></canvas>
-      <div id="progress-container">
-        <div id="progress-bar"></div>
-      </div>
+    <div id="response"></div>
+  </div>
+
+  <!-- Tabular Data Training Section -->
+  <div id="tabular-section" class="section">
+    <h2>Tabular Data Training</h2>
+    <input type="file" id="csv-input" accept=".csv">
+    <select id="task-type">
+      <option value="classification">Classification</option>
+      <option value="regression">Regression</option>
+    </select>
+    <input type="number" id="epochs" value="10" min="1" placeholder="Epochs">
+    <input type="number" id="batch-size" value="32" min="1" placeholder="Batch Size">
+    <input type="number" id="learning-rate" value="0.001" step="0.0001" placeholder="Learning Rate">
+    <input type="number" id="val-split" value="0.2" step="0.1" min="0" max="1" placeholder="Validation Split">
+    <div>
+      <button id="train-tabular-btn">Train Tabular Model</button>
+      <button id="predict-tabular-btn">Predict</button>
+      <button id="save-tabular-btn">Save Tabular Model</button>
+      <button id="load-tabular-btn">Load Tabular Model</button>
     </div>
-    <!-- Logs Section -->
-    <div id="logs-section" class="section">
-      <h2>Logs</h2>
-      <div id="logs"></div>
+    <input type="text" id="predict-input" placeholder="Enter features (comma-separated)">
+    <div id="predict-output"></div>
+    <canvas id="loss-chart" width="400" height="200"></canvas>
+    <div id="progress-container">
+      <div id="progress-bar"></div>
     </div>
   </div>
-  <script>
-    // Make appendLog globally available
-    window.appendLog = function(msg) {
-      const logContainer = document.getElementById("logs");
-      const t = new Date().toLocaleTimeString();
-      logContainer.innerHTML += "[" + t + "] " + msg + "<br>";
-      logContainer.scrollTop = logContainer.scrollHeight;
-    };
-    
-    (async function(){
-      await tf.ready();
-      // ---------- Language Model Section ----------
-      class MoELayer extends tf.layers.Layer {
-        static className = 'MoELayer';
-        constructor(numExperts, inputDim, outputDim, config) {
-          super(config);
-          this.numExperts = numExperts;
-          this.inputDim = inputDim;
-          this.outputDim = outputDim;
-        }
-        build(inputShape) {
-          this.experts = [];
-          for (let i = 0; i < this.numExperts; i++) {
-            this.experts.push(this.addWeight(`expert_${i}`, [this.inputDim, this.outputDim], 'float32', tf.initializers.glorotNormal()));
-          }
-          this.gate = this.addWeight('gate', [this.inputDim, this.numExperts], 'float32', tf.initializers.glorotNormal());
-          super.build(inputShape);
-        }
-        call(inputs) {
-          const gateScores = tf.matMul(inputs, this.gate.read());
-          const gateProbs = tf.softmax(gateScores, -1);
-          const expertOutputs = this.experts.map(expert => tf.matMul(inputs, expert.read()));
-          const stackedExperts = tf.stack(expertOutputs, 1);
-          const weightedOutputs = tf.mul(stackedExperts, gateProbs.expandDims(2));
-          return tf.sum(weightedOutputs, 1);
-        }
-        getConfig() {
-          const baseConfig = super.getConfig();
-          return Object.assign(baseConfig, {
-            numExperts: this.numExperts,
-            inputDim: this.inputDim,
-            outputDim: this.outputDim
-          });
-        }
+
+  <!-- Logs Section -->
+  <div id="logs-section" class="section">
+    <h2>Logs</h2>
+    <div id="logs"></div>
+  </div>
+</div>
+
+<script>
+  // Global references
+  if (typeof window.languageModel === "undefined") window.languageModel = null;
+  if (typeof window.tabularModel === "undefined") window.tabularModel = null;
+
+  window.appendLog = function(msg) {
+    const logContainer = document.getElementById("logs");
+    const t = new Date().toLocaleTimeString();
+    logContainer.innerHTML += "[" + t + "] " + msg + "<br>";
+    logContainer.scrollTop = logContainer.scrollHeight;
+  };
+
+  (async function(){
+    await tf.ready();
+
+    // ========== Language Model with MoE ==========
+    class MoELayer extends tf.layers.Layer {
+      static className = 'MoELayer';
+      constructor(numExperts, inputDim, outputDim, config) {
+        super(config);
+        this.numExperts = numExperts;
+        this.inputDim = inputDim;
+        this.outputDim = outputDim;
       }
-      tf.serialization.registerClass(MoELayer);
-      
-      const maxTextLength = 10;
-      const embeddingDim = 16;
-      const imageFeatureDim = 1280;
-      const combinedDim = 128;
-      const vocabSize = 100;
-      const numExperts = 4;
-      const vocab = Array.from({ length: vocabSize }, (_, i) => `word${i}`);
-      function tokenize(text) {
-        const words = text.toLowerCase().split(/\s+/);
-        return words.map(word => vocab.indexOf(word) !== -1 ? vocab.indexOf(word) : 0).slice(0, maxTextLength);
+      build(inputShape) {
+        this.experts = [];
+        for (let i = 0; i < this.numExperts; i++) {
+          this.experts.push(this.addWeight(`expert_${i}`, [this.inputDim, this.outputDim], 'float32', tf.initializers.glorotNormal()));
+        }
+        this.gate = this.addWeight('gate', [this.inputDim, this.numExperts], 'float32', tf.initializers.glorotNormal());
+        super.build(inputShape);
       }
-      function padSequence(seq) {
-        const padded = new Array(maxTextLength).fill(0);
-        seq.forEach((val, idx) => { if (idx < maxTextLength) padded[idx] = val; });
-        return padded;
+      call(inputs) {
+        const gateScores = tf.matMul(inputs, this.gate.read());
+        const gateProbs = tf.softmax(gateScores, -1);
+        const expertOutputs = this.experts.map(expert => tf.matMul(inputs, expert.read()));
+        const stackedExperts = tf.stack(expertOutputs, 1);
+        const weightedOutputs = tf.mul(stackedExperts, gateProbs.expandDims(2));
+        return tf.sum(weightedOutputs, 1);
       }
-      async function processImage(file) {
-        const imgData = await new Promise(resolve => {
-          const reader = new FileReader();
-          reader.onload = e => resolve(e.target.result);
-          reader.readAsDataURL(file);
+      getConfig() {
+        const baseConfig = super.getConfig();
+        return Object.assign(baseConfig, {
+          numExperts: this.numExperts,
+          inputDim: this.inputDim,
+          outputDim: this.outputDim
         });
-        const img = document.createElement('img');
-        img.src = imgData;
-        await new Promise(resolve => { img.onload = resolve; });
-        const tensor = tf.browser.fromPixels(img).resizeNearestNeighbor([224, 224]).toFloat().expandDims().div(255.0);
-        const mobilenet = await tf.loadLayersModel('https://storage.googleapis.com/tfjs-models/tfjs/mobilenet_v2_1.0_224/model.json');
-        return mobilenet.predict(tensor).flatten();
       }
-      let languageModel;
-      function buildLanguageModel() {
-        const textInput = tf.input({ shape: [maxTextLength] });
-        const imageInput = tf.input({ shape: [imageFeatureDim] });
-        const embeddingLayer = tf.layers.embedding({ inputDim: vocabSize, outputDim: embeddingDim });
-        const textEmbedding = embeddingLayer.apply(textInput);
-        const flattenedText = tf.layers.flatten().apply(textEmbedding);
-        const textProj = tf.layers.dense({ units: combinedDim }).apply(flattenedText);
-        const imageProj = tf.layers.dense({ units: combinedDim }).apply(imageInput);
-        const combined = tf.layers.concatenate().apply([textProj, imageProj]);
-        const fused = tf.layers.dense({ units: combinedDim, activation: 'relu' }).apply(combined);
-        const moeOutput = new MoELayer(numExperts, combinedDim, combinedDim).apply(fused);
-        const logits = tf.layers.dense({ units: vocabSize, activation: 'softmax' }).apply(moeOutput);
-        languageModel = tf.model({ inputs: [textInput, imageInput], outputs: logits });
-        languageModel.compile({ optimizer: 'adam', loss: 'sparseCategoricalCrossentropy' });
+    }
+    tf.serialization.registerClass(MoELayer);
+
+    const maxTextLength = 10;
+    const embeddingDim = 16;
+    const imageFeatureDim = 1280;
+    const combinedDim = 128;
+    const vocabSize = 100;
+    const numExperts = 4;
+    const vocab = Array.from({ length: vocabSize }, (_, i) => `word${i}`);
+
+    function tokenize(text) {
+      const words = text.toLowerCase().split(/\s+/);
+      return words.map(word => vocab.indexOf(word) !== -1 ? vocab.indexOf(word) : 0).slice(0, maxTextLength);
+    }
+
+    function padSequence(seq) {
+      const padded = new Array(maxTextLength).fill(0);
+      seq.forEach((val, idx) => { if (idx < maxTextLength) padded[idx] = val; });
+      return padded;
+    }
+
+    async function processImage(file) {
+      const imgData = await new Promise(resolve => {
+        const reader = new FileReader();
+        reader.onload = e => resolve(e.target.result);
+        reader.readAsDataURL(file);
+      });
+      const img = document.createElement('img');
+      img.src = imgData;
+      await new Promise(resolve => { img.onload = resolve; });
+      const tensor = tf.browser.fromPixels(img).resizeNearestNeighbor([224, 224]).toFloat().expandDims().div(255.0);
+      const mobilenet = await tf.loadLayersModel('https://storage.googleapis.com/tfjs-models/tfjs/mobilenet_v2_1.0_224/model.json');
+      return mobilenet.predict(tensor).flatten();
+    }
+
+    function buildLanguageModel() {
+      const textInput = tf.input({ shape: [maxTextLength] });
+      const imageInput = tf.input({ shape: [imageFeatureDim] });
+      const embeddingLayer = tf.layers.embedding({ inputDim: vocabSize, outputDim: embeddingDim });
+      const textEmbedding = embeddingLayer.apply(textInput);
+      const flattenedText = tf.layers.flatten().apply(textEmbedding);
+      const textProj = tf.layers.dense({ units: combinedDim }).apply(flattenedText);
+      const imageProj = tf.layers.dense({ units: combinedDim }).apply(imageInput);
+      const combined = tf.layers.concatenate().apply([textProj, imageProj]);
+      const fused = tf.layers.dense({ units: combinedDim, activation: 'relu' }).apply(combined);
+      const moeOutput = new MoELayer(numExperts, combinedDim, combinedDim).apply(fused);
+      const logits = tf.layers.dense({ units: vocabSize, activation: 'softmax' }).apply(moeOutput);
+      window.languageModel = tf.model({ inputs: [textInput, imageInput], outputs: logits });
+      window.languageModel.compile({ optimizer: 'adam', loss: 'sparseCategoricalCrossentropy' });
+    }
+    buildLanguageModel();
+
+    async function pretrainLanguageModel() {
+      const imageFile = document.getElementById('image-input').files[0];
+      if (!imageFile) { alert("Please upload an image."); return; }
+      const tokenized = padSequence(tokenize("hello world"));
+      const textTensor = tf.tensor2d([tokenized]);
+      const imageTensor = (await processImage(imageFile)).reshape([1, imageFeatureDim]);
+      const target = tf.tensor1d([0], 'int32');
+      await window.languageModel.fit([textTensor, imageTensor], target, { epochs: 1 });
+      document.getElementById('response').innerText = "Pre-training completed.";
+    }
+
+    async function finetuneLanguageModel() {
+      const text = document.getElementById('text-input').value;
+      const imageFile = document.getElementById('image-input').files[0];
+      if (!text || !imageFile) { alert("Please provide both text and image for fine-tuning."); return; }
+      const tokenized = padSequence(tokenize(text));
+      const textTensor = tf.tensor2d([tokenized]);
+      const imageTensor = (await processImage(imageFile)).reshape([1, imageFeatureDim]);
+      const target = tf.tensor1d([0], 'int32');
+      await window.languageModel.fit([textTensor, imageTensor], target, { epochs: 1 });
+      document.getElementById('response').innerText = "Fine-tuning completed.";
+    }
+
+    async function generateResponse() {
+      const text = document.getElementById('text-input').value;
+      const imageFile = document.getElementById('image-input').files[0];
+      if (!text || !imageFile) { alert("Please provide both text and image inputs."); return; }
+      const tokenized = padSequence(tokenize(text));
+      const textTensor = tf.tensor2d([tokenized]);
+      const imageTensor = (await processImage(imageFile)).reshape([1, imageFeatureDim]);
+      const prediction = window.languageModel.predict([textTensor, imageTensor]);
+      const classIdx = tf.argMax(prediction, 1).dataSync()[0];
+      document.getElementById('response').innerText = `Predicted Class: ${classIdx}`;
+    }
+
+    async function saveLanguageModel() {
+      await window.languageModel.save('localstorage://language-model');
+      appendLog("Language model saved.");
+    }
+
+    async function loadLanguageModel() {
+      try {
+        window.languageModel = await tf.loadLayersModel('localstorage://language-model');
+        appendLog("Language model loaded.");
+      } catch (error) {
+        appendLog("Error loading language model: " + error);
       }
-      buildLanguageModel();
-      
-      async function pretrainLanguageModel() {
-        const imageFile = document.getElementById('image-input').files[0];
-        if (!imageFile) { alert("Please upload an image."); return; }
-        const tokenized = padSequence(tokenize("hello world"));
-        const textTensor = tf.tensor2d([tokenized]);
-        const imageTensor = (await processImage(imageFile)).reshape([1, imageFeatureDim]);
-        const target = tf.tensor1d([0], 'int32');
-        await languageModel.fit([textTensor, imageTensor], target, { epochs: 1 });
-        document.getElementById('response').innerText = "Pre-training completed.";
-      }
-      
-      async function finetuneLanguageModel() {
-        const text = document.getElementById('text-input').value;
-        const imageFile = document.getElementById('image-input').files[0];
-        if (!text || !imageFile) { alert("Please provide both text and image for fine-tuning."); return; }
-        const tokenized = padSequence(tokenize(text));
-        const textTensor = tf.tensor2d([tokenized]);
-        const imageTensor = (await processImage(imageFile)).reshape([1, imageFeatureDim]);
-        const target = tf.tensor1d([0], 'int32');
-        await languageModel.fit([textTensor, imageTensor], target, { epochs: 1 });
-        document.getElementById('response').innerText = "Fine-tuning completed.";
-      }
-      
-      async function generateResponse() {
-        const text = document.getElementById('text-input').value;
-        const imageFile = document.getElementById('image-input').files[0];
-        if (!text || !imageFile) { alert("Please provide both text and image inputs."); return; }
-        const tokenized = padSequence(tokenize(text));
-        const textTensor = tf.tensor2d([tokenized]);
-        const imageTensor = (await processImage(imageFile)).reshape([1, imageFeatureDim]);
-        const prediction = languageModel.predict([textTensor, imageTensor]);
-        const classIdx = tf.argMax(prediction, 1).dataSync()[0];
-        document.getElementById('response').innerText = `Predicted Class: ${classIdx}`;
-      }
-      
-      async function saveLanguageModel() {
-        await languageModel.save('localstorage://language-model');
-        document.getElementById('logs').innerText += "Language model saved.\n";
-      }
-      
-      async function loadLanguageModel() {
-        try {
-          languageModel = await tf.loadLayersModel('localstorage://language-model');
-          document.getElementById('logs').innerText += "Language model loaded.\n";
-        } catch (error) {
-          document.getElementById('logs').innerText += "Error loading language model: " + error + "\n";
-        }
-      }
-      
-      document.getElementById('pretrain-btn').addEventListener('click', pretrainLanguageModel);
-      document.getElementById('finetune-btn').addEventListener('click', finetuneLanguageModel);
-      document.getElementById('generate-btn').addEventListener('click', generateResponse);
-      document.getElementById('save-language-btn').addEventListener('click', saveLanguageModel);
-      document.getElementById('load-language-btn').addEventListener('click', loadLanguageModel);
-      
-      // ---------- Tabular Data Training Section ----------
-      let tabularModel;
-      const lossChartCtx = document.getElementById('loss-chart').getContext('2d');
-      const tabLossChart = new Chart(lossChartCtx, {
-        type: 'line',
-        data: { labels: [], datasets: [
+    }
+
+    document.getElementById('pretrain-btn').addEventListener('click', pretrainLanguageModel);
+    document.getElementById('finetune-btn').addEventListener('click', finetuneLanguageModel);
+    document.getElementById('generate-btn').addEventListener('click', generateResponse);
+    document.getElementById('save-language-btn').addEventListener('click', saveLanguageModel);
+    document.getElementById('load-language-btn').addEventListener('click', loadLanguageModel);
+
+    // ---------------- Tabular Data Section ----------------
+    if (typeof window.minFeatures === "undefined") window.minFeatures = null;
+    if (typeof window.maxFeatures === "undefined") window.maxFeatures = null;
+    if (typeof window.numericFeatureCount === "undefined") window.numericFeatureCount = 0;
+
+    const lossChartCtx = document.getElementById('loss-chart').getContext('2d');
+    const tabLossChart = new Chart(lossChartCtx, {
+      type: 'line',
+      data: {
+        labels: [],
+        datasets: [
           { label: 'Training Loss', data: [], borderColor: 'blue', fill: false },
           { label: 'Validation Loss', data: [], borderColor: 'red', fill: false }
-        ]},
-        options: { scales: { y: { beginAtZero: true } } }
-      });
-      
-      async function processCSV(file) {
-        return new Promise((resolve, reject) => {
-          Papa.parse(file, {
-            header: true,
-            dynamicTyping: true,
-            skipEmptyLines: true,
-            complete: (results) => {
-              const data = results.data;
-              if (data.length === 0) reject("CSV file is empty");
-              const columns = Object.keys(data[0]);
-              if (columns.length < 2) { reject("CSV must have at least two columns."); return; }
-              resolve(data);
-            },
-            error: reject
-          });
-        });
-      }
-      
-      function prepareData(data) {
-        let samples = [];
-        data.forEach(row => {
-          const header = Object.keys(row);
-          if (header.length < 2) return;
-          const features = header.slice(0, -1).map(col => {
-            let v = row[col];
-            if (v === undefined || v === null) return NaN;
-            return Number(v.toString().trim());
-          });
-          if (features.some(x => isNaN(x))) return;
-          const label = row[header[header.length - 1]].toString().trim();
-          samples.push({ features, label });
-        });
-        if (samples.length === 0) {
-          appendLog("No valid numeric samples found in the dataset.");
-          return null;
-        }
-        const xsArr = samples.map(s => s.features);
-        const allLabelsNumeric = samples.every(s => !isNaN(Number(s.label)));
-        const ysArr = allLabelsNumeric ? samples.map(s => Number(s.label)) : samples.map(s => s.label);
-        return { samples, xs: tf.tensor2d(xsArr), ys: ysArr, allLabelsNumeric };
-      }
-      
-      let minFeatures, maxFeatures, normalizedFeatures, labelTensor;
-      async function trainTabularModel() {
-        const file = document.getElementById('csv-input').files[0];
-        if (!file) { alert("Please upload a CSV file"); return; }
-        try {
-          const rawData = await processCSV(file);
-          const data = prepareData(rawData);
-          if (!data) return;
-          const taskType = document.getElementById('task-type').value;
-          const inputShape = data.xs.shape[1];
-          minFeatures = data.xs.min(0);
-          maxFeatures = data.xs.max(0);
-          normalizedFeatures = data.xs.sub(minFeatures).div(maxFeatures.sub(minFeatures).add(1e-8));
-          let labels;
-          if (taskType === 'classification') {
-            const uniqueLabels = Array.from(new Set(data.ys));
-            const labelMap = {};
-            uniqueLabels.forEach((label, idx) => { labelMap[label] = idx; });
-            labels = data.ys.map(l => labelMap[l]);
-            labelTensor = tf.tensor1d(labels, 'int32');
-          } else {
-            labels = data.ys.map(l => Number(l));
-            labelTensor = tf.tensor1d(labels);
-          }
-          tabularModel = createTabularModel(inputShape, taskType, taskType==='classification'? new Set(labels).size : null);
-          const epochs = parseInt(document.getElementById('epochs').value);
-          const batchSize = parseInt(document.getElementById('batch-size').value);
-          const learningRate = parseFloat(document.getElementById('learning-rate').value);
-          const valSplit = parseFloat(document.getElementById('val-split').value);
-          tabLossChart.data.labels = [];
-          tabLossChart.data.datasets[0].data = [];
-          tabLossChart.data.datasets[1].data = [];
-          await tabularModel.fit(normalizedFeatures, labelTensor, {
-            epochs,
-            batchSize,
-            validationSplit: valSplit,
-            callbacks: {
-              onEpochEnd: (epoch, logs) => {
-                tabLossChart.data.labels.push(epoch + 1);
-                tabLossChart.data.datasets[0].data.push(logs.loss);
-                tabLossChart.data.datasets[1].data.push(logs.val_loss);
-                tabLossChart.update();
-                document.getElementById('logs').innerText += `Epoch ${epoch + 1}: Loss = ${logs.loss.toFixed(4)}, Val Loss = ${logs.val_loss.toFixed(4)}\n`;
-              }
+        ]
+      },
+      options: { scales: { y: { beginAtZero: true } } }
+    });
+
+    async function parseCSV(file) {
+      return new Promise((resolve, reject) => {
+        Papa.parse(file, {
+          header: true,
+          dynamicTyping: true,
+          skipEmptyLines: true,
+          complete: (results) => {
+            if (!results.data || !results.data.length) {
+              reject("CSV file is empty or invalid.");
+            } else {
+              resolve(results.data);
             }
-          });
-          document.getElementById('logs').innerText += `Tabular model training completed.\n`;
-        } catch (error) {
-          document.getElementById('logs').innerText += `Error: ${error}\n`;
+          },
+          error: (err) => {
+            reject(err);
+          }
+        });
+      });
+    }
+
+    function detectColumnTypes(rows, columns) {
+      const colTypes = {};
+      columns.forEach(col => colTypes[col] = "numeric");
+      rows.forEach((row, idx) => {
+        columns.forEach(col => {
+          const val = row[col];
+          if (val === undefined || val === null) return;
+          if (typeof val !== "number" || isNaN(val)) {
+            colTypes[col] = "string";
+          }
+        });
+      });
+      return colTypes;
+    }
+
+    function oneHotEncodeColumn(rows, col) {
+      const uniqueVals = Array.from(new Set(rows.map(r => r[col]).filter(v => v!==undefined && v!==null)));
+      const map = {};
+      uniqueVals.forEach((val, idx) => map[val] = idx);
+      return { uniqueVals, map };
+    }
+
+    function buildFeatureMatrix(rows, columns, colTypes, labelCol, taskType) {
+      const encoders = {};
+      columns.forEach(col => {
+        if (colTypes[col] === "string") {
+          encoders[col] = oneHotEncodeColumn(rows, col);
         }
+      });
+      let labelMap = null;
+      if (taskType === "classification") {
+        const uniqueLabels = Array.from(new Set(rows.map(r => r[labelCol]).filter(v => v!==undefined && v!==null)));
+        labelMap = {};
+        uniqueLabels.forEach((l, i) => { labelMap[l.toString()] = i; });
       }
-      
-      async function predictTabular() {
-        if (!tabularModel) { alert("Please train or load a model first"); return; }
-        const inputStr = document.getElementById('predict-input').value;
-        const featureValues = inputStr.split(',').map(v => parseFloat(v));
-        if (featureValues.length !== tabularModel.inputShape[1]) {
-          alert("Input features do not match model input shape");
+      const finalFeatures = [];
+      const finalLabels = [];
+      let skipCount = 0;
+      for (let i=0; i<rows.length; i++) {
+        const row = rows[i];
+        if (row[labelCol] === undefined || row[labelCol] === null) {
+          appendLog(`Skipping row ${i} - missing label`);
+          skipCount++;
+          continue;
+        }
+        let featureVector = [];
+        let skipRow = false;
+        columns.forEach(col => {
+          const val = row[col];
+          if (colTypes[col] === "numeric") {
+            if (typeof val !== "number" || isNaN(val)) {
+              appendLog(`Skipping row ${i} - numeric parse fail on col "${col}"`);
+              skipRow = true;
+            } else {
+              featureVector.push(val);
+            }
+          } else {
+            // one-hot
+            const idx = encoders[col].map[val];
+            const arr = new Array(encoders[col].uniqueVals.length).fill(0);
+            if (idx !== undefined) arr[idx] = 1;
+            featureVector = featureVector.concat(arr);
+          }
+        });
+        if (skipRow) { skipCount++; continue; }
+        let labelVal;
+        if (taskType === "classification") {
+          labelVal = labelMap[row[labelCol].toString()];
+          if (labelVal === undefined) {
+            appendLog(`Skipping row ${i} - unknown label value "${row[labelCol]}"`);
+            skipCount++;
+            continue;
+          }
+        } else {
+          let numericVal = Number(row[labelCol]);
+          if (isNaN(numericVal)) {
+            appendLog(`Skipping row ${i} - label parse fail on regression`);
+            skipCount++;
+            continue;
+          }
+          labelVal = numericVal;
+        }
+        finalFeatures.push(featureVector);
+        finalLabels.push(labelVal);
+      }
+      appendLog(`Skipped ${skipCount} rows. Using ${finalFeatures.length} valid rows.`);
+      return { finalFeatures, finalLabels, encoders, labelMap };
+    }
+
+    function createTabularModel(inputDim, taskType, labelCount) {
+      const m = tf.sequential();
+      m.add(tf.layers.dense({ units: 64, activation: 'relu', inputShape: [inputDim] }));
+      m.add(tf.layers.dense({ units: 32, activation: 'relu' }));
+      if (taskType === 'classification') {
+        m.add(tf.layers.dense({ units: labelCount, activation: 'softmax' }));
+        m.compile({ optimizer: 'adam', loss: 'sparseCategoricalCrossentropy', metrics: ['accuracy'] });
+      } else {
+        m.add(tf.layers.dense({ units: 1 }));
+        m.compile({ optimizer: 'adam', loss: 'meanSquaredError' });
+      }
+      return m;
+    }
+
+    window.minFeatures = null;
+    window.maxFeatures = null;
+    window.numericFeatureCount = 0;
+
+    async function trainTabularModel() {
+      const file = document.getElementById('csv-input').files[0];
+      if (!file) { alert("Please upload a CSV file"); return; }
+      try {
+        const rows = await parseCSV(file);
+        if (!rows.length) {
+          appendLog("No data in CSV");
           return;
         }
-        const inputTensor = tf.tensor2d([featureValues]);
-        const normalizedInput = inputTensor.sub(minFeatures).div(maxFeatures.sub(minFeatures).add(1e-8));
-        const prediction = tabularModel.predict(normalizedInput);
+        const columns = Object.keys(rows[0]);
+        if (columns.length < 2) {
+          appendLog("CSV must have at least 2 columns (features + label).");
+          return;
+        }
+        const labelCol = columns[columns.length - 1];
+        const featureCols = columns.slice(0, -1);
         const taskType = document.getElementById('task-type').value;
-        let output;
-        if (taskType === 'classification') {
-          const classIndex = prediction.argMax(-1).dataSync()[0];
-          output = `Predicted class: ${classIndex}`;
+        const colTypes = detectColumnTypes(rows, featureCols);
+        const { finalFeatures, finalLabels, encoders, labelMap } = buildFeatureMatrix(rows, featureCols, colTypes, labelCol, taskType);
+        if (!finalFeatures.length) {
+          appendLog("No valid data in CSV after processing. All rows invalid?");
+          return;
+        }
+        const featureTensor = tf.tensor2d(finalFeatures);
+        window.minFeatures = featureTensor.min(0);
+        window.maxFeatures = featureTensor.max(0);
+        const normalizedFeatures = featureTensor.sub(window.minFeatures).div(window.maxFeatures.sub(window.minFeatures).add(1e-8));
+        let labelTensor;
+        if (taskType === "classification") {
+          labelTensor = tf.tensor1d(finalLabels, 'int32');
         } else {
-          const value = prediction.dataSync()[0];
-          output = `Predicted value: ${value.toFixed(4)}`;
+          labelTensor = tf.tensor1d(finalLabels);
         }
-        document.getElementById('predict-output').innerText = output;
+        window.numericFeatureCount = normalizedFeatures.shape[1];
+        const labelCount = (taskType === 'classification') ? (new Set(finalLabels)).size : null;
+        window.tabularModel = createTabularModel(window.numericFeatureCount, taskType, labelCount);
+        const epochs = parseInt(document.getElementById('epochs').value);
+        const batchSize = parseInt(document.getElementById('batch-size').value);
+        const learningRate = parseFloat(document.getElementById('learning-rate').value);
+        const valSplit = parseFloat(document.getElementById('val-split').value);
+        await window.tabularModel.fit(normalizedFeatures, labelTensor, {
+          epochs,
+          batchSize,
+          validationSplit: valSplit,
+          callbacks: {
+            onEpochEnd: (epoch, logs) => {
+              appendLog(`Epoch ${epoch + 1}: Loss=${logs.loss.toFixed(4)}, ValLoss=${logs.val_loss.toFixed(4)}`);
+            }
+          }
+        });
+        appendLog("Tabular model training completed.");
+      } catch (err) {
+        appendLog(`Error: ${err}`);
       }
-      
-      async function saveTabularModel() {
-        if (!tabularModel) { alert("No model to save"); return; }
-        await tabularModel.save('localstorage://tabular-model');
-        document.getElementById('logs').innerText += "Tabular model saved.\n";
+    }
+
+    async function predictTabular() {
+      if (!window.tabularModel) { alert("Please train or load a model first"); return; }
+      const inputStr = document.getElementById('predict-input').value.trim();
+      if (!inputStr) return;
+      const parts = inputStr.split(',').map(x => parseFloat(x));
+      if (parts.length !== window.numericFeatureCount) {
+        alert("Input features do not match the final model's feature dimension");
+        return;
       }
-      
-      async function loadTabularModel() {
-        try {
-          tabularModel = await tf.loadLayersModel('localstorage://tabular-model');
-          document.getElementById('logs').innerText += "Tabular model loaded.\n";
-        } catch (error) {
-          document.getElementById('logs').innerText += "Error loading model: " + error + "\n";
-        }
+      if (parts.some(x => isNaN(x))) {
+        alert("Some input feature is not numeric in Predict. This script doesn't handle that.");
+        return;
       }
-      
-      document.getElementById('train-tabular-btn').addEventListener('click', trainTabularModel);
-      document.getElementById('predict-tabular-btn').addEventListener('click', predictTabular);
-      document.getElementById('save-tabular-btn').addEventListener('click', saveTabularModel);
-      document.getElementById('load-tabular-btn').addEventListener('click', loadTabularModel);
-      
-      // ---------- End of Tabular Section ----------
-      
-    })();
-  </script>
+      const inputTensor = tf.tensor2d([parts]);
+      const normed = inputTensor.sub(window.minFeatures).div(window.maxFeatures.sub(window.minFeatures).add(1e-8));
+      const prediction = window.tabularModel.predict(normed);
+      const taskType = document.getElementById('task-type').value;
+      let output;
+      if (taskType === 'classification') {
+        const classIndex = prediction.argMax(-1).dataSync()[0];
+        output = `Predicted class: ${classIndex}`;
+      } else {
+        const value = prediction.dataSync()[0];
+        output = `Predicted value: ${value.toFixed(4)}`;
+      }
+      document.getElementById('predict-output').innerText = output;
+    }
+
+    async function saveTabularModel() {
+      if (!window.tabularModel) { alert("No model to save"); return; }
+      await window.tabularModel.save('localstorage://tabular-model');
+      appendLog("Tabular model saved.");
+    }
+
+    async function loadTabularModel() {
+      try {
+        window.tabularModel = await tf.loadLayersModel('localstorage://tabular-model');
+        appendLog("Tabular model loaded.");
+      } catch (error) {
+        appendLog("Error loading model: " + error);
+      }
+    }
+
+    document.getElementById('train-tabular-btn').addEventListener('click', trainTabularModel);
+    document.getElementById('predict-tabular-btn').addEventListener('click', predictTabular);
+    document.getElementById('save-tabular-btn').addEventListener('click', saveTabularModel);
+    document.getElementById('load-tabular-btn').addEventListener('click', loadTabularModel);
+
+  })();
+</script>
 </body>
 </html>
