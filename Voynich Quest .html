@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Voynich Quest 4.0 – Stable Build</title>
+
+<!-- ───────── Basic styling ───────── -->
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:Georgia,serif;background:#f9f6f0;color:#333;
+       display:flex;justify-content:center;align-items:center;min-height:100vh}
+  #game{width:100%;max-width:640px;text-align:center;padding:10px}
+  #stats{margin:6px 0;font-weight:bold;font-size:1.1rem}
+  #stats span{margin:0 6px}
+  button{padding:6px 12px;margin:4px;font-size:1rem;cursor:pointer}
+  #message{margin-top:12px;min-height:70px}
+  /* page-flip book */
+  .flip-container{perspective:1000px;width:300px;height:300px;margin:16px auto}
+  .flipper{position:relative;width:100%;height:100%;transition:.6s;transform-style:preserve-3d}
+  .flip-container.flipped .flipper{transform:rotateY(180deg)}
+  .front,.back{
+    position:absolute;top:0;left:0;width:100%;height:100%;
+    border:2px solid #8b4513;border-radius:8px;background:#fff5e9;
+    display:flex;align-items:center;justify-content:center;font-size:2rem;backface-visibility:hidden
+  }
+  .back{transform:rotateY(180deg)}
+  #inventory{display:flex;justify-content:center;flex-wrap:wrap;gap:6px;margin-top:6px}
+  .inv-item{width:40px;height:40px;border:1px solid #888;border-radius:4px;
+            display:flex;align-items:center;justify-content:center;background:#fff}
+  /* AR scene hidden by default */
+  a-scene[hidden]{display:none!important}
+</style>
+</head>
+
+<body>
+<div id="game">
+  <h1>Voynich Quest 4.0</h1>
+  <div id="stats"><span id="timer">05:00</span><span id="score">0</span><span id="level">1</span></div>
+
+  <div id="manuscript" class="flip-container">
+    <div class="flipper">
+      <div id="page1" class="front">📜 Herbal</div>
+      <div id="page2" class="back"><canvas id="zodiac" width="300" height="300"></canvas></div>
+    </div>
+  </div>
+
+  <div id="inventory"></div>
+  <button id="start">Start Quest</button>
+  <button id="ar">Enter AR</button>
+  <button id="vr">Enter VR</button>
+  <div id="message">Click “Start Quest” to begin.</div>
+
+  <!-- AR.js scene (kept hidden until user taps “Enter AR”) -->
+  <a-scene embedded hidden>
+    <a-marker preset="hiro">
+      <a-box id="ar-box" position="0 0.5 0" material="color:#8b4513"></a-box>
+    </a-marker>
+    <a-entity camera></a-entity>
+  </a-scene>
+</div>
+
+<!-- Hidden webcam video -->
+<video id="webcam" autoplay playsinline muted style="display:none"></video>
+
+<!-- Main logic –->
+<script type="module">
+/* ══════════════ 1. Config ══════════════ */
+const OPENAI_API   = "/api/narrative";          //  ← replace
+const PUZZLE_API   = "/api/procedural-puzzle";  //  ← replace
+const BCI_WS       = "wss://yourdomain/ws/bci"; //  ← replace
+const NFT_ADDRESS  = "0xYourContract";          //  ← replace
+const NFT_ABI      = [];                        //  ← replace (ERC-721)
+
+/* ══════════════ 2. State ══════════════ */
+let timer=null,timeLeft=300,score=0,level=1,flipped=false;
+let faceReady=false,handReady=false,camLoop=null,vrRenderer=null,vrScene=null;
+const $ = q=>document.querySelector(q);
+
+/* ══════════════ 3. Utility UI helpers ══════════════ */
+function msg(html){ $("#message").innerHTML=html }
+function updStats(){
+  $("#timer").textContent =
+     `${String(Math.floor(timeLeft/60)).padStart(2,"0")}:${String(timeLeft%60).padStart(2,"0")}`;
+  $("#score").textContent = score;
+  $("#level").textContent = level;
+}
+function drawZodiac(){
+  const ctx=$("#zodiac").getContext("2d");
+  ctx.clearRect(0,0,300,300);
+  ctx.strokeStyle="#8b4513";ctx.lineWidth=2;
+  ctx.beginPath();ctx.arc(150,150,120,0,Math.PI*2);ctx.stroke();
+  [...Array(12).keys()].forEach(i=>{
+    const a=i*Math.PI/6-Math.PI/2;
+    ctx.moveTo(150,150);ctx.lineTo(150+Math.cos(a)*120,150+Math.sin(a)*120);
+  });ctx.stroke();
+  const signs=["♈︎","♉︎","♊︎","♋︎","♌︎","♍︎","♎︎","♏︎","♐︎","♑︎","♒︎","♓︎"];
+  ctx.font="18px serif";ctx.fillStyle="#8b4513";
+  signs.forEach((s,i)=>{const a=i*Math.PI/6-Math.PI/2;
+    ctx.fillText(s,142+Math.cos(a)*95,158+Math.sin(a)*95);});
+}
+
+/* ══════════════ 4. Lazy loader helpers ══════════════ */
+const loadScript = src =>
+  new Promise((res,rej)=>{const s=document.createElement("script");
+    s.src=src;s.onload=res;s.onerror=()=>rej(new Error(src));document.head.append(s);});
+async function loadFaceAPI(){
+  if(faceReady) return;
+  await loadScript("https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js");
+  const base="https://raw.githubusercontent.com/justadudewhohacks/face-api.js/master/weights";
+  await faceapi.nets.tinyFaceDetector.loadFromUri(base);
+  await faceapi.nets.faceExpressionNet.loadFromUri(base);
+  faceReady=true;
+}
+async function loadMediaPipe(){
+  if(handReady) return;
+  await loadScript("https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4/hands.js");
+  await loadScript("https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils@0.4/drawing_utils.js");
+  handReady=true;
+}
+async function loadThree(){
+  if(window.THREE) return;
+  await loadScript("https://cdn.jsdelivr.net/npm/three@0.175.0/build/three.min.js");
+  await loadScript("https://cdn.jsdelivr.net/npm/three@0.175.0/examples/jsm/webxr/VRButton.js");
+}
+
+/* ══════════════ 5. Webcam setup ══════════════ */
+const webcam=$("#webcam");
+async function startCam(){
+  const stream=await navigator.mediaDevices.getUserMedia({video:true});
+  webcam.srcObject=stream;await webcam.play();
+}
+
+/* ══════════════ 6. Emotion detection ══════════════ */
+async function emotionLoop(){
+  if(!faceReady) return;
+  const det=await faceapi
+    .detectSingleFace(webcam,new faceapi.TinyFaceDetectorOptions())
+    .withFaceExpressions();
+  if(det?.expressions.angry>0.6){timeLeft=Math.max(0,timeLeft-5);msg("😠 Anger −5 s")}
+  if(det?.expressions.happy>0.6){score+=1;updStats()}
+}
+
+/* ══════════════ 7. Gesture detection (MediaPipe Hands) ══════════════ */
+async function startGestures(){
+  await loadMediaPipe();
+  const {Hands}=window;
+  const hands=new Hands({locateFile:f=>`https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4/${f}`});
+  hands.setOptions({maxNumHands:1,minDetectionConfidence:.7});
+  hands.onResults(r=>{
+    if(r.multiHandLandmarks?.length){
+      const lm=r.multiHandLandmarks[0];
+      const d=Math.hypot(lm[4].x-lm[8].x,lm[4].y-lm[8].y);
+      if(d<.05) flipPage();
+    }
+  });
+  /* simple RAF camera wrapper */
+  camLoop={id:null,start(){
+    const go=async ()=>{await hands.send({image:webcam});this.id=requestAnimationFrame(go)};
+    go();},stop(){cancelAnimationFrame(this.id)}};
+  camLoop.start();
+}
+
+/* ══════════════ 8. Page flip + inventory helper ══════════════ */
+function flipPage(){
+  flipped=!flipped;$("#manuscript").classList.toggle("flipped",flipped);
+  score+=10;updStats();msg("+10 for exploring!");mintNFT("page-flip");generatePuzzle();
+}
+function addInventory(chr){
+  const div=document.createElement("div");div.className="inv-item";div.textContent=chr;
+  $("#inventory").append(div);
+}
+
+/* ══════════════ 9. BCI WebSocket integration ══════════════ */
+function startBCI(){
+  try{
+    const ws=new WebSocket(BCI_WS);
+    ws.onmessage=({data})=>{
+      if(data==="FOCUS"){score+=20;updStats();msg("🧠 Focus +20")}
+    };
+  }catch(e){console.warn("BCI socket error",e)}
+}
+
+/* ══════════════ 10. NFT minter (stub) ══════════════ */
+async function mintNFT(tag){
+  try{
+    if(!window.ethereum) return console.warn("MetaMask missing");
+    const web3=new Web3(window.ethereum);
+    const [acc]=await window.ethereum.request({method:"eth_requestAccounts"});
+    const c=new web3.eth.Contract(NFT_ABI,NFT_ADDRESS);
+    await c.methods.mint(acc,tag).send({from:acc});
+    console.info("NFT minted",tag);
+  }catch(e){console.warn("Mint failed:",e)}
+}
+
+/* ══════════════ 11. Narrative fetch ══════════════ */
+async function fetchNarrative(){
+  try{
+    const r=await fetch(OPENAI_API,{method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({level})});
+    if(!r.ok) throw new Error(r.status);
+    const {passage}=await r.json();
+    msg(`<em>${passage}</em>`);
+  }catch(e){msg("⚠ Story service offline")}
+}
+
+/* ══════════════ 12. Puzzle generator ══════════════ */
+async function generatePuzzle(){
+  try{
+    const r=await fetch(PUZZLE_API,{method:"POST"});
+    const p=await r.json();                  /* {grid:[[...]],answer:"WORD"} */
+    const rows=p.grid.length,cols=p.grid[0].length;
+    const wrapper=document.createElement("div");
+    wrapper.style.cssText=`display:grid;grid-template-columns:repeat(${cols},40px);gap:2px;margin-top:6px`;
+    p.grid.flat().forEach(()=>wrapper.insertAdjacentHTML("beforeend",
+       `<input maxlength="1" style="width:40px;height:40px;text-align:center;font-size:1.1rem">`));
+    msg("Solve the puzzle!");$("#message").append(wrapper);
+    wrapper.oninput=()=>{
+      const ans=[...wrapper.querySelectorAll("input")].map(i=>i.value.toUpperCase()).join("");
+      if(ans===p.answer){
+        score+=50*level;updStats();msg("✔ Puzzle solved +50");
+        mintNFT(`puzzle-${level}`);level++;updStats();
+        if(level%3===0) enableAR();
+        generatePuzzle();
+      }
+    };
+  }catch(e){console.error(e);msg("⚠ Puzzle service offline")}
+}
+
+/* ══════════════ 13. AR enable ══════════════ */
+function enableAR(){
+  $("a-scene").removeAttribute("hidden");
+  msg("🔍 Find the marker");
+}
+$("#ar-box").addEventListener("click",()=>{
+  score+=75;updStats();addInventory("🔧");mintNFT("ar-find");msg("🔧 AR loot +75")});
+
+/* ══════════════ 14. VR scene ══════════════ */
+async function startVR(){
+  await loadThree();
+  if(vrRenderer) return;  // only create once
+  const renderer=new THREE.WebGLRenderer({antialias:true});
+  renderer.setSize(window.innerWidth,window.innerHeight);
+  document.body.append(renderer.domElement);
+  renderer.xr.enabled=true;
+  document.body.append(VRButton.createButton(renderer));
+
+  /* scene graph */
+  const scene=new THREE.Scene();scene.background=new THREE.Color("#e5d9cc");
+  const cam=new THREE.PerspectiveCamera(75,window.innerWidth/window.innerHeight,.1,1000);
+  cam.position.set(0,1.6,3);
+  scene.add(new THREE.HemisphereLight(0xffffff,0x444444,1));
+
+  const cube=new THREE.Mesh(
+    new THREE.BoxGeometry(.5,.5,.1),
+    new THREE.MeshStandardMaterial({color:0x8b4513}));
+  cube.name="quest-cube";scene.add(cube);
+
+  const ray=new THREE.Raycaster(),vec=new THREE.Vector2();
+  window.addEventListener("click",e=>{
+    vec.x=(e.clientX/window.innerWidth)*2-1;vec.y=-(e.clientY/window.innerHeight)*2+1;
+    ray.setFromCamera(vec,cam);
+    const hit=ray.intersectObjects(scene.children)[0];
+    if(hit?.object.name==="quest-cube"){
+      scene.remove(cube);score+=100;updStats();mintNFT("vr-discovery");msg("🎁 VR treasure +100");
+    }
+  });
+
+  renderer.setAnimationLoop(()=>{cube.rotation.x+=.01;cube.rotation.y+=.01;renderer.render(scene,cam)});
+  vrRenderer=renderer;vrScene=scene;
+}
+
+/* ══════════════ 15. Game loop & teardown ══════════════ */
+function gameOver(txt){
+  clearInterval(timer);timer=null;
+  camLoop?.stop();camLoop=null;
+  vrRenderer?.setAnimationLoop(null);
+  msg(txt+" (final "+score+")");
+}
+async function tick(){
+  if(--timeLeft<=0) return gameOver("⌛ Time’s up!");
+  await emotionLoop();updStats();
+}
+
+/* ══════════════ 16. Button hooks ══════════════ */
+$("#start").onclick = async ()=>{
+  if(timer) return;                   // already running
+  try{
+    await startCam();
+    await Promise.all([loadFaceAPI(),startGestures()]);
+    startBCI();drawZodiac();await fetchNarrative();generatePuzzle();
+    timer=setInterval(tick,1000);
+    msg("🚀 Quest begun – good luck!");
+  }catch(err){console.error(err);msg("⚠ Init failed "+err.message)}
+};
+$("#ar").onclick  = enableAR;
+$("#vr").onclick  = startVR;
+
+/* initial HUD */
+updStats();
+</script>
+</body>
+</html>
