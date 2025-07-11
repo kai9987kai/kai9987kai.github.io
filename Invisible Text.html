@@ -1,0 +1,222 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>StegoBidi: Advanced Invisible Text Encoder/Decoder</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: linear-gradient(135deg, #f8f9fa, #e9ecef);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      margin: 0;
+      color: #343a40;
+    }
+    h1 {
+      font-size: 2rem;
+      margin-bottom: 1rem;
+      letter-spacing: 1px;
+    }
+    .tool-container {
+      background: #fff;
+      border-radius: 12px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+      width: 100%; max-width: 600px;
+      padding: 1.5rem;
+    }
+    textarea {
+      width: 100%;
+      height: 120px;
+      padding: 0.75rem;
+      border: 2px solid #ced4da;
+      border-radius: 8px;
+      resize: vertical;
+      font-size: 1rem;
+      line-height: 1.4;
+      margin-top: 0.5rem;
+    }
+    .buttons {
+      display: flex;
+      justify-content: space-between;
+      margin: 1rem 0;
+    }
+    button {
+      flex: 1;
+      margin: 0 0.25rem;
+      padding: 0.75rem;
+      font-size: 1rem;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: background 0.3s;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+    }
+    button.encode { background: #51cf66; color: #fff; }
+    button.encode:hover { background: #40c057; }
+    button.decode { background: #339af0; color: #fff; }
+    button.decode:hover { background: #228be6; }
+    button.copy { background: #ffd43b; color: #fff; }
+    button.copy:hover { background: #fcc419; }
+    .output {
+      width: 100%;
+      height: 120px;
+      padding: 0.75rem;
+      background: #f1f3f5;
+      border: 2px solid #ced4da;
+      border-radius: 8px;
+      font-size: 1rem;
+      line-height: 1.4;
+      margin-top: 1rem;
+      resize: vertical;
+      white-space: pre-wrap;
+      font-family: monospace;
+    }
+  </style>
+</head>
+<body>
+  <h1>StegoBidi Advanced Invisible Text Tool</h1>
+  <div class="tool-container">
+    <label for="inputText">Message to hide (for encode) or stego text (for decode):</label>
+    <textarea id="inputText"></textarea>
+
+    <label for="coverText">Cover text (optional for encoding, to embed hidden message invisibly):</label>
+    <textarea id="coverText"></textarea>
+
+    <div class="buttons">
+      <button class="encode" onclick="encodeBidi()">Encode</button>
+      <button class="decode" onclick="decodeBidi()">Decode</button>
+      <button class="copy" onclick="copyOutput()">Copy Output</button>
+    </div>
+
+    <textarea id="output" class="output" placeholder="Your encoded/decoded text will appear here. If it looks empty, it may be invisible - select all and copy." readonly></textarea>
+  </div>
+
+  <script>
+    const ZERO = '\u200B'; // Zero-Width Space for bit 0
+    const ONE = '\u200C'; // Zero-Width Non-Joiner for bit 1
+
+    function encodeBidi() {
+      const text = document.getElementById('inputText').value;
+      const cover = document.getElementById('coverText').value;
+      const output = document.getElementById('output');
+
+      if (!text) {
+        output.value = 'Please enter a message to encode.';
+        return;
+      }
+
+      const encoder = new TextEncoder();
+      const bytes = encoder.encode(text);
+      const len = bytes.length;
+
+      // Convert length to 32-bit binary (big-endian)
+      let lenBin = '';
+      for (let i = 3; i >= 0; i--) {
+        const byte = (len >> (i * 8)) & 0xFF;
+        lenBin += byte.toString(2).padStart(8, '0');
+      }
+
+      // Convert data to binary
+      let dataBin = '';
+      for (let byte of bytes) {
+        dataBin += byte.toString(2).padStart(8, '0');
+      }
+
+      // Combine
+      const fullBin = lenBin + dataBin;
+
+      // Create hidden string
+      let hidden = '';
+      for (let bit of fullBin) {
+        hidden += bit === '0' ? ZERO : ONE;
+      }
+
+      // Embed into cover if provided
+      let result = embed(hidden, cover);
+
+      output.value = result;
+    }
+
+    function decodeBidi() {
+      const text = document.getElementById('inputText').value;
+      const output = document.getElementById('output');
+
+      if (!text) {
+        output.value = 'Please enter stego text to decode.';
+        return;
+      }
+
+      // Extract bits from zero-width characters, ignore others
+      let bin = '';
+      for (let char of text) {
+        if (char === ZERO) bin += '0';
+        else if (char === ONE) bin += '1';
+      }
+
+      if (bin.length < 32) {
+        output.value = 'Invalid encoded text: too short.';
+        return;
+      }
+
+      // Get length from first 32 bits
+      const lenBin = bin.substring(0, 32);
+      const len = parseInt(lenBin, 2);
+      const dataBitsNeeded = len * 8;
+
+      if (bin.length < 32 + dataBitsNeeded) {
+        output.value = 'Invalid: not enough data bits.';
+        return;
+      }
+
+      // Get data binary
+      const dataBin = bin.substring(32, 32 + dataBitsNeeded);
+
+      // Convert to bytes
+      let bytes = [];
+      for (let i = 0; i < dataBitsNeeded; i += 8) {
+        const byteBin = dataBin.substring(i, i + 8);
+        bytes.push(parseInt(byteBin, 2));
+      }
+
+      // Decode to text
+      const decoder = new TextDecoder();
+      const decoded = decoder.decode(new Uint8Array(bytes));
+
+      output.value = decoded;
+    }
+
+    function embed(hidden, cover) {
+      if (!cover) return hidden;
+
+      const positions = cover.length; // Positions after each character
+      if (positions === 0) return hidden;
+
+      const chunkSize = Math.ceil(hidden.length / positions);
+      let result = '';
+      let idx = 0;
+
+      for (let i = 0; i < cover.length; i++) {
+        result += cover[i];
+        result += hidden.substring(idx, idx + chunkSize);
+        idx += chunkSize;
+      }
+
+      // Add any remaining
+      result += hidden.substring(idx);
+      return result;
+    }
+
+    function copyOutput() {
+      const output = document.getElementById('output');
+      output.select();
+      document.execCommand('copy');
+      // Optional: alert('Output copied to clipboard!');
+    }
+  </script>
+</body>
+</html>
