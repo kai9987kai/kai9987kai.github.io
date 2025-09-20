@@ -1,0 +1,449 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Brain-Stim Audio Lab — Web Audio API</title>
+<style>
+  :root{
+    --bg:#0b0e14; --panel:#111623; --ink:#e6edf3; --muted:#9fb0c2; --acc:#6ea8fe; --ok:#47d16a; --warn:#ffcc66; --bad:#ff6b6b;
+    --card:#0f1320; --br:16px;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:linear-gradient(180deg,#0b0e14 0%,#0a0f1c 100%);color:var(--ink);font:500 15px/1.45 system-ui,Segoe UI,Roboto,Inter,sans-serif}
+  header{padding:28px 20px 8px; text-align:center}
+  header h1{margin:0 0 6px;font:700 28px/1.1 ui-sans-serif;letter-spacing:.2px}
+  header p{margin:0;color:var(--muted)}
+  .wrap{max-width:1100px;margin:20px auto 60px;padding:0 16px}
+  .grid{display:grid;grid-template-columns:repeat(12,1fr);gap:16px}
+  .card{grid-column:span 12;background:var(--card);border:1px solid #1d2640;border-radius:var(--br);padding:16px;box-shadow:0 10px 30px rgba(0,0,0,.25)}
+  @media(min-width:900px){ .card.sm{grid-column:span 6} .card.xs{grid-column:span 4} }
+  h2{margin:0 0 10px;font:700 18px/1.2 ui-sans-serif}
+  .row{display:flex;gap:12px;flex-wrap:wrap;align-items:center;margin:8px 0}
+  .row label{font-size:13px;color:var(--muted)}
+  .row input[type=range]{width:180px}
+  .kpi{display:flex;gap:18px;align-items:center;flex-wrap:wrap}
+  .pill{padding:6px 10px;border-radius:999px;background:#0b1222;border:1px solid #223057;color:var(--muted);font-size:12px}
+  .btn{appearance:none;border:1px solid #2b3d6e;background:#13203b;color:#dce7ff;border-radius:12px;padding:8px 12px;font-weight:600;cursor:pointer;transition:.2s}
+  .btn:hover{filter:brightness(1.1)}
+  .btn.prim{background:linear-gradient(180deg,#224c96 0%,#1a3d79 100%);border-color:#315aa3}
+  .btn.good{background:linear-gradient(180deg,#1f8f41,#187735);border-color:#2fb45a}
+  .btn.attn{background:linear-gradient(180deg,#c26212,#9b4e0d);border-color:#d9842c}
+  .btn.stop{background:linear-gradient(180deg,#9c1e1e,#7d1515);border-color:#c33d3d}
+  .tiny{font-size:12px;color:var(--muted)}
+  .warn{color:var(--warn)}
+  .bad{color:var(--bad)}
+  .switch{display:inline-flex;align-items:center;gap:8px}
+  .switch input{accent-color:var(--acc)}
+  .hr{height:1px;background:#1f2945;margin:10px 0 12px}
+  .foot{opacity:.85;margin-top:6px;font-size:12px}
+  code{background:#0c1222;border:1px solid #1e2b51;border-radius:8px;padding:2px 6px;font-size:12px}
+</style>
+</head>
+<body>
+<header>
+  <h1>Brain-Stim Audio Lab</h1>
+  <p>40 Hz ASSR • 30–150 Hz “roughness” • Groove syncopation • Oddball (MMN) • Binaural beats • Soft taps<br><span class="tiny">Local Web Audio — no external files</span></p>
+</header>
+
+<div class="wrap">
+  <div class="grid">
+
+    <div class="card">
+      <h2>Master</h2>
+      <div class="kpi">
+        <button id="startCtx" class="btn prim">▶ Start Audio</button>
+        <button id="stopAll" class="btn stop">⏹ Stop All</button>
+        <span class="pill">Global Volume <input id="vol" type="range" min="0" max="0.25" step="0.001" value="0.06"> <span id="volVal">0.06</span></span>
+        <span class="pill">Soft Limiter: <span id="limLight">armed</span></span>
+        <span class="pill">Sample Rate: <span id="sr">—</span></span>
+      </div>
+      <div class="row tiny">
+        <span class="warn">Safety:</span> Start low, increase slowly. If you need to raise your voice to talk to someone an arm’s length away, it’s too loud.
+        (NIOSH 85 dBA/8 h, 3 dB exchange; WHO leisure ≈ 80 dB for ≤ 40 h/week). 
+      </div>
+      <div class="row">
+        <button class="btn good" id="presetFocus">Preset: Groove Focus</button>
+        <button class="btn attn" id="presetArousal">Preset: Max Arousal (short)</button>
+        <button class="btn" id="presetRelax">Preset: Relax (low level)</button>
+      </div>
+    </div>
+
+    <div class="card sm">
+      <h2>40 Hz ASSR</h2>
+      <div class="row">
+        <label class="switch"><input type="checkbox" id="assrOn"> Enable</label>
+        <label>Rate <input id="assrRate" type="range" min="30" max="50" step="0.1" value="40"> <span id="assrRateVal">40.0</span> Hz</label>
+        <label>Pulse width <input id="assrPW" type="range" min="0.5" max="8" step="0.1" value="3"> <span id="assrPWVal">3.0</span> ms</label>
+      </div>
+      <div class="foot tiny">Strongest steady-state responses often near ~40 Hz. Use brief sessions at modest level.</div>
+    </div>
+
+    <div class="card sm">
+      <h2>“Roughness” AM Noise (Scream-like)</h2>
+      <div class="row">
+        <label class="switch"><input type="checkbox" id="roughOn"> Enable</label>
+        <label>AM rate <input id="roughRate" type="range" min="30" max="150" step="1" value="90"> <span id="roughRateVal">90</span> Hz</label>
+        <label>Burst ms <input id="roughBurst" type="range" min="50" max="800" step="10" value="250"> <span id="roughBurstVal">250</span> ms</label>
+        <button class="btn attn" id="roughPing">⚡ Single Burst</button>
+      </div>
+      <div class="foot tiny">High salience; can be unpleasant. Keep brief and quiet.</div>
+    </div>
+
+    <div class="card sm">
+      <h2>Groove Drum Machine (Syncopation)</h2>
+      <div class="row">
+        <label class="switch"><input type="checkbox" id="grooveOn"> Run</label>
+        <label>BPM <input id="grooveBPM" type="range" min="70" max="140" step="1" value="108"> <span id="grooveBPMVal">108</span></label>
+        <label>Syncopation <input id="grooveSync" type="range" min="0" max="1" step="0.01" value="0.5"> <span id="grooveSyncVal">0.50</span></label>
+      </div>
+      <div class="foot tiny">Medium syncopation → strongest “urge to move” for most listeners.</div>
+    </div>
+
+    <div class="card sm">
+      <h2>Oddball (MMN) Beeps</h2>
+      <div class="row">
+        <label class="switch"><input type="checkbox" id="mmnOn"> Run</label>
+        <label>Std f <input id="mmnStd" type="range" min="300" max="1200" step="1" value="600"> <span id="mmnStdVal">600</span> Hz</label>
+        <label>Δf dev (%) <input id="mmnDelta" type="range" min="2" max="20" step="1" value="8"> <span id="mmnDeltaVal">8</span>%</label>
+        <label>Deviant prob <input id="mmnProb" type="range" min="0.05" max="0.2" step="0.01" value="0.1"> <span id="mmnProbVal">0.10</span></label>
+        <label>ISI ms <input id="mmnISI" type="range" min="200" max="1200" step="10" value="500"> <span id="mmnISIVal">500</span></label>
+      </div>
+      <div class="foot tiny">Infrequent deviants among standards → preattentive deviance detection.</div>
+    </div>
+
+    <div class="card sm">
+      <h2>Binaural Beats (Headphones)</h2>
+      <div class="row">
+        <label class="switch"><input type="checkbox" id="bbOn"> Enable</label>
+        <label>Carrier f <input id="bbCar" type="range" min="150" max="600" step="1" value="300"> <span id="bbCarVal">300</span> Hz</label>
+        <label>Beat f <input id="bbBeat" type="range" min="1" max="40" step="0.1" value="6"> <span id="bbBeatVal">6.0</span> Hz</label>
+      </div>
+      <div class="foot tiny">Evidence mixed; use gently, headphones only. Don’t expect magic.</div>
+    </div>
+
+    <div class="card sm">
+      <h2>Soft Taps / “ASMR-ish”</h2>
+      <div class="row">
+        <label class="switch"><input type="checkbox" id="asmrOn"> Run</label>
+        <label>Avg rate <input id="asmrRate" type="range" min="0.2" max="4" step="0.1" value="1.2"> <span id="asmrRateVal">1.2</span> /s</label>
+        <label>Randomness <input id="asmrRand" type="range" min="0" max="1" step="0.01" value="0.6"> <span id="asmrRandVal">0.60</span></label>
+      </div>
+      <div class="foot tiny">Low-level, close-mic tapping-like transients; some listeners relax, others don’t.</div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+(() => {
+  let ctx=null, master=null, limiter=null, limiterGain=null;
+  const $ = sel => document.querySelector(sel);
+  const v = id => +$(id).value;
+
+  function initCtx(){
+    if(ctx) return;
+    ctx = new (window.AudioContext||window.webkitAudioContext)({latencyHint:"interactive"});
+    master = ctx.createGain(); master.gain.value = v('#vol');
+    // soft limiter: waveshaper + makeup control
+    const preGain = ctx.createGain(); preGain.gain.value = 1.0;
+    const ws = ctx.createWaveShaper(); ws.curve = makeLimiterCurve(0.6, 10); // knee, drive
+    limiterGain = ctx.createGain(); limiterGain.gain.value = 0.9;
+    master.connect(preGain).connect(ws).connect(limiterGain).connect(ctx.destination);
+    $('#sr').textContent = ctx.sampleRate+" Hz";
+  }
+  function makeLimiterCurve(knee, drive){
+    const n=2048, curve=new Float32Array(n);
+    for(let i=0;i<n;i++){
+      const x = (i/(n-1))*2-1;
+      const ax = Math.abs(x), s = Math.sign(x);
+      const t = ax<knee ? x : s*(knee + (1 - Math.exp(-(ax-knee)*drive))/drive);
+      curve[i] = t;
+    }
+    return curve;
+  }
+
+  // ==== 40 Hz ASSR (click train by gated noise) ====
+  let assr = {on:false, shaper:null, gate:null, noise:null, rate:40, pw:0.003, tRef:0};
+  function assrStart(){
+    if(assr.on) return;
+    assr.on = true; 
+    assr.noise = noiseNode('white', 0.35);
+    assr.gate = ctx.createGain(); assr.gate.gain.value = 0.0;
+    assr.noise.connect(assr.gate).connect(master);
+    assr.tRef = ctx.currentTime;
+    assrScheduler();
+  }
+  function assrStop(){
+    if(!assr.on) return;
+    assr.on=false;
+    if(assr.noise){assr.noise.stop(); assr.noise.disconnect();}
+    if(assr.gate){assr.gate.disconnect();}
+  }
+  function assrScheduler(){
+    if(!assr.on) return;
+    const look = 0.2, now = ctx.currentTime;
+    const T = 1/assr.rate, pw = Math.min(assr.pw, T*0.9);
+    while(assr.tRef < now+look){
+      const a = assr.gate.gain;
+      a.cancelScheduledValues(assr.tRef);
+      a.setValueAtTime(0.0, assr.tRef);
+      a.linearRampToValueAtTime(1.0, assr.tRef + 0.001);
+      a.setValueAtTime(1.0, assr.tRef + pw);
+      a.linearRampToValueAtTime(0.0, assr.tRef + pw + 0.001);
+      assr.tRef += T;
+    }
+    setTimeout(assrScheduler, 50);
+  }
+
+  // ==== Roughness AM noise (30–150 Hz) ====
+  let rough = {on:false, noise:null, vca:null, lfo:null};
+  function roughStart(){
+    if(rough.on) return;
+    rough.on = true;
+    rough.noise = noiseNode('white', 0.4);
+    rough.vca = ctx.createGain(); rough.vca.gain.value = 0.0;
+    rough.lfo = ctx.createOscillator(); rough.lfo.frequency.value = v('#roughRate');
+    const lfoGain = ctx.createGain(); lfoGain.gain.value = 0.5; // 50% depth (0..1)
+    rough.lfo.connect(lfoGain).connect(rough.vca.gain);
+    rough.noise.connect(rough.vca).connect(master);
+    rough.lfo.start();
+    // bring up base gain slowly
+    rough.vca.gain.setTargetAtTime(0.25, ctx.currentTime, 0.25);
+  }
+  function roughStop(){
+    if(!rough.on) return;
+    rough.on=false;
+    if(rough.lfo){rough.lfo.stop(); rough.lfo.disconnect();}
+    if(rough.noise){rough.noise.stop(); rough.noise.disconnect();}
+    if(rough.vca){rough.vca.disconnect();}
+  }
+  function roughBurst(ms){
+    if(!ctx) return;
+    const n = noiseNode('white', 0.5);
+    const vca = ctx.createGain(); vca.gain.value = 0;
+    const lfo = ctx.createOscillator(); lfo.frequency.value = v('#roughRate');
+    const lfoGain = ctx.createGain(); lfoGain.gain.value = 0.5;
+    lfo.connect(lfoGain).connect(vca.gain);
+    n.connect(vca).connect(master);
+    lfo.start();
+    const t = ctx.currentTime;
+    vca.gain.cancelScheduledValues(t);
+    vca.gain.setValueAtTime(0, t);
+    vca.gain.linearRampToValueAtTime(0.3, t+0.01);
+    vca.gain.setValueAtTime(0.3, t+ms/1000);
+    vca.gain.linearRampToValueAtTime(0, t+ms/1000+0.02);
+    setTimeout(()=>{lfo.stop(); n.stop(); vca.disconnect();}, ms+80);
+  }
+
+  // ==== Groove Drum (kick/snare/hat) with syncopation ====
+  let groove = {on:false, timer:null, next:0, bpm:108, sync:0.5, step:0};
+  function grooveStart(){ if(groove.on) return; groove.on=true; groove.next=ctx.currentTime; groove.step=0; grooveTick(); }
+  function grooveStop(){ groove.on=false; if(groove.timer){clearTimeout(groove.timer); groove.timer=null;} }
+  function grooveTick(){
+    if(!groove.on) return;
+    const spb = 60/groove.bpm, now = ctx.currentTime;
+    while(groove.next < now+0.2){
+      const s = groove.step % 16;
+      // base pattern
+      if(s===0||s===8) kick(groove.next, 0.85);
+      if(s===4||s===12) snare(groove.next, 0.5);
+      // hats: on-beats + syncopated off-beats probability
+      hat(groove.next, 0.18);
+      const syncProb = groove.sync; // add off-beat hat or ghost snare
+      if(Math.random() < syncProb*0.5) hat(groove.next+spb*0.5, 0.12);
+      if(Math.random() < syncProb*0.25 && (s%4===2)) snare(groove.next, 0.2, true); // ghost
+      groove.next += spb/4; groove.step++;
+    }
+    groove.timer = setTimeout(grooveTick, 25);
+  }
+  function kick(t, amp=0.8){
+    const o = ctx.createOscillator(); o.type='sine'; o.frequency.setValueAtTime(90, t);
+    const g = ctx.createGain(); g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(amp*0.8, t+0.002);
+    g.gain.exponentialRampToValueAtTime(0.0001, t+0.18);
+    o.frequency.exponentialRampToValueAtTime(40, t+0.12);
+    o.connect(g).connect(master); o.start(t); o.stop(t+0.22);
+  }
+  function snare(t, amp=0.5, ghost=false){
+    const n = noiseNode('white', 0.7);
+    const bp = ctx.createBiquadFilter(); bp.type='bandpass'; bp.frequency.value=1800; bp.Q.value=0.6;
+    const g = ctx.createGain(); g.gain.setValueAtTime(0.0001,t);
+    const a = amp*(ghost?0.18:1);
+    g.gain.exponentialRampToValueAtTime(a, t+0.002);
+    g.gain.exponentialRampToValueAtTime(0.0001, t+0.2);
+    n.connect(bp).connect(g).connect(master);
+    setTimeout(()=>{n.stop(); bp.disconnect(); g.disconnect();}, 220);
+  }
+  function hat(t, amp=0.15){
+    const n = noiseNode('white', 0.5);
+    const hp = ctx.createBiquadFilter(); hp.type='highpass'; hp.frequency.value=6000; hp.Q.value=0.7;
+    const g = ctx.createGain(); g.gain.setValueAtTime(0.0001,t);
+    g.gain.exponentialRampToValueAtTime(amp, t+0.002);
+    g.gain.exponentialRampToValueAtTime(0.0001, t+0.06);
+    n.connect(hp).connect(g).connect(master);
+    setTimeout(()=>{n.stop(); hp.disconnect(); g.disconnect();}, 80);
+  }
+
+  // ==== Oddball beeps (MMN-style) ====
+  let mmn={on:false, timer:null};
+  function mmnStart(){ if(mmn.on) return; mmn.on=true; mmnTick(); }
+  function mmnStop(){ mmn.on=false; if(mmn.timer) clearTimeout(mmn.timer); }
+  function mmnTick(){
+    if(!mmn.on) return;
+    const std = v('#mmnStd'), delta = v('#mmnDelta')/100, p = v('#mmnProb'), isi = v('#mmnISI')/1000;
+    const isDev = Math.random() < p;
+    const f = isDev ? std*(1+delta) : std;
+    beep(f, 0.07);
+    mmn.timer = setTimeout(mmnTick, isi*1000);
+  }
+  function beep(freq, dur=0.07){
+    const o = ctx.createOscillator(); o.type='sine'; o.frequency.value = freq;
+    const g = ctx.createGain(); g.gain.value=0.0001;
+    const t = ctx.currentTime;
+    g.gain.exponentialRampToValueAtTime(0.15, t+0.005);
+    g.gain.exponentialRampToValueAtTime(0.0001, t+dur);
+    o.connect(g).connect(master); o.start(t); o.stop(t+dur+0.01);
+  }
+
+  // ==== Binaural beats ====
+  let bb={on:false, l:null, r:null, gl:null, gr:null};
+  function bbStart(){
+    if(bb.on) return; bb.on=true;
+    const car = v('#bbCar'), beat = v('#bbBeat');
+    bb.l = ctx.createOscillator(); bb.r = ctx.createOscillator(); bb.l.type='sine'; bb.r.type='sine';
+    bb.l.frequency.value = car - beat/2; bb.r.frequency.value = car + beat/2;
+    bb.gl=ctx.createGain(); bb.gr=ctx.createGain(); bb.gl.gain.value=0.05; bb.gr.gain.value=0.05;
+    const splitter = ctx.createChannelMerger(2);
+    bb.l.connect(bb.gl).connect(splitter,0,0);
+    bb.r.connect(bb.gr).connect(splitter,0,1);
+    splitter.connect(master);
+    bb.l.start(); bb.r.start();
+  }
+  function bbStop(){
+    if(!bb.on) return; bb.on=false;
+    ['l','r'].forEach(k => { if(bb[k]){bb[k].stop();} });
+  }
+
+  // ==== Soft taps / ASMR-ish ====
+  let asmr={on:false, timer:null};
+  function asmrStart(){ if(asmr.on) return; asmr.on=true; asmrTick(); }
+  function asmrStop(){ asmr.on=false; if(asmr.timer) clearTimeout(asmr.timer); }
+  function asmrTick(){
+    if(!asmr.on) return;
+    tap();
+    const base = 1/Math.max(0.01, v('#asmrRate'));
+    const r = v('#asmrRand');
+    const next = (base * (0.5 + Math.random()*r + (1-r)));
+    asmr.timer = setTimeout(asmrTick, next*1000);
+  }
+  function tap(){
+    const n = noiseNode('white', 0.3);
+    const lp = ctx.createBiquadFilter(); lp.type='lowpass'; lp.frequency.value=1800; lp.Q.value=0.2;
+    const g = ctx.createGain(); g.gain.value=0.0001;
+    const t = ctx.currentTime;
+    g.gain.exponentialRampToValueAtTime(0.08 + Math.random()*0.06, t+0.003);
+    g.gain.exponentialRampToValueAtTime(0.0001, t+0.06+Math.random()*0.02);
+    n.connect(lp).connect(g).connect(master);
+    setTimeout(()=>{n.stop(); lp.disconnect(); g.disconnect();}, 90);
+  }
+
+  // ==== Utilities ====
+  function noiseNode(type='white', amp=0.5){
+    const length = Math.floor(ctx.sampleRate*2);
+    const buf = ctx.createBuffer(1,length,ctx.sampleRate);
+    const data = buf.getChannelData(0);
+    for(let i=0;i<length;i++){
+      data[i] = (Math.random()*2-1) * (type==='white'?1:1); // extendable
+    }
+    const src = ctx.createBufferSource(); src.buffer = buf; src.loop = true;
+    const g = ctx.createGain(); g.gain.value = amp;
+    src.connect(g);
+    src.start();
+    // return object exposing stop/disconnect
+    return new Proxy(g,{ 
+      get:(t,prop)=> prop==='stop' ? (()=>src.stop()) : t[prop]
+    });
+  }
+
+  // ==== Wiring UI ====
+  $('#startCtx').onclick = () => { initCtx(); $('#limLight').textContent='on'; };
+  $('#stopAll').onclick = () => { ['assr','rough','groove','mmn','bb','asmr'].forEach(k=>stopModule(k)); };
+  function stopModule(name){
+    if(!ctx) return;
+    ({assr:assrStop, rough:roughStop, groove:grooveStop, mmn:mmnStop, bb:bbStop, asmr:asmrStop}[name] || (()=>{}))();
+    // Also turn off switches
+    const map={assr:'#assrOn', rough:'#roughOn', groove:'#grooveOn', mmn:'#mmnOn', bb:'#bbOn', asmr:'#asmrOn'};
+    if(map[name]) $(map[name]).checked=false;
+  }
+
+  $('#vol').oninput = e => { if(!ctx) return; master.gain.value = +e.target.value; $('#volVal').textContent=e.target.value; };
+
+  // ASSR controls
+  $('#assrOn').onchange = e => { if(!ctx){initCtx();} e.target.checked ? (assr.rate=v('#assrRate'),assr.pw=v('#assrPW')/1000,assrStart()) : assrStop(); };
+  const updAssr = () => { $('#assrRateVal').textContent=$('#assrRate').value; $('#assrPWVal').textContent=$('#assrPW').value;
+    assr.rate = v('#assrRate'); assr.pw = v('#assrPW')/1000; };
+  ['#assrRate','#assrPW'].forEach(id => $(id).oninput = updAssr);
+
+  // Roughness controls
+  $('#roughOn').onchange = e => { if(!ctx){initCtx();} e.target.checked ? roughStart() : roughStop(); };
+  $('#roughRate').oninput = e => { $('#roughRateVal').textContent=e.target.value; if(rough.lfo) rough.lfo.frequency.value = +e.target.value; };
+  $('#roughBurst').oninput = e => $('#roughBurstVal').textContent=e.target.value;
+  $('#roughPing').onclick = () => { if(!ctx){initCtx();} roughBurst(+$('#roughBurst').value); };
+
+  // Groove
+  $('#grooveOn').onchange = e => { if(!ctx){initCtx();} groove.bpm=v('#grooveBPM'); groove.sync=v('#grooveSync'); e.target.checked?grooveStart():grooveStop(); };
+  $('#grooveBPM').oninput = e => { $('#grooveBPMVal').textContent=e.target.value; groove.bpm=+e.target.value; };
+  $('#grooveSync').oninput = e => { $('#grooveSyncVal').textContent=parseFloat(e.target.value).toFixed(2); groove.sync=+e.target.value; };
+
+  // MMN
+  $('#mmnOn').onchange = e => { if(!ctx){initCtx();} e.target.checked?mmnStart():mmnStop(); };
+  ['#mmnStd','#mmnDelta','#mmnProb','#mmnISI'].forEach(id=>{
+    $(id).oninput = e => { $(id+'Val').textContent=e.target.value; };
+  });
+
+  // Binaural beats
+  $('#bbOn').onchange = e => { if(!ctx){initCtx();} e.target.checked?bbStart():bbStop(); };
+  $('#bbCar').oninput = e => { $('#bbCarVal').textContent=e.target.value; if(bb.l&&bb.r){ const beat=v('#bbBeat'); bb.l.frequency.value=+e.target.value - beat/2; bb.r.frequency.value=+e.target.value + beat/2; } };
+  $('#bbBeat').oninput = e => { $('#bbBeatVal').textContent=parseFloat(e.target.value).toFixed(1); if(bb.l&&bb.r){ const car=v('#bbCar'); bb.l.frequency.value=car - +e.target.value/2; bb.r.frequency.value=car + +e.target.value/2; } };
+
+  // ASMR taps
+  $('#asmrOn').onchange = e => { if(!ctx){initCtx();} e.target.checked?asmrStart():asmrStop(); };
+  ['#asmrRate','#asmrRand'].forEach(id=> $(id).oninput = e => { $(id+'Val').textContent=e.target.value; });
+
+  // Presets
+  $('#presetFocus').onclick = ()=>{
+    initCtx();
+    $('#vol').value=0.06; $('#volVal').textContent='0.06'; master.gain.value=0.06;
+    // groove on medium syncopation
+    $('#grooveBPM').value=110; $('#grooveBPMVal').textContent='110'; groove.bpm=110;
+    $('#grooveSync').value=0.5; $('#grooveSyncVal').textContent='0.50'; groove.sync=0.5;
+    $('#grooveOn').checked=true; grooveStart();
+    // others off
+    ['assr','rough','mmn','bb','asmr'].forEach(stopModule);
+  };
+  $('#presetArousal').onclick = ()=>{
+    initCtx();
+    $('#vol').value=0.03; $('#volVal').textContent='0.03'; master.gain.value=0.03;
+    // brief 40 Hz + short rough burst
+    $('#assrRate').value=40; $('#assrPW').value=3; updAssr();
+    $('#assrOn').checked=true; assrStart();
+    setTimeout(()=>roughBurst(200), 300);
+    setTimeout(()=>{ $('#assrOn').checked=false; assrStop(); }, 5000);
+  };
+  $('#presetRelax').onclick = ()=>{
+    initCtx();
+    $('#vol').value=0.04; $('#volVal').textContent='0.04'; master.gain.value=0.04;
+    // low-level 6 Hz BB + soft taps slow
+    $('#bbCar').value=300; $('#bbBeat').value=6; $('#bbCarVal').textContent='300'; $('#bbBeatVal').textContent='6.0';
+    $('#bbOn').checked=true; bbStart();
+    $('#asmrRate').value=0.6; $('#asmrRand').value=0.5; $('#asmrRateVal').textContent='0.6'; $('#asmrRandVal').textContent='0.5';
+    $('#asmrOn').checked=true; asmrStart();
+    // others off
+    ['assr','rough','groove','mmn'].forEach(stopModule);
+  };
+
+})();
+</script>
+</body>
+</html>
