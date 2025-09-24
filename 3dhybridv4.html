@@ -1,0 +1,759 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Advanced 3D Animal Simulation — Pheromones, VO-lite, LOS & More</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<!-- Three.js r128 + OrbitControls -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+<!-- Simplex noise -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/simplex-noise/2.4.0/simplex-noise.min.js"></script>
+<style>
+  :root{
+    --bg:#0b0f14;--panel:rgba(9,12,17,.86);--border:#16202b;--accent:#6cf;--txt:#eef6ff;--muted:#9fb3c8;
+    --good:#6f6;--warn:#ffcf5a;--bad:#ff6a6a
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;background:var(--bg);color:var(--txt);font:14px/1.3 system-ui,Segoe UI,Arial,sans-serif;overflow:hidden}
+  #canvasContainer{position:fixed;inset:0}
+  #info{
+    position:fixed;left:12px;top:12px;background:var(--panel);border:1px solid var(--border);
+    border-radius:12px;padding:10px 12px;backdrop-filter:blur(6px);z-index:3
+  }
+  #controls{
+    position:fixed;right:12px;top:12px;width:360px;background:var(--panel);border:1px solid var(--border);
+    border-radius:16px;box-shadow:0 10px 30px rgba(0,0,0,.35);backdrop-filter:blur(6px);padding:12px;z-index:3
+  }
+  #controls label{display:block;margin-top:10px;color:#d6e6f5}
+  #controls input[type=range],#controls select,#controls button{
+    width:100%;background:#0e151e;color:var(--txt);border:1px solid var(--border);padding:8px;border-radius:10px;outline:none
+  }
+  #controls input[type=range]{padding:0;height:28px}
+  #controls .row3{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:8px}
+  #controls .row4{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:8px}
+  #controls .sep{height:1px;background:var(--border);margin:10px 0}
+  #controls .good{border-color:#184e27;background:#0d1a11}
+  #controls .warn{border-color:#5a4a1e;background:#15120b}
+  #controls .danger{border-color:#4e1b1b;background:#180f0f}
+  #toggles{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}
+  .tgl{display:flex;align-items:center;gap:8px;background:#0e151e;padding:8px;border:1px solid var(--border);border-radius:10px}
+  .tgl input{accent-color:#6cf}
+  #overlayRight{
+    position:fixed;right:12px;top:350px;width:360px;background:var(--panel);border:1px solid var(--border);
+    border-radius:16px;box-shadow:0 10px 30px rgba(0,0,0,.35);backdrop-filter:blur(6px);padding:12px;z-index:3
+  }
+  #sparkline,#minimap{display:block;width:100%;height:60px;background:#0d141c;border-radius:10px}
+  #overlayRight .row{display:flex;justify-content:space-between;color:var(--muted);margin-top:8px}
+  #legend{
+    position:fixed;left:12px;bottom:12px;background:var(--panel);border:1px solid var(--border);
+    border-radius:12px;padding:10px 12px;z-index:3
+  }
+  .dot{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:6px;vertical-align:middle}
+  .dot-prey{background:#55ff55}.dot-pred{background:#ff6a6a}.dot-food{background:#ffb84a}.dot-water{background:#5aa9ff}
+  #snap{
+    position:fixed;right:12px;bottom:12px;display:flex;gap:8px;background:var(--panel);border:1px solid var(--border);
+    border-radius:12px;padding:8px 10px;z-index:3
+  }
+  #snap button{background:#0e151e;color:var(--txt);border:1px solid var(--border);border-radius:10px;padding:8px 10px;cursor:pointer}
+  #hint{position:fixed;left:50%;transform:translateX(-50%);bottom:12px;background:var(--panel);border:1px solid var(--border);
+        border-radius:12px;padding:6px 10px;color:var(--muted);z-index:3}
+  a{color:var(--accent);text-decoration:none}
+</style>
+</head>
+<body>
+  <div id="canvasContainer"></div>
+
+  <!-- Original info panel IDs preserved -->
+  <div id="info">
+    <strong>Advanced Animal Simulation</strong><br>
+    <span id="timeDisplay">Time: Morning</span><br>
+    Animal Speed: <span id="speedDisplay">2.0</span><br>
+    Terrain Complexity: <span id="terrainDisplay">1.0</span><br>
+    Weather: <span id="weatherDisplay">Clear</span>
+  </div>
+
+  <!-- Controls: original IDs + new toggles -->
+  <div id="controls">
+    <label>Animal Speed</label>
+    <input type="range" id="speedControl" min="0.5" max="6" step="0.1" value="2.0" />
+    <label>Terrain Complexity (fBm)</label>
+    <input type="range" id="terrainControl" min="0.2" max="2.0" step="0.1" value="1.0" />
+    <label>Day/Night Cycle Speed</label>
+    <input type="range" id="timeControl" min="0.1" max="5" step="0.1" value="1.0" />
+    <label>Weather</label>
+    <select id="weatherControl">
+      <option value="clear">Clear</option>
+      <option value="rain">Rain</option>
+      <option value="snow">Snow</option>
+      <option value="storm">Storm</option>
+    </select>
+    <div class="sep"></div>
+    <label>Flocking Weights (Separation / Alignment / Cohesion)</label>
+    <input type="range" id="sepControl" min="0" max="3" step="0.1" value="1.2" />
+    <input type="range" id="aliControl" min="0" max="3" step="0.1" value="0.8" />
+    <input type="range" id="cohControl" min="0" max="3" step="0.1" value="0.9" />
+    <div class="sep"></div>
+    <div class="row3">
+      <button class="good" id="addAnimalBtn">+ Animal (Prey)</button>
+      <button class="warn" id="addPredBtn">+ Predator</button>
+      <button class="danger" id="removeAnimalBtn">– Remove</button>
+    </div>
+    <div class="row3" style="margin-top:8px">
+      <button id="addFoodBtn">+ Food</button>
+      <button id="regenTerrainBtn">Regen Terrain</button>
+      <button id="toggleWrapBtn">Wrap: On</button>
+    </div>
+    <div class="row4">
+      <button id="saveBtn">Save</button>
+      <button id="loadBtn">Load</button>
+      <button id="resetBtn">Reset</button>
+      <button id="exportBtn">Export JSON</button>
+    </div>
+    <div class="row3" style="margin-top:8px">
+      <button id="importBtn">Import JSON</button>
+      <input type="file" id="fileInput" accept="application/json" style="display:none" />
+      <button id="csvBtn">Export CSV</button>
+    </div>
+    <div class="sep"></div>
+    <div id="toggles">
+      <label class="tgl"><input type="checkbox" id="tglPhero" checked/> Pheromones</label>
+      <label class="tgl"><input type="checkbox" id="tglVO" checked/> VO-lite Avoidance</label>
+      <label class="tgl"><input type="checkbox" id="tglLOS" checked/> Line of Sight</label>
+      <label class="tgl"><input type="checkbox" id="tglAudio"/> Audio</label>
+      <label class="tgl"><input type="checkbox" id="tglOverlay" checked/> Heatmap Overlay</label>
+      <label class="tgl"><input type="checkbox" id="tglPause"/> Pause</label>
+    </div>
+    <div class="row3" style="margin-top:8px">
+      <button id="stepBtn">Step</button>
+      <button id="centerBtn">Center Cam</button>
+      <button id="snapshotBtn">PNG</button>
+    </div>
+    <div style="margin-top:6px;color:var(--muted)">Click world to spawn: <b>P</b> Prey • <b>O</b> Predator • <b>F</b> Food (toggle keys)</div>
+  </div>
+
+  <div id="overlayRight">
+    <canvas id="sparkline" width="340" height="60"></canvas>
+    <canvas id="minimap" width="340" height="60" style="margin-top:8px"></canvas>
+    <div class="row">
+      <div>Prey: <span id="preyCount">0</span></div>
+      <div>Predators: <span id="predCount">0</span></div>
+      <div>Food: <span id="foodCount">0</span></div>
+      <div>FPS: <span id="fps">—</span></div>
+    </div>
+    <div class="row" style="margin-top:6px">
+      <div>Season: <span id="seasonLabel">Spring</span></div>
+      <div>Day <span id="dayCounter">1</span></div>
+    </div>
+  </div>
+
+  <div id="legend">
+    <span class="dot dot-prey"></span>Prey
+    <span class="dot dot-pred" style="margin-left:10px"></span>Predator
+    <span class="dot dot-food" style="margin-left:10px"></span>Food
+    <span class="dot dot-water" style="margin-left:10px"></span>Water
+  </div>
+
+  <div id="snap">
+    <span style="color:var(--muted)">Snapshot</span>
+    <button id="pngBtn">PNG</button>
+  </div>
+  <div id="hint">Spawn mode: <b id="spawnMode">Food (F)</b></div>
+
+<script>
+/* ================== Utilities & Globals ================== */
+const clamp=(v,lo,hi)=>Math.max(lo,Math.min(hi,v));
+const lerp=(a,b,t)=>a+(b-a)*t;
+const rand=(a,b)=>a+Math.random()*(b-a);
+
+let scene,camera,renderer,controls,clock;
+let env, animals=[], foods=[], foodSources=[]; // compatibility names
+let timeOfDay=0, weather='clear';
+let hemisphereLight, directionalLight, ambientLight, sunMesh, moonMesh;
+let rainSys=null, snowSys=null, wrapWorld=true;
+let paused=false, stepOnce=false;
+
+let animalSpeed=2.0, terrainComplexity=1.0, dayNightSpeed=1.0;
+const WORLD_SIZE=120, ENV_SIZE=120, GRID_RES=120, CELL=ENV_SIZE/GRID_RES;
+const WATER_LEVEL_BASE=-1.2, STEEP_MAX_DEG=35;
+const MAX_ANIMALS=500, MAX_FOOD=600;
+
+let frames=0, lastFPSTime=performance.now();
+const spark=document.getElementById('sparkline'), sctx=spark.getContext('2d');
+const mini=document.getElementById('minimap'), mctx=mini.getContext('2d');
+const sparkBuf=new Array(spark.width).fill(0);
+
+let simDays=1, seasonProg=0;
+const seasons=['Spring','Summer','Autumn','Winter'];
+
+let audioCtx=null, rainGain=null, windGain=null, thunderGain=null;
+
+/* =========== Spatial Hash for neighbor queries =========== */
+class SpatialHash{ constructor(cell=6){this.cs=cell;this.map=new Map();} key(x,z){return ((x/this.cs)|0)+','+((z/this.cs)|0);} clear(){this.map.clear();}
+  insert(o){const k=this.key(o.pos.x,o.pos.z); if(!this.map.has(k)) this.map.set(k,[]); this.map.get(k).push(o);}
+  query(x,z,r){const cs=this.cs,minx=Math.floor((x-r)/cs),maxx=Math.floor((x+r)/cs),minz=Math.floor((z-r)/cs),maxz=Math.floor((z+r)/cs),out=[];
+    for(let gx=minx;gx<=maxx;gx++){for(let gz=minz;gz<=maxz;gz++){const a=this.map.get(gx+','+gz); if(a) out.push(...a);}} return out;}}
+const shash=new SpatialHash(6);
+
+/* ================= Pathfinding Worker (A*) ================= */
+const PathWorker=(()=>{const src=`
+let GW=0,GH=0,PASS=null;
+const idx=(x,z)=>z*GW+x;
+function h(a,b){return Math.hypot(a.x-b.x,a.z-b.z);}
+function neigh(x,z){const out=[];for(let dz=-1;dz<=1;dz++)for(let dx=-1;dx<=1;dx++){if(!dx&&!dz)continue;const nx=x+dx,nz=z+dz;
+  if(nx<0||nz<0||nx>=GW||nz>=GH)continue;if(PASS[idx(nx,nz)]!==1)continue;out.push({x:nx,z:nz,w:(dx===0||dz===0)?1:1.4142});}return out;}
+onmessage=e=>{const d=e.data; if(d.cmd==='build'){GW=d.w;GH=d.h;PASS=new Uint8Array(d.pass);postMessage({cmd:'built'});}
+else if(d.cmd==='path'){const s=d.start,g=d.goal,open=new Map(),closed=new Set(),gS=new Map(),fS=new Map(),came=new Map(),key=p=>p.x+','+p.z;
+  function push(p,gs){gS.set(key(p),gs);fS.set(key(p),gs+h(p,g));open.set(key(p),p);} push(s,0); let cur=null,curK=null;
+  while(open.size){let bf=1e30; for(const [k,p] of open){const f=fS.get(k); if(f<bf){bf=f;cur=p;curK=k;}} if(cur.x===g.x&&cur.z===g.z) break;
+    open.delete(curK); closed.add(curK); for(const nb of neigh(cur.x,cur.z)){const nk=key(nb); if(closed.has(nk)) continue;
+      const tent=gS.get(curK)+nb.w; if(!open.has(nk)||tent<gS.get(nk)){came.set(nk,cur); push(nb,tent);}}}
+  const path=[]; let p=cur,pk=p?key(p):null; while(pk && !(p.x===s.x&&p.z===s.z)){path.push({x:p.x,z:p.z}); const prev=came.get(pk); if(!prev) break; p=prev; pk=key(p);}
+  path.reverse(); postMessage({cmd:'path', ok:path.length>0, path});}}`; const worker=new Worker(URL.createObjectURL(new Blob([src],{type:'application/javascript'})));
+let ready=false; worker.onmessage=e=>{if(e.data.cmd==='built') ready=true;}; function build(w,h,pass){ready=false;worker.postMessage({cmd:'build',w,h,pass});}
+function path(start,goal){return new Promise((res,rej)=>{const handler=(e)=>{if(e.data.cmd==='path'){worker.removeEventListener('message',handler);return e.data.ok?res(e.data.path):rej();}}
+ worker.addEventListener('message',handler); worker.postMessage({cmd:'path',start,goal});});}
+return {build,path,get ready(){return ready;}}})();
+
+/* ================= Environment (fBm terrain) ================= */
+class Environment{
+  constructor(size,gridRes,complexity=1){this.size=size;this.gridRes=gridRes;this.complexity=complexity;
+    this.simplex=new SimplexNoise(Math.random()*1e9|0); this.heightData=new Float32Array(gridRes*gridRes);
+    this.passable=new Uint8Array(gridRes*gridRes); this.terrain=null; this.waterLevel=WATER_LEVEL_BASE;}
+  fbm(x,z,oct=4,lac=2,gain=.5){let amp=1,freq=(1/28)*this.complexity,sum=0;for(let i=0;i<oct;i++){sum+=amp*this.simplex.noise2D(x*freq,z*freq);amp*=gain;freq*=lac;}return sum*4.2;}
+  getHeight(x,z){return this.fbm(x,z);}
+  isWater(x,z){return Math.abs(this.simplex.noise2D(x/5,z/5))<0.1;}
+  isWaterH(h){return h<=this.waterLevel;}
+  idx(ix,iz){return iz*this.gridRes+ix;}
+  worldToGrid(x,z){const ix=Math.round((x+this.size/2)/CELL),iz=Math.round((z+this.size/2)/CELL);
+    return {ix:clamp(ix,0,this.gridRes-1),iz:clamp(iz,0,this.gridRes-1)};}
+  gridToWorld(ix,iz){return {x:-this.size/2+ix*CELL,z:-this.size/2+iz*CELL};}
+  surfaceY(x,z){const {ix,iz}=this.worldToGrid(x,z); return this.heightData[this.idx(ix,iz)];}
+  slopeDeg(hc,hx,hz){const g=Math.hypot(hx-hc,hz-hc); return Math.atan2(g,CELL)*180/Math.PI;}
+  rebuildTerrain(){
+    if(this.terrain){scene.remove(this.terrain); this.terrain.geometry.dispose(); this.terrain.material.dispose(); this.terrain=null;}
+    const geom=new THREE.PlaneGeometry(this.size,this.size,this.gridRes-1,this.gridRes-1), pos=geom.attributes.position;
+    for(let iz=0;iz<this.gridRes;iz++){for(let ix=0;ix<this.gridRes;ix++){
+      const x=-this.size/2+ix*CELL, z=-this.size/2+iz*CELL, h=this.getHeight(x,z);
+      this.heightData[this.idx(ix,iz)]=h; const vi=(iz*this.gridRes+ix)*3; pos.array[vi+2]=h;}}
+    for(let iz=0;iz<this.gridRes;iz++){for(let ix=0;ix<this.gridRes;ix++){
+      const i=this.idx(ix,iz), hc=this.heightData[i],
+            hx=this.heightData[this.idx(Math.min(ix+1,this.gridRes-1),iz)],
+            hz=this.heightData[this.idx(ix,Math.min(iz+1,this.gridRes-1))];
+      const deg=this.slopeDeg(hc,hx,hz); this.passable[i]=(!this.isWaterH(hc)&&deg<=STEEP_MAX_DEG)?1:0;}}
+    pos.needsUpdate=true; geom.computeVertexNormals();
+    const mat=new THREE.MeshPhongMaterial({vertexColors:true,flatShading:false,shininess:18,specular:new THREE.Color(0x202020)});
+    // vertex colors by height & moisture
+    const colors=new Float32Array(this.gridRes*this.gridRes*3); const c1=new THREE.Color(), c2=new THREE.Color(), c=new THREE.Color();
+    for(let iz=0;iz<this.gridRes;iz++){for(let ix=0;ix<this.gridRes;ix++){
+      const i=this.idx(ix,iz), h=this.heightData[i], wet=this.isWaterH(h)?1:0;
+      c1.setHSL(0.33, 0.6, clamp(0.22 + 0.12*h/5, 0.1, 0.5)); // grass/rock
+      c2.setHSL(0.6, 0.8, 0.6); // water tint
+      c.lerpColors(c1,c2,wet*0.5);
+      const vi=i*3; colors[vi]=c.r; colors[vi+1]=c.g; colors[vi+2]=c.b;}}
+    geom.setAttribute('color', new THREE.BufferAttribute(colors,3));
+    const mesh=new THREE.Mesh(geom,mat); mesh.name='terrain'; mesh.rotation.x=-Math.PI/2; mesh.receiveShadow=true; scene.add(mesh); this.terrain=mesh;
+    PathWorker.build(this.gridRes,this.gridRes,this.passable);
+  }
+  addWaterAndVegetation(){
+    const waterMat=new THREE.MeshPhongMaterial({color:0x1e90ff,transparent:true,opacity:0.7});
+    const vegMat=new THREE.MeshLambertMaterial({color:0x228B22});
+    const step=2;
+    for(let i=0;i<=this.size;i+=step){for(let j=0;j<=this.size;j+=step){
+      const x=i-this.size/2, z=j-this.size/2, h=this.getHeight(x,z);
+      if(this.isWater(x,z)||this.isWaterH(h)){const w=new THREE.Mesh(new THREE.CircleGeometry(1,16),waterMat);
+        w.rotation.x=-Math.PI/2; w.position.set(x,h+0.05,z); scene.add(w);}
+      else if(Math.random()<0.1){const plant=new THREE.Mesh(new THREE.ConeGeometry(0.3,1,8),vegMat);
+        plant.position.set(x,h+0.5,z); plant.castShadow=true; scene.add(plant);}}}
+  }
+}
+
+/* ====================== Pheromone Field ====================== */
+/*  Two fields on a 256x256 grid (food scent, prey scent).
+    Agents deposit; simple diffusion (box blur) + evaporation each tick.
+    Agents can follow the gradient (prey -> food; predators -> prey). */
+class Pheromones{
+  constructor(size=256){this.N=size; this.A=new Float32Array(size*size); this.B=new Float32Array(size*size); this.tmp=new Float32Array(size*size);
+    this.canvas=document.createElement('canvas'); this.canvas.width=size; this.canvas.height=size; this.ctx=this.canvas.getContext('2d');
+    this.img=this.ctx.createImageData(size,size); this.texture=new THREE.CanvasTexture(this.canvas); this.texture.wrapS=this.texture.wrapT=THREE.ClampToEdgeWrapping;
+    this.mesh=null;}
+  idx(ix,iz){return iz*this.N+ix;}
+  worldToCell(x,z){const ix=Math.floor((x/ENV_SIZE+0.5)*this.N), iz=Math.floor((z/ENV_SIZE+0.5)*this.N); return {ix:clamp(ix,0,this.N-1),iz:clamp(iz,0,this.N-1)};}
+  depositFood(x,z,amt=1){const {ix,iz}=this.worldToCell(x,z); this.A[this.idx(ix,iz)]+=amt;}
+  depositPrey(x,z,amt=1){const {ix,iz}=this.worldToCell(x,z); this.B[this.idx(ix,iz)]+=amt;}
+  sampleGrad(AorB,x,z){const {ix,iz}=this.worldToCell(x,z);
+    const i=this.idx(ix,iz);
+    const left = this.idx(Math.max(ix-1,0),iz), right=this.idx(Math.min(ix+1,this.N-1),iz);
+    const down = this.idx(ix,Math.max(iz-1,0)), up=this.idx(ix,Math.min(iz+1,this.N-1));
+    const f=(AorB===0?this.A:this.B); const gx=(f[right]-f[left])*0.5, gz=(f[up]-f[down])*0.5;
+    return {gx, gz};
+  }
+  step(diff=0.15, evap=0.995){
+    // simple 3x3 box blur diffusion into tmp
+    const N=this.N,fA=this.A,fB=this.B,t=this.tmp;
+    // A
+    for(let z=0;z<N;z++){for(let x=0;x<N;x++){
+      let s=0,c=0; for(let dz=-1;dz<=1;dz++)for(let dx=-1;dx<=1;dx++){
+        const nx=x+dx,nz=z+dz; if(nx<0||nz<0||nx>=N||nz>=N) continue; s+=fA[nz*N+nx]; c++; }
+      t[z*N+x]=lerp(fA[z*N+x], s/c, diff);
+    }} for(let i=0;i<t.length;i++) fA[i]=t[i]*evap;
+    // B
+    for(let z=0;z<N;z++){for(let x=0;x<N;x++){
+      let s=0,c=0; for(let dz=-1;dz<=1;dz++)for(let dx=-1;dx<=1;dx++){
+        const nx=x+dx,nz=z+dz; if(nx<0||nz<0||nx>=N||nz>=N) continue; s+=fB[nz*N+nx]; c++; }
+      t[z*N+x]=lerp(fB[z*N+x], s/c, diff);
+    }} for(let i=0;i<t.length;i++) fB[i]=t[i]*evap;
+  }
+  renderOverlay(){
+    // pack channels: food -> orange, prey -> green
+    const N=this.N,fA=this.A,fB=this.B, img=this.img.data;
+    for(let i=0;i<N*N;i++){
+      const a=clamp(fA[i]*2,0,1), b=clamp(fB[i]*2,0,1);
+      const r=clamp(a*255,0,255), g=clamp(b*255,0,255), bl=0, al=clamp((a+b)*0.35*255,0,140);
+      const k=i*4; img[k]=r; img[k+1]=g; img[k+2]=bl; img[k+3]=al;
+    }
+    this.ctx.putImageData(this.img,0,0); this.texture.needsUpdate=true;
+  }
+  ensureMesh(){
+    if(this.mesh) return;
+    const mat=new THREE.MeshBasicMaterial({map:this.texture, transparent:true, depthWrite:false});
+    const geo=new THREE.PlaneGeometry(ENV_SIZE, ENV_SIZE, 1,1);
+    const m=new THREE.Mesh(geo,mat); m.rotation.x=-Math.PI/2; m.position.y=0.21; m.renderOrder=2; scene.add(m); this.mesh=m;
+  }
+  setVisible(v){ if(!this.mesh) this.ensureMesh(); this.mesh.visible=!!v; }
+}
+const pheros=new Pheromones(256);
+
+/* ================= Agents & Food (with VO-lite & LOS) ================= */
+let idCounter=1;
+class Food{
+  constructor(x,z){this.x=x; this.z=z; this.energy=60+Math.random()*50;
+    const y=env.surfaceY(x,z)+0.2; const mat=new THREE.MeshPhongMaterial({color:0xffaa00});
+    const m=new THREE.Mesh(new THREE.SphereGeometry(0.2,8,8),mat); m.position.set(x,y,z); m.castShadow=true; scene.add(m); this.mesh=m;}
+  remove(){scene.remove(this.mesh); this.mesh.geometry.dispose(); this.mesh.material.dispose();}
+}
+class Agent{
+  constructor(kind='prey'){
+    this.id=idCounter++; this.kind=kind;
+    const x=(Math.random()-0.5)*ENV_SIZE, z=(Math.random()-0.5)*ENV_SIZE;
+    this.pos=new THREE.Vector3(x, env.surfaceY(x,z)+0.5, z);
+    const ang=Math.random()*Math.PI*2; this.vel=new THREE.Vector3(Math.cos(ang),0,Math.sin(ang)).multiplyScalar(0.4);
+    this.acc=new THREE.Vector3(); this.energy=60+Math.random()*80; this.target=null; this.path=null; this.pathIdx=0;
+    this.maxSpeed=(kind==='prey'? 2.6:3.2); this.maxForce=2.5; this.perception=(kind==='prey'?10:14);
+    this.wSep=1.2; this.wAli=0.8; this.wCoh=0.9; this.wAvoid=1.5; this.wTarget=0.9;
+
+    const col=(kind==='prey'?0x55ff55:0xff6a6a), mat=new THREE.MeshPhongMaterial({color:col,shininess:30});
+    const body=new THREE.Mesh(new THREE.SphereGeometry(0.5,16,16),mat);
+    const head=new THREE.Mesh(new THREE.SphereGeometry(0.3,16,16),mat); head.position.set(0.5,0.2,0);
+    const g=new THREE.Group(); g.add(body); g.add(head);
+    this.legs=[]; for(let i=0;i<4;i++){const leg=new THREE.Mesh(new THREE.CylinderGeometry(0.1,0.1,0.5,8),mat);
+      leg.position.set(i<2?-0.3:0.3, -0.5, (i%2===0?-0.3:0.3)); g.add(leg); this.legs.push(leg);}
+    g.castShadow=true; this.mesh=g; scene.add(g); this.syncMesh();
+  }
+  syncMesh(){this.pos.y=env.surfaceY(this.pos.x,this.pos.z)+0.5; this.mesh.position.copy(this.pos); if(this.vel.lengthSq()>1e-6) this.mesh.rotation.y=Math.atan2(this.vel.z,this.vel.x);}
+  remove(){scene.remove(this.mesh); this.mesh.traverse(o=>{if(o.geometry) o.geometry.dispose(); if(o.material) o.material.dispose();});}
+  steerToward(desired){return desired.sub(this.vel).clampLength(0,this.maxForce);}
+  seek(t,k=1){const d=new THREE.Vector3(t.x-this.pos.x,0,t.z-this.pos.z).normalize().multiplyScalar(this.maxSpeed); return this.steerToward(d).multiplyScalar(k);}
+  flee(t,k=1){const d=new THREE.Vector3(this.pos.x-t.x,0,this.pos.z-t.z).normalize().multiplyScalar(this.maxSpeed); return this.steerToward(d).multiplyScalar(k);}
+  separation(neigh,r=1.2){const s=new THREE.Vector3();let c=0;for(const n of neigh){if(n===this) continue; const d=this.pos.distanceTo(n.pos); if(d>0&&d<r){s.add(this.pos.clone().sub(n.pos).multiplyScalar(1/(d*d))); c++;}} if(c){s.multiplyScalar(1/c); s.normalize().multiplyScalar(this.maxSpeed); return this.steerToward(s);} return s;}
+  alignment(neigh,r=3){const avg=new THREE.Vector3();let c=0;for(const n of neigh){if(n===this)continue; const d=this.pos.distanceTo(n.pos); if(d<r){avg.add(n.vel); c++;}} if(c){avg.multiplyScalar(1/c); avg.normalize().multiplyScalar(this.maxSpeed); return this.steerToward(avg);} return avg;}
+  cohesion(neigh,r=3){const ctr=new THREE.Vector3();let c=0;for(const n of neigh){if(n===this)continue; const d=this.pos.distanceTo(n.pos); if(d<r){ctr.add(n.pos); c++;}} if(c){ctr.multiplyScalar(1/c); return this.seek({x:ctr.x,z:ctr.z},1);} return ctr;}
+  avoidSteepAndWater(){const ahead=this.pos.clone().add(this.vel.clone().setLength(2.0));
+    const h=env.surfaceY(ahead.x,ahead.z), isW=env.isWaterH(h);
+    const sx=env.surfaceY(ahead.x+0.4,ahead.z)-h, sz=env.surfaceY(ahead.x,ahead.z+0.4)-h;
+    const grad=new THREE.Vector3(sx,0,sz), steer=new THREE.Vector3(-grad.x,0,-grad.z);
+    if(isW) steer.add(new THREE.Vector3((Math.random()-.5)*2,0,(Math.random()-.5)*2));
+    if(steer.lengthSq()>0){steer.normalize().multiplyScalar(this.maxSpeed*0.7); return this.steerToward(steer);} return new THREE.Vector3();}
+  nearestFood(){let best=null,bd=1e9; for(const f of foods){const d=Math.hypot(f.x-this.pos.x,f.z-this.pos.z); if(d<bd){bd=d;best=f;}} return best?{food:best,dist:bd}:null;}
+  nearestPredator(){let best=null,bd=1e9; for(const a of animals){if(a.kind!=='pred') continue; const d=this.pos.distanceTo(a.pos); if(d<bd){bd=d;best=a;}} return best?{agent:best,dist:bd}:null;}
+  nearestPrey(){let best=null,bd=1e9; for(const a of animals){if(a.kind!=='prey') continue; const d=this.pos.distanceTo(a.pos); if(d<bd){bd=d;best=a;}} return best?{agent:best,dist:bd}:null;}
+  async planPathTo(x,z){const s=env.worldToGrid(this.pos.x,this.pos.z), g=env.worldToGrid(x,z);
+    try{const path=await PathWorker.path({x:s.ix,z:s.iz},{x:g.ix,z:g.iz}); this.path=path.map(p=>env.gridToWorld(p.x,p.z)); this.pathIdx=0;}catch(e){this.path=null;}}
+  eatNearby(){for(let i=foods.length-1;i>=0;i--){const f=foods[i]; if(Math.hypot(f.x-this.pos.x,f.z-this.pos.z)<0.8){this.energy+=f.energy; f.remove(); foods.splice(i,1); const j=foodSources.indexOf(f); if(j>-1) foodSources.splice(j,1);}}}
+  maybeReproduce(){if(this.kind==='prey' && this.energy>180 && animals.length<MAX_ANIMALS){this.energy*=0.5; const c=new Agent('prey'); c.pos.copy(this.pos).add(new THREE.Vector3((Math.random()-.5),0,(Math.random()-.5)));
+      c.maxSpeed=clamp(this.maxSpeed+(Math.random()-.5)*0.4,1.2,4.2); c.perception=clamp(this.perception+(Math.random()-.5)*2,6,16);
+      c.wSep=clamp(this.wSep+(Math.random()-.5)*0.2,0,3); c.wAli=clamp(this.wAli+(Math.random()-.5)*0.2,0,3); c.wCoh=clamp(this.wCoh+(Math.random()-.5)*0.2,0,3);
+      animals.push(c);}}
+  hasLOSTo(target){
+    if(!document.getElementById('tglLOS').checked) return true;
+    const ax=this.pos.x, az=this.pos.z, bx=target.x, bz=target.z;
+    const ay=this.pos.y, by=env.surfaceY(bx,bz)+0.5;
+    const steps=12;
+    for(let i=1;i<steps;i++){
+      const t=i/steps, x=lerp(ax,bx,t), z=lerp(az,bz,t), yh=env.surfaceY(x,z)+0.4, y=lerp(ay,by,t);
+      if(yh > y) return false;
+    }
+    return true;
+  }
+  voLiteAvoid(neigh){
+    if(!document.getElementById('tglVO').checked) return new THREE.Vector3();
+    const tau=1.2, r=0.6; // time horizon and radius
+    let steer=new THREE.Vector3();
+    for(const n of neigh){
+      if(n===this) continue; const p=new THREE.Vector3(n.pos.x-this.pos.x,0,n.pos.z-this.pos.z);
+      const v=new THREE.Vector3(this.vel.x-n.vel.x,0,this.vel.z-n.vel.z);
+      const A=v.dot(v), B=2*p.dot(v), C=p.dot(p)-r*r;
+      const disc=B*B-4*A*C; if(disc<=0) continue;
+      const ttc = (-B - Math.sqrt(disc))/(2*A);
+      if(ttc>0 && ttc<tau){
+        // steer perpendicular to relative velocity away from collision
+        const dir = new THREE.Vector3(-v.z,0,v.x).normalize();
+        steer.add(dir.multiplyScalar( (tau-ttc)*1.2 ));
+      }
+    }
+    return steer.clampLength(0,this.maxForce);
+  }
+  async step(dt){
+    const sun=Math.max(Math.sin(timeOfDay*0.1),0), moon=1-sun;
+    const weatherDrag=(weather==='rain'?0.9:weather==='snow'?0.85:weather==='storm'?0.8:1.0);
+    const maxSp=this.maxSpeed*animalSpeed*(this.kind==='pred'?(0.9+moon*0.2):(0.9+sun*0.2))*weatherDrag;
+
+    const neigh=shash.query(this.pos.x,this.pos.z,this.perception);
+    let steer=new THREE.Vector3();
+
+    // pheromone gradient pull
+    if(document.getElementById('tglPhero').checked){
+      if(this.kind==='prey'){
+        const g=pheros.sampleGrad(0,this.pos.x,this.pos.z); // food field
+        const gv=new THREE.Vector3(g.gx,0,g.gz); if(gv.lengthSq()>1e-6) steer.add(gv.normalize().multiplyScalar(0.4));
+      } else {
+        const g=pheros.sampleGrad(1,this.pos.x,this.pos.z); // prey field
+        const gv=new THREE.Vector3(g.gx,0,g.gz); if(gv.lengthSq()>1e-6) steer.add(gv.normalize().multiplyScalar(0.45));
+      }
+      // deposit trail
+      if(this.kind==='prey') pheros.depositPrey(this.pos.x,this.pos.z,0.6);
+    }
+
+    if(this.kind==='prey'){
+      const threat=this.nearestPredator();
+      if(threat && threat.dist < this.perception*1.1 && this.hasLOSTo(threat.agent.pos)){
+        steer.add(this.flee(threat.agent.pos,1.2));
+      } else if(this.energy<80){
+        if(!this.target){
+          const nf=this.nearestFood();
+          if(nf){ this.target={x:nf.food.x,z:nf.food.z}; this.planPathTo(nf.food.x,nf.food.z); }
+        }
+      }
+    } else {
+      const pr=this.nearestPrey();
+      if(pr && pr.dist < this.perception*1.3 && this.hasLOSTo(pr.agent.pos)){
+        steer.add(this.seek({x:pr.agent.pos.x,z:pr.agent.pos.z},1.0));
+        if(pr.dist<0.9){ pr.agent.energy=-1; this.energy+=60; }
+      }
+    }
+
+    if(this.target){
+      if(this.path && this.pathIdx<this.path.length){
+        const wp=this.path[this.pathIdx]; steer.add(this.seek(wp,this.wTarget));
+        if(Math.hypot(wp.x-this.pos.x, wp.z-this.pos.z)<0.7) this.pathIdx++;
+      } else { steer.add(this.seek(this.target,0.6)); }
+      if(Math.hypot(this.target.x-this.pos.x,this.target.z-this.pos.z)<0.8){ this.target=null; this.path=null; }
+    }
+
+    // Flocking and terrain
+    steer.add(this.separation(neigh,1.2).multiplyScalar(this.wSep));
+    steer.add(this.alignment(neigh,3.0).multiplyScalar(this.wAli));
+    steer.add(this.cohesion(neigh,3.0).multiplyScalar(this.wCoh));
+    steer.add(this.avoidSteepAndWater().multiplyScalar(this.wAvoid));
+    // VO-lite avoidance
+    steer.add(this.voLiteAvoid(neigh));
+
+    // Integrate
+    this.acc.add(steer);
+    this.vel.add(this.acc.multiplyScalar(dt)).clampLength(0,maxSp);
+    this.pos.add(this.vel.clone().multiplyScalar(dt));
+
+    if(wrapWorld){
+      if(this.pos.x<-ENV_SIZE/2) this.pos.x+=ENV_SIZE; if(this.pos.x>ENV_SIZE/2) this.pos.x-=ENV_SIZE;
+      if(this.pos.z<-ENV_SIZE/2) this.pos.z+=ENV_SIZE; if(this.pos.z>ENV_SIZE/2) this.pos.z-=ENV_SIZE;
+    } else {
+      if(this.pos.x<-ENV_SIZE/2||this.pos.x>ENV_SIZE/2) this.vel.x*=-1;
+      if(this.pos.z<-ENV_SIZE/2||this.pos.z>ENV_SIZE/2) this.vel.z*=-1;
+      this.pos.x=clamp(this.pos.x,-ENV_SIZE/2,ENV_SIZE/2); this.pos.z=clamp(this.pos.z,-ENV_SIZE/2,ENV_SIZE/2);
+    }
+
+    // gait anim
+    const t=clock.getElapsedTime(); for(let i=0;i<4;i++){this.legs[i].rotation.z=Math.sin(t*7+i)*0.45;}
+
+    this.energy -= dt*(0.7+(this.vel.length()/this.maxSpeed)*0.6);
+    if(this.kind==='pred') this.energy -= dt*0.15;
+    if(this.energy<0) this.die=true;
+
+    this.eatNearby();
+
+    // prey at water: small chance to rest & "drink" (energy bump)
+    if(this.kind==='prey'){
+      const h=env.surfaceY(this.pos.x,this.pos.z);
+      if(env.isWaterH(h) && Math.random()<0.002){ this.energy+=20; this.vel.multiplyScalar(0.4); }
+    }
+
+    if(this.kind==='prey') this.maybeReproduce();
+    this.acc.set(0,0,0);
+    this.syncMesh();
+  }
+}
+
+/* =================== Weather particles =================== */
+function makeRain(n=1600){
+  const geo=new THREE.PlaneGeometry(0.02,0.6), mat=new THREE.MeshBasicMaterial({color:0x9fcfff,transparent:true,opacity:0.8,depthWrite:false});
+  const m=new THREE.InstancedMesh(geo,mat,n); const d=new THREE.Object3D();
+  for(let i=0;i<n;i++){d.position.set((Math.random()-0.5)*ENV_SIZE,8+Math.random()*16,(Math.random()-0.5)*ENV_SIZE); d.rotation.x=-Math.PI/2; d.updateMatrix(); m.setMatrixAt(i,d.matrix);}
+  m.frustumCulled=false; scene.add(m); m.userData.velY=-10; return m;
+}
+function makeSnow(n=1100){
+  const geo=new THREE.SphereGeometry(0.06,6,6), mat=new THREE.MeshBasicMaterial({color:0xffffff,transparent:true,opacity:0.95,depthWrite:false});
+  const m=new THREE.InstancedMesh(geo,mat,n); const d=new THREE.Object3D();
+  for(let i=0;i<n;i++){d.position.set((Math.random()-0.5)*ENV_SIZE,8+Math.random()*16,(Math.random()-0.5)*ENV_SIZE); d.updateMatrix(); m.setMatrixAt(i,d.matrix);}
+  m.frustumCulled=false; scene.add(m); m.userData.velY=-2.5; return m;
+}
+function updateParticles(sys,dt){
+  if(!sys) return; const d=new THREE.Object3D();
+  for(let i=0;i<sys.count;i++){sys.getMatrixAt(i,d.matrix); d.matrix.decompose(d.position,d.quaternion,d.scale);
+    d.position.y += sys.userData.velY*dt*(weather==='storm'?1.4:1.0);
+    d.position.x += Math.sin(i*12.3 + timeOfDay*0.35)*0.12; d.position.z += Math.cos(i*7.7 + timeOfDay*0.27)*0.12;
+    if(d.position.y < env.surfaceY(d.position.x,d.position.z)+0.2){d.position.set((Math.random()-0.5)*ENV_SIZE,10+Math.random()*14,(Math.random()-0.5)*ENV_SIZE);}
+    d.updateMatrix(); sys.setMatrixAt(i,d.matrix);} sys.instanceMatrix.needsUpdate=true;
+}
+
+/* =================== Lighting & Day/Night =================== */
+function setupLights(){
+  hemisphereLight=new THREE.HemisphereLight(0xffffff,0x223344,0.9); scene.add(hemisphereLight);
+  directionalLight=new THREE.DirectionalLight(0xffffff,1.0); directionalLight.position.set(10,22,10);
+  directionalLight.castShadow=true; directionalLight.shadow.mapSize.set(2048,2048); scene.add(directionalLight);
+  ambientLight=new THREE.AmbientLight(0x1b2430,0.25); scene.add(ambientLight);
+  sunMesh=new THREE.Mesh(new THREE.SphereGeometry(1.2,16,16), new THREE.MeshBasicMaterial({color:0xffdf80})); scene.add(sunMesh);
+  moonMesh=new THREE.Mesh(new THREE.SphereGeometry(0.9,14,14), new THREE.MeshBasicMaterial({color:0x9fb3ff})); scene.add(moonMesh);
+}
+function updateDayNight(dt){
+  timeOfDay+=dt*dayNightSpeed;
+  const sunI=Math.max(Math.sin(timeOfDay*0.1),0), moonI=1-sunI;
+  directionalLight.intensity=sunI; ambientLight.intensity=0.12+sunI*0.4; hemisphereLight.intensity=0.2+moonI*0.3;
+  const sky=new THREE.Color(0x87ceeb).lerp(new THREE.Color(0x000033),moonI); scene.background=sky; scene.fog && (scene.fog.color=sky);
+  const R=40; sunMesh.position.set(Math.cos(timeOfDay*0.1)*R,12+Math.sin(timeOfDay*0.1)*R*0.4,Math.sin(timeOfDay*0.1)*R);
+  moonMesh.position.set(-sunMesh.position.x, -sunMesh.position.y, -sunMesh.position.z);
+  document.getElementById('timeDisplay').textContent = sunI>0.75?'Time: Morning':sunI>0.25?'Time: Afternoon':moonI>0.75?'Time: Night':'Time: Evening';
+}
+
+/* =================== Scene Boot =================== */
+function initScene(){
+  scene=new THREE.Scene(); scene.background=new THREE.Color(0x87ceeb); scene.fog=new THREE.FogExp2(0x87ceeb,0.005);
+  camera=new THREE.PerspectiveCamera(75, innerWidth/innerHeight,0.1,1000); camera.position.set(0,20,30);
+  renderer=new THREE.WebGLRenderer({antialias:true,preserveDrawingBuffer:true}); renderer.shadowMap.enabled=true; renderer.setSize(innerWidth,innerHeight);
+  document.getElementById('canvasContainer').appendChild(renderer.domElement);
+  controls=new THREE.OrbitControls(camera, renderer.domElement); controls.enableDamping=true; controls.dampingFactor=0.05;
+  clock=new THREE.Clock();
+
+  env=new Environment(ENV_SIZE, GRID_RES, terrainComplexity);
+  env.rebuildTerrain(); env.addWaterAndVegetation();
+
+  setupLights();
+
+  for(let i=0;i<26;i++) addPrey();
+  for(let i=0;i<6;i++) addPredator();
+  for(let i=0;i<50;i++) addFood();
+
+  setWeather('clear');
+
+  // pheromone overlay
+  pheros.ensureMesh(); pheros.setVisible(true);
+
+  animate();
+}
+
+/* =================== Weather control =================== */
+function setWeather(w){
+  weather=w; document.getElementById('weatherDisplay').textContent=w[0].toUpperCase()+w.slice(1);
+  // seasonal puddling: modulate base level a bit by season
+  const seasonLift = 0.08 * Math.sin(seasonProg*2*Math.PI);
+  env.waterLevel = WATER_LEVEL_BASE + seasonLift + (w==='rain'?0.15: w==='snow'?0.05: w==='storm'?0.25: 0.0);
+  if(rainSys){scene.remove(rainSys); rainSys.geometry.dispose(); rainSys.material.dispose(); rainSys=null;}
+  if(snowSys){scene.remove(snowSys); snowSys.geometry.dispose(); snowSys.material.dispose(); snowSys=null;}
+  if(w==='rain'||w==='storm') rainSys=makeRain(w==='storm'?2400:1600);
+  if(w==='snow') snowSys=makeSnow(1100);
+}
+
+/* =================== Entity helpers =================== */
+function addPrey(){ if(animals.length>=MAX_ANIMALS) return; animals.push(new Agent('prey')); }
+function addPredator(){ if(animals.length>=MAX_ANIMALS) return; animals.push(new Agent('pred')); }
+function removeAnimal(){ if(!animals.length) return; const a=animals.pop(); a.remove(); }
+function addFood(){ if(foods.length>=MAX_FOOD) return; const x=(Math.random()-0.5)*ENV_SIZE, z=(Math.random()-0.5)*ENV_SIZE; const f=new Food(x,z); foods.push(f); foodSources.push(f); pheros.depositFood(x,z,4); }
+// original aliases:
+function addAnimal(){ addPrey(); }
+function addFoodSource(){ addFood(); }
+
+/* =================== Persistence / CSV =================== */
+const stateKey='advSimState_v4';
+function saveState(){
+  const st={animalSpeed, terrainComplexity, dayNightSpeed, weather, wrapWorld,
+    animals: animals.slice(0,400).map(a=>({kind:a.kind,x:a.pos.x,z:a.pos.z,energy:a.energy,traits:{maxSpeed:a.maxSpeed,perception:a.perception,wSep:a.wSep,wAli:a.wAli,wCoh:a.wCoh}})),
+    foods: foods.slice(0,600).map(f=>({x:f.x,z:f.z})), simDays, seasonProg};
+  localStorage.setItem(stateKey, JSON.stringify(st));
+}
+function loadState(){
+  const raw=localStorage.getItem(stateKey); if(!raw) return;
+  animals.forEach(a=>a.remove()); animals.length=0; foods.forEach(f=>f.remove()); foods.length=0; foodSources.length=0;
+  const st=JSON.parse(raw);
+  animalSpeed=st.animalSpeed; terrainComplexity=st.terrainComplexity; dayNightSpeed=st.dayNightSpeed; wrapWorld=!!st.wrapWorld;
+  setWeather(st.weather); simDays=st.simDays||1; seasonProg=st.seasonProg||0;
+  document.getElementById('speedControl').value=animalSpeed; document.getElementById('terrainControl').value=terrainComplexity; document.getElementById('timeControl').value=dayNightSpeed;
+  document.getElementById('toggleWrapBtn').textContent='Wrap: '+(wrapWorld?'On':'Off');
+  env.complexity=terrainComplexity; env.rebuildTerrain(); env.addWaterAndVegetation();
+  for(const a of st.animals){const ag=new Agent(a.kind); ag.pos.x=a.x; ag.pos.z=a.z; ag.energy=a.energy;
+    ag.maxSpeed=a.traits.maxSpeed; ag.perception=a.traits.perception; ag.wSep=a.traits.wSep; ag.wAli=a.traits.wAli; ag.wCoh=a.traits.wCoh; animals.push(ag);}
+  for(const f of st.foods){const F=new Food(f.x,f.z); foods.push(F); foodSources.push(F); pheros.depositFood(F.x,F.z,4);}
+}
+function exportJSON(){
+  const json={version:4, world:{ENV_SIZE,GRID_RES,CELL}, weather, wrapWorld, simDays, seasonProg,
+    animals: animals.map(a=>({kind:a.kind,x:a.pos.x,z:a.pos.z,energy:a.energy,vel:[a.vel.x,a.vel.y,a.vel.z],
+      traits:{maxSpeed:a.maxSpeed,perception:a.perception,wSep:a.wSep,wAli:a.wAli,wCoh:a.wCoh}})),
+    foods: foods.map(f=>({x:f.x,z:f.z}))};
+  const blob=new Blob([JSON.stringify(json,null,2)],{type:'application/json'}), url=URL.createObjectURL(blob);
+  const a=document.createElement('a'); a.href=url; a.download='advanced_sim_export.json'; a.click(); setTimeout(()=>URL.revokeObjectURL(url),1000);
+}
+function importJSON(file){
+  const r=new FileReader(); r.onload=()=>{ try{
+    const st=JSON.parse(r.result);
+    animals.forEach(a=>a.remove()); animals.length=0; foods.forEach(f=>f.remove()); foods.length=0; foodSources.length=0;
+    if(st.world && st.world.ENV_SIZE) {} // future compat
+    setWeather(st.weather||'clear'); wrapWorld=!!st.wrapWorld; document.getElementById('toggleWrapBtn').textContent='Wrap: '+(wrapWorld?'On':'Off');
+    if(st.animals){for(const a of st.animals){const ag=new Agent(a.kind||'prey'); ag.pos.x=a.x; ag.pos.z=a.z; ag.energy=a.energy||80; animals.push(ag);}}
+    if(st.foods){for(const f of st.foods){const F=new Food(f.x,f.z); foods.push(F); foodSources.push(F); pheros.depositFood(F.x,F.z,4);}}
+  }catch(e){alert('Invalid JSON');} };
+  r.readAsText(file);
+}
+const series=[]; // time series: {t, prey, pred, food}
+
+/* =================== Web Audio =================== */
+function whiteNoiseBuffer(ctx,len=2){const b=ctx.createBuffer(1,ctx.sampleRate*len,ctx.sampleRate),d=b.getChannelData(0); for(let i=0;i<d.length;i++) d[i]=Math.random()*2-1; return b;}
+function startAudio(){ if(audioCtx) return; audioCtx=new (window.AudioContext||window.webkitAudioContext)();
+  const noise=whiteNoiseBuffer(audioCtx,2);
+  const rainSrc=audioCtx.createBufferSource(); rainSrc.buffer=noise; rainSrc.loop=true;
+  const rainBp=audioCtx.createBiquadFilter(); rainBp.type='bandpass'; rainBp.frequency.value=1000; rainBp.Q.value=0.5;
+  rainGain=audioCtx.createGain(); rainGain.gain.value=0.0; rainSrc.connect(rainBp).connect(rainGain).connect(audioCtx.destination); rainSrc.start();
+  const windSrc=audioCtx.createBufferSource(); windSrc.buffer=noise; windSrc.loop=true;
+  const windLp=audioCtx.createBiquadFilter(); windLp.type='lowpass'; windLp.frequency.value=400; windLp.Q.value=0.0001;
+  windGain=audioCtx.createGain(); windGain.gain.value=0.02; windSrc.connect(windLp).connect(windGain).connect(audioCtx.destination); windSrc.start();
+  thunderGain=audioCtx.createGain(); thunderGain.gain.value=0.0; thunderGain.connect(audioCtx.destination);
+  document.getElementById('tglAudio').checked=true;
+}
+function stopAudio(){ if(!audioCtx) return; audioCtx.close(); audioCtx=null; rainGain=windGain=thunderGain=null; document.getElementById('tglAudio').checked=false; }
+function audioTick(){
+  if(!audioCtx) return;
+  const targetRain=(weather==='rain'||weather==='storm')?(weather==='storm'?0.12:0.08):0.0;
+  const targetWind=(weather==='storm'?0.06: weather==='rain'?0.03: 0.02);
+  if(rainGain) rainGain.gain.value += (targetRain - rainGain.gain.value)*0.02;
+  if(windGain) windGain.gain.value += (targetWind - windGain.gain.value)*0.02;
+  if(weather==='storm' && Math.random()<0.002 && thunderGain){
+    const src=audioCtx.createBufferSource(); src.buffer=whiteNoiseBuffer(audioCtx,1);
+    const lp=audioCtx.createBiquadFilter(); lp.type='lowpass'; lp.frequency.value=120; const g=audioCtx.createGain(); g.gain.value=0.6;
+    src.connect(lp).connect(g).connect(thunderGain).connect(audioCtx.destination); src.start();
+    const t=audioCtx.currentTime; thunderGain.gain.cancelScheduledValues(t); thunderGain.gain.setValueAtTime(0,t); thunderGain.gain.linearRampToValueAtTime(0.6,t+0.05); thunderGain.gain.exponentialRampToValueAtTime(0.001,t+1.2);
+  }
+}
+
+/* =================== UI Hooks =================== */
+window.addEventListener('resize',()=>{camera.aspect=innerWidth/innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth,innerHeight);});
+document.getElementById('speedControl').addEventListener('input',e=>{animalSpeed=parseFloat(e.target.value); document.getElementById('speedDisplay').textContent=animalSpeed.toFixed(1);});
+document.getElementById('terrainControl').addEventListener('input',e=>{terrainComplexity=parseFloat(e.target.value); document.getElementById('terrainDisplay').textContent=terrainComplexity.toFixed(1); env.complexity=terrainComplexity; env.rebuildTerrain(); env.addWaterAndVegetation();});
+document.getElementById('timeControl').addEventListener('input',e=>{dayNightSpeed=parseFloat(e.target.value);});
+document.getElementById('weatherControl').addEventListener('change',e=>setWeather(e.target.value));
+document.getElementById('addAnimalBtn').addEventListener('click',()=>addAnimal());
+document.getElementById('addPredBtn').addEventListener('click',()=>addPredator());
+document.getElementById('removeAnimalBtn').addEventListener('click',()=>removeAnimal());
+document.getElementById('addFoodBtn').addEventListener('click',()=>addFoodSource());
+document.getElementById('regenTerrainBtn').addEventListener('click',()=>{env.rebuildTerrain(); env.addWaterAndVegetation();});
+document.getElementById('toggleWrapBtn').addEventListener('click',e=>{wrapWorld=!wrapWorld; e.target.textContent='Wrap: '+(wrapWorld?'On':'Off');});
+document.getElementById('saveBtn').addEventListener('click',saveState);
+document.getElementById('loadBtn').addEventListener('click',loadState);
+document.getElementById('resetBtn').addEventListener('click',()=>{animals.forEach(a=>a.remove()); animals.length=0; foods.forEach(f=>f.remove()); foods.length=0; foodSources.length=0;});
+document.getElementById('exportBtn').addEventListener('click',exportJSON);
+document.getElementById('importBtn').addEventListener('click',()=>document.getElementById('fileInput').click());
+document.getElementById('fileInput').addEventListener('change',(e)=>{if(e.target.files[0]) importJSON(e.target.files[0]);});
+document.getElementById('csvBtn').addEventListener('click',()=>{const rows=['t,prey,pred,food', ...series.map(r=>[r.t,r.prey,r.pred,r.food].join(','))]; const blob=new Blob([rows.join('\n')],{type:'text/csv'}); const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download='pop_timeseries.csv'; a.click(); setTimeout(()=>URL.revokeObjectURL(url),1e3);});
+document.getElementById('pngBtn').addEventListener('click',()=>{const a=document.createElement('a'); a.download='sim_snapshot.png'; a.href=renderer.domElement.toDataURL('image/png'); a.click();});
+document.getElementById('snapshotBtn').addEventListener('click',()=>{const a=document.createElement('a'); a.download='sim_snapshot.png'; a.href=renderer.domElement.toDataURL('image/png'); a.click();});
+document.getElementById('centerBtn').addEventListener('click',()=>{camera.position.set(0,24,34); controls.target.set(0,0,0); controls.update();});
+document.getElementById('tglAudio').addEventListener('change',e=>{e.target.checked?startAudio():stopAudio();});
+document.getElementById('tglOverlay').addEventListener('change',e=>pheros.setVisible(e.target.checked));
+document.getElementById('tglPause').addEventListener('change',e=>{paused=e.target.checked;});
+document.getElementById('stepBtn').addEventListener('click',()=>{stepOnce=true;});
+
+/* =================== Click-to-spawn (P/O/F) =================== */
+let spawnMode='food'; const spawnLabel=document.getElementById('spawnMode');
+function setSpawn(mode){spawnMode=mode; spawnLabel.textContent = (mode==='prey'?'Prey (P)': mode==='pred'?'Predator (O)':'Food (F)'); }
+window.addEventListener('keydown',(e)=>{ if(e.key==='p' || e.key==='P') setSpawn('prey'); else if(e.key==='o'||e.key==='O') setSpawn('pred'); else if(e.key==='f'||e.key==='F') setSpawn('food');});
+renderer && renderer.domElement && renderer.domElement.addEventListener?.('click', worldClick);
+function worldClick(evt){
+  const rect=renderer.domElement.getBoundingClientRect(), x=((evt.clientX-rect.left)/rect.width)*2-1, y=-((evt.clientY-rect.top)/rect.height)*2+1;
+  const ray=new THREE.Raycaster(); ray.setFromCamera({x,y},camera);
+  const hit=ray.intersectObject(env.terrain,true)[0]; if(!hit) return;
+  const wx=hit.point.x, wz=hit.point.z; if(spawnMode==='food'){const f=new Food(wx,wz); foods.push(f); foodSources.push(f); pheros.depositFood(wx,wz,6);}
+  else if(spawnMode==='prey'){addPrey(); animals[animals.length-1].pos.set(wx, env.surfaceY(wx,wz)+0.5, wz);}
+  else {addPredator(); animals[animals.length-1].pos.set(wx, env.surfaceY(wx,wz)+0.5, wz);}
+}
+
+/* =================== Analytics =================== */
+function drawSparkline(){
+  sparkBuf.shift(); const p=animals.filter(a=>a.kind==='prey').length, q=animals.filter(a=>a.kind==='pred').length;
+  sparkBuf.push(Math.min(300,p*1.5+q*3));
+  sctx.clearRect(0,0,spark.width,spark.height); sctx.beginPath(); sctx.moveTo(0,spark.height);
+  for(let x=0;x<sparkBuf.length;x++){const y=spark.height-(sparkBuf[x]/300)*spark.height; sctx.lineTo(x,y);}
+  sctx.lineWidth=1.6; sctx.strokeStyle='#6cf'; sctx.stroke();
+}
+function drawMinimap(){
+  mctx.clearRect(0,0,mini.width,mini.height);
+  const toPix=(x,z)=>({x:(x/ENV_SIZE+0.5)*mini.width, y:(z/ENV_SIZE+0.5)*mini.height});
+  // heatmap overlay from pheros canvas (downscale)
+  mctx.globalAlpha=0.9; mctx.drawImage(pheros.canvas, 0,0, mini.width, mini.height); mctx.globalAlpha=1.0;
+  for(const f of foods){const p=toPix(f.x,f.z); mctx.fillStyle='#ffb84a'; mctx.fillRect(p.x-1,p.y-1,2,2);}
+  for(const a of animals){const p=toPix(a.pos.x,a.pos.z); mctx.fillStyle=(a.kind==='prey')?'#55ff55':'#ff6a6a'; mctx.fillRect(p.x-1.5,p.y-1.5,3,3);}
+}
+function updateHUD(dt){
+  const prey=animals.filter(a=>a.kind==='prey').length, pred=animals.filter(a=>a.kind==='pred').length, food=foods.length;
+  document.getElementById('preyCount').textContent=prey; document.getElementById('predCount').textContent=pred; document.getElementById('foodCount').textContent=food;
+  frames++; const now=performance.now(); if(now-lastFPSTime>=500){document.getElementById('fps').textContent=((frames*1000)/(now-lastFPSTime)).toFixed(0); frames=0; lastFPSTime=now;}
+  drawSparkline(); drawMinimap();
+  // time series (1 point/sec)
+  if(Math.random()<dt) series.push({t:series.length, prey, pred, food});
+  // day count & seasons
+  seasonProg=(seasonProg + dt*0.02/60) % 1; const sIdx=Math.floor(seasonProg*4)%4; document.getElementById('seasonLabel').textContent=seasons[sIdx];
+}
+
+/* =================== Main loop =================== */
+function animate(){
+  requestAnimationFrame(animate);
+  const dt = paused && !stepOnce ? 0 : Math.min(0.033, clock.getDelta());
+  if(stepOnce){ stepOnce=false; }
+
+  updateDayNight(dt);
+
+  // pheromones evolve & overlay refresh
+  pheros.step(0.18, 0.996);
+  if(document.getElementById('tglOverlay').checked) pheros.renderOverlay();
+
+  // neighbor hash
+  shash.clear(); for(const a of animals) shash.insert(a);
+  // boid sliders
+  const sv=parseFloat(document.getElementById('sepControl').value), av=parseFloat(document.getElementById('aliControl').value), cv=parseFloat(document.getElementById('cohControl').value);
+  for(const a of animals){a.wSep=sv; a.wAli=av; a.wCoh=cv;}
+
+  if(dt>0){
+    for(let i=animals.length-1;i>=0;i--){const a=animals[i]; a.step(dt); if(a.die){a.remove(); animals.splice(i,1);}}
+    // weather particles and audio
+    updateParticles(rainSys,dt); updateParticles(snowSys,dt); audioTick();
+
+    // stochastic food regen based on weather & season
+    const seasonFactor=0.008 + 0.015*Math.sin(seasonProg*2*Math.PI)**2;
+    const weatherFactor=(weather==='clear'?1.0: weather==='rain'?1.5: weather==='snow'?0.5: 1.2);
+    if(Math.random() < seasonFactor*weatherFactor) addFood();
+  }
+
+  updateHUD(dt);
+  controls.update(); renderer.render(scene,camera);
+}
+
+/* =================== Boot =================== */
+window.addEventListener('load', initScene);
+</script>
+</body>
+</html>
