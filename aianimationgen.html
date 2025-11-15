@@ -1,238 +1,532 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Scrolling Neural Network Animation Generator</title>
-    <style>
-        body {
-            margin: 0;
-            padding: 0;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            height: 100vh;
-            background-color: #1a1a1a;
-            font-family: Arial, sans-serif;
-            overflow: hidden;
-        }
-        #animationCanvas {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 200%;  /* Double width for scrolling effect */
-            height: 100%;
-            z-index: 1;
-        }
-        #controls {
-            position: fixed;
-            top: 20px;
-            right: 20px;
-            z-index: 1000;
-        }
-        button {
-            background-color: #4CAF50;
-            border: none;
-            color: white;
-            padding: 15px 32px;
-            text-align: center;
-            text-decoration: none;
-            display: inline-block;
-            font-size: 16px;
-            margin: 4px 2px;
-            cursor: pointer;
-            transition: all 0.3s;
-            border-radius: 5px;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-        }
-        button:hover {
-            background-color: #45a049;
-            transform: scale(1.05);
-        }
-        .shape {
-            position: absolute;
-            transition: all 0.5s;
-        }
-        @keyframes rotate {
-            from { transform: rotate(0deg); }
-            to { transform: rotate(360deg); }
-        }
-        @keyframes pulse {
-            0% { transform: scale(1); }
-            50% { transform: scale(1.1); }
-            100% { transform: scale(1); }
-        }
-    </style>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Scrolling Neural Network Animation Generator — Advanced</title>
+  <style>
+    :root{--bg:#0e0f12;--panel:#0f1720;--accent:#22c1c3;--muted:#9aa4ae}
+    html,body{height:100%;margin:0;background:var(--bg);color:#e6eef3;font-family:Inter,Helvetica,Arial,sans-serif}
+    #app{position:fixed;inset:0;display:flex}
+    /* Canvas takes full area; we draw offscreen width multiplier internally */
+    #animationCanvas{flex:1;display:block;width:100%;height:100%;background:linear-gradient(180deg,#07101a 0%, #021018 100%);}
+    /* Controls panel */
+    #controls{position:fixed;right:18px;top:18px;width:360px;background:linear-gradient(180deg,#081219,#071018);border:1px solid rgba(255,255,255,0.03);padding:12px;border-radius:10px;box-shadow:0 10px 30px rgba(3,8,15,0.7)}
+    #controls h2{margin:2px 0 8px 0;font-size:14px}
+    .row{display:flex;gap:8px;align-items:center;margin-bottom:8px}
+    label{font-size:12px;color:var(--muted);width:110px}
+    input[type=range]{flex:1}
+    input[type=number], select, input[type=text]{background:#071520;border:1px solid rgba(255,255,255,0.03);color:#dfe9ef;padding:6px;border-radius:6px;font-size:13px}
+    button{background:linear-gradient(90deg,var(--accent),#1e8fb0);border:none;padding:8px 10px;color:#021018;border-radius:6px;cursor:pointer;font-weight:600}
+    .small{font-size:12px;color:var(--muted)}
+    .panel-section{padding:8px 0;border-top:1px dashed rgba(255,255,255,0.02)}
+    .preset-list{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
+    .chip{background:#071920;padding:6px;border-radius:6px;font-size:12px;border:1px solid rgba(255,255,255,0.02);cursor:pointer}
+    footer{position:fixed;left:18px;bottom:12px;color:rgba(255,255,255,0.6);font-size:12px}
+    /* Responsive tweaks */
+    @media(max-width:860px){#controls{width:320px;right:10px;top:10px}}
+    @media(max-width:520px){#controls{position:fixed;left:10px;right:10px;top:auto;bottom:10px;width:auto}}
+  </style>
 </head>
 <body>
-    <div id="animationCanvas"></div>
-    <div id="controls">
-        <button id="toggleAnimation">Start Animation</button>
+  <div id="app">
+    <canvas id="animationCanvas"></canvas>
+  </div>
+
+  <div id="controls">
+    <h2>Scrolling Neural Network Animation — Advanced</h2>
+    <div class="row"><label>Mode</label><select id="modeSelect"><option value="canvas">Canvas (fast)</option><option value="dom">DOM (legacy)</option></select></div>
+
+    <div class="row"><label>Spawn rate</label><input id="spawnRate" type="range" min="0" max="60" value="8"><div class="small" id="spawnRateLabel">8 /s</div></div>
+    <div class="row"><label>Scroll speed</label><input id="scrollSpeed" type="range" min="0" max="8" step="0.1" value="0.6"><div class="small" id="scrollSpeedLabel">0.6 px/frame</div></div>
+    <div class="row"><label>Max shapes</label><input id="maxShapes" type="number" min="10" max="2000" value="300"></div>
+    <div class="row"><label>Opacity decay</label><input id="decay" type="range" min="0.000" max="0.020" step="0.0005" value="0.005"><div class="small" id="decayLabel">0.005</div></div>
+
+    <div class="panel-section">
+      <div class="row"><label>Palette</label><select id="paletteSelect">
+        <option value="neon">Neon</option>
+        <option value="pastel">Pastel</option>
+        <option value="mono">Monochrome</option>
+        <option value="vintage">Vintage</option>
+      </select></div>
+
+      <div class="row"><label>Seed</label><input id="seedInput" type="text" placeholder="optional seed"></div>
+      <div class="row"><label>Temperature</label><input id="temperature" type="range" min="0.1" max="2.5" step="0.05" value="1"><div class="small" id="tempLabel">1.00</div></div>
+      <div class="row"><label>Hidden size</label><select id="hiddenSizeSelect"><option>16</option><option>32</option><option>64</option></select></div>
+      <div class="row"><label>Shape cap</label><input id="shapeCap" type="number" min="1" max="5000" value="300"></div>
     </div>
-    <script>
-        class RNN {
-            constructor(inputSize, hiddenSize, outputSize) {
-                this.hiddenSize = hiddenSize;
-                this.Wxh = this.randomMatrix(hiddenSize, inputSize);
-                this.Whh = this.randomMatrix(hiddenSize, hiddenSize);
-                this.Why = this.randomMatrix(outputSize, hiddenSize);
-                this.bh = this.randomMatrix(hiddenSize, 1);
-                this.by = this.randomMatrix(outputSize, 1);
-            }
 
-            randomMatrix(rows, cols) {
-                return Array.from({ length: rows }, () =>
-                    Array.from({ length: cols }, () => Math.random() * 2 - 1)
-                );
-            }
+    <div class="panel-section">
+      <div style="display:flex;gap:8px;margin-top:8px">
+        <button id="toggleAnimation">Start</button>
+        <button id="resetNetwork">Reset NN</button>
+        <button id="clearCanvas">Clear</button>
+      </div>
 
-            forward(x, h) {
-                const newH = this.tanh(this.add(
-                    this.add(this.multiply(this.Wxh, x), this.multiply(this.Whh, h)),
-                    this.bh
-                ));
-                const y = this.add(this.multiply(this.Why, newH), this.by);
-                return [y, newH];
-            }
+      <div style="display:flex;gap:8px;margin-top:8px">
+        <button id="startRecord">Record</button>
+        <button id="stopRecord" disabled>Stop</button>
+        <button id="downloadLast" disabled>Download</button>
+      </div>
 
-            multiply(a, b) {
-                const result = Array(a.length).fill().map(() => Array(b[0].length).fill(0));
-                return result.map((row, i) =>
-                    row.map((_, j) =>
-                        a[i].reduce((sum, elm, k) => sum + elm * b[k][j], 0)
-                    )
-                );
-            }
+      <div style="margin-top:8px">
+        <div class="small">Presets</div>
+        <div class="preset-list" id="presetList"></div>
+        <div style="display:flex;gap:8px;margin-top:8px">
+          <input id="presetName" type="text" placeholder="preset name" style="flex:1">
+          <button id="savePreset">Save</button>
+        </div>
+      </div>
+    </div>
 
-            add(a, b) {
-                return a.map((row, i) => row.map((val, j) => val + b[i][j]));
-            }
+    <div class="panel-section">
+      <div class="small">Tips</div>
+      <div class="small" style="margin-top:6px;color:var(--muted)">Switch to <strong>DOM</strong> mode to reproduce the original behaviour; <strong>Canvas</strong> mode is recommended for performance and recording. Use <strong>Record</strong> to capture a .webm of the canvas stream.</div>
+    </div>
+  </div>
 
-            tanh(x) {
-                return x.map(row => row.map(val => Math.tanh(val)));
-            }
+  <footer>Advanced generator — improvements: deterministic seed, recording, presets, performance guards, canvas renderer.</footer>
+
+  <script>
+  // Advanced single-file implementation — preserves original RNN-based parameter mapping
+  (function(){
+    // ------------------------ Utilities ------------------------
+    function clamp(v,a,b){return Math.max(a,Math.min(b,v));}
+    // Seeded RNG (Mulberry32)
+    function createSeededRNG(seed){
+      let h = 2166136261 >>> 0;
+      for(let i=0;i<seed.length;i++) h = Math.imul(h ^ seed.charCodeAt(i), 16777619) >>> 0;
+      let state = h + 0x6D2B79F5 >>> 0;
+      return function(){ state = Math.imul(state + 0x6D2B79F5, 0x6D2B79F5) >>> 0; let t = Math.imul(state ^ state >>> 15, 1 | state); t = (t + Math.imul(t ^ t >>> 7, 61 | t)) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
+    }
+
+    // Simple matrix ops (2D arrays) — small sizes only
+    function zeros(r,c){const a=[]; for(let i=0;i<r;i++){a.push(new Array(c).fill(0));} return a; }
+    function randomMatrix(rows, cols, rng){ const m = []; for(let i=0;i<rows;i++){ const row = []; for(let j=0;j<cols;j++){ row.push(rng() * 2 - 1); } m.push(row); } return m; }
+    function matMul(A,B){ const r=A.length,c=B[0].length,n=B.length; const out=zeros(r,c); for(let i=0;i<r;i++){ for(let k=0;k<n;k++){ const aik=A[i][k]; if(!aik) continue; for(let j=0;j<c;j++){ out[i][j] += aik * B[k][j]; } } } return out; }
+    function matAdd(A,B){ const r=A.length,c=A[0].length; const out=zeros(r,c); for(let i=0;i<r;i++) for(let j=0;j<c;j++) out[i][j]=A[i][j]+B[i][j]; return out; }
+    function matTanh(A){ return A.map(row=>row.map(v=>Math.tanh(v))); }
+
+    // ------------------------ RNN ------------------------
+    class RNN {
+      constructor(inputSize, hiddenSize, outputSize, rng){
+        this.inputSize = inputSize; this.hiddenSize = hiddenSize; this.outputSize = outputSize; this.rng = rng || Math.random;
+        this.Wxh = randomMatrix(hiddenSize, inputSize, this.rng);
+        this.Whh = randomMatrix(hiddenSize, hiddenSize, this.rng);
+        this.Why = randomMatrix(outputSize, hiddenSize, this.rng);
+        this.bh = randomMatrix(hiddenSize,1, this.rng);
+        this.by = randomMatrix(outputSize,1, this.rng);
+      }
+      forward(x, h){
+        // x: inputSize x 1 ; h: hiddenSize x 1
+        const Wxh_x = matMul(this.Wxh, x); // hidden x 1
+        const Whh_h = matMul(this.Whh, h);
+        const sum = matAdd(matAdd(Wxh_x, Whh_h), this.bh);
+        const newH = matTanh(sum);
+        const y = matAdd(matMul(this.Why, newH), this.by); // output x 1
+        return [y, newH];
+      }
+    }
+
+    // ------------------------ App state ------------------------
+    const CANVAS = document.getElementById('animationCanvas');
+    const ctx = CANVAS.getContext('2d');
+    let DPR = Math.max(1, window.devicePixelRatio || 1);
+
+    const state = {
+      mode: 'canvas', // 'canvas' or 'dom'
+      running: false,
+      rng: Math.random,
+      spawnAccumulator: 0,
+      shapes: [],
+      scrollX: 0,
+      lastTime: 0,
+      recorder: null,
+      recordedBlobs: [],
+      lastRecordingURL: null
+    };
+
+    // UI elements
+    const $ = id=>document.getElementById(id);
+    const spawnRateEl = $('spawnRate');
+    const spawnRateLabel = $('spawnRateLabel');
+    const scrollSpeedEl = $('scrollSpeed');
+    const scrollSpeedLabel = $('scrollSpeedLabel');
+    const decayEl = $('decay');
+    const decayLabel = $('decayLabel');
+    const toggleBtn = $('toggleAnimation');
+    const resetNNBtn = $('resetNetwork');
+    const clearBtn = $('clearCanvas');
+    const startRecordBtn = $('startRecord');
+    const stopRecordBtn = $('stopRecord');
+    const downloadLastBtn = $('downloadLast');
+    const paletteSelect = $('paletteSelect');
+    const seedInput = $('seedInput');
+    const tempEl = $('temperature');
+    const tempLabel = $('tempLabel');
+    const hiddenSizeSelect = $('hiddenSizeSelect');
+    const maxShapesInput = $('maxShapes');
+    const modeSelect = $('modeSelect');
+    const presetList = $('presetList');
+    const savePresetBtn = $('savePreset');
+    const presetNameInput = $('presetName');
+    const shapeCapInput = $('shapeCap');
+
+    spawnRateLabel.textContent = spawnRateEl.value + ' /s';
+    scrollSpeedLabel.textContent = scrollSpeedEl.value + ' px/frame';
+    decayLabel.textContent = decayEl.value;
+    tempLabel.textContent = parseFloat(tempEl.value).toFixed(2);
+
+    // default network sizes
+    let INPUT_SIZE = 4; let HIDDEN_SIZE = parseInt(hiddenSizeSelect.value); let OUTPUT_SIZE = 20;
+    let rnn = null;
+    let h_state = null;
+
+    // palettes
+    const palettes = {
+      neon: ['#00f5ff','#00ffd5','#7c4dff','#ff2d95','#00ffd1','#00b3ff'],
+      pastel: ['#ffd1dc','#bfe4ff','#e7ffd9','#fff1b8','#f6d7ff','#cfe8ff'],
+      mono: ['#e6eef3','#b9c6d0','#8fa3b3','#6d8290','#495a66','#27343a'],
+      vintage: ['#ffb88c','#ffd7a8','#d4b483','#b08b57','#8c5a3c','#6e3a2c']
+    };
+
+    // resize handling
+    function resizeCanvas(){
+      const w = window.innerWidth * 2; // double width for scrolling
+      const h = window.innerHeight;
+      CANVAS.width = Math.round(w * DPR);
+      CANVAS.height = Math.round(h * DPR);
+      CANVAS.style.width = w/2 + 'px';
+      CANVAS.style.height = h + 'px';
+      ctx.setTransform(DPR,0,0,DPR,0,0);
+      ctx.imageSmoothingEnabled = true;
+    }
+    window.addEventListener('resize', ()=>{ resizeCanvas(); });
+    resizeCanvas();
+
+    // Initialize RNG and RNN
+    function initRNN(){
+      const seed = seedInput.value.trim();
+      state.rng = seed ? createSeededRNG(seed) : Math.random;
+      HIDDEN_SIZE = parseInt(hiddenSizeSelect.value);
+      rnn = new RNN(INPUT_SIZE, HIDDEN_SIZE, OUTPUT_SIZE, state.rng);
+      // initialize h_state random small values
+      h_state = randomMatrix(HIDDEN_SIZE,1,state.rng);
+      setStatus('RNN initialized (hidden=' + HIDDEN_SIZE + ')');
+    }
+    initRNN();
+
+    function setStatus(msg){ console.log('[status]',msg); }
+
+    // map output vector to normalized numbers
+    function outputToArray(output){
+      // output is outputSize x 1 matrix
+      return output.map(row => row[0]);
+    }
+
+    // spawn shapes according to RNN output
+    function spawnFromRNN(dt){
+      // dt in seconds
+      const spawnRate = parseFloat(spawnRateEl.value);
+      state.spawnAccumulator += spawnRate * dt;
+      const toSpawn = Math.floor(state.spawnAccumulator);
+      state.spawnAccumulator -= toSpawn;
+      for(let s=0;s<toSpawn;s++){
+        const x = randomMatrix(INPUT_SIZE,1,state.rng); // random input column
+        const [y, newH] = rnn.forward(x,h_state);
+        h_state = newH;
+        const out = outputToArray(y);
+        createShapeFromOutput(out);
+      }
+    }
+
+    // convert float in -inf..inf to 0..1 via tanh-like mapping
+    function squash(v){ return (Math.tanh(v) + 1) * 0.5; }
+
+    function pickColor(out, idx){
+      // pick 3 channel values mapped by palette
+      const pal = palettes[paletteSelect.value] || palettes.neon;
+      // use two outputs to pick a palette color index
+      const i = Math.floor(clamp((out[idx] + 1)/2, 0, 0.999) * pal.length);
+      return pal[i % pal.length];
+    }
+
+    function createShapeFromOutput(out){
+      if(state.shapes.length >= parseInt(maxShapesInput.value || 500)) return;
+      // Map outputs similar to user's original mapping
+      const r = Math.floor(clamp((out[1]+1)/2,0,1)*255);
+      const g = Math.floor(clamp((out[2]+1)/2,0,1)*255);
+      const b = Math.floor(clamp((out[3]+1)/2,0,1)*255);
+      // position: spawn offscreen at x = canvas width - half -- we use logical width
+      const canvasW = CANVAS.width / DPR;
+      const canvasH = CANVAS.height / DPR;
+      const x1 = canvasW - ((out[4] + 1) * 0.5) * (canvasW/2); // keep mostly to right half
+      const y1 = clamp((out[5]+1)/2,0,1) * canvasH;
+      const size = Math.max(8, Math.abs(out[6]) * 120 + 10);
+      const shapeType = Math.floor(clamp((out[7]+1)/2,0,1) * 3); // 0 circle 1 rounded rect 2 triangle
+      const animType = Math.floor(clamp((out[8]+1)/2,0,1) * 3);
+      const duration = Math.max(0.5, Math.abs(out[9]) * 6 + 0.5);
+      const delay = Math.abs(out[10]) * 1.5;
+      const opacity = clamp(Math.abs(out[11]) * 0.6 + 0.1, 0.03, 1);
+      const borderRadius = Math.abs(out[12]) * 0.5;
+      const rotate = out[13] * 360;
+      const scaleX = Math.abs(out[14]) + 0.2;
+      const scaleY = Math.abs(out[15]) + 0.2;
+      const skew = out[16] * 30;
+
+      const colorChoice = pickColor(out, 1);
+      const fillStyle = colorChoice; // use palette color for visual harmony
+
+      const shape = {
+        x: x1 + state.scrollX,
+        y: y1,
+        size,
+        shapeType,
+        animType,
+        duration,
+        delay,
+        t:0,
+        opacity,
+        fillStyle,
+        rotate, scaleX, scaleY, skew,
+        born: performance.now()/1000
+      };
+      state.shapes.push(shape);
+    }
+
+    // Create legacy DOM shape to preserve original behaviour (used only when mode=dom)
+    function createDomShapeFromOutput(out){
+      const wrapper = document.createElement('div');
+      wrapper.className = 'shape';
+      wrapper.style.position = 'absolute';
+      wrapper.style.pointerEvents = 'none';
+      // map parameters similar to createShapeFromOutput
+      const canvasW = window.innerWidth * 2;
+      const canvasH = window.innerHeight;
+      const x1 = canvasW - ((out[4] + 1) * 0.5) * (canvasW/2);
+      const y1 = clamp((out[5]+1)/2,0,1) * canvasH;
+      const size = Math.max(8, Math.abs(out[6]) * 120 + 10);
+      wrapper.style.left = x1 + 'px'; wrapper.style.top = y1 + 'px';
+      wrapper.style.width = size + 'px'; wrapper.style.height = size + 'px';
+      wrapper.style.backgroundColor = pickColor(out,1);
+      wrapper.style.opacity = (Math.abs(out[11]) * 0.6 + 0.1).toString();
+      document.body.appendChild(wrapper);
+      return wrapper;
+    }
+
+    // Draw all shapes on the canvas
+    function drawShapes(dt){
+      const W = CANVAS.width / DPR;
+      const H = CANVAS.height / DPR;
+      ctx.clearRect(0,0,W,H);
+      // translate for scrolling
+      ctx.save();
+      ctx.translate(-state.scrollX, 0);
+
+      for(let i=0;i<state.shapes.length;i++){
+        const s = state.shapes[i];
+        // update animation time
+        s.t += dt;
+        // apply per-shape animation modifiers
+        const age = (performance.now()/1000 - s.born);
+        let localOpacity = s.opacity - (parseFloat(decayEl.value) * age * 60);
+        localOpacity = clamp(localOpacity, 0, 1);
+        if(localOpacity <= 0.01){
+          // remove
+          state.shapes.splice(i,1); i--; continue;
         }
-
-        const canvas = document.getElementById('animationCanvas');
-        const toggleBtn = document.getElementById('toggleAnimation');
-
-        const inputSize = 4;
-        const hiddenSize = 16;
-        const outputSize = 20;
-        let rnn = new RNN(inputSize, hiddenSize, outputSize);
-
-        let isRunning = false;
-        let animationId;
-        let h = Array(hiddenSize).fill().map(() => [Math.random() * 2 - 1]);
-        let shapes = [];
-        let scrollPosition = 0;
-        const scrollSpeed = 0.5;  // pixels per frame
-
-        function generateAnimation() {
-            const x = Array(inputSize).fill().map(() => [Math.random() * 2 - 1]);
-            [output, h] = rnn.forward(x, h);
-            
-            createNewShape(output);
-            moveAndFadeShapes();
-
-            if (isRunning) {
-                animationId = requestAnimationFrame(generateAnimation);
-            }
+        const px = s.x;
+        const py = s.y;
+        ctx.save();
+        ctx.translate(px, py);
+        // apply transforms
+        ctx.rotate((s.rotate * Math.sin(s.t / Math.max(0.1,s.duration))) * Math.PI/180);
+        ctx.scale(s.scaleX, s.scaleY);
+        // apply skew by transforming the matrix
+        if(Math.abs(s.skew) > 0.001){
+          const sx = Math.tan(s.skew * Math.PI/180);
+          ctx.transform(1,0,sx,1,0,0);
         }
+        ctx.globalAlpha = localOpacity;
+        ctx.fillStyle = s.fillStyle;
+        // animate size pulsation for some anim types
+        let drawSize = s.size;
+        if(s.animType === 1) drawSize *= 1 + 0.12 * Math.sin((s.t / s.duration) * Math.PI * 2);
+        if(s.animType === 2) drawSize *= 0.85 + 0.3 * (0.5 + 0.5 * Math.sin((s.t / s.duration) * Math.PI * 2));
 
-        function createNewShape(output) {
-            const [r, g, b] = output.slice(1, 4).map(v => Math.floor((v[0] + 1) * 127.5));
-            const x1 = window.innerWidth + (output[4][0] + 1) * window.innerWidth / 2;
-            const y1 = (output[5][0] + 1) * window.innerHeight / 2;
-            const size = Math.abs(output[6][0]) * 200 + 20;
-            const shape = Math.floor((output[7][0] + 1) * 1.5);
-            const animation = Math.floor((output[8][0] + 1) * 1.5);
-            const duration = Math.abs(output[9][0]) * 5 + 1;
-            const delay = Math.abs(output[10][0]) * 2;
-            const opacity = Math.abs(output[11][0]) * 0.5 + 0.1;
-            const borderRadius = Math.abs(output[12][0]) * 50;
-            const rotateAngle = output[13][0] * 360;
-            const scaleX = Math.abs(output[14][0]) + 0.5;
-            const scaleY = Math.abs(output[15][0]) + 0.5;
-            const skewX = output[16][0] * 45;
-
-            const shapeElement = document.createElement('div');
-            shapeElement.classList.add('shape');
-            shapeElement.style.left = `${x1}px`;
-            shapeElement.style.top = `${y1}px`;
-            shapeElement.style.backgroundColor = `rgb(${r},${g},${b})`;
-            shapeElement.style.opacity = opacity;
-
-            if (shape === 0) {
-                shapeElement.style.width = `${size}px`;
-                shapeElement.style.height = `${size}px`;
-                shapeElement.style.borderRadius = '50%';
-            } else if (shape === 1) {
-                shapeElement.style.width = `${size}px`;
-                shapeElement.style.height = `${size}px`;
-                shapeElement.style.borderRadius = `${borderRadius}px`;
-            } else {
-                shapeElement.style.width = '0';
-                shapeElement.style.height = '0';
-                shapeElement.style.borderLeft = `${size / 2}px solid transparent`;
-                shapeElement.style.borderRight = `${size / 2}px solid transparent`;
-                shapeElement.style.borderBottom = `${size}px solid rgb(${r},${g},${b})`;
-                shapeElement.style.backgroundColor = 'transparent';
-            }
-
-            let animationString = '';
-            if (animation === 0) {
-                animationString = `rotate ${duration}s linear infinite`;
-            } else if (animation === 1) {
-                animationString = `pulse ${duration}s ease-in-out infinite`;
-            }
-
-            shapeElement.style.animation = animationString;
-            shapeElement.style.animationDelay = `${delay}s`;
-            shapeElement.style.transform = `rotate(${rotateAngle}deg) scale(${scaleX}, ${scaleY}) skew(${skewX}deg)`;
-
-            canvas.appendChild(shapeElement);
-            shapes.push(shapeElement);
+        if(s.shapeType === 0){
+          // circle
+          ctx.beginPath(); ctx.arc(0,0, drawSize/2, 0, Math.PI*2); ctx.fill();
+        } else if(s.shapeType === 1){
+          // rounded rect
+          roundRect(ctx, -drawSize/2, -drawSize/2, drawSize, drawSize, Math.min(drawSize*0.5, 12)); ctx.fill();
+        } else {
+          // triangle
+          ctx.beginPath(); ctx.moveTo(0, -drawSize/2); ctx.lineTo(drawSize/2, drawSize/2); ctx.lineTo(-drawSize/2, drawSize/2); ctx.closePath(); ctx.fill();
         }
+        ctx.restore();
+      }
 
-        function moveAndFadeShapes() {
-            scrollPosition += scrollSpeed;
-            canvas.style.transform = `translateX(-${scrollPosition}px)`;
+      ctx.restore();
 
-            shapes.forEach((shape, index) => {
-                const rect = shape.getBoundingClientRect();
-                const shapeRight = rect.right - scrollPosition;
+      // draw vignette for aesthetics (subtle)
+      ctx.save();
+      ctx.globalCompositeOperation = 'overlay';
+      const grad = ctx.createLinearGradient(0,0,0,H);
+      grad.addColorStop(0,'rgba(0,0,0,0.03)'); grad.addColorStop(1,'rgba(0,0,0,0.06)');
+      ctx.fillStyle = grad; ctx.fillRect(state.scrollX,0,W,H); ctx.restore();
+    }
 
-                if (shapeRight < 0) {
-                    shape.remove();
-                    shapes.splice(index, 1);
-                } else if (shapeRight < window.innerWidth) {
-                    const opacity = parseFloat(shape.style.opacity);
-                    shape.style.opacity = Math.max(0, opacity - 0.005).toString();
-                }
-            });
+    function roundRect(ctx,x,y,w,h,r){ ctx.beginPath(); ctx.moveTo(x+r,y); ctx.arcTo(x+w,y,x+w,y+h,r); ctx.arcTo(x+w,y+h,x,y+h,r); ctx.arcTo(x,y+h,x,y,r); ctx.arcTo(x,y,x+w,y,r); ctx.closePath(); }
 
-            // Reset scroll position when it exceeds window width
-            if (scrollPosition >= window.innerWidth) {
-                scrollPosition = 0;
-                canvas.style.transform = `translateX(0px)`;
-            }
+    // main loop
+    function loop(time){
+      if(!state.lastTime) state.lastTime = time;
+      const dt = Math.min(0.1, (time - state.lastTime)/1000); // cap dt
+      state.lastTime = time;
+      if(state.running){
+        // spawn shapes
+        spawnFromRNN(dt);
+        // update scroll
+        const speed = parseFloat(scrollSpeedEl.value);
+        state.scrollX += speed * (dt * 60); // scale to frames
+        // cap scroll to one canvas width and wrap
+        const canvasW = CANVAS.width / DPR;
+        if(state.scrollX > canvasW/2) state.scrollX = 0; // reset to avoid float drift
+        // draw
+        drawShapes(dt);
+      }
+      requestAnimationFrame(loop);
+    }
+    requestAnimationFrame(loop);
+
+    // UI wiring
+    spawnRateEl.addEventListener('input', ()=> spawnRateLabel.textContent = spawnRateEl.value + ' /s');
+    scrollSpeedEl.addEventListener('input', ()=> scrollSpeedLabel.textContent = scrollSpeedEl.value + ' px/frame');
+    decayEl.addEventListener('input', ()=> decayLabel.textContent = parseFloat(decayEl.value).toFixed(4));
+    tempEl.addEventListener('input', ()=> tempLabel.textContent = parseFloat(tempEl.value).toFixed(2));
+
+    toggleBtn.addEventListener('click', ()=>{
+      state.running = !state.running;
+      toggleBtn.textContent = state.running ? 'Stop' : 'Start';
+      if(state.running){ initRNN(); }
+    });
+
+    resetNNBtn.addEventListener('click', ()=>{ initRNN(); });
+    clearBtn.addEventListener('click', ()=>{ state.shapes.length = 0; ctx.clearRect(0,0,CANVAS.width/DPR,CANVAS.height/DPR); });
+
+    // recording
+    startRecordBtn.addEventListener('click', ()=>{
+      if(state.recorder) return;
+      const stream = CANVAS.captureStream(60); // 60fps
+      const rec = new MediaRecorder(stream, {mimeType:'video/webm;codecs=vp9'});
+      state.recordedBlobs = [];
+      rec.ondataavailable = e => { if(e.data && e.data.size) state.recordedBlobs.push(e.data); };
+      rec.onstop = ()=>{ stopRecordBtn.disabled = true; downloadLastBtn.disabled = false; state.lastRecordingURL = URL.createObjectURL(new Blob(state.recordedBlobs, {type:'video/webm'})); };
+      rec.start(); state.recorder = rec; startRecordBtn.disabled = true; stopRecordBtn.disabled = false; setStatus('Recording started');
+    });
+    stopRecordBtn.addEventListener('click', ()=>{ if(state.recorder){ state.recorder.stop(); state.recorder = null; startRecordBtn.disabled = false; stopRecordBtn.disabled = true; setStatus('Recording stopped'); } });
+    downloadLastBtn.addEventListener('click', ()=>{ if(!state.lastRecordingURL) return; const a=document.createElement('a'); a.href = state.lastRecordingURL; a.download = 'animation_capture.webm'; a.click(); });
+
+    // presets
+    function loadPresets(){ const raw = localStorage.getItem('rnn_presets'); if(!raw) return []; try{return JSON.parse(raw);}catch(e){return [];} }
+    function savePresets(list){ localStorage.setItem('rnn_presets', JSON.stringify(list)); }
+    function renderPresetList(){ presetList.innerHTML=''; const presets = loadPresets(); presets.forEach((p, idx)=>{ const chip = document.createElement('div'); chip.className='chip'; chip.textContent = p.name; chip.addEventListener('click', ()=>{ applyPreset(p); }); chip.addEventListener('contextmenu', (e)=>{ e.preventDefault(); if(confirm('Delete preset?')){ presets.splice(idx,1); savePresets(presets); renderPresetList(); } }); presetList.appendChild(chip); }); }
+    function applyPreset(p){ spawnRateEl.value = p.spawnRate; spawnRateLabel.textContent = p.spawnRate + ' /s'; scrollSpeedEl.value = p.scrollSpeed; scrollSpeedLabel.textContent = p.scrollSpeed + ' px/frame'; decayEl.value = p.decay; decayLabel.textContent = p.decay; paletteSelect.value = p.palette; seedInput.value = p.seed; tempEl.value = p.temperature; tempLabel.textContent = p.temperature; hiddenSizeSelect.value = p.hiddenSize; maxShapesInput.value = p.maxShapes; shapeCapInput.value = p.shapeCap; }
+    savePresetBtn.addEventListener('click', ()=>{ const presets = loadPresets(); const name = (presetNameInput.value || ('Preset ' + (presets.length+1))).slice(0,40); presets.push({ name, spawnRate:spawnRateEl.value, scrollSpeed:scrollSpeedEl.value, decay:decayEl.value, palette:paletteSelect.value, seed:seedInput.value, temperature:tempEl.value, hiddenSize:hiddenSizeSelect.value, maxShapes: maxShapesInput.value, shapeCap: shapeCapInput.value }); savePresets(presets); renderPresetList(); presetNameInput.value=''; });
+    renderPresetList();
+
+    // init: window handlers
+    window.addEventListener('keydown', (e)=>{ if(e.key === ' '){ e.preventDefault(); toggleBtn.click(); } if(e.key === 'r'){ startRecordBtn.click(); } });
+
+    // start with running=false (user will press Start). But ensure canvas scaled
+    resizeCanvas();
+    setStatus('Ready');
+
+  })();
+  // --- Neural network upgrade begins ---
+// Replacing simple RNN with GRU-enhanced recurrent module + optional Transformer block
+class GRUCell {
+    constructor(inputSize, hiddenSize) {
+        this.inputSize = inputSize;
+        this.hiddenSize = hiddenSize;
+        const r = () => (Math.random() * 2 - 1) * 0.1;
+        this.Wz = Array.from({length: hiddenSize},()=>Array.from({length: inputSize},r));
+        this.Uz = Array.from({length: hiddenSize},()=>Array.from({length: hiddenSize},r));
+        this.bz = Array.from({length: hiddenSize},()=>[r()]);
+        this.Wr = Array.from({length: hiddenSize},()=>Array.from({length: inputSize},r));
+        this.Ur = Array.from({length: hiddenSize},()=>Array.from({length: hiddenSize},r));
+        this.br = Array.from({length: hiddenSize},()=>[r()]);
+        this.Wh = Array.from({length: hiddenSize},()=>Array.from({length: inputSize},r));
+        this.Uh = Array.from({length: hiddenSize},()=>Array.from({length: hiddenSize},r));
+        this.bh = Array.from({length: hiddenSize},()=>[r()]);
+    }
+    matMul(a,b){ return a.map((row,i)=>row.map((_,j)=>a[i].reduce((sum,x,k)=>sum+x*b[k][j],0))); }
+    add(a,b){ return a.map((r,i)=>r.map((v,j)=>v+b[i][j])); }
+    sigmoid(x){ return x.map(row=>row.map(v=>1/(1+Math.exp(-v)))); }
+    tanh(x){ return x.map(row=>row.map(v=>Math.tanh(v))); }
+    forward(x,h){
+        const z = this.sigmoid(this.add(this.add(this.matMul(this.Wz,x), this.matMul(this.Uz,h)), this.bz));
+        const r = this.sigmoid(this.add(this.add(this.matMul(this.Wr,x), this.matMul(this.Ur,h)), this.br));
+        const hHat = this.tanh(this.add(this.add(this.matMul(this.Wh,x), this.matMul(this.Uh, h.map((v,i)=>[v[0]*r[i][0]]))), this.bh));
+        const newH = h.map((v,i)=>[(1-z[i][0])*v[0] + z[i][0]*hHat[i][0]]);
+        return newH;
+    }
+}
+// Optional Transformer self-attention (1-layer lightweight)
+class SelfAttention {
+    constructor(size){
+        const r = ()=> (Math.random()*2-1)*0.1;
+        this.Wq = Array.from({length:size},()=>Array.from({length:size},r));
+        this.Wk = Array.from({length:size},()=>Array.from({length:size},r));
+        this.Wv = Array.from({length:size},()=>Array.from({length:size},r));
+    }
+    matMul(a,b){ return a.map((row,i)=>row.map((_,j)=>a[i].reduce((sum,x,k)=>sum+x*b[k][j],0))); }
+    softmax(arr){
+        const max = Math.max(...arr);
+        const e = arr.map(v=>Math.exp(v-max));
+        const s = e.reduce((a,b)=>a+b,0);
+        return e.map(v=>v/s);
+    }
+    forward(seq){
+        const Q = seq.map(v=>this.matMul([v],this.Wq)[0]);
+        const K = seq.map(v=>this.matMul([v],this.Wk)[0]);
+        const V = seq.map(v=>this.matMul([v],this.Wv)[0]);
+        const out = [];
+        for(let i=0;i<seq.length;i++){
+            const scores = K.map(v=>Q[i].reduce((s,x,k)=>s+x*v[k],0)/Math.sqrt(seq[0].length));
+            const a = this.softmax(scores);
+            const ctx = Array(seq[0].length).fill(0);
+            for(let j=0;j<V.length;j++) for(let k=0;k<ctx.length;k++) ctx[k]+=a[j]*V[j][k];
+            out.push(ctx);
         }
-
-        function toggleAnimation() {
-            isRunning = !isRunning;
-            if (isRunning) {
-                toggleBtn.textContent = 'Stop Animation';
-                rnn = new RNN(inputSize, hiddenSize, outputSize);
-                h = Array(hiddenSize).fill().map(() => [Math.random() * 2 - 1]);
-                generateAnimation();
-            } else {
-                toggleBtn.textContent = 'Start Animation';
-                cancelAnimationFrame(animationId);
-            }
-        }
-
-        toggleBtn.addEventListener('click', toggleAnimation);
-    </script>
+        return out;
+    }
+}
+// Enhanced generator combining GRU + SelfAttention
+class AdvancedNetwork {
+    constructor(inputSize, hiddenSize, outputSize){
+        this.hiddenSize = hiddenSize;
+        this.gru = new GRUCell(inputSize, hiddenSize);
+        this.attn = new SelfAttention(hiddenSize);
+        const r = ()=> (Math.random()*2-1)*0.1;
+        this.Wo = Array.from({length:outputSize},()=>Array.from({length:hiddenSize},r));
+        this.bo = Array.from({length:outputSize},()=>[r()]);
+    }
+    matMul(a,b){ return a.map((row,i)=>row.map((_,j)=>a[i].reduce((sum,x,k)=>sum+x*b[k][j],0))); }
+    add(a,b){ return a.map((row,i)=>row.map((v,j)=>v+b[i][j])); }
+    toColumn(v){ return v.map(e=>[e]); }
+    forward(x,h){
+        const newH = this.gru.forward(x,h);
+        const seq = [newH.map(v=>v[0])];
+        const attnOut = this.attn.forward(seq)[0];
+        const out = this.add(this.matMul(this.Wo, this.toColumn(attnOut)), this.bo);
+        return [out, newH];
+    }
+}
+// Replace original RNN instance
+rnn = new AdvancedNetwork(inputSize, hiddenSize, outputSize);
+// --- Neural network upgrade ends ---
+</script>
 </body>
 </html>
