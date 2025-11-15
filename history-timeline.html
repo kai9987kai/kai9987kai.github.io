@@ -1,0 +1,984 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Advanced Historical Timeline Tool</title>
+<style>
+  :root{
+    --bg:#f4f6f8;
+    --panel:#ffffff;
+    --accent:#2276d2;
+    --accent-2:#2ecc71;
+    --danger:#e74c3c;
+    --muted:#6c7a89;
+    --glass: rgba(255,255,255,0.85);
+    --radius:10px;
+    --shadow: 0 6px 20px rgba(16,24,40,0.08);
+  }
+  html,body{height:100%;margin:0;font-family:Inter, "Segoe UI", Roboto, Arial, sans-serif;background:var(--bg);color:#111;}
+  .app {
+    max-width:1200px;
+    margin:24px auto;
+    padding:20px;
+    border-radius:var(--radius);
+    background: linear-gradient(180deg, rgba(255,255,255,0.9), rgba(255,255,255,0.75));
+    box-shadow:var(--shadow);
+  }
+
+  header {
+    display:flex;
+    gap:16px;
+    align-items:center;
+    justify-content:space-between;
+    margin-bottom:16px;
+  }
+  header h1 {margin:0;font-size:1.25rem;}
+  .controls {
+    display:flex;
+    gap:8px;
+    align-items:center;
+    flex-wrap:wrap;
+  }
+  button, .btn {
+    background:var(--accent);
+    color:#fff;
+    border:0;
+    padding:8px 12px;
+    border-radius:8px;
+    cursor:pointer;
+    font-weight:600;
+    box-shadow: 0 3px 8px rgba(34,118,210,0.18);
+  }
+  button.secondary {
+    background:#ffffff;
+    color:var(--accent);
+    border:1px solid rgba(34,118,210,0.12);
+    box-shadow:none;
+    font-weight:600;
+  }
+  .small {padding:6px 8px;font-size:0.9rem;border-radius:6px;}
+  .danger {background:var(--danger);box-shadow:none;}
+  .row {display:flex;gap:12px;align-items:center;}
+  label.small {font-size:0.86rem;color:var(--muted);margin-right:6px;}
+
+  /* Timeline container */
+  .timeline-wrap {
+    border-radius:8px;
+    padding:16px;
+    background: linear-gradient(180deg, rgba(250,250,250,1), rgba(245,248,251,1));
+    border:1px solid rgba(16,24,40,0.04);
+  }
+  .timeline-controls {
+    display:flex;
+    gap:12px;
+    align-items:center;
+    justify-content:space-between;
+    margin-bottom:12px;
+    flex-wrap:wrap;
+  }
+
+  .timeline {
+    display:flex;
+    gap:12px;
+    align-items:flex-end;
+    padding:12px;
+    overflow-x:auto;
+    scroll-behavior:smooth;
+    border-radius:8px;
+    background:linear-gradient(90deg, rgba(255,255,255,0.6), rgba(255,255,255,0.6));
+    border:1px solid rgba(16,24,40,0.03);
+    min-height:160px;
+    position:relative;
+    user-select:none;
+  }
+  .timeline:active {cursor:grabbing;}
+  .time-axis {
+    position:absolute;
+    left:12px;
+    right:12px;
+    top:0;
+    bottom:0;
+    pointer-events:none;
+  }
+  .time-line {
+    position:absolute;
+    left:0;
+    right:0;
+    top:50%;
+    height:4px;
+    transform:translateY(-50%);
+    background:linear-gradient(90deg, rgba(34,118,210,0.08), rgba(46,204,113,0.04));
+    border-radius:4px;
+  }
+
+  .event {
+    position:relative;
+    display:flex;
+    flex-direction:column;
+    gap:6px;
+    min-width:200px;
+    max-width:320px;
+    padding:10px;
+    background:var(--panel);
+    border-radius:8px;
+    box-shadow: 0 6px 18px rgba(10, 20, 30, 0.06);
+    cursor:pointer;
+    border:2px solid transparent;
+    transition:transform .12s ease, box-shadow .12s ease, border-color .12s linear;
+  }
+  .event.selected {
+    transform:translateY(-6px) scale(1.02);
+    border-color: rgba(34,118,210,0.18);
+    box-shadow: 0 14px 26px rgba(34,118,210,0.08);
+  }
+  .event .icon {
+    font-size:28px;
+    line-height:1;
+    width:40px;height:40px;border-radius:8px;
+    display:flex;align-items:center;justify-content:center;
+    background:linear-gradient(135deg, rgba(34,118,210,0.06), rgba(46,204,113,0.04));
+  }
+  .event .meta {
+    font-size:13px;color:var(--muted);
+  }
+  .event-heading {display:flex;gap:8px;align-items:center;}
+  .event-title{font-weight:700;font-size:1rem;margin:0;}
+  .event-desc {font-size:0.95rem;color:#222;white-space:pre-wrap;}
+  .delete-button {
+    position:absolute; top:8px; right:8px;
+    background:var(--danger); color:#fff; border:0; padding:6px 8px; border-radius:6px; cursor:pointer;
+    font-size:0.85rem;
+  }
+  .edit-button {
+    position:absolute; bottom:8px; right:8px; background:rgba(16,24,40,0.06); color:var(--muted); border:0; padding:6px 8px; border-radius:6px; cursor:pointer;font-size:0.85rem;
+  }
+
+  /* Details panel */
+  .details {
+    margin-top:12px;
+    padding:12px;
+    border-radius:8px;
+    background:var(--panel);
+    border:1px solid rgba(16,24,40,0.04);
+    display:flex;
+    gap:12px;
+    align-items:flex-start;
+  }
+  .details .col {flex:1;}
+  .meta-row {font-size:0.92rem;color:var(--muted);}
+
+  /* Modal */
+  .modal-backdrop {
+    position:fixed;inset:0;display:none;align-items:center;justify-content:center;padding:24px;background:rgba(8,12,20,0.36);z-index:60;
+  }
+  .modal {
+    width:100%;max-width:720px;background:var(--panel);border-radius:12px;padding:18px;box-shadow:0 20px 40px rgba(16,24,40,0.4);
+  }
+  .form-row {display:flex;gap:8px;align-items:center;margin-bottom:10px;}
+  .form-row input[type="text"], .form-row input[type="date"], .form-row textarea, .form-row input[type="url"], .form-row select {
+    flex:1;padding:8px;border-radius:8px;border:1px solid rgba(10,20,30,0.06);font-size:0.95rem;background:#fff;
+  }
+  .form-actions {display:flex;gap:8px;justify-content:flex-end;margin-top:12px;}
+
+  .import-file {display:none;}
+  .toolbar {display:flex;gap:8px;align-items:center;}
+
+  /* Responsive */
+  @media (max-width:720px){
+    .event {min-width:160px}
+    .details {flex-direction:column;}
+    header {flex-direction:column;align-items:flex-start;gap:12px;}
+  }
+
+  /* small helpers */
+  .muted {color:var(--muted);font-size:0.9rem;}
+  .chip {padding:6px 8px;border-radius:999px;background:rgba(16,24,40,0.04);font-weight:600;}
+  input[type="range"]{cursor:pointer;}
+  .file-buttons {display:flex;gap:8px;align-items:center;}
+</style>
+</head>
+<body>
+<div class="app" id="app">
+  <header>
+    <div>
+      <h1>Historical Timeline Tool — Advanced</h1>
+      <div class="muted">Add events, reorder, edit, export/import, search & zoom. Keyboard: N = new, Del = delete selected, Ctrl+Z = undo</div>
+    </div>
+
+    <div class="controls">
+      <div class="row">
+        <button id="btnAdd" class="small">Add Event</button>
+        <button id="btnExportJSON" class="small secondary">Export JSON</button>
+        <button id="btnExportCSV" class="small secondary">Export CSV</button>
+        <label class="small secondary file-buttons">
+          <input id="fileImport" type="file" class="import-file" accept="application/json,text/csv" />
+          Import
+        </label>
+      </div>
+
+      <div class="row">
+        <label class="small">Search:</label>
+        <input id="searchInput" type="text" placeholder="Title, description or date" style="padding:8px;border-radius:8px;border:1px solid rgba(16,24,40,0.06)" />
+      </div>
+    </div>
+  </header>
+
+  <section class="timeline-wrap" aria-label="timeline">
+    <div class="timeline-controls">
+      <div style="display:flex;gap:12px;align-items:center;">
+        <label class="small">Zoom</label>
+        <input id="zoomRange" type="range" min="0.5" max="2.5" step="0.05" value="1" />
+        <label class="small">Sort</label>
+        <select id="sortSelect" class="small">
+          <option value="asc">Date ascending</option>
+          <option value="desc">Date descending</option>
+        </select>
+      </div>
+
+      <div style="display:flex;gap:8px;align-items:center;">
+        <label class="small">From</label>
+        <input id="filterFrom" type="date" />
+        <label class="small">To</label>
+        <input id="filterTo" type="date" />
+        <button id="clearFilters" class="small secondary">Clear</button>
+      </div>
+    </div>
+
+    <div id="timeline" class="timeline" tabindex="0" aria-live="polite" aria-label="Event timeline">
+      <div class="time-axis" aria-hidden="true">
+        <div class="time-line"></div>
+      </div>
+    </div>
+
+    <div id="details" class="details" aria-hidden="true" style="display:none;">
+      <div class="col">
+        <div id="detailTitle" style="font-weight:800;font-size:1.05rem;"></div>
+        <div id="detailDate" class="meta-row"></div>
+        <div id="detailDesc" style="margin-top:8px;white-space:pre-wrap;"></div>
+      </div>
+      <div class="col" style="max-width:220px;">
+        <div class="meta-row">Icon</div>
+        <div id="detailIcon" style="font-size:34px;margin:8px 0;"></div>
+        <div class="meta-row" style="margin-top:8px;">Actions</div>
+        <div style="display:flex;gap:8px;margin-top:8px;">
+          <button id="btnEditSelected" class="small secondary">Edit</button>
+          <button id="btnDeleteSelected" class="small danger">Delete</button>
+          <button id="btnCenterSelected" class="small">Center</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Modal for add/edit -->
+  <div id="modalBackdrop" class="modal-backdrop" role="dialog" aria-modal="true" aria-hidden="true">
+    <div class="modal" role="document" aria-labelledby="modalTitle">
+      <h2 id="modalTitle">Add Event</h2>
+
+      <div style="margin-top:10px;">
+        <div class="form-row">
+          <label class="small" style="min-width:80px;">Name</label>
+          <input id="evtName" type="text" placeholder="Event name" />
+        </div>
+        <div class="form-row">
+          <label class="small" style="min-width:80px;">Date</label>
+          <input id="evtDate" type="date" />
+        </div>
+        <div class="form-row">
+          <label class="small" style="min-width:80px;">Icon</label>
+          <input id="evtIcon" type="text" placeholder="Emoji or image URL (optional)" />
+        </div>
+        <div class="form-row">
+          <label class="small" style="min-width:80px;">Color</label>
+          <input id="evtColor" type="color" value="#3498db" />
+        </div>
+        <div class="form-row" style="align-items:flex-start;">
+          <label class="small" style="min-width:80px;">Description</label>
+          <textarea id="evtDesc" rows="4" placeholder="Longer event description"></textarea>
+        </div>
+      </div>
+
+      <div class="form-actions">
+        <button id="modalCancel" class="small secondary">Cancel</button>
+        <button id="modalSave" class="small">Save Event</button>
+      </div>
+    </div>
+  </div>
+
+  <footer style="margin-top:12px;color:var(--muted);font-size:0.9rem;">
+    Tip: You can drag timeline horizontally, reorder events, use search and filter, and export your timeline to share or back up.
+  </footer>
+</div>
+
+<script>
+/*
+  Advanced Timeline Tool
+  - Single-file
+  - No external libraries
+  - Persistent with localStorage
+  - Undo stack
+  - Drag-to-scroll + drag-and-drop reorder
+  - Modal add/edit form
+  - Export/Import JSON & CSV
+  - Filters, search, zoom, keyboard shortcuts
+*/
+
+(() => {
+  // DOM references
+  const timelineEl = document.getElementById('timeline');
+  const btnAdd = document.getElementById('btnAdd');
+  const btnExportJSON = document.getElementById('btnExportJSON');
+  const btnExportCSV = document.getElementById('btnExportCSV');
+  const fileImport = document.getElementById('fileImport');
+  const modalBackdrop = document.getElementById('modalBackdrop');
+  const modalTitle = document.getElementById('modalTitle');
+  const evtName = document.getElementById('evtName');
+  const evtDate = document.getElementById('evtDate');
+  const evtIcon = document.getElementById('evtIcon');
+  const evtColor = document.getElementById('evtColor');
+  const evtDesc = document.getElementById('evtDesc');
+  const modalCancel = document.getElementById('modalCancel');
+  const modalSave = document.getElementById('modalSave');
+  const searchInput = document.getElementById('searchInput');
+  const filterFrom = document.getElementById('filterFrom');
+  const filterTo = document.getElementById('filterTo');
+  const clearFilters = document.getElementById('clearFilters');
+  const zoomRange = document.getElementById('zoomRange');
+  const sortSelect = document.getElementById('sortSelect');
+  const details = document.getElementById('details');
+  const detailTitle = document.getElementById('detailTitle');
+  const detailDate = document.getElementById('detailDate');
+  const detailDesc = document.getElementById('detailDesc');
+  const detailIcon = document.getElementById('detailIcon');
+  const btnEditSelected = document.getElementById('btnEditSelected');
+  const btnDeleteSelected = document.getElementById('btnDeleteSelected');
+  const btnCenterSelected = document.getElementById('btnCenterSelected');
+
+  // State
+  const STORAGE_KEY = 'advanced_timeline_v1';
+  let events = []; // {id,name,date(ISO),icon,color,desc,order}
+  let selectedId = null;
+  let editingId = null;
+  let undoStack = [];
+  let dragState = {isDown:false,startX:0,scrollLeft:0};
+  let ddDragSrc = null; // drag-and-drop reorder source element
+
+  // Helpers
+  const uid = () => 'e_' + Math.random().toString(36).slice(2,9);
+  const nowISODate = (d=new Date()) => d.toISOString().slice(0,10);
+
+  // Load initial or sample data
+  function load() {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (raw) {
+      try { events = JSON.parse(raw) || []; }
+      catch(e){ console.warn('Failed parse storage',e); events = []; }
+    } else {
+      // sample data to demonstrate features (keeps original functionality)
+      events = [
+        { id: uid(), name: 'Sample: Founding', date: '1900-01-01', icon: '🏛️', color:'#3498db', desc:'A sample founding event.' , order:0 },
+        { id: uid(), name: 'Sample: Innovation', date: '1950-06-14', icon: '🔬', color:'#2ecc71', desc:'An innovation event with detail.' , order:1 }
+      ];
+      saveState('initial-load');
+    }
+  }
+
+  function saveState(action = 'save') {
+    // Keep undo stack (shallow copy)
+    undoStack.push(JSON.stringify(events));
+    // Cap stack
+    if (undoStack.length > 40) undoStack.shift();
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(events));
+  }
+
+  function undo() {
+    if (!undoStack.length) return;
+    const last = undoStack.pop();
+    if (last) {
+      try {
+        events = JSON.parse(last);
+        render();
+        persistNoUndo();
+      } catch(e){console.error('undo failed',e);}
+    }
+  }
+
+  function persistNoUndo() {
+    // Save without pushing into undo
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(events));
+  }
+
+  // Event rendering
+  function createEventElement(ev) {
+    const div = document.createElement('div');
+    div.className = 'event';
+    div.dataset.id = ev.id;
+    div.draggable = true;
+    // width scale by zoom + small random flex basis to allow wrapping nicely
+    div.style.borderLeft = `6px solid ${ev.color || '#3478db'}`;
+    div.style.minWidth = `${160 * currentZoom}px`;
+
+    // heading
+    const heading = document.createElement('div');
+    heading.className = 'event-heading';
+    const icon = document.createElement('div');
+    icon.className = 'icon';
+    // try to show image if icon looks like URL
+    if (isLikelyUrl(ev.icon)) {
+      const img = document.createElement('img');
+      img.src = ev.icon;
+      img.alt = ev.name || 'icon';
+      img.style.width = '36px';
+      img.style.height = '36px';
+      img.style.borderRadius = '6px';
+      img.onerror = () => { img.style.display = 'none'; icon.textContent = '🖼️'; };
+      icon.appendChild(img);
+    } else {
+      icon.textContent = ev.icon || '📌';
+    }
+    heading.appendChild(icon);
+
+    const title = document.createElement('div');
+    const titleEl = document.createElement('div');
+    titleEl.className = 'event-title';
+    titleEl.textContent = ev.name;
+    const meta = document.createElement('div');
+    meta.className = 'meta';
+    meta.textContent = formatNiceDate(ev.date);
+    title.appendChild(titleEl);
+    title.appendChild(meta);
+    heading.appendChild(title);
+
+    const desc = document.createElement('div');
+    desc.className = 'event-desc';
+    desc.textContent = ev.desc || '';
+
+    // delete button (keeps original)
+    const delBtn = document.createElement('button');
+    delBtn.className = 'delete-button';
+    delBtn.textContent = 'Delete';
+    delBtn.addEventListener('click', (evClick) => {
+      evClick.stopPropagation();
+      confirmDelete(ev.id);
+    });
+
+    const editBtn = document.createElement('button');
+    editBtn.className = 'edit-button';
+    editBtn.textContent = 'Edit';
+    editBtn.addEventListener('click', (evClick) => {
+      evClick.stopPropagation();
+      openEditModal(ev.id);
+    });
+
+    div.appendChild(heading);
+    div.appendChild(desc);
+    div.appendChild(delBtn);
+    div.appendChild(editBtn);
+
+    // selection
+    div.addEventListener('click', () => {
+      selectEvent(ev.id);
+    });
+
+    // double click centers
+    div.addEventListener('dblclick', () => {
+      centerEventInView(div);
+    });
+
+    // Drag and drop reorder handlers
+    div.addEventListener('dragstart', (e) => {
+      ddDragSrc = div;
+      div.style.opacity = '0.5';
+      e.dataTransfer.effectAllowed = 'move';
+      try { e.dataTransfer.setData('text/plain', ev.id); } catch(_) {}
+    });
+
+    div.addEventListener('dragend', () => {
+      ddDragSrc = null;
+      div.style.opacity = '';
+    });
+
+    div.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      div.style.transform = 'translateY(-4px)';
+    });
+    div.addEventListener('dragleave', () => {
+      div.style.transform = '';
+    });
+
+    div.addEventListener('drop', (e) => {
+      e.preventDefault();
+      div.style.transform = '';
+      const src = ddDragSrc;
+      if (!src || src === div) return;
+      const srcId = src.dataset.id;
+      const dstId = div.dataset.id;
+      // reorder events array
+      const srcIndex = events.findIndex(x => x.id === srcId);
+      const dstIndex = events.findIndex(x => x.id === dstId);
+      if (srcIndex === -1 || dstIndex === -1) return;
+      const [item] = events.splice(srcIndex, 1);
+      events.splice(dstIndex, 0, item);
+      // update order numbers
+      events.forEach((ev, idx) => ev.order = idx);
+      saveState('reorder');
+      render();
+    });
+
+    return div;
+  }
+
+  function formatNiceDate(iso) {
+    try {
+      const d = new Date(iso);
+      if (isNaN(d)) return iso || '';
+      return d.toLocaleDateString(undefined, {year:'numeric', month:'short', day:'numeric'});
+    } catch(e){ return iso; }
+  }
+
+  function isLikelyUrl(s) {
+    return typeof s === 'string' && (s.startsWith('http://') || s.startsWith('https://') || s.startsWith('data:'));
+  }
+
+  // Rendering pipeline with filters and search + zoom
+  let currentZoom = parseFloat(zoomRange.value || '1');
+  function render() {
+    timelineEl.innerHTML = ''; // remove all existing nodes
+    // optional filters
+    const q = (searchInput.value || '').trim().toLowerCase();
+    const from = filterFrom.value ? new Date(filterFrom.value) : null;
+    const to = filterTo.value ? new Date(filterTo.value) : null;
+
+    // sort
+    const sorted = [...events].sort((a,b) => {
+      const da = new Date(a.date);
+      const db = new Date(b.date);
+      const comp = (da - db) || (a.order - b.order || 0);
+      return sortSelect.value === 'asc' ? comp : -comp;
+    });
+
+    // create elements for visible events
+    sorted.forEach(ev => {
+      // filter by search
+      const hay = `${ev.name} ${ev.desc} ${ev.date}`.toLowerCase();
+      if (q && !hay.includes(q)) return;
+      // date range filter
+      if (from && new Date(ev.date) < from) return;
+      if (to && new Date(ev.date) > new Date(to.getTime() + (24*60*60*1000 - 1))) return; // inclusive
+      const el = createEventElement(ev);
+      // size based on zoom
+      el.style.flex = `0 0 ${240 * currentZoom}px`;
+      timelineEl.appendChild(el);
+    });
+
+    // update details if selection exists
+    if (selectedId) {
+      const ev = events.find(x => x.id === selectedId);
+      if (ev) showDetails(ev);
+      else hideDetails();
+    } else {
+      hideDetails();
+    }
+  }
+
+  // Selection, details, edit
+  function selectEvent(id) {
+    selectedId = id;
+    Array.from(timelineEl.querySelectorAll('.event')).forEach(el => {
+      el.classList.toggle('selected', el.dataset.id === id);
+    });
+    const ev = events.find(x => x.id === id);
+    if (ev) showDetails(ev);
+    else hideDetails();
+  }
+
+  function showDetails(ev) {
+    details.style.display = 'flex';
+    detailTitle.textContent = ev.name;
+    detailDate.textContent = formatNiceDate(ev.date);
+    detailDesc.textContent = ev.desc || '';
+    if (isLikelyUrl(ev.icon)) {
+      const img = document.createElement('img');
+      img.src = ev.icon;
+      img.alt = ev.name;
+      img.style.width = '48px';
+      img.style.height = '48px';
+      img.style.borderRadius = '6px';
+      img.onerror = () => { detailIcon.textContent = '🖼️'; }
+      detailIcon.innerHTML = '';
+      detailIcon.appendChild(img);
+    } else {
+      detailIcon.innerHTML = '';
+      detailIcon.textContent = ev.icon || '📌';
+    }
+  }
+
+  function hideDetails() {
+    details.style.display = 'none';
+    detailTitle.textContent = '';
+    detailDate.textContent = '';
+    detailDesc.textContent = '';
+    detailIcon.textContent = '';
+  }
+
+  function openAddModal() {
+    editingId = null;
+    modalTitle.textContent = 'Add Event';
+    evtName.value = '';
+    evtDate.value = nowISODate();
+    evtIcon.value = '';
+    evtColor.value = '#3498db';
+    evtDesc.value = '';
+    showModal();
+  }
+
+  function openEditModal(id) {
+    editingId = id;
+    const ev = events.find(x => x.id === id);
+    if (!ev) return;
+    modalTitle.textContent = 'Edit Event';
+    evtName.value = ev.name || '';
+    evtDate.value = ev.date || nowISODate();
+    evtIcon.value = ev.icon || '';
+    evtColor.value = ev.color || '#3498db';
+    evtDesc.value = ev.desc || '';
+    showModal();
+  }
+
+  function showModal() {
+    modalBackdrop.style.display = 'flex';
+    modalBackdrop.setAttribute('aria-hidden','false');
+    evtName.focus();
+  }
+  function closeModal() {
+    modalBackdrop.style.display = 'none';
+    modalBackdrop.setAttribute('aria-hidden','true');
+    editingId = null;
+  }
+
+  function saveModal() {
+    const name = evtName.value.trim();
+    let date = evtDate.value;
+    const icon = evtIcon.value.trim();
+    const color = evtColor.value || '#3498db';
+    const desc = evtDesc.value.trim();
+
+    // validation
+    if (!name) { alert('Please provide an event name'); evtName.focus(); return; }
+    if (!date) {
+      // try to parse free-form if user typed something
+      const parsed = Date.parse(evtDate.value);
+      if (!isNaN(parsed)) date = new Date(parsed).toISOString().slice(0,10);
+      else { alert('Please provide a valid date'); evtDate.focus(); return; }
+    }
+
+    if (editingId) {
+      const idx = events.findIndex(x => x.id === editingId);
+      if (idx !== -1) {
+        events[idx] = {...events[idx], name, date, icon, color, desc};
+        saveState('edit');
+      }
+    } else {
+      const id = uid();
+      events.push({id, name, date, icon, color, desc, order: events.length});
+      saveState('add');
+    }
+    closeModal();
+    render();
+  }
+
+  function confirmDelete(id) {
+    if (!confirm('Delete this event? This action can be undone with Ctrl+Z.')) return;
+    const idx = events.findIndex(x => x.id === id);
+    if (idx === -1) return;
+    events.splice(idx,1);
+    saveState('delete');
+    selectedId = null;
+    render();
+  }
+
+  function deleteSelected() {
+    if (!selectedId) { alert('No event selected'); return; }
+    confirmDelete(selectedId);
+  }
+
+  // Export / Import
+  function exportJSON() {
+    const dataStr = JSON.stringify(events, null, 2);
+    const blob = new Blob([dataStr], {type:'application/json'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = 'timeline.json';
+    document.body.appendChild(a); a.click(); a.remove();
+    URL.revokeObjectURL(url);
+  }
+
+  function exportCSV() {
+    // Simple CSV export
+    const rows = [['id','name','date','icon','color','desc','order']];
+    events.forEach(ev => {
+      rows.push([ev.id, escapeCell(ev.name), ev.date, escapeCell(ev.icon), ev.color, escapeCell(ev.desc), ev.order]);
+    });
+    const csv = rows.map(r => r.map(c => `"${String(c||'').replace(/"/g,'""')}"`).join(',')).join('\n');
+    const blob = new Blob([csv], {type:'text/csv'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = 'timeline.csv';
+    document.body.appendChild(a); a.click(); a.remove();
+    URL.revokeObjectURL(url);
+  }
+  function escapeCell(s) { return String(s||'').replace(/"/g,'""'); }
+
+  fileImport.addEventListener('change', (e) => {
+    const f = e.target.files[0];
+    if (!f) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const txt = reader.result;
+      // try parse JSON first, fallback CSV
+      try {
+        const arr = JSON.parse(txt);
+        if (Array.isArray(arr)) {
+          // simple merge - preserve existing ids if present else create
+          const converted = arr.map((r, idx) => {
+            return {
+              id: r.id || uid(),
+              name: r.name || r.title || `Imported ${idx}`,
+              date: r.date ? r.date.slice(0,10) : nowISODate(),
+              icon: r.icon || '',
+              color: r.color || '#3498db',
+              desc: r.desc || r.description || '',
+              order: events.length + idx
+            };
+          });
+          events = events.concat(converted);
+          saveState('import-json');
+          render();
+          alert('JSON imported');
+          fileImport.value = '';
+          return;
+        } else {
+          throw new Error('Not array');
+        }
+      } catch (err) {
+        // try CSV parse minimal
+        const lines = txt.split(/\r?\n/).map(l => l.trim()).filter(l => l.length);
+        if (!lines.length) { alert('No data found'); return; }
+        const headers = parseCSVLine(lines[0]);
+        const parsed = [];
+        for (let i=1;i<lines.length;i++){
+          const row = parseCSVLine(lines[i]);
+          const obj = {};
+          for (let j=0;j<headers.length;j++) obj[headers[j]] = row[j] || '';
+          parsed.push(obj);
+        }
+        const converted = parsed.map((r, idx) => ({
+          id: r.id || uid(),
+          name: r.name || r.title || `Imported ${idx}`,
+          date: r.date ? r.date.slice(0,10) : nowISODate(),
+          icon: r.icon || '',
+          color: r.color || '#3498db',
+          desc: r.desc || r.description || '',
+          order: events.length + idx
+        }));
+        events = events.concat(converted);
+        saveState('import-csv');
+        render();
+        alert('CSV imported');
+        fileImport.value = '';
+      }
+    };
+    reader.readAsText(f);
+  });
+
+  function parseCSVLine(line) {
+    // naive CSV (handles quotes)
+    const res = [];
+    let cur = '';
+    let inQuotes = false;
+    for (let i=0;i<line.length;i++){
+      const ch = line[i];
+      if (ch === '"' ) {
+        if (inQuotes && line[i+1] === '"') { cur += '"'; i++; continue; }
+        inQuotes = !inQuotes; continue;
+      }
+      if (ch === ',' && !inQuotes) { res.push(cur); cur=''; continue; }
+      cur += ch;
+    }
+    res.push(cur);
+    return res.map(s => s.trim());
+  }
+
+  // Drag-to-scroll timeline (desktop & touch)
+  timelineEl.addEventListener('mousedown', (e) => {
+    dragState.isDown = true;
+    dragState.startX = e.pageX - timelineEl.offsetLeft;
+    dragState.scrollLeft = timelineEl.scrollLeft;
+  });
+  document.addEventListener('mouseup', () => { dragState.isDown = false; });
+  timelineEl.addEventListener('mousemove', (e) => {
+    if (!dragState.isDown) return;
+    e.preventDefault();
+    const x = e.pageX - timelineEl.offsetLeft;
+    const walk = (x - dragState.startX) * 1; // scroll speed
+    timelineEl.scrollLeft = dragState.scrollLeft - walk;
+  });
+  // Touch
+  let touchStartX = 0, touchStartScroll = 0;
+  timelineEl.addEventListener('touchstart', (e) => {
+    touchStartX = e.touches[0].pageX;
+    touchStartScroll = timelineEl.scrollLeft;
+  }, {passive:true});
+  timelineEl.addEventListener('touchmove', (e) => {
+    if (e.touches.length !== 1) return;
+    const x = e.touches[0].pageX;
+    const dx = x - touchStartX;
+    timelineEl.scrollLeft = touchStartScroll - dx;
+  }, {passive:true});
+
+  // Zoom & sort handlers
+  zoomRange.addEventListener('input', () => {
+    currentZoom = parseFloat(zoomRange.value);
+    render();
+  });
+  sortSelect.addEventListener('change', () => { render(); });
+
+  // Search & filters
+  searchInput.addEventListener('input', debounce(render, 180));
+  filterFrom.addEventListener('change', render);
+  filterTo.addEventListener('change', render);
+  clearFilters.addEventListener('click', () => {
+    filterFrom.value = ''; filterTo.value = ''; searchInput.value = ''; render();
+  });
+
+  // Modal actions
+  btnAdd.addEventListener('click', openAddModal);
+  modalCancel.addEventListener('click', closeModal);
+  modalSave.addEventListener('click', saveModal);
+
+  // Details actions
+  btnEditSelected.addEventListener('click', () => {
+    if (!selectedId) { alert('No event selected'); return; }
+    openEditModal(selectedId);
+  });
+  btnDeleteSelected.addEventListener('click', deleteSelected);
+  btnCenterSelected.addEventListener('click', () => {
+    if (!selectedId) return;
+    const el = timelineEl.querySelector(`.event[data-id="${selectedId}"]`);
+    if (el) centerEventInView(el);
+  });
+
+  btnExportJSON.addEventListener('click', exportJSON);
+  btnExportCSV.addEventListener('click', exportCSV);
+
+  // keyboard shortcuts
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'N' || e.key === 'n') {
+      // open new event modal unless the user is in a text field
+      if (document.activeElement && ['INPUT','TEXTAREA','SELECT'].includes(document.activeElement.tagName)) return;
+      openAddModal();
+    }
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
+      e.preventDefault();
+      undo();
+    }
+    if (e.key === 'Delete') {
+      // delete selected
+      if (selectedId) deleteSelected();
+    }
+  });
+
+  // center element into view
+  function centerEventInView(el) {
+    const rect = el.getBoundingClientRect();
+    const parentRect = timelineEl.getBoundingClientRect();
+    const offset = rect.left - parentRect.left - (parentRect.width/2 - rect.width/2);
+    animateScroll(timelineEl, timelineEl.scrollLeft + offset, 300);
+  }
+
+  // Simple animated scroll (for center)
+  function animateScroll(container, to, duration=250) {
+    const start = container.scrollLeft;
+    const change = to - start;
+    const startTime = performance.now();
+    function step(now) {
+      const t = Math.min(1, (now - startTime)/duration);
+      const eased = t<0.5 ? 2*t*t : -1 + (4-2*t)*t;
+      container.scrollLeft = start + change * eased;
+      if (t < 1) requestAnimationFrame(step);
+    }
+    requestAnimationFrame(step);
+  }
+
+  // Utility debounce
+  function debounce(fn, wait=200) {
+    let t;
+    return (...args) => { clearTimeout(t); t = setTimeout(()=>fn(...args), wait); };
+  }
+
+  // CSV helper done above
+
+  // Public methods to expose minimal API for debugging and automation
+  window.TimelineTool = {
+    addEventManual: (obj) => {
+      const id = uid();
+      events.push({ id, name: obj.name || 'Event', date: obj.date || nowISODate(), icon: obj.icon||'', color: obj.color||'#3498db', desc: obj.desc||'', order: events.length });
+      saveState('api-add');
+      render();
+      return id;
+    },
+    getEvents: () => JSON.parse(JSON.stringify(events)),
+    reset: () => { if (confirm('Reset timeline to empty (cannot be undone)?')) { events = []; saveState('reset'); render(); } }
+  };
+
+  // initial load and render
+  load();
+  render();
+
+  // Helper: escape text when required (we avoid innerHTML)
+  function safeTextNode(text) {
+    return document.createTextNode(String(text || ''));
+  }
+
+  // Integration: allow drop JSON content directly into the timeline area
+  window.addEventListener('dragover', (e) => { e.preventDefault(); });
+  window.addEventListener('drop', (e) => {
+    e.preventDefault();
+    // Try to parse JSON text
+    const data = e.dataTransfer.getData('text');
+    if (!data) return;
+    try {
+      const arr = JSON.parse(data);
+      if (Array.isArray(arr)) {
+        arr.forEach((r, i) => {
+          const id = uid();
+          events.push({ id, name: r.name||r.title||`Drop ${i}`, date: r.date? r.date.slice(0,10) : nowISODate(), icon: r.icon||'', color:r.color||'#3498db', desc:r.desc||'', order: events.length });
+        });
+        saveState('drop-import');
+        render();
+        alert('JSON dropped and imported');
+      }
+    } catch(_) {}
+  });
+
+  // Ensure UI accessibility focus outlines
+  document.addEventListener('focusin', (e) => {
+    if (e.target.classList.contains('event')) e.target.classList.add('keyboard-focus');
+  });
+
+  // Small helper to keep storage changes in sync without double-pushing undo stack
+  function saveState(action) {
+    // push previous snapshot to undo stack
+    try {
+      const snapshot = JSON.stringify(events);
+      undoStack.push(snapshot);
+      if (undoStack.length > 40) undoStack.shift();
+    } catch(e){}
+    persistNoUndo();
+  }
+
+})();
+</script>
+</body>
+</html>
