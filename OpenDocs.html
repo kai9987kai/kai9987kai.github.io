@@ -7,6 +7,9 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.6.0/css/all.min.css"/>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/animate.css/4.1.1/animate.min.css"/>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.10/dist/katex.min.css"/>
+    <script src="https://cdn.jsdelivr.net/npm/katex@0.16.10/dist/katex.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/typo-js@1.2.1/typo/typo.js"></script>
+    <script src="https://html2canvas.hertzen.com/dist/html2canvas.min.js"></script>
     <style>
         body {
             margin: 0;
@@ -1479,12 +1482,53 @@ function insertObject() {
     alert('Object insertion placeholder.');
 }
 
+let typo;
+function loadSpellChecker(callback) {
+    if (typo) {
+        callback();
+        return;
+    }
+    fetch('https://raw.githubusercontent.com/cfinke/Typo.js/master/dictionaries/en_US/en_US.aff')
+        .then(res => res.text())
+        .then(aff => {
+            fetch('https://raw.githubusercontent.com/cfinke/Typo.js/master/dictionaries/en_US/en_US.dic')
+                .then(res => res.text())
+                .then(dic => {
+                    typo = new Typo("en_US", aff, dic);
+                    callback();
+                });
+        });
+}
+
 function checkSpellingAndGrammar() {
-    alert('Spelling & Grammar: No errors found (mock).');
+    loadSpellChecker(() => {
+        const text = document.querySelector('#pageCanvas').textContent;
+        const words = text.split(/\s+/).filter(word => word.match(/^[a-zA-Z]+$/)); // Only alphabetic words
+        let errors = [];
+        words.forEach(w => {
+            if (!typo.check(w)) {
+                errors.push(w);
+            }
+        });
+        if (errors.length > 0) {
+            alert(`Misspelled words found: ${errors.join(', ')}`);
+        } else {
+            alert('No spelling errors found.');
+        }
+    });
 }
 
 function openThesaurus() {
-    alert('Thesaurus: Synonyms for "word": term, phrase (mock).');
+    const word = prompt('Enter word for synonyms:');
+    if (word) {
+        fetch(`https://api.datamuse.com/words?rel_syn=${word}`)
+            .then(res => res.json())
+            .then(data => {
+                const syns = data.map(d => d.word).join(', ') || 'No synonyms found';
+                alert(`Synonyms for "${word}": ${syns}`);
+            })
+            .catch(() => alert('Failed to fetch synonyms.'));
+    }
 }
 
 function wordCount() {
@@ -1630,7 +1674,14 @@ function protectDocument() { alert('Protect Document'); }
 function restrictEditing() { alert('Restrict Editing'); }
 function startInking() { alert('Start Inking (canvas integration needed)'); }
 function inkEraser() { alert('Ink Eraser'); }
-function readingLevel() { alert('Reading Level: Intermediate (mock)'); }
+function readingLevel() {
+    const text = document.querySelector('#pageCanvas').textContent;
+    const words = text.split(/\s+/).length;
+    const sentences = text.split(/[.!?]/).length || 1;
+    const syllables = words * 1.5; // Approximate
+    const score = 206.835 - 1.015 * (words / sentences) - 84.6 * (syllables / words);
+    alert(`Flesch Reading Ease Score: ${Math.round(score)} (Higher = Easier)`);
+}
 function translateDocument() { alert('Translated document (mock)'); }
 function languageSettings() { alert('Language set to English'); }
 
@@ -1660,13 +1711,19 @@ function drawTable() { alert('Draw Table'); }
 function insertPredefinedTable() { alert('Quick Tables'); }
 function insertOnlineImage() { alert('Online Pictures'); }
 function insertSmartArt() { alert('SmartArt'); }
-function insertScreenshot() { alert('Screenshot'); }
+function insertScreenshot() {
+    html2canvas(document.querySelector('#pageCanvas')).then(canvas => {
+        const img = canvas.toDataURL('image/png');
+        document.execCommand('insertImage', false, img);
+    });
+}
 function insertBookmark() { alert('Bookmark'); }
 function insertEquation() {
     const eq = prompt('Enter LaTeX equation:');
     if (eq) {
-        document.execCommand('insertHTML', false, `<span class="katex">${eq}</span>`);
-        katex.render(eq, document.querySelector('.katex:last-child'));
+        const span = document.createElement('span');
+        katex.render(eq, span, {throwOnError: false});
+        document.execCommand('insertHTML', false, span.outerHTML);
     }
 }
 function insertSectionBreak() { alert('Section Break'); }
@@ -2050,7 +2107,6 @@ function insertQR() {
 // Word Cloud (mock with Chart.js)
 function runPlugin(name) {
     if (name === 'wordcloud') {
-        const text = document.querySelector('#pageCanvas').textContent;
         alert('Word Cloud generated from text (mock)');
         // Implement actual word cloud if library added
     }
