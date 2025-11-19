@@ -1,0 +1,834 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WebMaya 4.0 Studio - Sculpt & Animate</title>
+    <style>
+        :root {
+            --bg: #181818; --panel: #202020; --header: #2d2d2d; --accent: #007fd4; 
+            --text: #d4d4d4; --border: #333; --highlight: #ff9900;
+        }
+        body { margin: 0; overflow: hidden; font-family: 'Segoe UI', sans-serif; background: var(--bg); color: var(--text); user-select: none; }
+        
+        /* Layout */
+        #app {
+            display: grid;
+            grid-template-columns: 50px 250px 1fr 280px; /* Icons | Tool/Outliner | Viewport | Props */
+            grid-template-rows: 35px 1fr 200px 25px;      /* Header | Main | Timeline | Status */
+            height: 100vh; width: 100vw;
+        }
+
+        /* Header */
+        #header {
+            grid-column: 1 / -1; background: var(--header); border-bottom: 1px solid var(--border);
+            display: flex; align-items: center; padding: 0 10px; gap: 10px; font-size: 12px;
+        }
+        .brand { font-weight: bold; color: var(--accent); margin-right: 10px; letter-spacing: 1px; }
+        .menu-btn { padding: 4px 10px; cursor: pointer; border-radius: 3px; transition: 0.2s; }
+        .menu-btn:hover { background: #444; color: white; }
+
+        /* Left Icon Bar */
+        #modes {
+            grid-row: 2 / 4; background: #1a1a1a; border-right: 1px solid var(--border);
+            display: flex; flex-direction: column; align-items: center; padding-top: 10px; gap: 10px;
+        }
+        .mode-icon {
+            width: 36px; height: 36px; border-radius: 5px; cursor: pointer;
+            display: flex; justify-content: center; align-items: center; font-size: 18px; color: #777;
+            transition: 0.2s; position: relative;
+        }
+        .mode-icon:hover { background: #333; color: #fff; }
+        .mode-icon.active { background: var(--accent); color: white; }
+        .mode-icon::after { /* Tooltip trick */
+            content: attr(title); position: absolute; left: 45px; background: #000; padding: 4px 8px;
+            font-size: 10px; border-radius: 3px; opacity: 0; pointer-events: none; transition: 0.2s; white-space: nowrap; z-index: 100;
+        }
+        .mode-icon:hover::after { opacity: 1; }
+
+        /* Panels */
+        .panel { background: var(--panel); border-right: 1px solid var(--border); overflow-y: auto; display: flex; flex-direction: column; }
+        .panel-right { border-right: none; border-left: 1px solid var(--border); grid-row: 2 / 4; grid-column: 4 / 5; }
+        
+        .section { padding: 10px; border-bottom: 1px solid var(--border); }
+        .section-head { font-size: 10px; font-weight: bold; text-transform: uppercase; color: #888; margin-bottom: 8px; display: flex; justify-content: space-between; }
+        
+        /* Tool Grid */
+        .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
+        .btn {
+            background: #2b2b2b; border: 1px solid #3a3a3a; color: #ccc; padding: 6px; font-size: 11px; cursor: pointer; border-radius: 2px;
+        }
+        .btn:hover { background: #383838; border-color: #555; }
+        .btn:active { background: var(--accent); border-color: var(--accent); color: white; }
+        
+        /* Inputs */
+        .prop-row { display: flex; align-items: center; margin-bottom: 5px; font-size: 11px; }
+        .prop-label { width: 70px; color: #aaa; }
+        .prop-input { flex: 1; background: #111; border: 1px solid #333; color: white; padding: 3px; border-radius: 2px; }
+        input[type=range] { flex: 1; }
+
+        /* Viewport */
+        #viewport { grid-column: 3 / 4; grid-row: 2 / 3; position: relative; background: #111; overflow: hidden; }
+        #overlay-info { position: absolute; top: 10px; left: 10px; pointer-events: none; color: #fff; font-size: 12px; opacity: 0.5; }
+
+        /* Timeline */
+        #timeline {
+            grid-column: 3 / 4; grid-row: 3 / 4; background: #1e1e1e; border-top: 1px solid var(--border);
+            display: flex; flex-direction: column;
+        }
+        .timeline-tools { height: 30px; background: #252525; display: flex; align-items: center; padding: 0 10px; gap: 10px; border-bottom: 1px solid #333; }
+        .scrubber { flex: 1; position: relative; background: #151515; height: 100%; overflow: hidden; cursor: crosshair; }
+        .playhead { position: absolute; top: 0; height: 100%; width: 1px; background: var(--highlight); pointer-events: none; z-index: 5; }
+        .keyframe { position: absolute; top: 10px; width: 6px; height: 6px; background: #aaa; transform: rotate(45deg); margin-left: -3px; cursor: pointer; }
+        .keyframe:hover { background: var(--highlight); }
+
+        /* Status Bar */
+        #status { grid-column: 1 / -1; background: var(--accent); color: white; font-size: 11px; display: flex; align-items: center; padding: 0 10px; justify-content: space-between;}
+    </style>
+    <script type="importmap">
+        { "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js", "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/" } }
+    </script>
+</head>
+<body>
+
+<div id="app">
+    <!-- Header -->
+    <div id="header">
+        <div class="brand">WEBMAYA 4.0</div>
+        <div class="menu-btn" onclick="Editor.newScene()">File</div>
+        <div class="menu-btn" onclick="Editor.exportGLTF()">Export</div>
+        <div class="menu-btn" onclick="document.getElementById('file-imp').click()">Import</div>
+        <input type="file" id="file-imp" style="display:none" onchange="Editor.importGLTF(this)">
+        <div style="flex:1"></div>
+        <div class="menu-btn" onclick="Editor.undo()">↶ Undo</div>
+        <div class="menu-btn" onclick="Editor.redo()">↷ Redo</div>
+    </div>
+
+    <!-- Mode Bar -->
+    <div id="modes">
+        <div class="mode-icon active" id="m-object" onclick="Editor.setMode('object')" title="Object Mode (F8)">📦</div>
+        <div class="mode-icon" id="m-face" onclick="Editor.setMode('face')" title="Face Edit (F9)">⬜</div>
+        <div class="mode-icon" id="m-vertex" onclick="Editor.setMode('vertex')" title="Vertex Edit (F10)">:::</div>
+        <div class="mode-icon" id="m-sculpt" onclick="Editor.setMode('sculpt')" title="Sculpt Brush (F11)">🖌</div>
+    </div>
+
+    <!-- Tool Panel -->
+    <div class="panel" style="grid-column: 2 / 3; grid-row: 2 / 4;">
+        <div class="section">
+            <div class="section-head">CREATE</div>
+            <div class="grid-2">
+                <button class="btn" onclick="Editor.addPrimitive('cube')">Cube</button>
+                <button class="btn" onclick="Editor.addPrimitive('sphere')">Sphere</button>
+                <button class="btn" onclick="Editor.addPrimitive('plane')">Plane</button>
+                <button class="btn" onclick="Editor.addPrimitive('torus')">Torus</button>
+            </div>
+        </div>
+        
+        <div class="section" id="tool-context">
+            <div class="section-head">TOOLS</div>
+            <div id="tools-object" class="grid-2">
+                <button class="btn" onclick="Editor.duplicate()">Duplicate</button>
+                <button class="btn" onclick="Editor.deleteSelection()">Delete</button>
+            </div>
+            <div id="tools-face" class="grid-2" style="display:none">
+                <button class="btn" onclick="Tools.extrude()">Extrude</button>
+                <button class="btn" onclick="Tools.deleteFace()">Del Face</button>
+                <button class="btn" onclick="Tools.subdivide()">Subdivide</button>
+                <button class="btn" onclick="Tools.poke()">Poke</button>
+            </div>
+            <div id="tools-sculpt" style="display:none">
+                <div class="prop-row"><span class="prop-label">Size</span><input type="range" min="0.1" max="2" step="0.1" id="sculpt-size" value="0.5"></div>
+                <div class="prop-row"><span class="prop-label">Power</span><input type="range" min="0.01" max="0.2" step="0.01" id="sculpt-power" value="0.05"></div>
+                <div style="font-size:10px; color:#888; margin-top:5px">Click & Drag to pull geometry.</div>
+            </div>
+        </div>
+
+        <div class="section">
+            <div class="section-head">OUTLINER</div>
+            <div id="outliner" style="font-size:11px; color:#aaa; max-height:200px; overflow-y:auto;"></div>
+        </div>
+    </div>
+
+    <!-- Viewport -->
+    <div id="viewport">
+        <div id="overlay-info">Perspective</div>
+    </div>
+
+    <!-- Timeline -->
+    <div id="timeline">
+        <div class="timeline-tools">
+            <button class="btn" id="play-btn" onclick="Anim.toggle()">▶</button>
+            <button class="btn" onclick="Anim.recordKey()">◆ Key (K)</button>
+            <input type="number" class="prop-input" style="width:40px" id="frame-val" value="0" onchange="Anim.goto(this.value)">
+            <span style="font-size:10px; color:#666"> / 100</span>
+        </div>
+        <div class="scrubber" id="scrub-track" onmousedown="Anim.scrubStart(event)">
+            <div class="playhead" id="playhead" style="left:0%"></div>
+            <div id="key-container"></div>
+        </div>
+    </div>
+
+    <!-- Properties Panel -->
+    <div class="panel panel-right">
+        <div class="section">
+            <div class="section-head">TRANSFORM</div>
+            <div class="prop-row"><span class="prop-label">Loc</span><input class="prop-input" id="px"><input class="prop-input" id="py"><input class="prop-input" id="pz"></div>
+            <div class="prop-row"><span class="prop-label">Rot</span><input class="prop-input" id="rx"><input class="prop-input" id="ry"><input class="prop-input" id="rz"></div>
+            <div class="prop-row"><span class="prop-label">Scl</span><input class="prop-input" id="sx"><input class="prop-input" id="sy"><input class="prop-input" id="sz"></div>
+            <button class="btn" style="width:100%; margin-top:5px" onclick="Editor.applyTransformUI()">Update</button>
+        </div>
+        <div class="section">
+            <div class="section-head">MATERIAL</div>
+            <div class="prop-row"><span class="prop-label">Color</span><input type="color" style="width:100%" id="mat-col" oninput="Editor.updateMat()"></div>
+            <div class="prop-row"><span class="prop-label">Metal</span><input type="range" min="0" max="1" step="0.1" id="mat-met" oninput="Editor.updateMat()"></div>
+            <div class="prop-row"><span class="prop-label">Rough</span><input type="range" min="0" max="1" step="0.1" id="mat-ruf" oninput="Editor.updateMat()"></div>
+            <div class="prop-row"><span class="prop-label">Wire</span><input type="checkbox" id="mat-wir" onchange="Editor.updateMat()"></div>
+            <button class="btn" style="width:100%; margin-top:5px" onclick="document.getElementById('tex-upl').click()">Load Texture</button>
+            <input type="file" id="tex-upl" style="display:none" onchange="Editor.loadTexture(this)">
+        </div>
+        <div class="section">
+            <div class="section-head">MODIFIERS</div>
+            <div class="grid-2">
+                <button class="btn" onclick="Tools.modMirror()">Mirror</button>
+                <button class="btn" onclick="Tools.modSubD()">Smooth</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Footer -->
+    <div id="status">
+        <span id="status-msg">Ready.</span>
+        <span style="font-size:9px; opacity:0.5">Autosave On</span>
+    </div>
+</div>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { TransformControls } from 'three/addons/controls/TransformControls.js';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { GLTFExporter } from 'three/addons/exporters/GLTFExporter.js';
+import * as BufferGeometryUtils from 'three/addons/utils/BufferGeometryUtils.js';
+
+// --- CORE SYSTEMS ---
+
+const App = {
+    scene: null, camera: null, renderer: null, orbit: null, transform: null,
+    raycaster: new THREE.Raycaster(), mouse: new THREE.Vector2(),
+    objects: [], // Interactive meshes
+    clock: new THREE.Clock()
+};
+
+const State = {
+    mode: 'object', // object, face, vertex, sculpt
+    selection: null,
+    faceIndex: -1,
+    clipboard: null,
+    undoStack: [],
+    redoStack: []
+};
+
+// --- MAIN EDITOR LOGIC ---
+
+const Editor = {
+    init() {
+        // 1. Setup Three.js
+        const vp = document.getElementById('viewport');
+        App.scene = new THREE.Scene();
+        App.scene.background = new THREE.Color(0x111111);
+        
+        // Grid & Lights
+        App.scene.add(new THREE.GridHelper(30, 30, 0x444444, 0x222222));
+        const al = new THREE.AmbientLight(0xffffff, 0.5);
+        const dl = new THREE.DirectionalLight(0xffffff, 1.5);
+        dl.position.set(5, 10, 7);
+        App.scene.add(al, dl);
+
+        // Camera & Render
+        App.camera = new THREE.PerspectiveCamera(50, vp.clientWidth / vp.clientHeight, 0.1, 1000);
+        App.camera.position.set(6, 5, 8);
+        
+        App.renderer = new THREE.WebGLRenderer({ antialias: true });
+        App.renderer.setSize(vp.clientWidth, vp.clientHeight);
+        App.renderer.setPixelRatio(window.devicePixelRatio);
+        vp.appendChild(App.renderer.domElement);
+
+        // Controls
+        App.orbit = new OrbitControls(App.camera, App.renderer.domElement);
+        App.orbit.enableDamping = true;
+        
+        App.transform = new TransformControls(App.camera, App.renderer.domElement);
+        App.transform.addEventListener('dragging-changed', e => App.orbit.enabled = !e.value);
+        App.transform.addEventListener('change', () => { if(State.selection) Editor.syncUI(); });
+        App.transform.addEventListener('mouseUp', () => Editor.saveState()); // Undo point on release
+        App.scene.add(App.transform);
+
+        // Events
+        window.addEventListener('resize', this.onResize);
+        window.addEventListener('keydown', this.onKey);
+        vp.addEventListener('pointerdown', this.onClick);
+        vp.addEventListener('pointermove', this.onMove);
+        
+        // Load / Init
+        this.loadFromStorage();
+        this.render();
+    },
+
+    addPrimitive(type) {
+        let geo;
+        if (type === 'cube') geo = new THREE.BoxGeometry(2, 2, 2, 4, 4, 4); // Subdivided for sculpt
+        else if (type === 'sphere') geo = new THREE.SphereGeometry(1.5, 32, 32);
+        else if (type === 'plane') geo = new THREE.PlaneGeometry(4, 4, 10, 10);
+        else if (type === 'torus') geo = new THREE.TorusGeometry(1, 0.3, 16, 48);
+
+        // Convert to NonIndexed for Hard Edges style editing, or keep indexed for Smooth
+        // For this studio version, we prefer indexed for sculpting, but face tools need distinct handling.
+        // We will use default indexed geometry but handle face split manually if needed.
+        
+        const mat = new THREE.MeshStandardMaterial({ color: 0x888888, roughness: 0.5, metalness: 0.1, side: THREE.DoubleSide });
+        const mesh = new THREE.Mesh(geo, mat);
+        mesh.name = type + '_' + App.objects.length;
+        mesh.castShadow = true;
+        mesh.userData.anim = {}; // Animation tracks
+
+        App.scene.add(mesh);
+        App.objects.push(mesh);
+        this.select(mesh);
+        this.updateOutliner();
+        this.saveState();
+    },
+
+    select(mesh) {
+        if(State.mode === 'sculpt' && State.selection === mesh) return;
+        
+        State.selection = mesh;
+        Helpers.clear();
+
+        if (mesh) {
+            if(State.mode === 'object') App.transform.attach(mesh);
+            else App.transform.detach();
+            
+            if(State.mode === 'vertex') Helpers.showVertices(mesh);
+            
+            this.syncUI();
+            Anim.renderKeys();
+            document.getElementById('status-msg').innerText = "Selected " + mesh.name;
+        } else {
+            App.transform.detach();
+        }
+        this.updateOutliner();
+    },
+
+    setMode(mode) {
+        State.mode = mode;
+        // UI Update
+        document.querySelectorAll('.mode-icon').forEach(el => el.classList.remove('active'));
+        document.getElementById('m-' + mode).classList.add('active');
+        
+        document.getElementById('tools-object').style.display = 'none';
+        document.getElementById('tools-face').style.display = 'none';
+        document.getElementById('tools-sculpt').style.display = 'none';
+        document.getElementById('tools-' + (mode==='vertex'?'face':mode)).style.display = 'grid'; // Reuse face tools for now
+        if(mode === 'sculpt') document.getElementById('tools-sculpt').style.display = 'block';
+
+        this.select(State.selection); // Refresh selection helper
+    },
+
+    // --- HISTORY SYSTEM (UNDO/REDO) ---
+    saveState() {
+        // Serialize Scene JSON (simplified)
+        const sceneData = App.objects.map(o => ({
+            name: o.name,
+            geo: o.geometry.toJSON(),
+            mat: o.material.toJSON(),
+            transform: o.matrixWorld.elements, // Simplified
+            pos: o.position.toArray(),
+            rot: o.rotation.toArray(),
+            scl: o.scale.toArray(),
+            uuid: o.uuid
+        }));
+        
+        State.undoStack.push(JSON.stringify(sceneData));
+        if(State.undoStack.length > 20) State.undoStack.shift();
+        State.redoStack = []; // Clear redo on new action
+        
+        // LocalStorage Autosave
+        localStorage.setItem('webmaya_scene', JSON.stringify(sceneData));
+    },
+
+    undo() {
+        if (State.undoStack.length === 0) return;
+        const current = JSON.stringify(this.getSceneData());
+        State.redoStack.push(current);
+        
+        const prev = State.undoStack.pop();
+        this.restoreState(prev);
+    },
+
+    redo() {
+        if (State.redoStack.length === 0) return;
+        const next = State.redoStack.pop();
+        const current = JSON.stringify(this.getSceneData());
+        State.undoStack.push(current);
+        this.restoreState(next);
+    },
+
+    getSceneData() {
+        return App.objects.map(o => ({
+            name: o.name, geo: o.geometry.toJSON(), mat: o.material.toJSON(),
+            pos: o.position.toArray(), rot: o.rotation.toArray(), scl: o.scale.toArray(), uuid: o.uuid
+        }));
+    },
+
+    restoreState(jsonString) {
+        const data = JSON.parse(jsonString);
+        // Nuke current scene objects
+        App.objects.forEach(o => App.scene.remove(o));
+        App.objects = [];
+        App.transform.detach();
+
+        const loader = new THREE.ObjectLoader();
+        
+        data.forEach(d => {
+            // Reconstruct geometry/material manually or use loader
+            // For robustness in this demo, we reconstruct standard objects
+            // Real implementation would use full JSON serialization
+            
+            // Quick Fix: We just create generic meshes to hold the data
+            // This is the hardest part of single-file undo. 
+            // We will assume the geometry data is valid ThreeJSON.
+            
+            const geo = new THREE.BufferGeometryLoader().parse(d.geo);
+            const mat = new THREE.MaterialLoader().parse(d.mat);
+            const mesh = new THREE.Mesh(geo, mat);
+            mesh.position.fromArray(d.pos);
+            mesh.rotation.fromArray(d.rot);
+            mesh.scale.fromArray(d.scl);
+            mesh.name = d.name;
+            mesh.uuid = d.uuid; // Keep UUID for animation tracks
+            
+            App.scene.add(mesh);
+            App.objects.push(mesh);
+        });
+        
+        this.updateOutliner();
+    },
+
+    loadFromStorage() {
+        const data = localStorage.getItem('webmaya_scene');
+        if(data) {
+            try { this.restoreState(data); } catch(e) { console.log("Autosave corrupt"); }
+        }
+    },
+
+    // --- IO ---
+    exportGLTF() {
+        const exp = new GLTFExporter();
+        exp.parse(App.scene, (gltf) => {
+            const blob = new Blob([JSON.stringify(gltf)], {type:'text/plain'});
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(blob); a.download = 'scene.gltf'; a.click();
+        });
+    },
+    
+    importGLTF(input) {
+        if(!input.files[0]) return;
+        const url = URL.createObjectURL(input.files[0]);
+        new GLTFLoader().load(url, (gltf) => {
+            App.scene.add(gltf.scene);
+            gltf.scene.traverse(c => {
+                if(c.isMesh) { App.objects.push(c); c.userData.anim = {}; }
+            });
+            this.updateOutliner();
+        });
+    },
+
+    // --- INTERACTION ---
+    onClick(e) {
+        const r = App.renderer.domElement.getBoundingClientRect();
+        App.mouse.x = ((e.clientX - r.left) / r.width) * 2 - 1;
+        App.mouse.y = -((e.clientY - r.top) / r.height) * 2 + 1;
+        App.raycaster.setFromCamera(App.mouse, App.camera);
+
+        if (State.mode === 'sculpt') return; // Click handled in onMove for sculpt
+
+        const intersects = App.raycaster.intersectObjects(App.objects);
+        if (intersects.length > 0) {
+            const hit = intersects[0];
+            if (State.mode === 'object') Editor.select(hit.object);
+            else if (State.mode === 'face') {
+                Editor.select(hit.object);
+                State.faceIndex = hit.faceIndex;
+                Helpers.highlightFace(hit.faceIndex);
+            } else if (State.mode === 'vertex') {
+                // Handled by point cloud raycast usually, simplified here
+                Editor.select(hit.object);
+            }
+        } else {
+            if(State.mode === 'object') Editor.select(null);
+        }
+    },
+
+    onMove(e) {
+        // SCULPTING LOGIC
+        if(State.mode === 'sculpt' && e.buttons === 1 && State.selection) {
+            const r = App.renderer.domElement.getBoundingClientRect();
+            App.mouse.x = ((e.clientX - r.left) / r.width) * 2 - 1;
+            App.mouse.y = -((e.clientY - r.top) / r.height) * 2 + 1;
+            App.raycaster.setFromCamera(App.mouse, App.camera);
+            
+            const intersects = App.raycaster.intersectObject(State.selection);
+            if(intersects.length > 0) {
+                Tools.sculpt(intersects[0].point, intersects[0].face.normal);
+            }
+        }
+    },
+
+    onKey(e) {
+        if(e.target.tagName === 'INPUT') return;
+        const k = e.key.toLowerCase();
+        if(e.ctrlKey && k === 'z') Editor.undo();
+        else if(e.ctrlKey && k === 'y') Editor.redo();
+        else if(k === 'delete') Editor.deleteSelection();
+        else if(k === 'w') App.transform.setMode('translate');
+        else if(k === 'e') App.transform.setMode('rotate');
+        else if(k === 'r') App.transform.setMode('scale');
+        else if(k === 'k') Anim.recordKey();
+        else if(k === ' ') Anim.toggle();
+    },
+
+    onResize() {
+        App.camera.aspect = (window.innerWidth - 580) / (window.innerHeight - 235); // Approximation
+        // Better: grab div size
+        const div = document.getElementById('viewport');
+        App.camera.aspect = div.clientWidth / div.clientHeight;
+        App.camera.updateProjectionMatrix();
+        App.renderer.setSize(div.clientWidth, div.clientHeight);
+    },
+
+    render() {
+        requestAnimationFrame(() => Editor.render());
+        if(Anim.playing) Anim.update();
+        App.orbit.update();
+        App.renderer.render(App.scene, App.camera);
+    },
+    
+    // UI Updaters
+    syncUI() {
+        if(!State.selection) return;
+        const o = State.selection;
+        const get = (id) => document.getElementById(id);
+        get('px').value = o.position.x.toFixed(2); get('py').value = o.position.y.toFixed(2); get('pz').value = o.position.z.toFixed(2);
+        get('rx').value = (o.rotation.x*57.3).toFixed(0); get('ry').value = (o.rotation.y*57.3).toFixed(0); get('rz').value = (o.rotation.z*57.3).toFixed(0);
+        get('sx').value = o.scale.x.toFixed(2); get('sy').value = o.scale.y.toFixed(2); get('sz').value = o.scale.z.toFixed(2);
+        
+        const m = o.material;
+        get('mat-col').value = '#' + m.color.getHexString();
+        get('mat-met').value = m.metalness; get('mat-ruf').value = m.roughness;
+        get('mat-wir').checked = m.wireframe;
+    },
+    
+    applyTransformUI() {
+        if(!State.selection) return;
+        const o = State.selection;
+        const get = (id) => parseFloat(document.getElementById(id).value);
+        o.position.set(get('px'), get('py'), get('pz'));
+        o.rotation.set(get('rx')/57.3, get('ry')/57.3, get('rz')/57.3);
+        o.scale.set(get('sx'), get('sy'), get('sz'));
+        this.saveState();
+    },
+
+    updateMat() {
+        if(!State.selection) return;
+        const m = State.selection.material;
+        const get = (id) => document.getElementById(id);
+        m.color.set(get('mat-col').value);
+        m.metalness = parseFloat(get('mat-met').value);
+        m.roughness = parseFloat(get('mat-ruf').value);
+        m.wireframe = get('mat-wir').checked;
+    },
+
+    loadTexture(input) {
+        if(input.files && input.files[0] && State.selection) {
+            const url = URL.createObjectURL(input.files[0]);
+            new THREE.TextureLoader().load(url, (tex) => {
+                tex.colorSpace = THREE.SRGBColorSpace;
+                State.selection.material.map = tex;
+                State.selection.material.needsUpdate = true;
+            });
+        }
+    },
+
+    updateOutliner() {
+        const div = document.getElementById('outliner');
+        div.innerHTML = '';
+        App.objects.forEach(o => {
+            const r = document.createElement('div');
+            r.innerText = (State.selection===o?'⏺ ':'') + o.name;
+            r.style.padding = '4px';
+            r.style.background = State.selection===o ? '#333' : 'transparent';
+            r.style.cursor = 'pointer';
+            r.onclick = () => this.select(o);
+            div.appendChild(r);
+        });
+    },
+    
+    deleteSelection() {
+        if(State.selection) {
+            App.scene.remove(State.selection);
+            App.objects = App.objects.filter(o => o !== State.selection);
+            this.select(null);
+            this.saveState();
+        }
+    },
+    
+    duplicate() {
+        if(!State.selection) return;
+        const clone = State.selection.clone();
+        clone.position.x += 2;
+        clone.material = State.selection.material.clone();
+        clone.name = State.selection.name + "_copy";
+        clone.userData.anim = {};
+        App.scene.add(clone);
+        App.objects.push(clone);
+        this.select(clone);
+        this.saveState();
+    },
+    
+    newScene() {
+        if(confirm("Reset Scene?")) {
+            localStorage.removeItem('webmaya_scene');
+            location.reload();
+        }
+    }
+};
+
+// --- TOOLS & MODIFIERS ---
+
+const Tools = {
+    sculpt(point, normal) {
+        const mesh = State.selection;
+        if (!mesh) return;
+
+        const pos = mesh.geometry.attributes.position;
+        const radius = parseFloat(document.getElementById('sculpt-size').value);
+        const power = parseFloat(document.getElementById('sculpt-power').value);
+        
+        const v = new THREE.Vector3();
+        const localPoint = mesh.worldToLocal(point.clone());
+        
+        let modified = false;
+        for(let i=0; i<pos.count; i++) {
+            v.fromBufferAttribute(pos, i);
+            const dist = v.distanceTo(localPoint);
+            
+            if(dist < radius) {
+                // Falloff function
+                const factor = (1 - dist/radius) * power;
+                // Move along normal (simple inflate)
+                v.addScaledVector(v.clone().normalize(), factor); // Normal approximated by position for sphere
+                // Better: use actual normal attribute if available
+                
+                pos.setXYZ(i, v.x, v.y, v.z);
+                modified = true;
+            }
+        }
+        
+        if(modified) {
+            pos.needsUpdate = true;
+            mesh.geometry.computeVertexNormals();
+        }
+    },
+
+    extrude() {
+        if(!State.selection || State.faceIndex === -1) return;
+        // (Same logic as v3 but wrapped nicely)
+        // For demo brevity, we perform a simple face normal offset move
+        // Real extrude requires topology rebuilding (cutting edges)
+        const mesh = State.selection;
+        const pos = mesh.geometry.attributes.position;
+        
+        // Get indices
+        const idx = State.faceIndex;
+        const a = idx * 3, b = idx * 3 + 1, c = idx * 3 + 2;
+        
+        // Move vertices along normal
+        const n = new THREE.Vector3(); // Calc normal
+        const vA = new THREE.Vector3().fromBufferAttribute(pos, a);
+        const vB = new THREE.Vector3().fromBufferAttribute(pos, b);
+        const vC = new THREE.Vector3().fromBufferAttribute(pos, c);
+        
+        n.crossVectors(vB.sub(vA), vC.clone().sub(vA)).normalize();
+        
+        // Simple visual extrude (moves face, doesn't create side walls in this basic func)
+        // To innovate: Clone vertices to create sides.
+        alert("Basic Extrude: Moving Face. (Topology rebuild in Pro version)");
+        
+        vA.addScaledVector(n, 0.5);
+        
+        pos.setXYZ(a, pos.getX(a)+n.x, pos.getY(a)+n.y, pos.getZ(a)+n.z);
+        pos.setXYZ(b, pos.getX(b)+n.x, pos.getY(b)+n.y, pos.getZ(b)+n.z);
+        pos.setXYZ(c, pos.getX(c)+n.x, pos.getY(c)+n.y, pos.getZ(c)+n.z);
+        pos.needsUpdate = true;
+        Editor.saveState();
+    },
+
+    modSubD() {
+        // Smooth modifier using GeometryUtils logic
+        if(!State.selection) return;
+        State.selection.geometry.computeVertexNormals();
+        State.selection.material.flatShading = false;
+        State.selection.material.needsUpdate = true;
+    },
+    
+    modMirror() {
+        Editor.duplicate();
+        if(State.selection) {
+            State.selection.scale.x *= -1;
+            State.selection.position.x *= -1;
+        }
+    }
+};
+
+// --- ANIMATION ---
+
+const Anim = {
+    frame: 0, maxFrame: 100, playing: false,
+    
+    renderKeys() {
+        const con = document.getElementById('key-container');
+        con.innerHTML = '';
+        if(!State.selection) return;
+        const data = State.selection.userData.anim || {};
+        Object.keys(data).forEach(f => {
+            const k = document.createElement('div');
+            k.className = 'keyframe';
+            k.style.left = (f / 100 * 100) + '%';
+            con.appendChild(k);
+        });
+    },
+    
+    recordKey() {
+        if(!State.selection) return;
+        const o = State.selection;
+        if(!o.userData.anim) o.userData.anim = {};
+        o.userData.anim[this.frame] = {
+            p: o.position.toArray(),
+            r: o.rotation.toArray(),
+            s: o.scale.toArray()
+        };
+        this.renderKeys();
+        document.getElementById('status-msg').innerText = "Key Recorded Frame " + this.frame;
+    },
+    
+    goto(f) {
+        this.frame = parseInt(f);
+        if(this.frame > this.maxFrame) this.frame = 0;
+        document.getElementById('playhead').style.left = this.frame + '%';
+        document.getElementById('frame-val').value = this.frame;
+        
+        // Evaluate
+        App.objects.forEach(o => {
+            if(o.userData.anim) this.evaluate(o, this.frame);
+        });
+        Editor.syncUI();
+    },
+    
+    evaluate(obj, f) {
+        const track = obj.userData.anim;
+        if(!track) return;
+        
+        // Find keys
+        const keys = Object.keys(track).map(Number).sort((a,b)=>a-b);
+        if(keys.length === 0) return;
+        
+        // Find prev/next
+        let prev = keys[0], next = keys[keys.length-1];
+        for(let k of keys) {
+            if(k <= f) prev = k;
+            if(k >= f) { next = k; break; }
+        }
+        
+        if(prev === next) {
+            const d = track[prev];
+            obj.position.fromArray(d.p); obj.rotation.fromArray(d.r); obj.scale.fromArray(d.s);
+        } else {
+            const alpha = (f - prev) / (next - prev);
+            const d1 = track[prev];
+            const d2 = track[next];
+            
+            obj.position.fromArray(d1.p).lerp(new THREE.Vector3().fromArray(d2.p), alpha);
+            // Simple rotation lerp
+            const r1 = new THREE.Euler().fromArray(d1.r);
+            const r2 = new THREE.Euler().fromArray(d2.r);
+            obj.rotation.x = r1.x + (r2.x - r1.x)*alpha;
+            obj.rotation.y = r1.y + (r2.y - r1.y)*alpha;
+            obj.rotation.z = r1.z + (r2.z - r1.z)*alpha;
+        }
+    },
+    
+    toggle() { this.playing = !this.playing; document.getElementById('play-btn').innerText = this.playing?'⏸':'▶'; },
+    update() { this.goto(this.frame + 1); },
+    
+    scrubStart(e) {
+        const track = document.getElementById('scrub-track');
+        const move = (ev) => {
+            const rect = track.getBoundingClientRect();
+            let pct = (ev.clientX - rect.left) / rect.width;
+            this.goto(Math.floor(pct * 100));
+        };
+        move(e);
+        const up = () => { window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', up); };
+        window.addEventListener('mousemove', move); window.addEventListener('mouseup', up);
+    }
+};
+
+// --- HELPERS (Visuals) ---
+
+const Helpers = {
+    faceMesh: null,
+    pts: null,
+    
+    clear() {
+        if(this.faceMesh) { App.scene.remove(this.faceMesh); this.faceMesh = null; }
+        if(this.pts) { App.scene.remove(this.pts); this.pts = null; }
+    },
+    
+    highlightFace(idx) {
+        this.clear();
+        const mesh = State.selection;
+        const pos = mesh.geometry.attributes.position;
+        const i = idx*3;
+        const v = [
+            new THREE.Vector3().fromBufferAttribute(pos, i),
+            new THREE.Vector3().fromBufferAttribute(pos, i+1),
+            new THREE.Vector3().fromBufferAttribute(pos, i+2)
+        ];
+        
+        // Create Triangle Highlight
+        const geo = new THREE.BufferGeometry().setFromPoints(v);
+        this.faceMesh = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({color:0xff9900, transparent:true, opacity:0.5, depthTest:false}));
+        this.faceMesh.applyMatrix4(mesh.matrixWorld);
+        App.scene.add(this.faceMesh);
+    },
+    
+    showVertices(mesh) {
+        // Use Points Cloud for performance
+        const geo = mesh.geometry.clone();
+        const mat = new THREE.PointsMaterial({color: 0x00aaff, size: 0.1});
+        this.pts = new THREE.Points(geo, mat);
+        this.pts.applyMatrix4(mesh.matrixWorld);
+        App.scene.add(this.pts);
+    }
+};
+
+// Expose Global for HTML events
+window.Editor = Editor;
+window.Tools = Tools;
+window.Anim = Anim;
+
+Editor.init();
+
+</script>
+</body>
+</html>
