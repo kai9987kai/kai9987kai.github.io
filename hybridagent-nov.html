@@ -1,0 +1,908 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>EvoSim 2.0: Genetics, States & Shaders</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<!-- Three.js r128 -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/simplex-noise/2.4.0/simplex-noise.min.js"></script>
+<style>
+  :root{--bg:#05080a;--panel:rgba(10,15,20,0.9);--border:rgba(255,255,255,0.1);--accent:#00d2ff;--txt:#cfd8dc;--ok:#4caf50;--bad:#f44336;}
+  body{margin:0;overflow:hidden;background:var(--bg);color:var(--txt);font-family:'Segoe UI',sans-serif;font-size:13px;user-select:none}
+  #canvasContainer{position:absolute;inset:0;z-index:0}
+  
+  /* UI Overlay Layout */
+  .panel{position:absolute;background:var(--panel);border:1px solid var(--border);padding:12px;border-radius:8px;backdrop-filter:blur(4px);z-index:10;box-shadow:0 4px 20px rgba(0,0,0,0.5);}
+  
+  #statsPanel{top:10px;left:10px;width:240px;}
+  #controlsPanel{top:10px;right:10px;width:300px;max-height:90vh;overflow-y:auto;}
+  #selectionPanel{bottom:10px;left:10px;width:240px;display:none;}
+  #minimapPanel{bottom:10px;right:10px;width:200px;height:200px;padding:0;overflow:hidden;border-radius:100%;border:2px solid var(--border);background:#000;}
+  
+  /* Typography & Elements */
+  h2{margin:0 0 8px 0;font-size:14px;text-transform:uppercase;letter-spacing:1px;color:var(--accent);border-bottom:1px solid var(--border);padding-bottom:4px;}
+  .row{display:flex;justify-content:space-between;margin-bottom:4px;}
+  .val{font-weight:bold;color:#fff;}
+  button{width:100%;background:rgba(255,255,255,0.05);border:1px solid var(--border);color:var(--txt);padding:6px;border-radius:4px;cursor:pointer;margin-top:4px;transition:0.2s;}
+  button:hover{background:var(--accent);color:#000;}
+  button.active{background:var(--accent);color:#000;font-weight:bold;}
+  input[type=range]{width:100%;accent-color:var(--accent);height:4px;margin:8px 0;}
+  
+  .tag{display:inline-block;padding:2px 6px;border-radius:4px;font-size:10px;font-weight:bold;margin-right:4px;}
+  .tag-prey{background:#2e7d32;color:#fff} .tag-pred{background:#c62828;color:#fff}
+  .state-ind{width:8px;height:8px;border-radius:50%;display:inline-block;margin-right:6px;}
+  
+  /* Legend colors */
+  .c-prey{color:#66ff66} .c-pred{color:#ff4444} .c-food{color:#ffaa00}
+</style>
+</head>
+<body>
+
+<div id="canvasContainer"></div>
+
+<!-- Left Top: Global Stats -->
+<div id="statsPanel" class="panel">
+  <h2>Simulation Stats</h2>
+  <div class="row"><span>FPS</span><span id="fps" class="val">60</span></div>
+  <div class="row"><span>Time</span><span id="timeLabel" class="val">Day 1 - 12:00</span></div>
+  <div class="row"><span>Season</span><span id="seasonLabel" class="val">Spring</span></div>
+  <div class="row" style="margin-top:8px"><span class="c-prey">Prey</span><span id="cntPrey" class="val">0</span></div>
+  <div class="row"><span class="c-pred">Predators</span><span id="cntPred" class="val">0</span></div>
+  <div class="row"><span class="c-food">Vegetation</span><span id="cntFood" class="val">0</span></div>
+  <canvas id="graph" width="214" height="50" style="margin-top:8px;background:#111;border-radius:4px"></canvas>
+</div>
+
+<!-- Right Top: Controls -->
+<div id="controlsPanel" class="panel">
+  <h2>Controls</h2>
+  <div class="row"><span>Sim Speed</span><span id="valSpeed" class="val">1.0x</span></div>
+  <input type="range" id="simSpeed" min="0" max="4" step="0.1" value="1">
+  
+  <div class="row"><span>Terrain Chaos</span><span id="valChaos" class="val">1.0</span></div>
+  <input type="range" id="terrChaos" min="0.1" max="2.5" step="0.1" value="1.0">
+  
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:8px;">
+    <button id="btnAddPrey">+ Prey</button>
+    <button id="btnAddPred">+ Predator</button>
+    <button id="btnStorm">Storm</button>
+    <button id="btnRegen">Regen Map</button>
+  </div>
+  
+  <div style="border-top:1px solid var(--border);margin:10px 0;padding-top:8px">
+    <label class="row"><span><input type="checkbox" id="chkPheromones" checked> Pheromones</span></label>
+    <label class="row"><span><input type="checkbox" id="chkShadows" checked> Shadows</span></label>
+    <label class="row"><span><input type="checkbox" id="chkParticles" checked> Weather/Particles</span></label>
+    <label class="row"><span><input type="checkbox" id="chkAntiAliasing"> High Quality AA</span></label>
+  </div>
+  
+  <div id="msg" style="color:#78909c;font-style:italic;text-align:center;margin-top:4px">Click entity to inspect</div>
+</div>
+
+<!-- Bottom Left: Inspector -->
+<div id="selectionPanel" class="panel">
+  <h2>Inspector <button id="btnUnfollow" style="width:auto;float:right;padding:1px 6px;font-size:10px;margin:0">Unfollow</button></h2>
+  <div id="selInfo">
+    <div class="row" style="font-size:16px;margin-bottom:8px"><strong id="selType">Prey</strong> <span id="selId">#102</span></div>
+    <div class="row"><span>State</span><span id="selState" class="val" style="color:#feab00">IDLE</span></div>
+    <div class="row"><span>Energy</span><div style="width:60px;background:#333;height:10px;margin-top:3px"><div id="selEnergy" style="width:50%;background:#4caf50;height:100%"></div></div></div>
+    <div class="row"><span>Age</span><span id="selAge" class="val">0.5d</span></div>
+    
+    <div style="margin-top:8px;border-top:1px solid var(--border);padding-top:4px">
+      <div style="color:var(--accent);font-size:11px;margin-bottom:4px">GENETICS</div>
+      <div class="row"><span>Size</span><span id="geneSize" class="val">1.0</span></div>
+      <div class="row"><span>Speed</span><span id="geneSpeed" class="val">1.0</span></div>
+      <div class="row"><span>Sense</span><span id="geneSense" class="val">1.0</span></div>
+    </div>
+  </div>
+</div>
+
+<!-- Bottom Right: Minimap -->
+<div id="minimapPanel">
+  <canvas id="miniCanvas" width="200" height="200"></canvas>
+</div>
+
+<script>
+/**
+ * ADVANCED EVOLUTIONARY SIMULATION 2.0
+ * Core improvements: 
+ * - Finite State Machine (FSM) for behavior
+ * - Genetic inheritance (Size, Speed, Sense)
+ * - InstancedMesh for vegetation (high performance)
+ * - Vertex Shader for Water
+ * - Follow Camera & Inspection
+ */
+
+// --- CONSTANTS & GLOBALS ---
+const WORLD_SIZE = 140, CHUNK_RES = 128;
+const MAX_INSTANCES = 3000; // Max vegetation
+const COLORS = { prey: 0x55ff55, pred: 0xff4444, water: 0x4fc3f7, night: 0x040810, day: 0x87ceeb };
+
+let scene, camera, renderer, controls, clock;
+let terrain, water, sun, moon, lightDir, lightHemi, fireflies;
+let envData = { height: null, moisture: null, passable: null };
+let agents = [], vegetation = null;
+let mouse = new THREE.Vector2(), raycaster = new THREE.Raycaster();
+let followTarget = null;
+let settings = { speed: 1.0, chaos: 1.0, particles: true, pheromones: true };
+let time = 0, dayDuration = 120, simDay = 0; // seconds per day
+let stats = { fps: 0, prey: 0, pred: 0, food: 0, history: [] };
+
+// Spatial Hash for Neighbors
+class SpatialHash {
+  constructor(cellSize){ this.cell = cellSize; this.map = new Map(); }
+  key(x,z){ return ((x/this.cell)|0)+'_'+((z/this.cell)|0); }
+  clear(){ this.map.clear(); }
+  insert(agent){
+    const k = this.key(agent.pos.x, agent.pos.z);
+    if(!this.map.has(k)) this.map.set(k, []);
+    this.map.get(k).push(agent);
+  }
+  query(x, z, r){
+    const out = []; const range = Math.ceil(r/this.cell);
+    const cx = (x/this.cell)|0, cz = (z/this.cell)|0;
+    for(let i=-range; i<=range; i++){
+      for(let j=-range; j<=range; j++){
+        const k = (cx+i)+'_'+(cz+j);
+        if(this.map.has(k)) out.push(...this.map.get(k));
+      }
+    }
+    return out;
+  }
+}
+const grid = new SpatialHash(8);
+
+// --- UTILS ---
+const rnd = (min,max) => Math.random()*(max-min)+min;
+const clamp = (v,min,max) => Math.max(min,Math.min(max,v));
+const lerp = (a,b,t) => a+(b-a)*t;
+
+// --- SHADERS ---
+const waterVert = `
+  uniform float uTime;
+  varying float vHeight;
+  void main() {
+    vec3 pos = position;
+    // Simple wave function
+    float wave = sin(pos.x * 0.5 + uTime) * 0.15 + cos(pos.z * 0.4 + uTime * 0.8) * 0.15;
+    pos.y += wave;
+    vHeight = wave;
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
+  }
+`;
+const waterFrag = `
+  varying float vHeight;
+  void main() {
+    // Color gradient based on wave height
+    vec3 deep = vec3(0.0, 0.3, 0.6);
+    vec3 shallow = vec3(0.2, 0.6, 0.9);
+    vec3 col = mix(deep, shallow, vHeight + 0.5);
+    gl_FragColor = vec4(col, 0.75); // Transparent
+  }
+`;
+
+// --- ENVIRONMENT ---
+function initWorld() {
+  const simplex = new SimplexNoise();
+  
+  // 1. Terrain Geometry & Data
+  const geo = new THREE.PlaneGeometry(WORLD_SIZE, WORLD_SIZE, CHUNK_RES, CHUNK_RES);
+  geo.rotateX(-Math.PI/2);
+  
+  const posAttr = geo.attributes.position;
+  const colAttr = new THREE.BufferAttribute(new Float32Array(posAttr.count * 3), 3);
+  envData.height = new Float32Array(posAttr.count);
+  envData.passable = new Uint8Array(posAttr.count);
+  
+  const c1 = new THREE.Color(0x3d2e18); // dirt
+  const c2 = new THREE.Color(0x2e7d32); // grass
+  const c3 = new THREE.Color(0x9ea7bb); // stone
+  const c4 = new THREE.Color(0xffffff); // snow
+  const cw = new THREE.Color(0xeecfa1); // sand
+
+  for(let i=0; i<posAttr.count; i++){
+    const x = posAttr.getX(i), z = posAttr.getZ(i);
+    // Layered noise for detail
+    let n = simplex.noise2D(x * 0.02 * settings.chaos, z * 0.02 * settings.chaos);
+    n += simplex.noise2D(x * 0.08, z * 0.08) * 0.2;
+    
+    let h = n * 8;
+    // flatten valley
+    if(h < 0) h = h * 0.4; 
+    
+    posAttr.setY(i, h);
+    envData.height[i] = h;
+
+    // Slope calculation for passability
+    envData.passable[i] = (h > -1.5) ? 1 : 0; 
+
+    // Vertex Coloring
+    let c = new THREE.Color();
+    if(h < -1.0) c.copy(cw); // beach
+    else if(h < 3.0) c.copy(c2).lerp(c1, Math.max(0, -h*0.2)); // grass/dirt
+    else if(h < 9.0) c.copy(c3); // rock
+    else c.copy(c4); // snow
+    
+    colAttr.setXYZ(i, c.r, c.g, c.b);
+  }
+  
+  geo.setAttribute('color', colAttr);
+  geo.computeVertexNormals();
+  
+  const mat = new THREE.MeshStandardMaterial({ 
+    vertexColors: true, roughness: 0.8, flatShading: true 
+  });
+  if(terrain) scene.remove(terrain);
+  terrain = new THREE.Mesh(geo, mat);
+  terrain.receiveShadow = true;
+  scene.add(terrain);
+
+  // 2. Water Surface (Shader)
+  const wGeo = new THREE.PlaneGeometry(WORLD_SIZE, WORLD_SIZE, 64, 64);
+  wGeo.rotateX(-Math.PI/2);
+  const wMat = new THREE.ShaderMaterial({
+    uniforms: { uTime: { value: 0 } },
+    vertexShader: waterVert, fragmentShader: waterFrag,
+    transparent: true
+  });
+  if(water) scene.remove(water);
+  water = new THREE.Mesh(wGeo, wMat);
+  water.position.y = -1.2;
+  scene.add(water);
+  
+  // 3. Vegetation (InstancedMesh)
+  initVegetation();
+}
+
+function initVegetation() {
+  if(vegetation) scene.remove(vegetation.mesh);
+  
+  // Simple low-poly bush/tree geometry
+  const geo = new THREE.CylinderGeometry(0, 0.6, 1.5, 5);
+  geo.translate(0, 0.75, 0);
+  const mat = new THREE.MeshLambertMaterial({ color: 0x66bb6a });
+  
+  const mesh = new THREE.InstancedMesh(geo, mat, MAX_INSTANCES);
+  mesh.castShadow = true;
+  mesh.receiveShadow = true;
+  mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+  
+  vegetation = {
+    mesh: mesh,
+    data: [], // {x, z, active, energy}
+    count: 0
+  };
+  
+  // Initial scatter
+  const dummy = new THREE.Object3D();
+  for(let i=0; i<1000; i++){
+    spawnPlant(dummy);
+  }
+  mesh.count = 1000;
+  mesh.instanceMatrix.needsUpdate = true;
+  scene.add(mesh);
+}
+
+function spawnPlant(dummy) {
+  if(vegetation.data.length >= MAX_INSTANCES) return;
+  
+  let x, z, y, ok=false;
+  for(let k=0; k<5; k++){ // try 5 times to find land
+    x = (Math.random()-0.5)*WORLD_SIZE;
+    z = (Math.random()-0.5)*WORLD_SIZE;
+    y = getTerrainHeight(x, z);
+    if(y > -0.8 && y < 8) { ok=true; break; }
+  }
+  
+  if(ok) {
+    dummy.position.set(x, y, z);
+    const s = rnd(0.5, 1.2);
+    dummy.scale.set(s,s,s);
+    dummy.rotation.y = Math.random()*Math.PI;
+    dummy.updateMatrix();
+    
+    const idx = vegetation.data.length;
+    vegetation.mesh.setMatrixAt(idx, dummy.matrix);
+    vegetation.data.push({ x, z, y, active: true, energy: 30*s });
+    vegetation.mesh.count = vegetation.data.length;
+    vegetation.mesh.instanceMatrix.needsUpdate = true;
+  }
+}
+
+function getTerrainHeight(x, z) {
+  // Bilinear interpolation for smooth movement on grid
+  const half = WORLD_SIZE/2;
+  if(x<-half || x>half || z<-half || z>half) return -10;
+  
+  // A raycaster is actually cleaner/more robust for exact Y on arbitrary geometry 
+  // than doing math on the height array for this complexity level
+  raycaster.set(new THREE.Vector3(x, 50, z), new THREE.Vector3(0,-1,0));
+  const hits = raycaster.intersectObject(terrain);
+  return hits.length ? hits[0].point.y : 0;
+}
+
+// --- AGENTS & GENETICS ---
+
+class Agent {
+  constructor(type, x, z, genes = null) {
+    this.id = Math.floor(Math.random()*99999);
+    this.type = type; // 'prey' or 'pred'
+    this.pos = new THREE.Vector3(x, 0, z);
+    this.pos.y = getTerrainHeight(x,z);
+    this.vel = new THREE.Vector3(Math.random()-0.5, 0, Math.random()-0.5).normalize();
+    this.acc = new THREE.Vector3();
+    
+    // Genetics
+    this.genes = genes || {
+      size: rnd(0.8, 1.2),
+      speed: rnd(0.9, 1.1),
+      sense: rnd(0.9, 1.1)
+    };
+    
+    // Base Stats
+    this.maxSpeed = (type==='prey' ? 3.5 : 4.0) * this.genes.speed;
+    this.maxForce = 5.0;
+    this.perception = (type==='prey' ? 15 : 25) * this.genes.sense;
+    this.size = this.genes.size;
+    
+    // Metabolic Stats
+    this.energy = 100;
+    this.age = 0;
+    this.state = 'IDLE'; // IDLE, FORAGE, FLEE, HUNT, SLEEP, MATE
+    this.target = null;
+    
+    // Mesh
+    const col = type==='prey' ? COLORS.prey : COLORS.pred;
+    const geo = type==='prey' ? new THREE.ConeGeometry(0.3*this.size, 0.8*this.size, 8) 
+                              : new THREE.BoxGeometry(0.5*this.size, 0.5*this.size, 0.8*this.size);
+    if(type==='prey') geo.rotateX(Math.PI/2); // Face forward
+    
+    const mat = new THREE.MeshStandardMaterial({ color: col, roughness: 0.4 });
+    this.mesh = new THREE.Mesh(geo, mat);
+    this.mesh.castShadow = true;
+    this.mesh.userData = { id: this.id, agent: this }; // link for raycasting
+    scene.add(this.mesh);
+    
+    // Trail for debug/visuals (Pheromones abstractly represented)
+    this.trailTimer = 0;
+  }
+  
+  update(dt, neighbors, timeOfDay) {
+    this.age += dt / dayDuration;
+    this.trailTimer += dt;
+
+    // 1. State Machine Logic
+    this.decideState(neighbors, timeOfDay);
+    
+    // 2. Steering
+    let steer = new THREE.Vector3();
+    
+    if(this.state === 'SLEEP') {
+      this.vel.multiplyScalar(0.1); // Slow stop
+      this.energy = Math.min(100, this.energy + dt * 5); // Recover energy
+    } else {
+      // Basic Flocking
+      steer.add(this.separate(neighbors).multiplyScalar(1.5));
+      steer.add(this.align(neighbors).multiplyScalar(0.5));
+      
+      if(this.state === 'FLEE') {
+        // Run from predator
+        if(this.target) steer.add(this.seek(this.target, -1).multiplyScalar(3.0)); // Flee = seek * -1
+      } else if(this.state === 'HUNT') {
+        // Chase prey
+        if(this.target) steer.add(this.seek(this.target).multiplyScalar(1.5));
+      } else if(this.state === 'FORAGE') {
+        // Look for plants or random wander
+        if(this.target) steer.add(this.seek(this.target).multiplyScalar(1.0));
+        else steer.add(this.wander(dt).multiplyScalar(0.5));
+      } else {
+        steer.add(this.wander(dt).multiplyScalar(0.3));
+      }
+      
+      // Avoid Water/Walls
+      steer.add(this.avoidBoundaries());
+
+      // Apply Physics
+      this.acc.add(steer.clampLength(0, this.maxForce));
+      this.vel.add(this.acc.multiplyScalar(dt)).clampLength(0, this.maxSpeed * settings.speed);
+      this.pos.add(this.vel.clone().multiplyScalar(dt * settings.speed));
+      
+      // Energy Cost (Size penalty, Speed penalty)
+      const metabolicRate = 1.0 * (this.size * this.size) * (1 + this.vel.length()/2);
+      this.energy -= dt * metabolicRate;
+    }
+    
+    // 3. Resolve Position
+    const h = getTerrainHeight(this.pos.x, this.pos.z);
+    if(h < -1) { // Drowning logic / stuck in water
+       this.energy -= dt * 10;
+       this.vel.multiplyScalar(0.5);
+    }
+    this.pos.y = Math.max(h, -1.5);
+    
+    // Mesh update
+    this.mesh.position.copy(this.pos);
+    this.mesh.position.y += 0.4 * this.size; // Offset center
+    if(this.vel.lengthSq() > 0.1) this.mesh.lookAt(this.pos.clone().add(this.vel));
+    
+    this.acc.set(0,0,0);
+  }
+  
+  decideState(neighbors, timeOfDay) {
+    // -- Universal Death --
+    if(this.energy <= 0 || this.age > 10) {
+      this.dead = true;
+      return;
+    }
+    
+    const isNight = timeOfDay > 0.75 || timeOfDay < 0.25;
+    const nearbyPred = neighbors.find(n => n.type === 'pred' && this.pos.distanceTo(n.pos) < this.perception);
+    const nearbyPrey = neighbors.find(n => n.type === 'prey' && this.pos.distanceTo(n.pos) < this.perception);
+
+    // -- PREY LOGIC --
+    if(this.type === 'prey') {
+      if(nearbyPred) {
+        this.state = 'FLEE';
+        this.target = nearbyPred.pos;
+      } else if(this.energy < 30) {
+        this.state = 'FORAGE';
+        this.findFood();
+      } else if(isNight && this.energy > 60) {
+        this.state = 'SLEEP';
+      } else {
+        this.state = 'IDLE';
+        // Random reproduction chance if healthy
+        if(this.energy > 90 && Math.random() < 0.002) this.reproduce();
+      }
+    } 
+    // -- PREDATOR LOGIC --
+    else {
+      if(this.energy < 80 && nearbyPrey) {
+        this.state = 'HUNT';
+        this.target = nearbyPrey.pos;
+        // Attack check
+        if(this.pos.distanceTo(nearbyPrey.pos) < 1.5) {
+          this.energy += 60; // Eat
+          nearbyPrey.dead = true; // Kill
+          nearbyPrey.energy = 0;
+        }
+      } else if(this.energy < 50) {
+         this.state = 'FORAGE'; // Searching
+      } else {
+        this.state = 'IDLE';
+        if(this.energy > 90 && Math.random() < 0.001) this.reproduce();
+      }
+    }
+  }
+  
+  findFood() {
+    // Basic: Find nearest vegetation
+    let closest = null, minDist = this.perception;
+    
+    // Optimization: Don't check all 3000 plants. Check grid or random subset.
+    // For this code, we scan a subset for performance
+    const checkCount = 20; 
+    for(let i=0; i<checkCount; i++) {
+      const idx = Math.floor(Math.random() * vegetation.data.length);
+      const plant = vegetation.data[idx];
+      if(!plant.active) continue;
+      const d = Math.hypot(plant.x - this.pos.x, plant.z - this.pos.z);
+      if(d < minDist) {
+        minDist = d;
+        closest = plant;
+        this.targetIdx = idx;
+      }
+    }
+    
+    if(closest) {
+      this.target = new THREE.Vector3(closest.x, closest.y, closest.z);
+      // Eat logic
+      if(minDist < 1.0) {
+        this.energy += closest.energy;
+        closest.active = false; // Eat plant
+        // Hide instance by scaling to 0 (cheap removal)
+        const dummy = new THREE.Object3D();
+        dummy.scale.set(0,0,0);
+        vegetation.mesh.setMatrixAt(this.targetIdx, dummy.matrix);
+        vegetation.mesh.instanceMatrix.needsUpdate = true;
+      }
+    } else {
+      this.target = null; // Wander
+    }
+  }
+
+  reproduce() {
+    this.energy *= 0.5;
+    // Mutate genes
+    const childGenes = {
+      size: this.genes.size * rnd(0.95, 1.05),
+      speed: this.genes.speed * rnd(0.95, 1.05),
+      sense: this.genes.sense * rnd(0.95, 1.05)
+    };
+    const child = new Agent(this.type, this.pos.x, this.pos.z, childGenes);
+    agents.push(child);
+  }
+  
+  // Steering Behaviors
+  seek(target, w=1) {
+    const desired = target.clone().sub(this.pos).normalize().multiplyScalar(this.maxSpeed);
+    if(w < 0) desired.negate(); // Flee
+    return desired.sub(this.vel);
+  }
+  
+  wander(dt) {
+    // Random jitter
+    const jitter = new THREE.Vector3(Math.random()-0.5, 0, Math.random()-0.5).multiplyScalar(50);
+    return jitter;
+  }
+  
+  separate(neighbors) {
+    const sum = new THREE.Vector3();
+    let count = 0;
+    for(let n of neighbors) {
+      if(n === this) continue;
+      const d = this.pos.distanceTo(n.pos);
+      if(d > 0 && d < 2.0 * this.size) {
+        const diff = this.pos.clone().sub(n.pos).normalize().divideScalar(d);
+        sum.add(diff);
+        count++;
+      }
+    }
+    if(count > 0) sum.divideScalar(count).normalize().multiplyScalar(this.maxSpeed);
+    return sum.sub(this.vel);
+  }
+  
+  align(neighbors) {
+    const sum = new THREE.Vector3();
+    let count = 0;
+    for(let n of neighbors) {
+      if(n === this || n.type !== this.type) continue;
+      const d = this.pos.distanceTo(n.pos);
+      if(d < 5.0) {
+        sum.add(n.vel);
+        count++;
+      }
+    }
+    if(count > 0) sum.divideScalar(count).normalize().multiplyScalar(this.maxSpeed);
+    return sum.sub(this.vel);
+  }
+  
+  avoidBoundaries() {
+    const v = new THREE.Vector3();
+    const margin = WORLD_SIZE/2 - 5;
+    if(this.pos.x > margin) v.x = -this.maxSpeed;
+    if(this.pos.x < -margin) v.x = this.maxSpeed;
+    if(this.pos.z > margin) v.z = -this.maxSpeed;
+    if(this.pos.z < -margin) v.z = this.maxSpeed;
+    return v;
+  }
+}
+
+// --- FIREFLIES ---
+class Fireflies {
+  constructor() {
+    const geo = new THREE.BufferGeometry();
+    const pos = [];
+    for(let i=0; i<200; i++) pos.push((Math.random()-0.5)*WORLD_SIZE, rnd(1,5), (Math.random()-0.5)*WORLD_SIZE);
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    const mat = new THREE.PointsMaterial({ color: 0xffff00, size: 0.3, transparent: true, opacity: 0 });
+    this.mesh = new THREE.Points(geo, mat);
+    scene.add(this.mesh);
+    this.t = 0;
+  }
+  update(dt, isNight) {
+    this.t += dt;
+    this.mesh.material.opacity = isNight ? lerp(this.mesh.material.opacity, 0.8, dt) : lerp(this.mesh.material.opacity, 0, dt);
+    const pos = this.mesh.geometry.attributes.position;
+    for(let i=0; i<pos.count; i++){
+      let y = pos.getY(i);
+      y += Math.sin(this.t*2 + i)*0.02;
+      pos.setY(i, y);
+    }
+    pos.needsUpdate = true;
+  }
+}
+
+// --- MAIN LOOP ---
+
+function init() {
+  const container = document.getElementById('canvasContainer');
+  
+  scene = new THREE.Scene();
+  scene.background = new THREE.Color(COLORS.day);
+  scene.fog = new THREE.Fog(COLORS.day, 20, 90);
+  
+  camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 200);
+  camera.position.set(0, 30, 40);
+  
+  renderer = new THREE.WebGLRenderer({ antialias: false }); // Set true via UI
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  container.appendChild(renderer.domElement);
+  
+  controls = new THREE.OrbitControls(camera, renderer.domElement);
+  controls.enableDamping = true;
+  controls.maxPolarAngle = Math.PI/2 - 0.1;
+  
+  // Lights
+  lightHemi = new THREE.HemisphereLight(0xffffff, 0x444444, 0.6);
+  scene.add(lightHemi);
+  
+  lightDir = new THREE.DirectionalLight(0xffffff, 1);
+  lightDir.position.set(50, 100, 50);
+  lightDir.castShadow = true;
+  lightDir.shadow.camera.left = -70; lightDir.shadow.camera.right = 70;
+  lightDir.shadow.camera.top = 70; lightDir.shadow.camera.bottom = -70;
+  lightDir.shadow.mapSize.width = 2048; lightDir.shadow.mapSize.height = 2048;
+  scene.add(lightDir);
+
+  // Visual Sun/Moon
+  const sGeo = new THREE.SphereGeometry(4, 16, 16);
+  sun = new THREE.Mesh(sGeo, new THREE.MeshBasicMaterial({color:0xffaa00}));
+  scene.add(sun);
+  
+  clock = new THREE.Clock();
+  
+  initWorld();
+  fireflies = new Fireflies();
+  
+  // Init Agents
+  for(let i=0; i<40; i++) agents.push(new Agent('prey', rnd(-30,30), rnd(-30,30)));
+  for(let i=0; i<5; i++) agents.push(new Agent('pred', rnd(-30,30), rnd(-30,30)));
+  
+  window.addEventListener('resize', onWindowResize, false);
+  renderer.domElement.addEventListener('pointerdown', onPointerDown);
+  
+  setupUI();
+  animate();
+}
+
+function onWindowResize() {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+}
+
+function animate() {
+  requestAnimationFrame(animate);
+  
+  const dt = Math.min(clock.getDelta(), 0.1) * settings.speed;
+  time += dt;
+  
+  // Day/Night Cycle
+  const dayRatio = (time % dayDuration) / dayDuration; // 0 to 1
+  const theta = dayRatio * Math.PI * 2;
+  const sunH = Math.sin(theta); // Height -1 to 1
+  
+  // Move Sun/Light
+  const orbitR = 80;
+  sun.position.set(Math.cos(theta)*orbitR, Math.sin(theta)*orbitR, 0);
+  lightDir.position.copy(sun.position);
+  
+  // Color Grading
+  const isNight = sunH < 0;
+  const bgCol = new THREE.Color(isNight ? COLORS.night : COLORS.day);
+  const ambInt = isNight ? 0.1 : 0.6;
+  const dirInt = isNight ? 0.0 : 1.0;
+  
+  // Smooth transition
+  scene.background.lerp(bgCol, dt);
+  scene.fog.color.copy(scene.background);
+  lightHemi.intensity = lerp(lightHemi.intensity, ambInt, dt);
+  lightDir.intensity = lerp(lightDir.intensity, dirInt, dt);
+
+  // Update Water
+  if(water.material.uniforms) water.material.uniforms.uTime.value = time;
+  
+  // Update Fireflies
+  fireflies.update(dt, isNight);
+
+  // Update Agents
+  grid.clear();
+  agents.forEach(a => grid.insert(a));
+  
+  // Reverse loop for removal
+  for(let i = agents.length-1; i>=0; i--) {
+    const a = agents[i];
+    const neighbors = grid.query(a.pos.x, a.pos.z, a.perception);
+    a.update(dt, neighbors, dayRatio);
+    
+    if(a.dead) {
+      scene.remove(a.mesh);
+      if(followTarget === a) unfollow();
+      agents.splice(i, 1);
+    }
+  }
+  
+  // Respawn vegetation slowly
+  if(Math.random() < 0.05 * settings.speed) {
+    const deadIdx = vegetation.data.findIndex(p => !p.active);
+    if(deadIdx !== -1) {
+      const p = vegetation.data[deadIdx];
+      p.active = true;
+      // Reset scale
+      const dummy = new THREE.Object3D();
+      dummy.position.set(p.x, p.y, p.z);
+      const s = rnd(0.5, 1.2);
+      dummy.scale.set(s,s,s);
+      vegetation.mesh.setMatrixAt(deadIdx, dummy.matrix);
+      vegetation.mesh.instanceMatrix.needsUpdate = true;
+    }
+  }
+
+  // Follow Camera
+  if(followTarget) {
+    const off = new THREE.Vector3(0, 15, 15);
+    controls.target.lerp(followTarget.pos, 0.1);
+    camera.position.lerp(followTarget.pos.clone().add(off), 0.05);
+    updateInspector();
+  }
+  
+  controls.update();
+  renderer.render(scene, camera);
+  updateUI(dt);
+}
+
+
+// --- UI & INTERACTION ---
+
+function onPointerDown(event) {
+  mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+  mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+  raycaster.setFromCamera(mouse, camera);
+  
+  // Raycast agents
+  const intersects = raycaster.intersectObjects(agents.map(a => a.mesh));
+  if(intersects.length > 0) {
+    const obj = intersects[0].object;
+    if(obj.userData.agent) {
+      followTarget = obj.userData.agent;
+      document.getElementById('selectionPanel').style.display = 'block';
+    }
+  } else {
+    // Clicking empty space unfollows? Optional.
+    // unfollow();
+  }
+}
+
+function unfollow(){
+  followTarget = null;
+  document.getElementById('selectionPanel').style.display = 'none';
+}
+
+function setupUI() {
+  // Sliders
+  document.getElementById('simSpeed').oninput = (e) => settings.speed = parseFloat(e.target.value);
+  document.getElementById('terrChaos').oninput = (e) => {
+    settings.chaos = parseFloat(e.target.value);
+    initWorld(); // Regen
+  };
+  document.getElementById('chkAntiAliasing').onchange = (e) => {
+     // Requires renderer reset, simplified here
+     renderer.setPixelRatio(e.target.checked ? window.devicePixelRatio : 1);
+  };
+  
+  // Buttons
+  document.getElementById('btnAddPrey').onclick = () => agents.push(new Agent('prey', 0, 0));
+  document.getElementById('btnAddPred').onclick = () => agents.push(new Agent('pred', 0, 0));
+  document.getElementById('btnRegen').onclick = initWorld;
+  document.getElementById('btnStorm').onclick = () => { settings.speed = 0.2; setTimeout(()=>settings.speed=1, 5000); }; // Placeholder effect
+  document.getElementById('btnUnfollow').onclick = unfollow;
+
+  // Minimap Canvas
+  const mc = document.getElementById('miniCanvas');
+  const mctx = mc.getContext('2d');
+  window.minimapCtx = mctx;
+  
+  // Graph Canvas
+  const gc = document.getElementById('graph');
+  window.graphCtx = gc.getContext('2d');
+}
+
+function updateUI(dt) {
+  // Global stats
+  const now = performance.now();
+  stats.fps = Math.round(1 / dt / 10) * 10; // Smooth approx
+  if(Math.random() < 0.1) {
+    document.getElementById('fps').innerText = (1/dt).toFixed(0);
+    const nPrey = agents.filter(a=>a.type==='prey').length;
+    const nPred = agents.filter(a=>a.type==='pred').length;
+    document.getElementById('cntPrey').innerText = nPrey;
+    document.getElementById('cntPred').innerText = nPred;
+    document.getElementById('cntFood').innerText = vegetation.data.filter(p=>p.active).length;
+    
+    const dayN = Math.floor(time / dayDuration);
+    const hour = Math.floor(((time % dayDuration)/dayDuration)*24);
+    document.getElementById('timeLabel').innerText = `Day ${dayN} - ${hour}:00`;
+    
+    // Update History Graph
+    stats.history.push({prey: nPrey, pred: nPred});
+    if(stats.history.length > 100) stats.history.shift();
+    drawGraph();
+  }
+  
+  drawMinimap();
+}
+
+function updateInspector() {
+  if(!followTarget) return;
+  const a = followTarget;
+  document.getElementById('selType').innerText = a.type.toUpperCase();
+  document.getElementById('selType').className = a.type === 'prey' ? 'c-prey' : 'c-pred';
+  document.getElementById('selId').innerText = '#' + a.id;
+  document.getElementById('selState').innerText = a.state;
+  document.getElementById('selAge').innerText = a.age.toFixed(1) + 'd';
+  document.getElementById('selEnergy').style.width = clamp(a.energy,0,100) + '%';
+  
+  document.getElementById('geneSize').innerText = a.genes.size.toFixed(2);
+  document.getElementById('geneSpeed').innerText = a.genes.speed.toFixed(2);
+  document.getElementById('geneSense').innerText = a.genes.sense.toFixed(2);
+}
+
+function drawMinimap() {
+  const ctx = window.minimapCtx;
+  const w = 200;
+  ctx.fillStyle = '#000'; ctx.fillRect(0,0,w,w);
+  
+  // Draw terrain map (static image would be better, but we draw dots)
+  // Just draw agents
+  const half = WORLD_SIZE/2;
+  
+  // Vegetation
+  ctx.fillStyle = '#2e7d32';
+  vegetation.data.forEach(p => {
+    if(p.active) {
+      const x = ((p.x + half)/WORLD_SIZE)*w;
+      const z = ((p.z + half)/WORLD_SIZE)*w;
+      ctx.fillRect(x,z,1,1);
+    }
+  });
+
+  agents.forEach(a => {
+    const x = ((a.pos.x + half)/WORLD_SIZE)*w;
+    const z = ((a.pos.z + half)/WORLD_SIZE)*w;
+    ctx.fillStyle = a.type==='prey' ? '#5f5' : '#f55';
+    ctx.fillRect(x-1, z-1, 3, 3);
+  });
+  
+  // Camera View
+  if(followTarget) {
+    ctx.strokeStyle = '#fff';
+    ctx.strokeRect(((followTarget.pos.x+half)/WORLD_SIZE)*w - 5, ((followTarget.pos.z+half)/WORLD_SIZE)*w - 5, 10, 10);
+  }
+}
+
+function drawGraph() {
+  const ctx = window.graphCtx;
+  const w = 214, h = 50;
+  ctx.clearRect(0,0,w,h);
+  
+  const maxPop = 100; // Scale
+  
+  // Prey Line
+  ctx.beginPath(); ctx.strokeStyle = '#5f5'; ctx.lineWidth = 2;
+  stats.history.forEach((p, i) => {
+    const x = (i/100)*w;
+    const y = h - (p.prey/maxPop)*h;
+    if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+  });
+  ctx.stroke();
+  
+  // Pred Line
+  ctx.beginPath(); ctx.strokeStyle = '#f55';
+  stats.history.forEach((p, i) => {
+    const x = (i/100)*w;
+    const y = h - (p.pred/maxPop)*h;
+    if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+  });
+  ctx.stroke();
+}
+
+// Boot
+init();
+
+</script>
+</body>
+</html>
