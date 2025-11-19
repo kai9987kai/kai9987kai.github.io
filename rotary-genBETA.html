@@ -1,0 +1,1122 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Ultra Rotary Generator MK-II</title>
+  
+  <!-- External Libraries -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/exporters/STLExporter.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/exporters/GLTFExporter.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/gif.js/0.2.0/gif.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/simplex-noise/2.4.0/simplex-noise.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/svg.js/3.1.2/svg.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/dxf/1.0.1/dxf.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/cannon-es@0.20.0/dist/cannon-es.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+  <style>
+    :root {
+      --primary: #00d4ff;
+      --secondary: #007bff;
+      --accent: #ff0055;
+      --bg-dark: #0f172a;
+      --panel-bg: #1e293b;
+      --text-main: #e2e8f0;
+      --text-muted: #94a3b8;
+      --border: #334155;
+    }
+
+    body {
+      font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+      margin: 0;
+      padding: 0;
+      background-color: var(--bg-dark);
+      color: var(--text-main);
+      display: flex;
+      flex-direction: column;
+      min-height: 100vh;
+    }
+
+    header {
+      background: linear-gradient(90deg, #0f172a 0%, #1e293b 100%);
+      padding: 1rem 2rem;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    h1 { margin: 0; font-size: 1.5rem; color: var(--primary); text-transform: uppercase; letter-spacing: 1px; }
+    h2, h3 { margin-top: 0; color: var(--text-main); }
+
+    /* Layout */
+    .main-container {
+      display: flex;
+      flex: 1;
+      height: calc(100vh - 70px);
+    }
+
+    .sidebar {
+      width: 350px;
+      background-color: var(--panel-bg);
+      overflow-y: auto;
+      border-right: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+    }
+
+    .viewport-area {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      position: relative;
+      overflow: hidden;
+      background: radial-gradient(circle at center, #1e293b 0%, #0f172a 100%);
+    }
+
+    /* Tabs */
+    .tabs {
+      display: flex;
+      background-color: #0b1120;
+    }
+    .tab-btn {
+      flex: 1;
+      padding: 15px;
+      background: none;
+      border: none;
+      color: var(--text-muted);
+      cursor: pointer;
+      border-bottom: 3px solid transparent;
+      transition: 0.3s;
+      font-weight: bold;
+    }
+    .tab-btn.active {
+      color: var(--primary);
+      border-bottom-color: var(--primary);
+      background-color: var(--panel-bg);
+    }
+    .tab-content {
+      padding: 20px;
+      display: none;
+      animation: fadeIn 0.3s;
+    }
+    .tab-content.active { display: block; }
+
+    @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+    /* Inputs */
+    .form-group { margin-bottom: 15px; }
+    label { display: block; margin-bottom: 5px; font-size: 0.9rem; color: var(--text-muted); }
+    input, select {
+      width: 100%;
+      padding: 8px 12px;
+      background-color: #0f172a;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      color: var(--text-main);
+      box-sizing: border-box;
+    }
+    input:focus, select:focus {
+      border-color: var(--secondary);
+      outline: none;
+    }
+    
+    /* Buttons */
+    .btn {
+      width: 100%;
+      padding: 12px;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-weight: bold;
+      transition: 0.2s;
+      margin-bottom: 10px;
+    }
+    .btn-primary { background-color: var(--secondary); color: white; }
+    .btn-primary:hover { background-color: #2563eb; }
+    .btn-success { background-color: #10b981; color: white; }
+    .btn-success:hover { background-color: #059669; }
+    .btn-danger { background-color: var(--accent); color: white; }
+
+    /* Viewports */
+    #viewports-container {
+      display: flex;
+      flex: 1;
+      height: 60%;
+    }
+    .viewport-half {
+      flex: 1;
+      border: 1px solid var(--border);
+      position: relative;
+      min-width: 0; /* Flexbox fix */
+    }
+    .viewport-label {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      background: rgba(0,0,0,0.5);
+      padding: 4px 8px;
+      border-radius: 4px;
+      font-size: 0.8rem;
+      pointer-events: none;
+      z-index: 10;
+    }
+
+    /* Telemetry Bar */
+    #telemetry-bar {
+      height: 40%;
+      background-color: var(--panel-bg);
+      border-top: 1px solid var(--border);
+      padding: 10px;
+      display: grid;
+      grid-template-columns: 250px 1fr;
+      gap: 20px;
+    }
+    
+    .stats-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+    .stat-card {
+      background: #0f172a;
+      padding: 10px;
+      border-radius: 4px;
+      border: 1px solid var(--border);
+    }
+    .stat-val { font-size: 1.2rem; font-weight: bold; color: var(--primary); }
+    .stat-label { font-size: 0.8rem; color: var(--text-muted); }
+
+    #charts-container {
+      position: relative;
+      width: 100%;
+      height: 100%;
+    }
+
+    /* Overlay */
+    #loadingOverlay {
+      position: fixed;
+      top: 0; left: 0; width: 100%; height: 100%;
+      background: rgba(15, 23, 42, 0.9);
+      display: none;
+      z-index: 2000;
+      justify-content: center;
+      align-items: center;
+      flex-direction: column;
+    }
+    .spinner {
+      width: 50px; height: 50px;
+      border: 3px solid rgba(255,255,255,0.3);
+      border-radius: 50%;
+      border-top-color: var(--primary);
+      animation: spin 1s ease-in-out infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* Battery Viz */
+    .battery-container {
+      margin-top: 10px;
+      height: 20px;
+      background: #333;
+      border-radius: 3px;
+      overflow: hidden;
+      position: relative;
+    }
+    .battery-level {
+      height: 100%;
+      width: 0%;
+      background: linear-gradient(90deg, #10b981, #34d399);
+      transition: width 0.2s;
+    }
+    .battery-text {
+      position: absolute;
+      width: 100%;
+      text-align: center;
+      top: 0;
+      font-size: 0.8rem;
+      line-height: 20px;
+      color: white;
+      text-shadow: 0 0 2px black;
+    }
+
+    /* Audio Viz */
+    #audioVisualizer {
+      width: 100%;
+      height: 60px;
+      background: #000;
+      margin-top: 10px;
+      border-radius: 4px;
+    }
+  </style>
+</head>
+<body>
+
+<div id="loadingOverlay">
+  <div class="spinner"></div>
+  <p style="margin-top: 15px;">Compiling Physics & Geometry...</p>
+</div>
+
+<header>
+  <h1>Ultra Rotary Generator <span style="font-size: 0.8em; color: var(--text-muted);">MK-II</span></h1>
+  <div>
+    <button class="btn-success" style="width: auto; padding: 8px 20px;" id="quickStartBtn">Quick Start</button>
+  </div>
+</header>
+
+<div class="main-container">
+  <!-- Sidebar Controls -->
+  <aside class="sidebar">
+    <div class="tabs">
+      <button class="tab-btn active" onclick="openTab('design')">Design</button>
+      <button class="tab-btn" onclick="openTab('sim')">Environment</button>
+      <button class="tab-btn" onclick="openTab('export')">Export</button>
+    </div>
+
+    <!-- DESIGN TAB -->
+    <div id="design" class="tab-content active">
+      <h3>Core Specifications</h3>
+      <div class="form-group">
+        <label>Target Power (W)</label>
+        <input type="number" id="powerOutput" value="250" step="10">
+      </div>
+      <div class="form-group">
+        <label>Base RPM</label>
+        <input type="number" id="rpm" value="1200" step="100">
+      </div>
+      <div class="form-group">
+        <label>Gear Material</label>
+        <select id="material">
+          <option value="Steel">Hardened Steel</option>
+          <option value="Titanium">Titanium Alloy</option>
+          <option value="CarbonFiber">Carbon Fiber</option>
+          <option value="Brass">Industrial Brass</option>
+          <option value="Polymer">High-Temp Polymer</option>
+        </select>
+      </div>
+      
+      <h3>Gear Configuration</h3>
+      <div class="form-group">
+        <label>System Type</label>
+        <select id="gearType">
+          <option value="Spur">Spur Gear Array</option>
+          <option value="Helical">Helical Drive</option>
+          <option value="Planetary">Planetary System</option>
+          <option value="Worm">Worm Gear Reducer</option>
+          <option value="Rack">Rack & Pinion</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Gear Stages (Count)</label>
+        <input type="number" id="gears" value="3" min="1" max="20">
+      </div>
+      <div class="form-group">
+        <label>Teeth per Gear</label>
+        <input type="number" id="toothCount" value="24" step="1">
+      </div>
+      <div class="form-group">
+        <label>Gear Ratio</label>
+        <input type="number" id="gearRatio" value="1.5" step="0.1">
+      </div>
+      
+      <button class="btn btn-primary" id="generateBtn">Regenerate System</button>
+    </div>
+
+    <!-- ENVIRONMENT TAB -->
+    <div id="sim" class="tab-content">
+      <h3>Simulation Control</h3>
+      <div class="form-group">
+        <label>Throttle (%)</label>
+        <input type="range" id="throttleControl" min="0" max="150" value="100">
+      </div>
+      <div class="form-group">
+        <label>Ambient Temp (°C)</label>
+        <input type="number" id="ambientTemp" value="25">
+      </div>
+      <div class="form-group">
+        <label>Cooling System Efficiency</label>
+        <input type="range" id="coolingControl" min="0" max="100" value="50">
+      </div>
+      
+      <h3>Audio & Physics</h3>
+      <div class="form-group">
+        <label>Engine Sound</label>
+        <div style="display: flex; gap: 5px;">
+            <button class="btn btn-primary" id="toggleAudio">Enable Audio</button>
+        </div>
+      </div>
+      <canvas id="audioVisualizer"></canvas>
+      
+      <div class="form-group" style="margin-top:10px;">
+        <label>
+          <input type="checkbox" id="particleEffects" checked> Show Sparks/Heat Particles
+        </label>
+      </div>
+      <div class="form-group">
+        <label>
+          <input type="checkbox" id="physicsSim" checked> Physics Collisions (Cannon.js)
+        </label>
+      </div>
+    </div>
+
+    <!-- EXPORT TAB -->
+    <div id="export" class="tab-content">
+      <h3>Export Data</h3>
+      <button class="btn btn-success" id="exportCSV">Download Telemetry (CSV)</button>
+      <button class="btn btn-success" id="exportJSON">Download Specs (JSON)</button>
+      
+      <h3>Export Geometry</h3>
+      <button class="btn btn-primary" id="exportSTL">Download 3D Model (.STL)</button>
+      <button class="btn btn-primary" id="exportDXF">Download CAD (.DXF)</button>
+      <button class="btn btn-primary" id="exportSVG">Download Blueprint (.SVG)</button>
+      
+      <h3>Media</h3>
+      <button class="btn btn-primary" id="exportGIF">Render Animation (.GIF)</button>
+    </div>
+  </aside>
+
+  <!-- Main Viewport -->
+  <main class="viewport-area">
+    <div id="viewports-container">
+      <div class="viewport-half" id="2d-container">
+        <div class="viewport-label">2D Schematic & Thermal Map</div>
+        <div id="rotaSVG"></div>
+      </div>
+      <div class="viewport-half" id="3d-container">
+        <div class="viewport-label">3D Simulation (Interactive)</div>
+        <div id="threeCanvas"></div>
+      </div>
+    </div>
+
+    <!-- Telemetry Dashboard -->
+    <div id="telemetry-bar">
+      <div class="stats-column">
+        <div class="stats-grid">
+          <div class="stat-card">
+            <div class="stat-label">RPM</div>
+            <div class="stat-val" id="liveRPM">0</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Torque (Nm)</div>
+            <div class="stat-val" id="liveTorque">0</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Core Temp (°C)</div>
+            <div class="stat-val" id="liveTemp">25.0</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Efficiency (%)</div>
+            <div class="stat-val" id="liveEff">0</div>
+          </div>
+        </div>
+        
+        <div style="margin-top: 10px;">
+          <label>Grid Battery Storage</label>
+          <div class="battery-container">
+            <div class="battery-level" id="batteryFill"></div>
+            <div class="battery-text" id="batteryText">0%</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="chart-column" style="position: relative;">
+        <canvas id="telemetryChart"></canvas>
+      </div>
+    </div>
+  </main>
+</div>
+
+<script>
+  // ==========================================
+  // GLOBAL STATE & CONFIG
+  // ==========================================
+  const state = {
+    specs: {},
+    rpm: 0,
+    temp: 25,
+    batteryCharge: 0,
+    audioEnabled: false,
+    frame: 0,
+    lastTime: 0,
+    trailPoints: []
+  };
+
+  const settings = {
+    colors: {
+      steel: 0xa0a0a0,
+      titanium: 0x878681,
+      carbon: 0x111111,
+      brass: 0xb5a642,
+      polymer: 0xeeeeee,
+      heatHigh: 0xff0000,
+      heatLow: 0x0000ff
+    }
+  };
+
+  // ==========================================
+  // ENGINES INITIALIZATION
+  // ==========================================
+  let scene, camera, renderer, controls, threeMixers = [];
+  let svgDraw;
+  let physicsWorld, physicsBodies = [];
+  let chartInstance;
+  let audioCtx, oscillator, gainNode;
+  let particleSystem;
+
+  document.addEventListener('DOMContentLoaded', () => {
+    initUI();
+    init3D();
+    init2D();
+    initChart();
+    initPhysics();
+    // Generate default
+    generateSystem();
+    requestAnimationFrame(animateLoop);
+  });
+
+  // ==========================================
+  // UI LOGIC
+  // ==========================================
+  function openTab(tabName) {
+    document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    document.getElementById(tabName).classList.add('active');
+    event.target.classList.add('active');
+  }
+
+  function initUI() {
+    document.getElementById('generateBtn').addEventListener('click', generateSystem);
+    document.getElementById('quickStartBtn').addEventListener('click', () => {
+      document.getElementById('gears').value = 5;
+      document.getElementById('gearType').value = 'Planetary';
+      document.getElementById('rpm').value = 2000;
+      generateSystem();
+    });
+    
+    // Audio Toggle
+    document.getElementById('toggleAudio').addEventListener('click', () => {
+      if(!state.audioEnabled) {
+        initAudio();
+        state.audioEnabled = true;
+        document.getElementById('toggleAudio').innerText = "Mute Audio";
+        document.getElementById('toggleAudio').classList.replace('btn-primary', 'btn-danger');
+      } else {
+        if(audioCtx) audioCtx.suspend();
+        state.audioEnabled = false;
+        document.getElementById('toggleAudio').innerText = "Enable Audio";
+        document.getElementById('toggleAudio').classList.replace('btn-danger', 'btn-primary');
+      }
+    });
+
+    // Exports
+    document.getElementById('exportSTL').addEventListener('click', exportSTL);
+    document.getElementById('exportCSV').addEventListener('click', exportCSV);
+    document.getElementById('exportDXF').addEventListener('click', exportDXF);
+    document.getElementById('exportGIF').addEventListener('click', exportGIF);
+  }
+
+  function getSpecs() {
+    return {
+      power: parseFloat(document.getElementById('powerOutput').value),
+      rpm: parseFloat(document.getElementById('rpm').value),
+      material: document.getElementById('material').value,
+      type: document.getElementById('gearType').value,
+      count: parseFloat(document.getElementById('gears').value),
+      teeth: parseFloat(document.getElementById('toothCount').value),
+      ratio: parseFloat(document.getElementById('gearRatio').value),
+      throttle: parseFloat(document.getElementById('throttleControl').value) / 100,
+      cooling: parseFloat(document.getElementById('coolingControl').value) / 100
+    };
+  }
+
+  // ==========================================
+  // 3D ENGINE (Three.js)
+  // ==========================================
+  function init3D() {
+    const container = document.getElementById('threeCanvas');
+    scene = new THREE.Scene();
+    // Fog for depth
+    scene.fog = new THREE.FogExp2(0x0f172a, 0.005);
+
+    camera = new THREE.PerspectiveCamera(60, container.clientWidth / container.clientHeight, 0.1, 1000);
+    camera.position.set(0, -60, 60);
+    camera.lookAt(0, 0, 0);
+
+    renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    renderer.setSize(container.clientWidth, container.clientHeight);
+    renderer.shadowMap.enabled = true;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    container.appendChild(renderer.domElement);
+
+    controls = new THREE.OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+
+    // Lighting
+    const ambient = new THREE.AmbientLight(0x404040, 1);
+    scene.add(ambient);
+    
+    const dirLight = new THREE.DirectionalLight(0xffffff, 1.5);
+    dirLight.position.set(50, 50, 50);
+    dirLight.castShadow = true;
+    scene.add(dirLight);
+
+    const blueLight = new THREE.PointLight(0x00d4ff, 1, 100);
+    blueLight.position.set(0, 0, 20);
+    scene.add(blueLight);
+    
+    // Starfield Background
+    const starsGeo = new THREE.BufferGeometry();
+    const starsCount = 1000;
+    const posArray = new Float32Array(starsCount * 3);
+    for(let i=0; i<starsCount*3; i++) posArray[i] = (Math.random() - 0.5) * 300;
+    starsGeo.setAttribute('position', new THREE.BufferAttribute(posArray, 3));
+    const starsMat = new THREE.PointsMaterial({size: 0.5, color: 0xffffff});
+    scene.add(new THREE.Points(starsGeo, starsMat));
+
+    // Window resize
+    window.addEventListener('resize', () => {
+       const w = container.clientWidth;
+       const h = container.clientHeight;
+       renderer.setSize(w, h);
+       camera.aspect = w / h;
+       camera.updateProjectionMatrix();
+    });
+  }
+
+  // ==========================================
+  // 2D ENGINE (SVG.js)
+  // ==========================================
+  function init2D() {
+    svgDraw = SVG().addTo('#rotaSVG').size('100%', '100%').viewbox(-100, -100, 200, 200);
+  }
+
+  // ==========================================
+  // SYSTEM GENERATION LOGIC
+  // ==========================================
+  function generateSystem() {
+    document.getElementById('loadingOverlay').style.display = 'flex';
+    state.specs = getSpecs();
+    state.rpm = state.specs.rpm;
+    state.temp = parseFloat(document.getElementById('ambientTemp').value);
+    state.trailPoints = [];
+
+    setTimeout(() => {
+        // Clear scenes
+        while(scene.children.length > 0){ 
+            if(scene.children[0].type === "Points" && scene.children[0].material.size === 0.5) {
+                 // Keep starfield
+                 scene.children.push(scene.children.shift()); // move to back
+                 if(scene.children.length === 1) break;
+                 continue;
+            }
+            scene.remove(scene.children[0]); 
+        }
+        // Re-add lights (simplified re-init)
+        const ambient = new THREE.AmbientLight(0x404040, 1); scene.add(ambient);
+        const dl = new THREE.DirectionalLight(0xffffff, 1.5); dl.position.set(50,50,50); scene.add(dl);
+
+        svgDraw.clear();
+        physicsBodies = [];
+        threeMixers = [];
+
+        // Generate Gears based on Type
+        createGearSystem(state.specs);
+        
+        document.getElementById('loadingOverlay').style.display = 'none';
+    }, 100);
+  }
+
+  function createGearSystem(specs) {
+    const group = new THREE.Group();
+    const materialRef = getMaterial(specs.material);
+    
+    let currentX = 0;
+    const radiusBase = 10;
+    
+    if (specs.type === 'Planetary') {
+        createPlanetaryGear(group, materialRef, specs);
+    } else {
+        // Sequential gears (Spur, Helical)
+        for (let i = 0; i < specs.count; i++) {
+            const radius = radiusBase * (i % 2 === 0 ? 1 : 1/specs.ratio);
+            const teeth = Math.round(specs.teeth * (radius / radiusBase));
+            
+            // 3D Mesh
+            const mesh = createGearMesh(radius, teeth, 2, materialRef, specs.type === 'Helical');
+            mesh.position.x = currentX;
+            mesh.position.y = i * 2; // Slight offset for visual
+            
+            // Position calc
+            if (i > 0) {
+                const prevRadius = radiusBase * ((i-1) % 2 === 0 ? 1 : 1/specs.ratio);
+                currentX += radius + prevRadius + 0.5;
+                mesh.position.x = currentX - (radius + prevRadius + 0.5); // Just linear for demo
+                // Actually layout in a circle or line
+                 mesh.position.set(
+                    Math.cos(i * 0.5) * (radius + 20), 
+                    Math.sin(i * 0.5) * (radius + 20), 
+                    i * 2
+                );
+            } else {
+                mesh.position.set(0,0,0);
+            }
+
+            // Add metadata for animation
+            mesh.userData = { 
+                id: i, 
+                baseSpeed: (i % 2 === 0 ? 1 : -1) * (specs.ratio),
+                radius: radius
+            };
+            
+            group.add(mesh);
+            
+            // 2D Representation
+            draw2DGear(mesh.position.x, mesh.position.y, radius, teeth);
+        }
+    }
+    
+    scene.add(group);
+    
+    // Add Particle System for Sparks
+    createParticleSystem();
+  }
+
+  function createPlanetaryGear(group, material, specs) {
+      const sunRadius = 10;
+      const planetRadius = 5;
+      const ringRadius = sunRadius + (planetRadius * 2);
+      
+      // Sun
+      const sunMesh = createGearMesh(sunRadius, specs.teeth, 2, material, false);
+      sunMesh.userData = { type: 'sun', speed: 1 };
+      group.add(sunMesh);
+      draw2DGear(0,0, sunRadius, specs.teeth, '#ffaa00');
+
+      // Planets
+      const planetCount = 3;
+      for(let i=0; i<planetCount; i++) {
+          const angle = (i / planetCount) * Math.PI * 2;
+          const planetMesh = createGearMesh(planetRadius, specs.teeth/2, 2, material, false);
+          
+          const dist = sunRadius + planetRadius;
+          planetMesh.position.set(Math.cos(angle)*dist, Math.sin(angle)*dist, 0);
+          
+          // Pivot for orbit
+          const pivot = new THREE.Object3D();
+          pivot.add(planetMesh);
+          pivot.userData = { type: 'planetOrbit', speed: 0.3 };
+          planetMesh.userData = { type: 'planetRot', speed: -2.5 }; // Rotation relative to pivot
+          
+          group.add(pivot);
+          
+          draw2DGear(planetMesh.position.x, planetMesh.position.y, planetRadius, specs.teeth/2, '#00d4ff');
+      }
+      
+      // Ring (Visual only)
+      const ringGeo = new THREE.TorusGeometry(ringRadius, 1, 16, 100);
+      const ringMesh = new THREE.Mesh(ringGeo, material);
+      group.add(ringMesh);
+  }
+
+  // ==========================================
+  // HELPER: 3D GEOMETRY
+  // ==========================================
+  function getMaterial(type) {
+      const params = { roughness: 0.5, metalness: 0.5, color: 0xffffff };
+      if(type === 'Steel') { params.color = settings.colors.steel; params.metalness = 0.8; params.roughness = 0.2; }
+      if(type === 'Titanium') { params.color = settings.colors.titanium; params.metalness = 0.9; params.roughness = 0.3; }
+      if(type === 'CarbonFiber') { params.color = settings.colors.carbon; params.metalness = 0.1; params.roughness = 0.8; }
+      if(type === 'Brass') { params.color = settings.colors.brass; params.metalness = 1.0; params.roughness = 0.1; }
+      
+      return new THREE.MeshStandardMaterial(params);
+  }
+
+  function createGearMesh(radius, teeth, height, material, isHelical) {
+      const shape = new THREE.Shape();
+      const holeRadius = radius * 0.2;
+      
+      // Proper involute-ish profile
+      const steps = teeth * 2;
+      const angleStep = (Math.PI * 2) / steps;
+      
+      for(let i=0; i<steps; i++) {
+          const r = (i % 2 === 0) ? radius : radius * 0.85;
+          const angle = i * angleStep;
+          const x = Math.cos(angle) * r;
+          const y = Math.sin(angle) * r;
+          if(i===0) shape.moveTo(x,y);
+          else shape.lineTo(x,y);
+      }
+      
+      const hole = new THREE.Path();
+      hole.absarc(0,0, holeRadius, 0, Math.PI*2, true);
+      shape.holes.push(hole);
+      
+      const extrudeSettings = {
+          depth: height,
+          bevelEnabled: true,
+          bevelThickness: 0.2,
+          bevelSize: 0.1,
+          steps: 1
+      };
+      
+      const geo = new THREE.ExtrudeGeometry(shape, extrudeSettings);
+      
+      // If Helical, twist vertices
+      if(isHelical) {
+         const pos = geo.attributes.position;
+         for(let i=0; i<pos.count; i++) {
+             const z = pos.getZ(i);
+             const angle = (z / height) * (Math.PI / 6);
+             const x = pos.getX(i);
+             const y = pos.getY(i);
+             const cos = Math.cos(angle);
+             const sin = Math.sin(angle);
+             pos.setX(i, x * cos - y * sin);
+             pos.setY(i, x * sin + y * cos);
+         }
+         geo.computeVertexNormals();
+      }
+
+      const mesh = new THREE.Mesh(geo, material.clone()); // Clone mat for unique thermal color later
+      return mesh;
+  }
+
+  function createParticleSystem() {
+      const count = 200;
+      const geo = new THREE.BufferGeometry();
+      const pos = new Float32Array(count * 3);
+      geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+      const mat = new THREE.PointsMaterial({ color: 0xffaa00, size: 0.5, transparent: true });
+      particleSystem = new THREE.Points(geo, mat);
+      particleSystem.visible = false;
+      scene.add(particleSystem);
+  }
+
+  // ==========================================
+  // 2D DRAWING
+  // ==========================================
+  function draw2DGear(x, y, radius, teeth, color=null) {
+      const group = svgDraw.group().translate(x, y);
+      const c = color || '#00d4ff';
+      
+      // Simplified gear path
+      let pathStr = "";
+      const step = (Math.PI * 2) / (teeth * 2);
+      for(let i=0; i<teeth*2; i++) {
+          const r = (i % 2 === 0) ? radius : radius - 2;
+          const a = i * step;
+          const px = Math.cos(a) * r;
+          const py = Math.sin(a) * r;
+          pathStr += (i===0 ? "M" : "L") + `${px} ${py} `;
+      }
+      pathStr += "Z";
+      
+      const path = group.path(pathStr).fill('none').stroke({ width: 0.5, color: c });
+      group.circle(radius/3).center(0,0).fill('none').stroke({ width: 0.5, color: c });
+      
+      // Store ref for animation
+      group.remember('data', { speed: 0 });
+  }
+
+  // ==========================================
+  // SIMULATION LOOP & PHYSICS
+  // ==========================================
+  function initPhysics() {
+    physicsWorld = new CANNON.World();
+    physicsWorld.gravity.set(0, 0, -9.82);
+  }
+
+  function animateLoop(time) {
+    requestAnimationFrame(animateLoop);
+    const dt = (time - state.lastTime) / 1000;
+    state.lastTime = time;
+    state.frame++;
+
+    const throttle = parseFloat(document.getElementById('throttleControl').value) / 100;
+    const cooling = parseFloat(document.getElementById('coolingControl').value) / 100;
+    
+    // 1. Calculate Physics/Telemetry
+    const currentRPM = state.specs.rpm * throttle;
+    state.rpm = THREE.MathUtils.lerp(state.rpm, currentRPM, 0.05); // Smooth spool up
+    
+    // Heat calc
+    const frictionHeat = (state.rpm * 0.005) * (1 + (state.specs.count * 0.1));
+    const coolingFactor = cooling * (state.temp * 0.05);
+    state.temp += (frictionHeat - coolingFactor) * dt;
+    if(state.temp < parseFloat(document.getElementById('ambientTemp').value)) state.temp = parseFloat(document.getElementById('ambientTemp').value);
+    
+    // Efficiency & Battery
+    const efficiency = Math.max(0, 100 - (state.temp - 50) * 0.5); // Lose eff as temp rises
+    const powerOut = state.specs.power * (state.rpm / state.specs.rpm) * (efficiency/100);
+    
+    if(powerOut > 0) {
+        state.batteryCharge += (powerOut * dt) / 1000; // Arbitrary scaling
+        if(state.batteryCharge > 100) state.batteryCharge = 100;
+    }
+    
+    // 2. Update UI
+    updateTelemetry(state.rpm, efficiency, state.temp, powerOut);
+
+    // 3. Animate 3D Gears
+    const speedRad = (state.rpm * 2 * Math.PI) / 60 * dt;
+    
+    scene.traverse((obj) => {
+        if(obj.userData.type === 'sun') obj.rotation.z += speedRad;
+        if(obj.userData.type === 'planetOrbit') obj.rotation.z += speedRad * 0.3;
+        if(obj.userData.type === 'planetRot') obj.rotation.z -= speedRad * 0.8;
+        
+        // Standard gears
+        if(obj.userData.baseSpeed) {
+            obj.rotation.z += speedRad * obj.userData.baseSpeed;
+        }
+        
+        // Heat Color Visualization
+        if(obj.isMesh && obj.geometry.type === 'ExtrudeGeometry') {
+            const heatRatio = Math.min((state.temp - 25) / 200, 1); // Max red at 225C
+            const baseColor = new THREE.Color(getMaterial(state.specs.material).color);
+            const heatColor = new THREE.Color(0xff3300);
+            obj.material.color.lerpColors(baseColor, heatColor, heatRatio);
+            obj.material.emissive.setHex(0xff0000);
+            obj.material.emissiveIntensity = heatRatio * 0.5;
+        }
+    });
+
+    // 4. Particles
+    if(document.getElementById('particleEffects').checked && state.rpm > 1000) {
+        particleSystem.visible = true;
+        const positions = particleSystem.geometry.attributes.position.array;
+        for(let i=0; i<positions.length; i+=3) {
+            if(Math.random() > 0.9) {
+                positions[i] = (Math.random()-0.5) * 20;
+                positions[i+1] = (Math.random()-0.5) * 20;
+                positions[i+2] = (Math.random()-0.5) * 5;
+            }
+            positions[i] += (Math.random()-0.5);
+            positions[i+1] += (Math.random()-0.5);
+        }
+        particleSystem.geometry.attributes.position.needsUpdate = true;
+    } else {
+        particleSystem.visible = false;
+    }
+
+    // 5. Audio Update
+    if(state.audioEnabled) updateAudio(state.rpm);
+
+    // 6. Render
+    controls.update();
+    renderer.render(scene, camera);
+    
+    // 7. Update Chart (every 10 frames)
+    if(state.frame % 10 === 0) updateChartData(time/1000, state.rpm, state.temp, powerOut);
+  }
+
+  // ==========================================
+  // TELEMETRY & CHART
+  // ==========================================
+  function updateTelemetry(rpm, eff, temp, power) {
+      document.getElementById('liveRPM').innerText = Math.round(rpm);
+      document.getElementById('liveTorque').innerText = (power / ((rpm/60)*2*Math.PI) || 0).toFixed(1);
+      document.getElementById('liveTemp').innerText = temp.toFixed(1);
+      document.getElementById('liveEff').innerText = eff.toFixed(1);
+      
+      const batFill = document.getElementById('batteryFill');
+      batFill.style.width = state.batteryCharge + "%";
+      document.getElementById('batteryText').innerText = Math.round(state.batteryCharge) + "%";
+      
+      // Alert colors
+      document.getElementById('liveTemp').style.color = temp > 150 ? '#ff0055' : '#00d4ff';
+  }
+
+  function initChart() {
+      const ctx = document.getElementById('telemetryChart').getContext('2d');
+      chartInstance = new Chart(ctx, {
+          type: 'line',
+          data: {
+              labels: [],
+              datasets: [
+                  { label: 'RPM', borderColor: '#00d4ff', data: [], borderWidth: 1, yAxisID: 'y' },
+                  { label: 'Temp (°C)', borderColor: '#ff0055', data: [], borderWidth: 1, yAxisID: 'y1' }
+              ]
+          },
+          options: {
+              responsive: true,
+              maintainAspectRatio: false,
+              animation: false,
+              interaction: { mode: 'index', intersect: false },
+              scales: {
+                  x: { display: false },
+                  y: { type: 'linear', display: true, position: 'left', grid: {color: '#333'} },
+                  y1: { type: 'linear', display: true, position: 'right', grid: {drawOnChartArea: false} }
+              },
+              plugins: { legend: { labels: { color: '#fff' } } }
+          }
+      });
+  }
+
+  function updateChartData(time, rpm, temp, power) {
+      if(!chartInstance) return;
+      
+      const labels = chartInstance.data.labels;
+      const dRPM = chartInstance.data.datasets[0].data;
+      const dTemp = chartInstance.data.datasets[1].data;
+      
+      labels.push(time.toFixed(1));
+      dRPM.push(rpm);
+      dTemp.push(temp);
+      
+      if(labels.length > 50) {
+          labels.shift();
+          dRPM.shift();
+          dTemp.shift();
+      }
+      
+      chartInstance.update();
+  }
+
+  // ==========================================
+  // AUDIO ENGINE
+  // ==========================================
+  function initAudio() {
+      const AudioContext = window.AudioContext || window.webkitAudioContext;
+      audioCtx = new AudioContext();
+      
+      // Simple synth engine
+      oscillator = audioCtx.createOscillator();
+      gainNode = audioCtx.createGain();
+      
+      oscillator.type = 'sawtooth';
+      oscillator.frequency.value = 100;
+      
+      // Lowpass filter for muffling
+      const filter = audioCtx.createBiquadFilter();
+      filter.type = 'lowpass';
+      filter.frequency.value = 1000;
+
+      oscillator.connect(filter);
+      filter.connect(gainNode);
+      gainNode.connect(audioCtx.destination);
+      
+      oscillator.start();
+      
+      // Visualizer
+      setupAudioVisualizer(filter);
+  }
+  
+  function updateAudio(rpm) {
+      if(!audioCtx) return;
+      // Pitch based on RPM
+      const baseFreq = 50 + (rpm / 10);
+      oscillator.frequency.setTargetAtTime(baseFreq, audioCtx.currentTime, 0.1);
+      
+      // Volume/Shake
+      const vol = Math.min((rpm / 3000), 0.5);
+      gainNode.gain.setTargetAtTime(vol, audioCtx.currentTime, 0.1);
+  }
+  
+  function setupAudioVisualizer(sourceNode) {
+      const canvas = document.getElementById('audioVisualizer');
+      const canvasCtx = canvas.getContext('2d');
+      const analyser = audioCtx.createAnalyser();
+      sourceNode.connect(analyser);
+      analyser.fftSize = 256;
+      const bufferLength = analyser.frequencyBinCount;
+      const dataArray = new Uint8Array(bufferLength);
+      
+      function drawViz() {
+          requestAnimationFrame(drawViz);
+          if(!state.audioEnabled) { canvasCtx.clearRect(0,0,canvas.width, canvas.height); return; }
+          
+          analyser.getByteFrequencyData(dataArray);
+          canvasCtx.fillStyle = 'rgb(0, 0, 0)';
+          canvasCtx.fillRect(0, 0, canvas.width, canvas.height);
+          
+          const barWidth = (canvas.width / bufferLength) * 2.5;
+          let barHeight;
+          let x = 0;
+          
+          for(let i = 0; i < bufferLength; i++) {
+              barHeight = dataArray[i] / 4;
+              canvasCtx.fillStyle = `rgb(${barHeight + 100}, 50, 50)`;
+              canvasCtx.fillRect(x, canvas.height - barHeight, barWidth, barHeight);
+              x += barWidth + 1;
+          }
+      }
+      drawViz();
+  }
+
+  // ==========================================
+  // EXPORT FUNCTIONS
+  // ==========================================
+  function exportSTL() {
+      const exporter = new THREE.STLExporter();
+      const str = exporter.parse(scene);
+      downloadBlob(new Blob([str], {type: 'text/plain'}), 'generator_model.stl');
+  }
+  
+  function exportDXF() {
+      const d = new DXF();
+      // Simple DXF logic for demo
+      d.addText(0, 0, 10, "Generator Schematic");
+      scene.traverse(o => {
+          if(o.isMesh && o.geometry.type === 'ExtrudeGeometry') {
+             d.addCircle(o.position.x, o.position.y, 10); // Placeholder
+          }
+      });
+      downloadBlob(new Blob([d.toDXFString()], {type: 'application/dxf'}), 'schematic.dxf');
+  }
+  
+  function exportCSV() {
+     let csvContent = "data:text/csv;charset=utf-8,Time,RPM,Temp,Power\n";
+     const times = chartInstance.data.labels;
+     const rpms = chartInstance.data.datasets[0].data;
+     const temps = chartInstance.data.datasets[1].data;
+     
+     times.forEach((t, i) => {
+         csvContent += `${t},${rpms[i]},${temps[i]},0\n`;
+     });
+     
+     const encodedUri = encodeURI(csvContent);
+     const link = document.createElement("a");
+     link.setAttribute("href", encodedUri);
+     link.setAttribute("download", "telemetry_data.csv");
+     document.body.appendChild(link);
+     link.click();
+  }
+
+  function exportGIF() {
+      const gif = new GIF({
+        workers: 2,
+        quality: 10,
+        width: 400,
+        height: 300
+      });
+      
+      // Capture 20 frames
+      const canvas = renderer.domElement;
+      for(let i=0; i<20; i++) {
+          renderer.render(scene, camera);
+          gif.addFrame(canvas, {delay: 50, copy: true});
+      }
+      
+      gif.on('finished', function(blob) {
+        downloadBlob(blob, 'animation.gif');
+      });
+      
+      gif.render();
+  }
+
+  function downloadBlob(blob, filename) {
+      const link = document.createElement('a');
+      link.style.display = 'none';
+      document.body.appendChild(link);
+      link.href = URL.createObjectURL(blob);
+      link.download = filename;
+      link.click();
+      document.body.removeChild(link);
+  }
+</script>
+</body>
+</html>
