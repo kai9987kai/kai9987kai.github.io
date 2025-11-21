@@ -1,0 +1,728 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Interactive Heart Diagram - Dr. Cardio</title>
+    
+    <!-- 1. Load Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- 2. Load Babel (to translate React JSX to browser code) -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+    <!-- 3. Add Custom Styles for Animation -->
+    <style>
+        @keyframes heartbeat {
+          0% { transform: scale(1); }
+          15% { transform: scale(1.03); }
+          25% { transform: scale(1); }
+          40% { transform: scale(1.04); }
+          60% { transform: scale(1); }
+          100% { transform: scale(1); }
+        }
+        
+        @keyframes flowBlue {
+          0% { transform: translate(148px, 20px); opacity: 0; }
+          10% { opacity: 1; }
+          30% { transform: translate(148px, 150px); }
+          50% { transform: translate(160px, 300px); }
+          60% { transform: translate(180px, 220px); opacity: 1; }
+          80% { transform: translate(140px, 120px); opacity: 0; }
+          100% { opacity: 0; }
+        }
+
+        @keyframes flowRed {
+          0% { transform: translate(390px, 170px); opacity: 0; }
+          15% { opacity: 1; transform: translate(300px, 180px); }
+          40% { transform: translate(280px, 350px); }
+          60% { transform: translate(280px, 150px); opacity: 1; }
+          85% { transform: translate(280px, 60px); opacity: 0; }
+          100% { opacity: 0; }
+        }
+
+        .animate-flow-blue-1 { animation: flowBlue 3s infinite linear; }
+        .animate-flow-blue-2 { animation: flowBlue 3s infinite linear; animation-delay: 1.5s; }
+        .animate-flow-red-1 { animation: flowRed 3s infinite linear; }
+        .animate-flow-red-2 { animation: flowRed 3s infinite linear; animation-delay: 1.5s; }
+
+        .animate-fade-in { animation: fadeIn 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+
+        @keyframes fadeIn {
+          from { opacity: 0; transform: translateY(20px) scale(0.95); }
+          to { opacity: 1; transform: translateY(0) scale(1); }
+        }
+        
+        .shadow-glow { filter: drop-shadow(0 0 4px rgba(255,255,255,0.7)); }
+
+        .custom-scrollbar::-webkit-scrollbar { width: 4px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: rgba(255,255,255,0.05); }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.2); border-radius: 10px; }
+    </style>
+</head>
+<body class="bg-slate-900">
+
+    <!-- The Root Container for React -->
+    <div id="root"></div>
+
+    <!-- The React Application Script -->
+    <!-- type="text/babel" tells the browser to process this via Babel -->
+    <!-- data-type="module" allows using 'import' statements -->
+    <script type="text/babel" data-type="module">
+        // Import React and libraries directly from a CDN (esm.sh)
+        import React, { useState, useEffect, useRef } from 'https://esm.sh/react@18.2.0';
+        import ReactDOM from 'https://esm.sh/react-dom@18.2.0/client';
+        import { Heart, Activity, Droplet, Wind, Info, Sparkles, Stethoscope, Brain, Loader2, CheckCircle, XCircle, ArrowRight, Volume2, StopCircle, Play } from 'https://esm.sh/lucide-react@0.294.0';
+
+        // --- PASTE YOUR API KEY HERE ---
+        const apiKey = ""; // Put your Google Gemini API Key here
+        // -------------------------------
+
+        // --- HELPER: Audio Context for PCM Playback ---
+        const playPCMAudio = async (base64Audio, sampleRate = 24000) => {
+            try {
+                const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                const binaryString = window.atob(base64Audio);
+                const len = binaryString.length;
+                const bytes = new Uint8Array(len);
+                for (let i = 0; i < len; i++) {
+                bytes[i] = binaryString.charCodeAt(i);
+                }
+                
+                const int16Array = new Int16Array(bytes.buffer);
+                const float32Array = new Float32Array(int16Array.length);
+                for (let i = 0; i < int16Array.length; i++) {
+                float32Array[i] = int16Array[i] / 32768.0;
+                }
+
+                const buffer = audioContext.createBuffer(1, float32Array.length, sampleRate);
+                buffer.getChannelData(0).set(float32Array);
+
+                const source = audioContext.createBufferSource();
+                source.buffer = buffer;
+                source.connect(audioContext.destination);
+                source.start(0);
+                return source;
+            } catch (e) {
+                console.error("Audio playback error:", e);
+            }
+        };
+
+        const HeartDiagram = () => {
+            const [selectedPart, setSelectedPart] = useState(null);
+            const [isBeating, setIsBeating] = useState(false);
+            const [showBloodFlow, setShowBloodFlow] = useState(false);
+            const [bpm, setBpm] = useState(70); 
+            
+            // AI States
+            const [aiLoading, setAiLoading] = useState(false);
+            const [aiResponse, setAiResponse] = useState(null);
+            const [mode, setMode] = useState('explore'); 
+            const [quizData, setQuizData] = useState(null);
+            const [quizAnswer, setQuizAnswer] = useState(null);
+            const [ttsLoading, setTtsLoading] = useState(false);
+
+            // --- ECG Canvas Logic ---
+            const canvasRef = useRef(null);
+            const animationRef = useRef(null);
+            
+            useEffect(() => {
+                const canvas = canvasRef.current;
+                if (!canvas) return;
+                const ctx = canvas.getContext('2d');
+                let x = 0;
+                const height = canvas.height;
+                const width = canvas.width;
+                
+                const waveShape = [0, -0.1, 0, 0, 0.1, -0.8, 0.3, 0, 0, -0.2, 0, 0];
+                let waveIndex = -1;
+                let lastTime = 0;
+                
+                const draw = (timestamp) => {
+                const beatInterval = (60 / bpm) * 1000;
+                
+                ctx.fillStyle = 'rgba(15, 23, 42, 0.1)'; 
+                ctx.fillRect(0, 0, width, height);
+                
+                ctx.beginPath();
+                ctx.moveTo(x, height / 2); 
+                
+                const speed = 2;
+                x += speed;
+                if (x > width) x = 0;
+                
+                let yOffset = 0;
+                
+                if (isBeating && timestamp - lastTime > beatInterval) {
+                    lastTime = timestamp;
+                    waveIndex = 0;
+                }
+                
+                if (waveIndex >= 0 && waveIndex < waveShape.length * 5) {
+                    const shapeIdx = Math.floor(waveIndex / 5);
+                    if (shapeIdx < waveShape.length) {
+                        yOffset = waveShape[shapeIdx] * (height / 2);
+                    }
+                    waveIndex++;
+                } else {
+                    waveIndex = -1;
+                    yOffset = (Math.random() - 0.5) * 2;
+                }
+
+                const y = (height / 2) + yOffset;
+                
+                ctx.lineTo(x, y);
+                ctx.strokeStyle = '#34d399'; 
+                ctx.lineWidth = 2;
+                ctx.shadowBlur = 4;
+                ctx.shadowColor = '#34d399';
+                ctx.stroke();
+                
+                ctx.fillStyle = '#fff';
+                ctx.beginPath();
+                ctx.arc(x, y, 2, 0, Math.PI * 2);
+                ctx.fill();
+
+                animationRef.current = requestAnimationFrame(draw);
+                };
+                
+                animationRef.current = requestAnimationFrame(draw);
+                return () => cancelAnimationFrame(animationRef.current);
+            }, [bpm, isBeating]);
+
+
+            // Heart part data
+            const parts = {
+                superiorVenaCava: {
+                name: "Superior Vena Cava",
+                description: "A large vein that brings deoxygenated blood from the head, neck, arms, and chest into the right atrium.",
+                type: "vein",
+                blood: "Deoxygenated (Blue)"
+                },
+                inferiorVenaCava: {
+                name: "Inferior Vena Cava",
+                description: "The largest vein in the body, carrying deoxygenated blood from the lower body to the right atrium.",
+                type: "vein",
+                blood: "Deoxygenated (Blue)"
+                },
+                rightAtrium: {
+                name: "Right Atrium",
+                description: "Receives deoxygenated blood from the body via the vena cavae and pumps it into the right ventricle.",
+                type: "chamber",
+                blood: "Deoxygenated (Blue)"
+                },
+                rightVentricle: {
+                name: "Right Ventricle",
+                description: "Pumps deoxygenated blood through the pulmonary valve into the pulmonary artery towards the lungs.",
+                type: "chamber",
+                blood: "Deoxygenated (Blue)"
+                },
+                pulmonaryArtery: {
+                name: "Pulmonary Artery",
+                description: "Transports deoxygenated blood from the right ventricle to the lungs. The trunk splits into left and right arteries.",
+                type: "artery",
+                blood: "Deoxygenated (Blue)"
+                },
+                pulmonaryVeins: {
+                name: "Pulmonary Veins",
+                description: "Return oxygen-rich blood from the lungs to the left atrium.",
+                type: "vein",
+                blood: "Oxygenated (Red)"
+                },
+                leftAtrium: {
+                name: "Left Atrium",
+                description: "Receives oxygenated blood from the lungs via the pulmonary veins and pumps it into the left ventricle.",
+                type: "chamber",
+                blood: "Oxygenated (Red)"
+                },
+                leftVentricle: {
+                name: "Left Ventricle",
+                description: "The strongest chamber. It pumps oxygen-rich blood through the aortic valve into the aorta for the rest of the body.",
+                type: "chamber",
+                blood: "Oxygenated (Red)"
+                },
+                aorta: {
+                name: "Aorta",
+                description: "The body's main artery. It arches over the heart and distributes oxygenated blood to the entire circulatory system.",
+                type: "artery",
+                blood: "Oxygenated (Red)"
+                }
+            };
+
+            const handlePartClick = (partKey) => {
+                if (mode === 'explore') {
+                setSelectedPart(parts[partKey]);
+                setAiResponse(null);
+                }
+            };
+
+            const callGemini = async (prompt, isJson = false) => {
+                setAiLoading(true);
+                try {
+                const payload = {
+                    contents: [{ parts: [{ text: prompt }] }],
+                    generationConfig: isJson ? {
+                        responseMimeType: "application/json",
+                        responseSchema: {
+                            type: "OBJECT",
+                            properties: {
+                                question: { type: "STRING" },
+                                options: { type: "ARRAY", items: { type: "STRING" } },
+                                correctIndex: { type: "INTEGER" },
+                                explanation: { type: "STRING" }
+                            }
+                        }
+                    } : {}
+                };
+
+                const response = await fetch(
+                    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`,
+                    {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                    }
+                );
+
+                const data = await response.json();
+                const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+                setAiLoading(false);
+                return isJson ? JSON.parse(text) : text;
+                } catch (error) {
+                console.error("Gemini API Error:", error);
+                setAiLoading(false);
+                return null;
+                }
+            };
+
+            const speakText = async (text) => {
+                if (!text) return;
+                setTtsLoading(true);
+                try {
+                    const response = await fetch(
+                        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-tts:generateContent?key=${apiKey}`,
+                        {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                contents: [{ parts: [{ text: text }] }],
+                                generationConfig: {
+                                    responseModalities: ["AUDIO"],
+                                    speechConfig: {
+                                        voiceConfig: {
+                                            prebuiltVoiceConfig: {
+                                                voiceName: "Fenrir"
+                                            }
+                                        }
+                                    }
+                                }
+                            })
+                        }
+                    );
+                    const data = await response.json();
+                    const audioData = data.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+                    if (audioData) {
+                        await playPCMAudio(audioData);
+                    }
+                } catch (error) {
+                    console.error("TTS Error:", error);
+                } finally {
+                    setTtsLoading(false);
+                }
+            };
+
+            const fetchPathology = async (partName) => {
+                const prompt = `Explain 2 common diseases or medical conditions that specifically affect the ${partName} of the human heart. Keep the explanation concise, educational, and easy to understand. Use bullet points.`;
+                const result = await callGemini(prompt);
+                setAiResponse(result);
+            };
+
+            const startQuiz = async () => {
+                setMode('quiz');
+                setQuizData(null);
+                setQuizAnswer(null);
+                
+                const prompt = `Generate a challenging multiple-choice question about human heart anatomy. 
+                Focus on function, blood flow, or specific structures. 
+                Provide the question, 4 distinct options, the index of the correct option (0-3), and a brief explanation of why it is correct.`;
+                
+                const result = await callGemini(prompt, true);
+                setQuizData(result);
+            };
+
+            return (
+                <div className="flex flex-col md:flex-row h-screen bg-slate-900 overflow-hidden font-sans text-slate-100">
+                {/* Left Panel: Diagram */}
+                <div className="w-full md:w-2/3 h-1/2 md:h-full relative flex items-center justify-center p-4 bg-gradient-to-b from-slate-800 to-slate-900 shadow-inner z-10 flex-col">
+                    
+                    {/* Top Controls Overlay */}
+                    <div className="absolute top-4 left-4 right-4 flex flex-wrap gap-3 z-20 justify-between items-start pointer-events-none">
+                    <div className="flex flex-col gap-2 pointer-events-auto">
+                        <div className="flex gap-2">
+                            <button 
+                                onClick={() => setIsBeating(!isBeating)}
+                                className={`flex items-center gap-2 px-4 py-2 rounded-full font-bold text-xs md:text-sm transition-all border border-white/10 backdrop-blur-md ${isBeating ? 'bg-rose-500/90 text-white shadow-[0_0_20px_rgba(244,63,94,0.4)]' : 'bg-white/5 text-slate-300 hover:bg-white/10'}`}
+                            >
+                                <Activity size={16} className={isBeating ? "animate-pulse" : ""} />
+                                {isBeating ? "Stop Heart" : "Start Heart"}
+                            </button>
+                            
+                            <button 
+                                onClick={() => setShowBloodFlow(!showBloodFlow)}
+                                className={`flex items-center gap-2 px-4 py-2 rounded-full font-bold text-xs md:text-sm transition-all border border-white/10 backdrop-blur-md ${showBloodFlow ? 'bg-blue-500/90 text-white shadow-[0_0_20px_rgba(59,130,246,0.4)]' : 'bg-white/5 text-slate-300 hover:bg-white/10'}`}
+                            >
+                                <Droplet size={16} />
+                                {showBloodFlow ? "Hide Flow" : "Show Flow"}
+                            </button>
+                        </div>
+                        
+                        {/* BPM Slider */}
+                        <div className="bg-slate-900/80 backdrop-blur-md p-3 rounded-xl border border-white/10 w-fit pointer-events-auto">
+                            <div className="flex items-center justify-between mb-1">
+                                <span className="text-xs text-slate-400 font-bold tracking-wider">HEART RATE</span>
+                                <span className="text-xs font-mono text-emerald-400">{bpm} BPM</span>
+                            </div>
+                            <input 
+                                type="range" 
+                                min="40" 
+                                max="180" 
+                                value={bpm} 
+                                onChange={(e) => setBpm(Number(e.target.value))}
+                                className="w-48 h-1 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-emerald-500"
+                            />
+                        </div>
+                    </div>
+                    </div>
+
+                    {/* Legend */}
+                    <div className="absolute top-4 right-4 bg-slate-900/80 backdrop-blur-md p-3 rounded-xl border border-white/10 text-xs shadow-xl pointer-events-none hidden md:block">
+                    <div className="flex items-center gap-2 mb-2">
+                        <div className="w-3 h-3 rounded-full bg-gradient-to-br from-blue-400 to-blue-700 shadow-md"></div>
+                        <span className="text-slate-300 font-medium">Deoxygenated</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <div className="w-3 h-3 rounded-full bg-gradient-to-br from-red-400 to-red-700 shadow-md"></div>
+                        <span className="text-slate-300 font-medium">Oxygenated</span>
+                    </div>
+                    </div>
+
+                    {/* The SVG Diagram */}
+                    <div 
+                        className="relative w-full max-w-[450px] aspect-[4/5] transition-transform"
+                        style={{ 
+                            animation: isBeating ? `heartbeat ${60/bpm}s infinite cubic-bezier(0.4, 0, 0.2, 1)` : 'none' 
+                        }}
+                    >
+                    <svg viewBox="0 0 400 500" className="w-full h-full drop-shadow-[0_20px_50px_rgba(0,0,0,0.5)]">
+                        <defs>
+                        {/* Gradients for 3D effect */}
+                        <linearGradient id="grad-blue" x1="0%" y1="0%" x2="100%" y2="0%">
+                            <stop offset="0%" stopColor="#1e3a8a" />
+                            <stop offset="50%" stopColor="#3b82f6" />
+                            <stop offset="100%" stopColor="#1e3a8a" />
+                        </linearGradient>
+                        <radialGradient id="grad-blue-radial" cx="30%" cy="30%" r="70%">
+                            <stop offset="0%" stopColor="#60a5fa" />
+                            <stop offset="100%" stopColor="#1e40af" />
+                        </radialGradient>
+
+                        <linearGradient id="grad-red" x1="0%" y1="0%" x2="100%" y2="0%">
+                            <stop offset="0%" stopColor="#7f1d1d" />
+                            <stop offset="50%" stopColor="#ef4444" />
+                            <stop offset="100%" stopColor="#7f1d1d" />
+                        </linearGradient>
+                        <radialGradient id="grad-red-radial" cx="30%" cy="30%" r="70%">
+                            <stop offset="0%" stopColor="#f87171" />
+                            <stop offset="100%" stopColor="#991b1b" />
+                        </radialGradient>
+                        <filter id="drop-shadow" x="-20%" y="-20%" width="140%" height="140%">
+                            <feGaussianBlur in="SourceAlpha" stdDeviation="3"/>
+                            <feOffset dx="2" dy="4" result="offsetblur"/>
+                            <feComponentTransfer>
+                            <feFuncA type="linear" slope="0.3"/>
+                            </feComponentTransfer>
+                            <feMerge> 
+                            <feMergeNode/>
+                            <feMergeNode in="SourceGraphic"/> 
+                            </feMerge>
+                        </filter>
+                        </defs>
+
+                        <g filter="url(#drop-shadow)">
+                        {/* --- Back Layer --- */}
+                        <path d="M130,40 C130,20 165,20 165,40 L165,140 C165,150 130,150 130,140 Z" fill="url(#grad-blue)" className="hover:brightness-110 cursor-pointer transition-all duration-300" onClick={() => handlePartClick('superiorVenaCava')} />
+                        <path d="M140,400 L140,480 C140,490 180,490 180,480 L180,380" fill="url(#grad-blue)" className="hover:brightness-110 cursor-pointer transition-all duration-300" onClick={() => handlePartClick('inferiorVenaCava')} />
+                        <path d="M300,160 L380,140 L380,170 L300,190 Z" fill="#7f1d1d" />
+                        <path d="M320,160 C360,160 380,140 390,140 L390,200 C360,200 320,190 320,190" fill="url(#grad-red)" className="hover:brightness-110 cursor-pointer transition-all duration-300" onClick={() => handlePartClick('pulmonaryVeins')} />
+
+                        {/* --- Middle Layer --- */}
+                        <path d="M120,130 C90,130 80,200 100,240 C110,260 160,260 170,240 L170,140 C160,130 140,130 120,130" fill="url(#grad-blue-radial)" className="hover:brightness-110 cursor-pointer transition-all duration-300" onClick={() => handlePartClick('rightAtrium')} />
+                        <path d="M240,140 C220,140 220,180 230,200 C240,220 300,210 320,180 C330,160 300,140 240,140" fill="url(#grad-red-radial)" className="hover:brightness-110 cursor-pointer transition-all duration-300" onClick={() => handlePartClick('leftAtrium')} />
+                        <path d="M200,180 C200,80 220,40 280,40 C340,40 340,100 340,140 L340,400 L300,400 L300,150 C300,100 280,80 260,80 C240,80 240,120 240,180 Z" fill="url(#grad-red)" className="hover:brightness-110 cursor-pointer transition-all duration-300" onClick={() => handlePartClick('aorta')} />
+                        <path d="M260,40 L260,10 L275,10 L275,40" fill="url(#grad-red)" />
+                        <path d="M290,45 L300,10 L315,10 L310,48" fill="url(#grad-red)" />
+                        <path d="M320,60 L340,20 L355,25 L335,70" fill="url(#grad-red)" />
+
+                        {/* --- Front Layer --- */}
+                        <path d="M110,240 C100,280 140,420 200,450 C240,460 250,440 240,300 C240,260 200,200 180,180 C160,180 120,220 110,240" fill="url(#grad-blue-radial)" className="hover:brightness-110 cursor-pointer transition-all duration-300" onClick={() => handlePartClick('rightVentricle')} />
+                        <path d="M240,220 C230,280 240,440 280,490 C330,470 360,350 350,260 C340,220 300,200 240,220" fill="url(#grad-red-radial)" className="hover:brightness-110 cursor-pointer transition-all duration-300" onClick={() => handlePartClick('leftVentricle')} />
+                        <path d="M180,190 C180,160 160,130 140,110 L160,90 C190,120 220,120 240,90 L260,110 C240,140 230,160 230,200 C210,210 190,200 180,190" fill="url(#grad-blue)" className="hover:brightness-110 cursor-pointer transition-all duration-300" onClick={() => handlePartClick('pulmonaryArtery')} />
+                        
+                        <path d="M220,250 Q230,350 250,450" fill="none" stroke="rgba(255,255,255,0.2)" strokeWidth="4" filter="url(#blur)" />
+                        <path d="M140,230 Q160,240 180,230" fill="none" stroke="rgba(255,255,255,0.3)" strokeWidth="2" strokeDasharray="3 3" />
+                        <path d="M260,230 Q280,240 300,230" fill="none" stroke="rgba(255,255,255,0.3)" strokeWidth="2" strokeDasharray="3 3" />
+
+                        {/* Blood Flow Particles */}
+                        {showBloodFlow && (
+                            <g className="pointer-events-none" style={{ animationDuration: `${(60/bpm) * 3}s` }}>
+                            <circle r="5" fill="#e0f2fe" className="animate-flow-blue-1 shadow-glow" style={{ animationDuration: `${(60/bpm) * 3}s` }} />
+                            <circle r="4" fill="#bae6fd" className="animate-flow-blue-2 shadow-glow" style={{ animationDuration: `${(60/bpm) * 3}s` }} />
+                            <circle r="5" fill="#fee2e2" className="animate-flow-red-1 shadow-glow" style={{ animationDuration: `${(60/bpm) * 3}s` }} />
+                            <circle r="4" fill="#fecaca" className="animate-flow-red-2 shadow-glow" style={{ animationDuration: `${(60/bpm) * 3}s` }} />
+                            </g>
+                        )}
+                        </g>
+                    </svg>
+                    </div>
+                    
+                    {/* ECG Live Monitor */}
+                    <div className="absolute bottom-4 left-4 right-4 h-24 bg-slate-900 border border-slate-700 rounded-md overflow-hidden shadow-inner flex items-center">
+                        <div className="absolute left-2 top-2 text-[10px] text-emerald-500 font-mono tracking-widest z-10 flex items-center gap-2">
+                            <span className={`w-2 h-2 rounded-full ${isBeating ? 'bg-emerald-500 animate-pulse' : 'bg-red-500'}`}></span>
+                            ECG MONITOR LIVE
+                        </div>
+                        <canvas ref={canvasRef} width={600} height={100} className="w-full h-full opacity-80" />
+                        
+                        <div className="absolute inset-0 pointer-events-none" 
+                            style={{ 
+                                backgroundImage: 'linear-gradient(rgba(16, 185, 129, 0.1) 1px, transparent 1px), linear-gradient(90deg, rgba(16, 185, 129, 0.1) 1px, transparent 1px)',
+                                backgroundSize: '20px 20px'
+                            }}>
+                        </div>
+                    </div>
+                </div>
+
+                {/* Right Panel: Information */}
+                <div className="w-full md:w-1/3 h-1/2 md:h-full bg-slate-800 text-slate-100 p-6 md:p-8 flex flex-col overflow-y-auto border-l border-white/5 shadow-2xl relative transition-all">
+                    <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] opacity-5 pointer-events-none"></div>
+
+                    {/* Header Section */}
+                    <div className="mb-6 relative z-10 flex items-center justify-between">
+                        <div>
+                        <h1 className="text-3xl font-black mb-1 text-transparent bg-clip-text bg-gradient-to-r from-rose-400 to-orange-400 flex items-center gap-3">
+                            <Heart className="text-rose-500 fill-rose-500" size={32} /> 
+                            Dr. Cardio
+                        </h1>
+                        <p className="text-slate-400 text-xs font-light tracking-wide">Interactive AI Medical Module</p>
+                        </div>
+                        
+                        <div className="flex gap-1 bg-slate-900/80 p-1 rounded-lg border border-white/10">
+                            <button onClick={() => setMode('explore')} className={`p-2 rounded-md transition-colors ${mode === 'explore' ? 'bg-slate-700 text-white shadow-sm' : 'text-slate-400 hover:text-white'}`} title="Explore Mode">
+                                <Stethoscope size={20} />
+                            </button>
+                            <button onClick={startQuiz} className={`p-2 rounded-md transition-colors ${mode === 'quiz' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-400 hover:text-white'}`} title="Quiz Mode">
+                                <Brain size={20} />
+                            </button>
+                        </div>
+                    </div>
+
+                    {/* CONTENT AREA */}
+                    <div className="relative z-10 flex-1 flex flex-col">
+                        {/* === QUIZ MODE === */}
+                        {mode === 'quiz' && (
+                            <div className="animate-fade-in flex-1 flex flex-col">
+                                <div className="flex-1">
+                                    {!quizData && !aiLoading && (
+                                    <div className="text-center mt-10 opacity-70">
+                                            <Brain size={48} className="mx-auto mb-4 text-indigo-400" />
+                                            <p>Ready to test your knowledge?</p>
+                                            <button onClick={startQuiz} className="mt-4 px-6 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-full font-bold transition-all">
+                                                Generate New Question ✨
+                                            </button>
+                                    </div> 
+                                    )}
+
+                                    {aiLoading && (
+                                        <div className="flex flex-col items-center justify-center h-64 text-slate-400">
+                                            <Loader2 size={40} className="animate-spin mb-4 text-indigo-500" />
+                                            <p className="animate-pulse">Consulting AI...</p>
+                                        </div>
+                                    )}
+
+                                    {quizData && (
+                                        <div className="bg-slate-700/30 p-6 rounded-2xl border border-white/5 backdrop-blur-sm shadow-xl">
+                                            <div className="text-xs font-bold text-indigo-400 uppercase tracking-widest mb-4">Quiz Question</div>
+                                            <h3 className="text-xl font-bold text-white mb-6">{quizData.question}</h3>
+                                            
+                                            <div className="space-y-3">
+                                                {quizData.options.map((option, idx) => (
+                                                    <button
+                                                        key={idx}
+                                                        onClick={() => setQuizAnswer(idx)}
+                                                        disabled={quizAnswer !== null}
+                                                        className={`w-full text-left p-4 rounded-xl border transition-all relative
+                                                            ${quizAnswer === null 
+                                                                ? 'bg-slate-800/50 border-white/5 hover:bg-slate-800 hover:border-indigo-500/50' 
+                                                                : idx === quizData.correctIndex 
+                                                                    ? 'bg-green-500/20 border-green-500/50 text-green-100'
+                                                                    : idx === quizAnswer 
+                                                                        ? 'bg-red-500/20 border-red-500/50 text-red-100'
+                                                                        : 'bg-slate-800/30 border-transparent opacity-50'
+                                                            }
+                                                        `}
+                                                    >
+                                                        <div className="flex items-center gap-3">
+                                                            <div className={`w-6 h-6 rounded-full border flex items-center justify-center text-xs font-bold
+                                                                ${quizAnswer === null ? 'border-slate-500 text-slate-500' : 
+                                                                idx === quizData.correctIndex ? 'bg-green-500 border-green-500 text-white' :
+                                                                idx === quizAnswer ? 'bg-red-500 border-red-500 text-white' : 'border-slate-700 text-slate-700'}
+                                                            `}>
+                                                                {String.fromCharCode(65 + idx)}
+                                                            </div>
+                                                            {option}
+                                                        </div>
+                                                        
+                                                        {quizAnswer !== null && idx === quizData.correctIndex && <CheckCircle className="absolute right-4 top-1/2 -translate-y-1/2 text-green-400" size={20} />}
+                                                        {quizAnswer !== null && idx === quizAnswer && idx !== quizData.correctIndex && <XCircle className="absolute right-4 top-1/2 -translate-y-1/2 text-red-400" size={20} />}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                            {quizAnswer !== null && (
+                                                <div className="mt-6 pt-6 border-t border-white/10 animate-fade-in">
+                                                    <h4 className="text-sm font-bold text-slate-300 mb-2">Explanation:</h4>
+                                                    <p className="text-slate-400 text-sm leading-relaxed">{quizData.explanation}</p>
+                                                    <button onClick={startQuiz} className="mt-6 w-full py-3 bg-slate-800 hover:bg-slate-700 text-white rounded-xl font-bold flex items-center justify-center gap-2 transition-all border border-white/10">
+                                                        Next Question <ArrowRight size={16} />
+                                                    </button>
+                                                </div>
+                                            )}
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        )}
+
+
+                        {/* === EXPLORE MODE === */}
+                        {mode === 'explore' && (
+                            <>
+                            {selectedPart ? (
+                            <div className="animate-fade-in relative z-10 flex flex-col h-full">
+                                <div className="flex items-center justify-between mb-4">
+                                    <div className="inline-block px-4 py-1.5 rounded-full text-xs font-bold tracking-wider uppercase bg-white/10 text-slate-200 border border-white/10 shadow-sm">
+                                        {selectedPart.type}
+                                    </div>
+                                    <button 
+                                        onClick={() => speakText(`${selectedPart.name}. ${selectedPart.description}`)}
+                                        disabled={ttsLoading}
+                                        className="p-2 bg-indigo-500/20 hover:bg-indigo-500/40 rounded-full text-indigo-300 transition-colors disabled:opacity-50"
+                                        title="Listen to description"
+                                    >
+                                        {ttsLoading ? <Loader2 size={16} className="animate-spin" /> : <Volume2 size={16} />}
+                                    </button>
+                                </div>
+                            
+                                <h2 className="text-3xl font-bold mb-6 text-white leading-tight">
+                                {selectedPart.name}
+                                </h2>
+                                
+                                <div className="space-y-6 flex-1 overflow-y-auto custom-scrollbar pr-2">
+                                    {/* Standard Description */}
+                                    <div className="bg-slate-700/40 p-5 rounded-2xl border border-white/5 backdrop-blur-sm shadow-lg">
+                                        <h3 className="text-xs font-bold text-rose-400 uppercase tracking-widest mb-3 flex items-center gap-2">
+                                        <Info size={14} /> Function
+                                        </h3>
+                                        <p className="text-slate-200 leading-relaxed font-light text-lg">
+                                        {selectedPart.description}
+                                        </p>
+                                    </div>
+
+                                    {/* Blood Type Info */}
+                                    <div className="bg-slate-700/30 p-5 rounded-2xl border border-white/5 backdrop-blur-sm">
+                                        <h3 className="text-xs font-bold text-blue-400 uppercase tracking-widest mb-3 flex items-center gap-2">
+                                        <Wind size={14} /> Circulation Details
+                                        </h3>
+                                        <div className="flex items-center gap-4 bg-slate-900/50 p-3 rounded-lg border border-white/5">
+                                        <span className={`w-4 h-4 rounded-full ${selectedPart.blood.includes('Red') ? 'bg-red-500 shadow-[0_0_12px_rgba(239,68,68,0.8)]' : 'bg-blue-500 shadow-[0_0_12px_rgba(59,130,246,0.8)]'}`}></span>
+                                        <span className="font-medium text-slate-200">{selectedPart.blood}</span>
+                                        </div>
+                                    </div>
+
+                                    {/* AI Pathology Section */}
+                                    <div className="bg-gradient-to-br from-indigo-900/40 to-slate-800/40 p-5 rounded-2xl border border-indigo-500/20 backdrop-blur-sm">
+                                        <div className="flex items-center justify-between mb-4">
+                                            <h3 className="text-xs font-bold text-indigo-300 uppercase tracking-widest flex items-center gap-2">
+                                                <Sparkles size={14} /> Pathology
+                                            </h3>
+                                            {aiResponse && (
+                                                <button 
+                                                    onClick={() => speakText(aiResponse)}
+                                                    disabled={ttsLoading}
+                                                    className="text-indigo-400 hover:text-white disabled:opacity-50"
+                                                >
+                                                    {ttsLoading ? <Loader2 size={14} className="animate-spin" /> : <Volume2 size={14} />}
+                                                </button>
+                                            )}
+                                        </div>
+
+                                        {!aiResponse && !aiLoading && (
+                                            <button 
+                                                onClick={() => fetchPathology(selectedPart.name)}
+                                                className="w-full py-3 bg-indigo-600/20 hover:bg-indigo-600/40 border border-indigo-500/50 text-indigo-100 rounded-xl font-semibold flex items-center justify-center gap-2 transition-all group"
+                                            >
+                                                <Stethoscope size={18} className="group-hover:scale-110 transition-transform" />
+                                                Explain Diseases for this Part ✨
+                                            </button>
+                                        )}
+
+                                        {aiLoading && (
+                                            <div className="flex items-center justify-center py-4 text-indigo-300 gap-3">
+                                                <Loader2 className="animate-spin" size={20} />
+                                                <span className="text-sm font-medium">Consulting Dr. Cardio...</span>
+                                            </div>
+                                        )}
+
+                                        {aiResponse && (
+                                            <div className="animate-fade-in">
+                                                <div className="prose prose-invert prose-sm max-w-none text-slate-300 leading-relaxed">
+                                                    <div className="whitespace-pre-line bg-slate-900/50 p-4 rounded-xl border border-white/5 text-sm">
+                                                        {aiResponse}
+                                                    </div>
+                                                </div>
+                                                <button 
+                                                    onClick={() => setAiResponse(null)}
+                                                    className="mt-3 text-xs text-indigo-400 hover:text-indigo-300 underline"
+                                                >
+                                                    Clear Info
+                                                </button>
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+                            ) : (
+                            <div className="flex flex-col items-center justify-center h-full text-slate-500 text-center opacity-40 relative z-10">
+                                <Activity size={64} className="mb-6 stroke-1" />
+                                <p className="text-xl font-light">Explore the human heart.</p>
+                                <p className="text-sm mt-2 font-mono">Select any structure to begin.</p>
+                            </div>
+                            )}
+                            </>
+                        )}
+
+                    </div>
+
+                    <div className="mt-4 pt-4 border-t border-white/5 text-[10px] text-slate-600 text-center uppercase tracking-widest relative z-10">
+                    AI-Assisted Educational Module
+                    </div>
+                </div>
+                </div>
+            );
+        };
+
+        // Render the App
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<HeartDiagram />);
+    </script>
+</body>
+</html>
