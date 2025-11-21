@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Browser Hardware Tools (Standalone)</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- React 17 (More stable for standalone files) -->
+    <script src="https://unpkg.com/react@17/umd/react.development.js"></script>
+    <script src="https://unpkg.com/react-dom@17/umd/react-dom.development.js"></script>
+    
+    <!-- Babel for compiling JSX in the browser -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    
+    <!-- Lucide Icons (Standard Version) -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+
+    <style>
+        /* Custom Utilities */
+        @keyframes scanline {
+            0% { transform: translateY(-100%); }
+            100% { transform: translateY(100%); }
+        }
+        .scanline::after {
+            content: "";
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: linear-gradient(to bottom, transparent 50%, rgba(0,0,0,0.1) 51%);
+            background-size: 100% 4px;
+            pointer-events: none;
+        }
+        .visualizer-canvas { background: #0f172a; width: 100%; height: 100%; }
+        
+        /* Scrollbar */
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: #1e293b; }
+        ::-webkit-scrollbar-thumb { background: #475569; border-radius: 4px; }
+    </style>
+</head>
+<body class="bg-slate-900 text-slate-100 font-sans antialiased min-h-screen selection:bg-indigo-500 selection:text-white">
+    
+    <!-- Fallback Loading Screen (Shows if React fails to load) -->
+    <div id="loading" class="fixed inset-0 z-50 flex flex-col items-center justify-center bg-slate-900 text-indigo-400">
+        <div class="w-16 h-16 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin mb-4"></div>
+        <h2 class="text-xl font-mono animate-pulse">INITIALIZING SYSTEMS...</h2>
+        <p class="text-slate-500 text-sm mt-2">Parsing Hardware APIs</p>
+    </div>
+
+    <div id="root"></div>
+
+    <!-- Main Application Script -->
+    <script type="text/babel">
+        const { useState, useEffect, useRef } = React;
+
+        // --- ICON COMPONENT ---
+        // Wrapper to use Lucide icons in React easily
+        const Icon = ({ name, size = 24, className = "" }) => {
+            const iconRef = useRef(null);
+            useEffect(() => {
+                if (window.lucide) {
+                    window.lucide.createIcons({
+                        root: iconRef.current,
+                        name: name,
+                        attrs: { width: size, height: size, class: className }
+                    });
+                }
+            }, [name, size, className]);
+            return <span ref={iconRef} className="inline-flex items-center justify-center" />;
+        };
+
+        // --- TOOL COMPONENTS ---
+
+        // 1. Speech
+        const ToolSpeech = () => {
+            const [text, setText] = useState("System check complete. All systems nominal.");
+            const [speaking, setSpeaking] = useState(false);
+            
+            const speak = () => {
+                window.speechSynthesis.cancel();
+                const u = new SpeechSynthesisUtterance(text);
+                u.onstart = () => setSpeaking(true);
+                u.onend = () => setSpeaking(false);
+                window.speechSynthesis.speak(u);
+            };
+
+            return (
+                <div className="space-y-4">
+                    <textarea value={text} onChange={e => setText(e.target.value)} className="w-full bg-slate-800 p-4 rounded-xl border border-slate-700 focus:border-indigo-500 outline-none" rows="3"></textarea>
+                    <button onClick={speak} disabled={speaking} className="bg-indigo-600 hover:bg-indigo-500 text-white px-6 py-2 rounded-lg font-bold w-full flex items-center justify-center gap-2 transition-all">
+                        <Icon name={speaking ? "activity" : "volume-2"} size={20} />
+                        {speaking ? "Broadcasting..." : "Transmit Speech"}
+                    </button>
+                </div>
+            );
+        };
+
+        // 2. Vitals
+        const ToolVitals = () => {
+            const [bat, setBat] = useState(null);
+            const [hw, setHw] = useState({ cores: navigator.hardwareConcurrency || '?', mem: navigator.deviceMemory || '?' });
+            
+            useEffect(() => {
+                if (navigator.getBattery) navigator.getBattery().then(b => setBat({ l: b.level * 100, c: b.charging }));
+            }, []);
+
+            return (
+                <div className="grid grid-cols-2 gap-4">
+                    <div className="bg-slate-800 p-4 rounded-xl border border-slate-700">
+                        <div className="text-emerald-400 mb-2"><Icon name="battery" /></div>
+                        <div className="text-2xl font-bold">{bat ? Math.round(bat.l) + '%' : '...'}</div>
+                        <div className="text-xs text-slate-400">{bat?.c ? 'Charging' : 'Discharging'}</div>
+                    </div>
+                    <div className="bg-slate-800 p-4 rounded-xl border border-slate-700">
+                        <div className="text-blue-400 mb-2"><Icon name="cpu" /></div>
+                        <div className="text-2xl font-bold">{hw.cores} Cores</div>
+                        <div className="text-xs text-slate-400">~{hw.mem}GB Memory</div>
+                    </div>
+                </div>
+            );
+        };
+
+        // 3. Color Picker
+        const ToolColor = () => {
+            const [color, setColor] = useState("#6366f1");
+            const pick = async () => {
+                if (!window.EyeDropper) return alert("Browser not supported (Try Chrome)");
+                try {
+                    const r = await new EyeDropper().open();
+                    setColor(r.sRGBHex);
+                } catch (e) {}
+            };
+            return (
+                <div className="flex items-center gap-4">
+                    <div className="w-16 h-16 rounded-xl shadow-inner border-2 border-white/20" style={{backgroundColor: color}}></div>
+                    <div className="flex-1">
+                        <div className="font-mono text-lg">{color}</div>
+                        <button onClick={pick} className="text-sm text-indigo-400 hover:text-indigo-300 font-bold">Pick from Screen</button>
+                    </div>
+                </div>
+            );
+        };
+
+        // 4. Geo
+        const ToolGeo = () => {
+            const [loc, setLoc] = useState(null);
+            const get = () => navigator.geolocation.getCurrentPosition(p => setLoc(p.coords));
+            return (
+                <div className="text-center">
+                    {loc ? (
+                        <div className="font-mono text-sm bg-slate-800 p-4 rounded-xl mb-2">
+                            LAT: {loc.latitude.toFixed(4)}<br/>
+                            LNG: {loc.longitude.toFixed(4)}
+                        </div>
+                    ) : <div className="p-4 bg-slate-800 rounded-xl mb-2 text-slate-500">Waiting for satellite fix...</div>}
+                    <button onClick={get} className="bg-emerald-600 hover:bg-emerald-500 px-4 py-2 rounded-lg text-sm font-bold w-full">Acquire Coordinates</button>
+                </div>
+            );
+        };
+
+        // 5. Webcam
+        const ToolCam = () => {
+            const vid = useRef(null);
+            const [on, setOn] = useState(false);
+            const start = async () => {
+                try {
+                    vid.current.srcObject = await navigator.mediaDevices.getUserMedia({video:true});
+                    setOn(true);
+                } catch(e) { alert("Camera access denied."); }
+            };
+            return (
+                <div className="space-y-2">
+                    <div className="aspect-video bg-black rounded-xl overflow-hidden relative">
+                        <video ref={vid} autoPlay playsInline className="w-full h-full object-cover"></video>
+                        {!on && <div className="absolute inset-0 flex items-center justify-center text-slate-600"><Icon name="camera-off" size={48} /></div>}
+                    </div>
+                    <button onClick={start} className="w-full bg-slate-700 hover:bg-slate-600 py-2 rounded-lg font-bold">Activate Optical Sensor</button>
+                </div>
+            );
+        };
+
+        // 15. Audio Visualizer (The New Feature)
+        const ToolAudio = () => {
+            const canvasRef = useRef(null);
+            const [listening, setListening] = useState(false);
+            const ctxRef = useRef(null);
+            const animRef = useRef(null);
+
+            const stop = () => {
+                if (ctxRef.current) ctxRef.current.close();
+                if (animRef.current) cancelAnimationFrame(animRef.current);
+                setListening(false);
+            };
+
+            const start = async () => {
+                try {
+                    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                    const actx = new (window.AudioContext || window.webkitAudioContext)();
+                    ctxRef.current = actx;
+                    const analyser = actx.createAnalyser();
+                    const src = actx.createMediaStreamSource(stream);
+                    src.connect(analyser);
+                    analyser.fftSize = 64;
+                    
+                    const buffer = analyser.frequencyBinCount;
+                    const data = new Uint8Array(buffer);
+                    const canvas = canvasRef.current;
+                    const ctx = canvas.getContext('2d');
+
+                    const draw = () => {
+                        animRef.current = requestAnimationFrame(draw);
+                        analyser.getByteFrequencyData(data);
+                        ctx.fillStyle = '#0f172a';
+                        ctx.fillRect(0,0,canvas.width,canvas.height);
+                        
+                        const barW = (canvas.width / buffer) * 2; // Wider bars
+                        let x = 0;
+                        for(let i=0; i<buffer; i++) {
+                            const barH = data[i] / 1.5;
+                            ctx.fillStyle = `rgb(${barH + 50}, 100, 255)`;
+                            ctx.fillRect(x, canvas.height - barH, barW - 2, barH);
+                            x += barW;
+                        }
+                    };
+                    setListening(true);
+                    draw();
+                } catch(e) { alert("Mic access requires HTTPS or Localhost."); }
+            };
+
+            useEffect(() => () => stop(), []);
+
+            return (
+                <div className="space-y-2">
+                    <div className="h-32 bg-slate-900 rounded-xl overflow-hidden border border-slate-700 relative">
+                        <canvas ref={canvasRef} width="300" height="150" className="w-full h-full"></canvas>
+                        {!listening && <div className="absolute inset-0 flex items-center justify-center text-slate-600 text-xs uppercase tracking-widest">Silence Detected</div>}
+                    </div>
+                    <button onClick={listening ? stop : start} className={`w-full py-2 rounded-lg font-bold transition-colors ${listening ? 'bg-red-600 hover:bg-red-500' : 'bg-indigo-600 hover:bg-indigo-500'}`}>
+                        {listening ? 'Terminate Feed' : 'Initialize Audio Feed'}
+                    </button>
+                </div>
+            );
+        };
+
+        // --- GENERIC WRAPPER FOR SIMPLE TOOLS ---
+        const GenericTool = ({ action, label, icon, active }) => (
+            <button onClick={action} className={`w-full p-4 rounded-xl border transition-all flex items-center justify-between group ${active ? 'bg-emerald-900/30 border-emerald-500 text-emerald-400' : 'bg-slate-800 border-slate-700 hover:border-indigo-500'}`}>
+                <div className="flex items-center gap-3">
+                    <Icon name={icon} className={active ? 'text-emerald-400' : 'text-slate-400 group-hover:text-indigo-400'} />
+                    <span className="font-bold">{label}</span>
+                </div>
+                <Icon name="chevron-right" size={16} className="opacity-0 group-hover:opacity-100 transition-opacity" />
+            </button>
+        );
+
+        // --- MAIN APP ---
+        const App = () => {
+            const [view, setView] = useState('grid'); // 'grid' or specific tool id
+            
+            // Remove loading screen on mount
+            useEffect(() => {
+                const loader = document.getElementById('loading');
+                if(loader) loader.style.display = 'none';
+            }, []);
+
+            const tools = [
+                { id: 'audio', title: 'Audio Analyzer', desc: 'Real-time FFT Visualizer', icon: 'music', component: ToolAudio, col: 'col-span-2' },
+                { id: 'speech', title: 'Speech Synth', desc: 'Text-to-Speech Engine', icon: 'mic', component: ToolSpeech },
+                { id: 'vitals', title: 'System Vitals', desc: 'Hardware Telemetry', icon: 'cpu', component: ToolVitals },
+                { id: 'geo', title: 'Geolocation', desc: 'Orbital Positioning', icon: 'map-pin', component: ToolGeo },
+                { id: 'cam', title: 'Visual Sensor', desc: 'Webcam Feed', icon: 'camera', component: ToolCam },
+                { id: 'color', title: 'Spectral Analysis', desc: 'EyeDropper API', icon: 'eye', component: ToolColor },
+                // Simple Actions
+                { id: 'share', title: 'Web Share', desc: 'Native OS Share', icon: 'share-2', action: () => navigator.share({title:'Tools',url:window.location.href}).catch(()=>{}) },
+                { id: 'full', title: 'Fullscreen', desc: 'Toggle Display Mode', icon: 'maximize', action: () => document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen() },
+                { id: 'orient', title: 'Orientation', desc: 'Lock Portrait/Landscape', icon: 'smartphone', action: () => screen.orientation.lock('portrait').catch(e=>alert(e.message)) },
+                { id: 'vib', title: 'Haptics', desc: 'Vibration Test', icon: 'vibrate', action: () => navigator.vibrate([200,100,200]) },
+                { id: 'clip', title: 'Clipboard', desc: 'Read System Clip', icon: 'clipboard', action: () => navigator.clipboard.readText().then(alert).catch(e=>alert("Permission Denied")) },
+                { id: 'idle', title: 'Idle Detect', desc: 'Activity Monitor', icon: 'clock', action: () => alert("Idle Detector requires strict permissions.") },
+                { id: 'lock', title: 'Pointer Lock', desc: 'Capture Cursor', icon: 'mouse-pointer', action: () => document.body.requestPointerLock() },
+                { id: 'vis', title: 'Page Vis', desc: 'Check Visibility', icon: 'eye-off', action: () => alert("Visibility State: " + document.visibilityState) },
+                { id: 'gyro', title: 'Gyroscope', desc: 'Tilt Sensors', icon: 'compass', action: () => alert("Gyro data requires https on mobile.") }
+            ];
+
+            return (
+                <div className="max-w-5xl mx-auto p-6">
+                    <header className="flex items-center justify-between mb-8 pb-4 border-b border-slate-800">
+                        <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 bg-indigo-600 rounded-lg flex items-center justify-center shadow-lg shadow-indigo-900/50">
+                                <Icon name="wrench" className="text-white" />
+                            </div>
+                            <div>
+                                <h1 className="text-2xl font-bold tracking-tight">HARDWARE<span className="text-indigo-500">TOOLS</span></h1>
+                                <p className="text-xs text-slate-500 font-mono">V3.0.1 // STANDALONE</p>
+                            </div>
+                        </div>
+                    </header>
+
+                    <main className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 animate-in fade-in duration-700">
+                        {tools.map(tool => {
+                            const Component = tool.component;
+                            return (
+                                <div key={tool.id} className={`bg-slate-800/50 border border-slate-800 rounded-2xl p-5 hover:border-indigo-500/50 transition-all group ${tool.col || ''}`}>
+                                    <div className="flex items-center justify-between mb-4">
+                                        <div className="flex items-center gap-3">
+                                            <div className="p-2 bg-slate-800 rounded-lg group-hover:bg-indigo-900/50 transition-colors">
+                                                <Icon name={tool.icon} className="text-indigo-400" />
+                                            </div>
+                                            <div>
+                                                <h3 className="font-bold text-slate-200">{tool.title}</h3>
+                                                <p className="text-xs text-slate-500">{tool.desc}</p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    
+                                    {/* If it's a complex component, render it inline. If simple action, render button */}
+                                    {Component ? (
+                                        <div className="mt-2"><Component /></div>
+                                    ) : (
+                                        <button onClick={tool.action} className="w-full bg-slate-800 hover:bg-slate-700 py-2 rounded-lg text-sm font-bold text-slate-400 hover:text-white transition-all">
+                                            Execute
+                                        </button>
+                                    )}
+                                </div>
+                            );
+                        })}
+                    </main>
+                    
+                    <footer className="mt-12 text-center text-slate-600 text-sm font-mono">
+                        SYSTEM READY. LOCAL EXECUTION ENVIRONMENT ACTIVE.
+                    </footer>
+                </div>
+            );
+        };
+
+        ReactDOM.render(<App />, document.getElementById('root'));
+    </script>
+</body>
+</html>
