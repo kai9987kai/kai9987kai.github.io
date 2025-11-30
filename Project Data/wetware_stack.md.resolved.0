@@ -1,0 +1,41 @@
+# Wetware Stack Architecture
+
+**Overview**: The Wetware Stack is a hybrid digital-biological computing architecture designed to interface standard Von Neumann drivers with non-linear Biological Processing Units (BPUs).
+
+## Layer 1: The Digital Driver (Host CPU)
+*   **Role**: Pre-processing and Signal Encoding.
+*   **Function**:
+    *   Ingests raw digital data (e.g., sensor streams, market data).
+    *   **Transducer**: Converts digital bits into spatiotemporal electrical pulse trains.
+    *   *Analogy*: The "Thrower" who tosses rocks into the pond.
+
+## Layer 2: The Liquid Kernel (BPU)
+*   **Role**: High-Dimensional Transformation.
+*   **Component**: `NX-CB-9000` Cortical Organoid.
+*   **Function**:
+    *   Receives input pulses.
+    *   **Reservoir Dynamics**: Neurons fire and interact, creating a complex, chaotic, but deterministic interference pattern (the "Liquid State").
+    *   *Analogy*: The "Pond" where ripples interact.
+
+## Layer 3: The Readout (AI/ML)
+*   **Role**: State Decoding and Interpretation.
+*   **Component**: FPGA or Neuromorphic Chip (e.g., Intel Loihi successor).
+*   **Function**:
+    *   Monitors the global state of the reservoir (LFP and Spike Rasters).
+    *   **Classifier**: Maps specific "ripple patterns" to digital outputs (e.g., "Pattern A" = "Storm Approaching").
+    *   *Analogy*: The "Observer" who reads the ripples.
+
+## Layer 4: The Supervisor (Control Loop)
+*   **Role**: Training and Homeostasis.
+*   **Algorithm**: Active Inference (Free Energy Principle).
+*   **Mechanism**:
+    *   **Error Signal**: Calculates the difference between *Predicted State* and *Actual State*.
+    *   **Feedback**:
+        *   *Match*: Delivers coherent, rhythmic stimulation (Reward/Calm).
+        *   *Mismatch*: Delivers high-entropy white noise (Punishment/Stress).
+    *   *Goal*: The BPU physically rewires itself to minimize the "surprise" of noise.
+
+---
+
+> [!NOTE]
+> **Latency**: The biological layer operates on millisecond timescales. While slower than silicon clock cycles, the *massive parallelism* of the reservoir allows for single-shot processing of complex patterns that would require iterative simulation on digital hardware.

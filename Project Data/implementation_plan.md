@@ -1,0 +1,47 @@
+# Implementation Plan - Expanding Project 1X4G Ecosystem
+
+## Goal Description
+Implement the remaining features proposed in the "Expanding Project 1X4G" phase. This includes adding a **Consciousness Monitor (Phi Metric)** to the simulation, creating a **Manufacturing Blueprint** for the BPU hardware, drafting a **Security Protocol** for the bio-digital interface, and expanding the Whitepaper with **Commercial Applications**.
+
+## User Review Required
+> [!NOTE]
+> The "Consciousness Monitor" is a speculative feature based on Integrated Information Theory (IIT). It will visualize a calculated "Phi" value derived from the neural network's complexity and synchrony.
+
+## Proposed Changes
+
+### [Simulation]
+#### [MODIFY] [project_1x4g_simulation.html](file:///C:/Users/kai99/.gemini/antigravity/brain/b02c5aba-23ad-4174-8b3d-70f1bc124898/project_1x4g_simulation.html)
+- **Add Component:** "Consciousness Monitor" panel.
+- **Add Logic:** Calculate a simplified `Phi` metric (Integrated Information) based on:
+    - `Network Synchrony` (variance of spike rates).
+    - `Complexity` (entropy of GRN states).
+- **Visualization:** A real-time graph showing `Phi` fluctuations, with alerts if it crosses a "Sentience Threshold".
+
+### [Documentation & Artifacts]
+#### [NEW] [bpu_manufacturing_blueprint.md](file:///C:/Users/kai99/.gemini/antigravity/brain/b02c5aba-23ad-4174-8b3d-70f1bc124898/bpu_manufacturing_blueprint.md)
+- **Content:** Technical specifications for constructing the "Neural-X CortexBlade".
+    - Microfluidic layout.
+    - MEA (Micro-Electrode Array) fabrication layers.
+    - 3D-printed scaffold materials.
+    - Assembly process flow.
+
+#### [NEW] [bio_quantum_security_protocol.md](file:///C:/Users/kai99/.gemini/antigravity/brain/b02c5aba-23ad-4174-8b3d-70f1bc124898/bio_quantum_security_protocol.md)
+- **Content:** Security measures for the hybrid system.
+    - "Cognitive Firewalls" (preventing unauthorized neural patterns).
+    - "Kill Switches" (chemical termination protocols).
+    - Quantum Encryption (QKD) for neural data.
+
+#### [MODIFY] [project_1x4g_whitepaper.md](file:///C:/Users/kai99/.gemini/antigravity/brain/b02c5aba-23ad-4174-8b3d-70f1bc124898/project_1x4g_whitepaper.md)
+- **Add Section:** "9. Commercial & Industrial Applications".
+    - Autonomous Supply Chain Optimization.
+    - Personalized Genomic Medicine.
+    - Financial Market Prediction (High-Frequency Trading).
+    - Creative AI (Generative Art/Music).
+
+## Verification Plan
+### Automated Tests
+- None (Markdown and HTML changes).
+
+### Manual Verification
+- **Simulation:** Run the simulation and verify the "Consciousness Monitor" graph updates and reacts to system state (e.g., sleep, viral injection).
+- **Artifacts:** Review the new markdown files for completeness and formatting.
