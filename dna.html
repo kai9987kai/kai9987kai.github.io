@@ -1,0 +1,1100 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Standalone DNA Double Helix Simulation (Pseudo‑Atomic)</title>
+  <style>
+    :root{
+      --bg:#0b0d12;
+      --panel:#121622cc;
+      --panelBorder:#2a3246;
+      --text:#e9eefc;
+      --muted:#a9b3cc;
+      --accent:#8bd3ff;
+      --danger:#ff7a7a;
+      --ok:#9affb2;
+    }
+    html,body{height:100%; margin:0; background:var(--bg); color:var(--text); font-family: ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,"Apple Color Emoji","Segoe UI Emoji"; overflow:hidden;}
+    #wrap{position:fixed; inset:0; display:block;}
+    canvas{position:absolute; inset:0; width:100%; height:100%; display:block; cursor:grab;}
+    canvas:active{cursor:grabbing;}
+
+    #ui{
+      position:absolute;
+      top:14px; left:14px;
+      width:min(420px, calc(100vw - 28px));
+      max-height:calc(100vh - 28px);
+      overflow:auto;
+      background:var(--panel);
+      border:1px solid var(--panelBorder);
+      border-radius:14px;
+      padding:14px 14px 12px 14px;
+      box-shadow: 0 10px 30px rgba(0,0,0,.45);
+      backdrop-filter: blur(10px);
+    }
+    #ui h1{
+      font-size:16px; margin:0 0 6px 0; letter-spacing:.2px;
+      display:flex; align-items:center; gap:10px;
+    }
+    #badge{
+      font-size:11px; padding:3px 8px; border-radius:999px;
+      border:1px solid var(--panelBorder);
+      color:var(--muted);
+    }
+    #ui .sub{
+      font-size:12px; color:var(--muted); line-height:1.35;
+      margin:0 0 10px 0;
+    }
+    details{
+      border:1px solid rgba(255,255,255,.08);
+      border-radius:12px;
+      padding:10px 10px 8px 10px;
+      margin:10px 0;
+      background: rgba(0,0,0,.15);
+    }
+    summary{
+      cursor:pointer;
+      list-style:none;
+      font-weight:600;
+      font-size:13px;
+      color:var(--text);
+      outline:none;
+    }
+    summary::-webkit-details-marker{display:none;}
+    .row{display:flex; gap:10px; align-items:center; margin:8px 0;}
+    .row > label{flex: 1; font-size:12px; color:var(--muted);}
+    .row > input[type="range"]{flex: 1.25;}
+    .row > input[type="number"],
+    .row > input[type="text"],
+    .row > select{
+      width: 140px;
+      padding:6px 8px;
+      border-radius:10px;
+      border:1px solid rgba(255,255,255,.12);
+      background: rgba(0,0,0,.28);
+      color: var(--text);
+      outline: none;
+    }
+    .row > input[type="checkbox"]{transform:scale(1.05);}
+    .row .val{
+      width: 58px; text-align:right; font-variant-numeric: tabular-nums;
+      color: var(--text); font-size:12px;
+    }
+    .btnRow{display:flex; gap:10px; flex-wrap:wrap; margin-top:10px;}
+    button{
+      appearance:none; border:1px solid rgba(255,255,255,.14);
+      background: rgba(0,0,0,.25);
+      color: var(--text);
+      padding: 8px 10px;
+      border-radius: 12px;
+      cursor:pointer;
+      font-weight:600;
+      font-size:12px;
+    }
+    button:hover{border-color:rgba(255,255,255,.25);}
+    button.primary{border-color: rgba(139, 211, 255, .45); box-shadow: inset 0 0 0 1px rgba(139, 211, 255, .18);}
+    button.danger{border-color: rgba(255, 122, 122, .45); box-shadow: inset 0 0 0 1px rgba(255, 122, 122, .18);}
+    button.ok{border-color: rgba(154, 255, 178, .45); box-shadow: inset 0 0 0 1px rgba(154, 255, 178, .18);}
+
+    .hint{font-size:12px; color:var(--muted); line-height:1.35; margin:8px 0 0 0;}
+    .legend{display:grid; grid-template-columns: 1fr 1fr; gap:6px; margin-top:8px; font-size:12px; color:var(--muted);}
+    .swatch{display:inline-block; width:10px; height:10px; border-radius:3px; margin-right:6px; vertical-align:middle; border:1px solid rgba(255,255,255,.18);}
+
+    #toast{
+      position:absolute;
+      left:50%; bottom:18px; transform:translateX(-50%);
+      background: rgba(0,0,0,.55);
+      border:1px solid rgba(255,255,255,.12);
+      padding:10px 12px;
+      border-radius:12px;
+      color: var(--text);
+      font-size:12px;
+      opacity:0;
+      pointer-events:none;
+      transition: opacity .2s ease;
+      max-width:min(700px, calc(100vw - 28px));
+      white-space: pre-wrap;
+      text-align:center;
+      backdrop-filter: blur(8px);
+    }
+    #toast.show{opacity:1;}
+
+    a{color:var(--accent); text-decoration:none;}
+    a:hover{text-decoration:underline;}
+    code{font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono","Courier New", monospace; font-size:11.5px; color:#d6def6;}
+    hr{border:none; border-top:1px solid rgba(255,255,255,.08); margin:10px 0;}
+  </style>
+</head>
+<body>
+<div id="wrap">
+  <canvas id="c"></canvas>
+
+  <div id="ui">
+    <h1>DNA Double Helix <span id="badge">Standalone • pseudo‑atomic • offline</span></h1>
+    <p class="sub">
+      Interactive 3D canvas simulation: phosphate + sugar backbones, base “ring” pseudo‑atoms, hydrogen bonds, plus torsion/bend/breath motion.
+      Drag to orbit, scroll to zoom, <kbd>Space</kbd> to pause.
+    </p>
+
+    <details open>
+      <summary>View & Playback</summary>
+      <div class="row"><label>Play</label><input id="play" type="checkbox" checked /><div class="val" id="playVal">On</div></div>
+      <div class="row"><label>Auto‑rotate</label><input id="autorot" type="checkbox" checked /><div class="val" id="autorotVal">On</div></div>
+      <div class="row"><label>Speed</label><input id="speed" type="range" min="0" max="3" step="0.01" value="1" /><div class="val" id="speedVal">1.00×</div></div>
+      <div class="row"><label>Zoom</label><input id="zoom" type="range" min="40" max="260" step="1" value="120" /><div class="val" id="zoomVal">120</div></div>
+      <div class="row"><label>Field of view</label><input id="fov" type="range" min="30" max="90" step="1" value="55" /><div class="val" id="fovVal">55°</div></div>
+      <div class="btnRow">
+        <button class="primary" id="resetView">Reset view</button>
+        <button id="snapshot">Snapshot PNG</button>
+      </div>
+      <p class="hint">Tip: hold <kbd>Shift</kbd> while dragging for slower rotation.</p>
+    </details>
+
+    <details open>
+      <summary>Structure & Detail</summary>
+      <div class="row"><label>Base pairs</label><input id="nbp" type="number" min="6" max="180" step="1" value="36" /></div>
+      <div class="row"><label>Show backbone lines</label><input id="showBackbone" type="checkbox" checked /><div class="val"> </div></div>
+      <div class="row"><label>Show phosphates</label><input id="showP" type="checkbox" checked /><div class="val"> </div></div>
+      <div class="row"><label>Show sugars</label><input id="showS" type="checkbox" checked /><div class="val"> </div></div>
+      <div class="row"><label>Show bases (pseudo‑atoms)</label><input id="showB" type="checkbox" checked /><div class="val"> </div></div>
+      <div class="row"><label>Show H‑bonds</label><input id="showHB" type="checkbox" checked /><div class="val"> </div></div>
+
+      <div class="row"><label>LOD (bases)</label>
+        <select id="baseLod">
+          <option value="full" selected>Full ring points</option>
+          <option value="lite">Lite (half points)</option>
+          <option value="centroids">Centroids only</option>
+        </select>
+      </div>
+
+      <div class="legend">
+        <div><span class="swatch" style="background:#36a2ff"></span>Phosphate (P)</div>
+        <div><span class="swatch" style="background:#52ff9f"></span>Sugar (C1’)</div>
+        <div><span class="swatch" style="background:#15d59b"></span>A</div>
+        <div><span class="swatch" style="background:#ff8a3d"></span>T</div>
+        <div><span class="swatch" style="background:#7d7cff"></span>G</div>
+        <div><span class="swatch" style="background:#ff5ac8"></span>C</div>
+      </div>
+    </details>
+
+    <details>
+      <summary>Motion (torsion / bend / breathing)</summary>
+      <div class="row"><label>Torsion amplitude</label><input id="torsAmp" type="range" min="0" max="12" step="0.1" value="4" /><div class="val" id="torsAmpVal">4.0°</div></div>
+      <div class="row"><label>Torsion wavelength</label><input id="torsWL" type="range" min="4" max="24" step="0.5" value="12" /><div class="val" id="torsWLVal">12.0</div></div>
+
+      <div class="row"><label>Bend amplitude</label><input id="bendAmp" type="range" min="0" max="5" step="0.1" value="1.5" /><div class="val" id="bendAmpVal">1.5Å</div></div>
+      <div class="row"><label>Bend wavelength</label><input id="bendWL" type="range" min="20" max="120" step="1" value="60" /><div class="val" id="bendWLVal">60Å</div></div>
+
+      <div class="row"><label>Breathing amplitude</label><input id="breathAmp" type="range" min="0" max="2" step="0.05" value="0.6" /><div class="val" id="breathAmpVal">0.60Å</div></div>
+      <div class="row"><label>Breathing period</label><input id="breathPer" type="range" min="10" max="120" step="1" value="50" /><div class="val" id="breathPerVal">50f</div></div>
+    </details>
+
+    <details>
+      <summary>Sequence</summary>
+      <div class="row"><label>Strand 1 (A/T/G/C)</label></div>
+      <div class="row">
+        <input id="seq" type="text" style="width:100%" spellcheck="false" />
+      </div>
+      <div class="btnRow">
+        <button id="applySeq" class="primary">Apply</button>
+        <button id="randomSeq">Random</button>
+        <button id="classicSeq">Reset demo</button>
+      </div>
+      <p class="hint">Length sets the base‑pair count (up to 180). Non‑ATGC characters are ignored.</p>
+    </details>
+
+    <details>
+      <summary>Export</summary>
+      <div class="btnRow">
+        <button id="exportPDB" class="ok">Export PDB (current frame)</button>
+        <button id="exportXYZ">Export XYZ (80 frames)</button>
+      </div>
+      <p class="hint">
+        PDB/XYZ here are pseudo‑atomic for visualization (not an MD force‑field topology).
+      </p>
+    </details>
+
+    <hr/>
+    <p class="hint">
+      Notes: This is a geometry‑based visualization “simulation” (not physics MD). Default helix is B‑DNA‑like (~10.5 bp/turn, 3.4 Å rise).
+    </p>
+  </div>
+
+  <div id="toast"></div>
+</div>
+
+<script>
+(() => {
+  "use strict";
+
+  // -----------------------------
+  // Utility helpers
+  // -----------------------------
+  const TAU = Math.PI * 2;
+
+  const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
+  const lerp = (a, b, t) => a + (b - a) * t;
+  const deg2rad = (d) => d * Math.PI / 180;
+
+  function toast(msg, ms=2200){
+    const el = document.getElementById("toast");
+    el.textContent = msg;
+    el.classList.add("show");
+    clearTimeout(toast._t);
+    toast._t = setTimeout(()=> el.classList.remove("show"), ms);
+  }
+
+  function cleanSeq(s){
+    return (s || "")
+      .toUpperCase()
+      .replace(/[^ATGC]/g, "");
+  }
+
+  function complement(seq){
+    const map = {A:"T", T:"A", G:"C", C:"G"};
+    let out = "";
+    for (let i=0;i<seq.length;i++) out += (map[seq[i]] || "N");
+    return out;
+  }
+
+  // -----------------------------
+  // Model parameters (B-DNA-like)
+  // -----------------------------
+  const P = {
+    N_BP: 36,
+    RISE: 3.4,             // Å per base pair
+    BP_PER_TURN: 10.5,
+    R_BACKBONE: 10.0,
+    R_SUGAR: 8.0,
+    GROOVE_OFFSET: deg2rad(-36.0),
+
+    BASE_SEP_MEAN: 6.0,
+    PROP_TWIST: deg2rad(12.0),
+
+    // Motion defaults (can be adjusted live)
+    ROT_SPEED: TAU / 60.0,
+    TORSION_AMP: deg2rad(4.0),
+    TORSION_WAVELEN: 12.0,
+    BEND_AMP: 1.5,
+    BEND_WAVELEN: 60.0,
+    BREATH_AMP: 0.6,
+    BREATH_PERIOD: 50.0
+  };
+
+  function twistRad(){ return TAU / P.BP_PER_TURN; }
+
+  // -----------------------------
+  // Base ring templates (pseudo-atoms)
+  // -----------------------------
+  function polygon(n, r){
+    const pts = [];
+    for (let k=0;k<n;k++){
+      const a = TAU * k / n;
+      pts.push([r*Math.cos(a), r*Math.sin(a), 0]);
+    }
+    return pts;
+  }
+  function hexagon(r=1.35){ return polygon(6, r); }
+  function pentagon(r=1.15){ return polygon(5, r); }
+
+  const BASE_TEMPLATES = {
+    C: hexagon(1.35),
+    T: hexagon(1.35),
+    A: (() => {
+      const h = hexagon(1.35);
+      const p = pentagon(1.15).map(([x,y,z]) => [x+1.7, y, z]);
+      return h.concat(p);
+    })(),
+    G: (() => {
+      const h = hexagon(1.35);
+      const p = pentagon(1.15).map(([x,y,z]) => [x+1.7, y, z]);
+      return h.concat(p);
+    })()
+  };
+
+  const HBONDS = {
+    "AT": 2, "TA": 2,
+    "GC": 3, "CG": 3
+  };
+
+  function rotateAboutXLocal(pt, angle){
+    // pt: [x,y,z]
+    const [x,y,z] = pt;
+    const ca = Math.cos(angle), sa = Math.sin(angle);
+    return [x, y*ca - z*sa, y*sa + z*ca];
+  }
+
+  function unitXY(dx, dy){
+    const n = Math.hypot(dx, dy);
+    if (n < 1e-12) return [1,0,0];
+    return [dx/n, dy/n, 0];
+  }
+
+  // -----------------------------
+  // Simulation state
+  // -----------------------------
+  let seq1 = cleanSeq(("ATGCGTACGTTAGCGATCGATGCTAGCTAGCTAGCT" + "ATGCGTACGTTAGCGATCGATGCTAGCTAGCTAGCT").slice(0, P.N_BP));
+  let seq2 = complement(seq1);
+
+  // View / camera
+  const cam = {
+    azim: deg2rad(35),
+    elev: deg2rad(18),
+    dist: 120,
+    fov: deg2rad(55),
+    targetZ: (P.N_BP - 1) * P.RISE * 0.5
+  };
+
+  // Controls / toggles
+  const vis = {
+    play: true,
+    autorot: true,
+    speed: 1.0,
+
+    showBackbone: true,
+    showP: true,
+    showS: true,
+    showB: true,
+    showHB: true,
+
+    baseLod: "full"
+  };
+
+  // Colors (keep distinct & readable)
+  const COLORS = {
+    bg: "#0b0d12",
+    backbone1: "rgba(255,255,255,.28)",
+    backbone2: "rgba(255,255,255,.22)",
+    hb: "rgba(190,190,190,.35)",
+    phosphate: "#36a2ff",
+    sugar: "#52ff9f",
+    A: "#15d59b",
+    T: "#ff8a3d",
+    G: "#7d7cff",
+    C: "#ff5ac8"
+  };
+
+  // -----------------------------
+  // Canvas setup
+  // -----------------------------
+  const canvas = document.getElementById("c");
+  const ctx = canvas.getContext("2d", { alpha: false });
+
+  let DPR = Math.max(1, Math.min(2.5, window.devicePixelRatio || 1));
+  let W = 0, H = 0;
+
+  function resize(){
+    DPR = Math.max(1, Math.min(2.5, window.devicePixelRatio || 1));
+    W = Math.floor(canvas.clientWidth * DPR);
+    H = Math.floor(canvas.clientHeight * DPR);
+    canvas.width = W;
+    canvas.height = H;
+  }
+  window.addEventListener("resize", resize, {passive:true});
+  resize();
+
+  // -----------------------------
+  // Orbit controls (mouse / touch)
+  // -----------------------------
+  let dragging = false;
+  let lastX = 0, lastY = 0;
+
+  function onPointerDown(e){
+    dragging = true;
+    lastX = e.clientX;
+    lastY = e.clientY;
+    canvas.setPointerCapture(e.pointerId);
+  }
+  function onPointerMove(e){
+    if (!dragging) return;
+    const dx = e.clientX - lastX;
+    const dy = e.clientY - lastY;
+    lastX = e.clientX;
+    lastY = e.clientY;
+
+    const slow = e.shiftKey ? 0.35 : 1.0;
+    cam.azim += dx * 0.006 * slow;
+    cam.elev += dy * 0.006 * slow;
+    cam.elev = clamp(cam.elev, deg2rad(-80), deg2rad(80));
+  }
+  function onPointerUp(e){
+    dragging = false;
+    try{ canvas.releasePointerCapture(e.pointerId); }catch(_){}
+  }
+  function onWheel(e){
+    e.preventDefault();
+    const s = Math.exp(e.deltaY * 0.0012);
+    cam.dist = clamp(cam.dist * s, 40, 260);
+    syncZoomSlider();
+  }
+  canvas.addEventListener("pointerdown", onPointerDown);
+  canvas.addEventListener("pointermove", onPointerMove);
+  canvas.addEventListener("pointerup", onPointerUp);
+  canvas.addEventListener("pointercancel", onPointerUp);
+  canvas.addEventListener("wheel", onWheel, {passive:false});
+
+  // Keyboard shortcuts
+  window.addEventListener("keydown", (e) => {
+    if (e.code === "Space"){
+      e.preventDefault();
+      vis.play = !vis.play;
+      document.getElementById("play").checked = vis.play;
+      document.getElementById("playVal").textContent = vis.play ? "On" : "Off";
+    }
+  });
+
+  // -----------------------------
+  // Projection math
+  // -----------------------------
+  function rotZ(x,y,z,a){
+    const ca = Math.cos(a), sa = Math.sin(a);
+    return [x*ca - y*sa, x*sa + y*ca, z];
+  }
+  function rotX(x,y,z,a){
+    const ca = Math.cos(a), sa = Math.sin(a);
+    return [x, y*ca - z*sa, y*sa + z*ca];
+  }
+
+  function projectPoint(x,y,z){
+    // Translate to center around a target
+    const tz = cam.targetZ;
+    x -= 0; y -= 0; z -= tz;
+
+    // Orbit: rotate world opposite camera angles
+    let p = rotZ(x,y,z, -cam.azim);
+    p = rotX(p[0], p[1], p[2], -cam.elev);
+
+    const zc = p[2] + cam.dist; // camera depth
+    // Perspective projection
+    const focal = (Math.min(W,H) * 0.5) / Math.tan(cam.fov * 0.5);
+    const sx = (p[0] * focal) / zc + W*0.5;
+    const sy = (-p[1] * focal) / zc + H*0.5;
+    return {sx, sy, zc, s: focal/zc};
+  }
+
+  // -----------------------------
+  // Geometry computation (one frame)
+  // -----------------------------
+  function computeGeometry(frame){
+    const N = P.N_BP;
+    const TW = twistRad();
+
+    // breathing factor (dimensionless)
+    const breath = 1.0 + (P.BREATH_AMP / P.BASE_SEP_MEAN) * Math.sin(TAU * frame / P.BREATH_PERIOD);
+    const torsionPhase = TAU * frame / 80.0;
+
+    const P1 = new Array(N);
+    const P2 = new Array(N);
+    const S1 = new Array(N);
+    const S2 = new Array(N);
+
+    // Pseudo-atomic base points
+    const basePts = []; // {x,y,z, baseChar}
+    const hbSegs = [];  // {ax,ay,az,bx,by,bz}
+
+    for (let i=0;i<N;i++){
+      const z = i * P.RISE;
+
+      // bend offsets
+      const bendPhase = TAU * (z / P.BEND_WAVELEN) + TAU * frame / 90.0;
+      const bx = P.BEND_AMP * Math.sin(bendPhase);
+      const by = P.BEND_AMP * Math.cos(bendPhase);
+      const ax = bx, ay = by, az = z;
+
+      // torsion
+      const tors = P.TORSION_AMP * Math.sin(torsionPhase + TAU * i / P.TORSION_WAVELEN);
+      const ang = i * TW + tors;
+
+      const a1 = ang;
+      const a2 = ang + Math.PI + P.GROOVE_OFFSET;
+
+      // backbone (phosphates) and sugars
+      const p1x = ax + P.R_BACKBONE * Math.cos(a1);
+      const p1y = ay + P.R_BACKBONE * Math.sin(a1);
+      const p2x = ax + P.R_BACKBONE * Math.cos(a2);
+      const p2y = ay + P.R_BACKBONE * Math.sin(a2);
+
+      const s1x = ax + P.R_SUGAR * Math.cos(a1);
+      const s1y = ay + P.R_SUGAR * Math.sin(a1);
+      const s2x = ax + P.R_SUGAR * Math.cos(a2);
+      const s2y = ay + P.R_SUGAR * Math.sin(a2);
+
+      P1[i] = [p1x,p1y,az];
+      P2[i] = [p2x,p2y,az];
+      S1[i] = [s1x,s1y,az];
+      S2[i] = [s2x,s2y,az];
+
+      // base-pair local frame
+      const xloc = unitXY(s2x - s1x, s2y - s1y); // [x,y,0]
+      const yloc = [-xloc[1], xloc[0], 0];
+      // zloc is [0,0,1]
+
+      // base separation with breathing & tiny variation
+      const baseSep = P.BASE_SEP_MEAN * breath * (1.0 + 0.10 * Math.sin(TAU*i/17.0 + TAU*frame/60.0));
+
+      const b1c = [ax - xloc[0]*(baseSep/2), ay - xloc[1]*(baseSep/2), az];
+      const b2c = [ax + xloc[0]*(baseSep/2), ay + xloc[1]*(baseSep/2), az];
+
+      const b1 = seq1[i % seq1.length];
+      const b2 = seq2[i % seq2.length];
+
+      // propeller twist (small)
+      let prop = P.PROP_TWIST * Math.sin(TAU*frame/70.0 + TAU*i/19.0);
+      prop *= (i % 2) ? -1 : 1;
+
+      // choose template detail level
+      const tmpl1 = BASE_TEMPLATES[b1];
+      const tmpl2 = BASE_TEMPLATES[b2];
+
+      const lod = vis.baseLod;
+      const step = (lod === "lite") ? 2 : 1;
+
+      if (lod === "centroids"){
+        // just one point per base (centroid)
+        basePts.push({x:b1c[0], y:b1c[1], z:b1c[2], b:b1});
+        basePts.push({x:b2c[0], y:b2c[1], z:b2c[2], b:b2});
+      } else {
+        // Base 1 points
+        for (let j=0;j<tmpl1.length;j+=step){
+          const p = rotateAboutXLocal(tmpl1[j], prop);
+          const gx = b1c[0] + p[0]*xloc[0] + p[1]*yloc[0];
+          const gy = b1c[1] + p[0]*xloc[1] + p[1]*yloc[1];
+          const gz = b1c[2] + p[2];
+          basePts.push({x:gx, y:gy, z:gz, b:b1});
+        }
+        // Base 2 points (flip x-axis so it faces inward)
+        for (let j=0;j<tmpl2.length;j+=step){
+          const p = rotateAboutXLocal(tmpl2[j], -prop);
+          const gx = b2c[0] + p[0]*(-xloc[0]) + p[1]*yloc[0];
+          const gy = b2c[1] + p[0]*(-xloc[1]) + p[1]*yloc[1];
+          const gz = b2c[2] + p[2];
+          basePts.push({x:gx, y:gy, z:gz, b:b2});
+        }
+      }
+
+      // Hydrogen bonds: 2 for AT, 3 for GC (stylized)
+      const key = b1 + b2;
+      const nh = HBONDS[key] || 2;
+      const yoffs = (nh === 2) ? [-0.6, 0.6] : [-0.9, 0.0, 0.9];
+      for (let k=0;k<yoffs.length;k++){
+        const yo = yoffs[k];
+        const axh = b1c[0] + yloc[0]*yo;
+        const ayh = b1c[1] + yloc[1]*yo;
+        const azh = b1c[2];
+        const bxh = b2c[0] + yloc[0]*yo;
+        const byh = b2c[1] + yloc[1]*yo;
+        const bzh = b2c[2];
+        hbSegs.push({ax:axh, ay:ayh, az:azh, bx:bxh, by:byh, bz:bzh});
+      }
+    }
+
+    return {P1,P2,S1,S2, basePts, hbSegs};
+  }
+
+  // -----------------------------
+  // Render
+  // -----------------------------
+  function drawSphere(x, y, r, color){
+    // Simple shaded sphere using a radial gradient
+    const g = ctx.createRadialGradient(x - r*0.35, y - r*0.35, r*0.1, x, y, r);
+    g.addColorStop(0, "rgba(255,255,255,.85)");
+    g.addColorStop(0.22, color);
+    g.addColorStop(1, "rgba(0,0,0,.55)");
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, TAU);
+    ctx.fill();
+  }
+
+  function drawDiamond(x,y,r,color,alpha=1){
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.moveTo(x, y-r);
+    ctx.lineTo(x+r, y);
+    ctx.lineTo(x, y+r);
+    ctx.lineTo(x-r, y);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+  }
+
+  function drawLine(x1,y1,x2,y2, style, width=1.0, dash=null, alpha=1){
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.strokeStyle = style;
+    ctx.lineWidth = width;
+    if (dash) ctx.setLineDash(dash);
+    ctx.beginPath();
+    ctx.moveTo(x1,y1);
+    ctx.lineTo(x2,y2);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  // -----------------------------
+  // UI wiring
+  // -----------------------------
+  const $ = (id) => document.getElementById(id);
+
+  function syncZoomSlider(){
+    $("zoom").value = String(cam.dist);
+    $("zoomVal").textContent = String(Math.round(cam.dist));
+  }
+
+  function syncFovSlider(){
+    $("fov").value = String(Math.round(cam.fov*180/Math.PI));
+    $("fovVal").textContent = String(Math.round(cam.fov*180/Math.PI)) + "°";
+  }
+
+  function setSeqAndCount(newSeq){
+    seq1 = cleanSeq(newSeq);
+    if (seq1.length < 6){
+      toast("Sequence too short — need at least 6 bases.");
+      return false;
+    }
+    if (seq1.length > 180) seq1 = seq1.slice(0,180);
+    seq2 = complement(seq1);
+
+    P.N_BP = seq1.length;
+    $("nbp").value = String(P.N_BP);
+
+    cam.targetZ = (P.N_BP - 1) * P.RISE * 0.5;
+    $("seq").value = seq1;
+    toast(`Applied sequence length ${P.N_BP}.`);
+    return true;
+  }
+
+  // Initialize sequence box
+  $("seq").value = seq1;
+
+  $("play").addEventListener("change", (e)=>{
+    vis.play = e.target.checked;
+    $("playVal").textContent = vis.play ? "On" : "Off";
+  });
+
+  $("autorot").addEventListener("change", (e)=>{
+    vis.autorot = e.target.checked;
+    $("autorotVal").textContent = vis.autorot ? "On" : "Off";
+  });
+
+  $("speed").addEventListener("input", (e)=>{
+    vis.speed = parseFloat(e.target.value);
+    $("speedVal").textContent = vis.speed.toFixed(2) + "×";
+  });
+
+  $("zoom").addEventListener("input", (e)=>{
+    cam.dist = parseFloat(e.target.value);
+    $("zoomVal").textContent = String(Math.round(cam.dist));
+  });
+
+  $("fov").addEventListener("input", (e)=>{
+    cam.fov = deg2rad(parseFloat(e.target.value));
+    $("fovVal").textContent = e.target.value + "°";
+  });
+
+  $("showBackbone").addEventListener("change", (e)=> vis.showBackbone = e.target.checked);
+  $("showP").addEventListener("change", (e)=> vis.showP = e.target.checked);
+  $("showS").addEventListener("change", (e)=> vis.showS = e.target.checked);
+  $("showB").addEventListener("change", (e)=> vis.showB = e.target.checked);
+  $("showHB").addEventListener("change", (e)=> vis.showHB = e.target.checked);
+
+  $("baseLod").addEventListener("change", (e)=> vis.baseLod = e.target.value);
+
+  $("nbp").addEventListener("change", (e)=>{
+    const n = clamp(parseInt(e.target.value || "36", 10), 6, 180);
+    // Update by trimming/expanding current sequence
+    if (seq1.length === n){
+      P.N_BP = n;
+    } else if (seq1.length > n){
+      seq1 = seq1.slice(0,n);
+      seq2 = complement(seq1);
+      P.N_BP = n;
+    } else {
+      // Expand by repeating existing pattern
+      const base = seq1.length ? seq1 : "ATGCAT";
+      while (seq1.length < n) seq1 += base;
+      seq1 = seq1.slice(0,n);
+      seq2 = complement(seq1);
+      P.N_BP = n;
+    }
+    $("seq").value = seq1;
+    cam.targetZ = (P.N_BP - 1) * P.RISE * 0.5;
+    toast(`Base pairs set to ${P.N_BP}.`);
+  });
+
+  // Motion sliders
+  const bindDeg = (id, get, set, fmt) => {
+    const el = $(id);
+    const valEl = $(id + "Val");
+    el.addEventListener("input", (e)=>{
+      const v = parseFloat(e.target.value);
+      set(v);
+      if (valEl) valEl.textContent = fmt(v);
+    });
+    // init
+    if (valEl) valEl.textContent = fmt(get());
+  };
+
+  bindDeg("torsAmp", ()=> (P.TORSION_AMP*180/Math.PI), (v)=> P.TORSION_AMP = deg2rad(v), (v)=> v.toFixed(1) + "°");
+  bindDeg("torsWL", ()=> P.TORSION_WAVELEN, (v)=> P.TORSION_WAVELEN = v, (v)=> v.toFixed(1));
+  bindDeg("bendAmp", ()=> P.BEND_AMP, (v)=> P.BEND_AMP = v, (v)=> v.toFixed(1) + "Å");
+  bindDeg("bendWL", ()=> P.BEND_WAVELEN, (v)=> P.BEND_WAVELEN = v, (v)=> Math.round(v) + "Å");
+  bindDeg("breathAmp", ()=> P.BREATH_AMP, (v)=> P.BREATH_AMP = v, (v)=> v.toFixed(2) + "Å");
+  bindDeg("breathPer", ()=> P.BREATH_PERIOD, (v)=> P.BREATH_PERIOD = v, (v)=> Math.round(v) + "f");
+
+  // Buttons
+  $("resetView").addEventListener("click", ()=>{
+    cam.azim = deg2rad(35);
+    cam.elev = deg2rad(18);
+    cam.dist = 120;
+    cam.fov = deg2rad(55);
+    syncZoomSlider();
+    syncFovSlider();
+    toast("View reset.");
+  });
+
+  $("snapshot").addEventListener("click", ()=>{
+    // Force a redraw first so the snapshot is current
+    drawFrame(lastFrame);
+    const a = document.createElement("a");
+    a.download = "dna_sim_snapshot.png";
+    a.href = canvas.toDataURL("image/png");
+    a.click();
+    toast("Saved snapshot PNG.");
+  });
+
+  $("applySeq").addEventListener("click", ()=>{
+    const s = cleanSeq($("seq").value);
+    if (!s) return toast("No valid A/T/G/C letters found.");
+    setSeqAndCount(s);
+  });
+
+  $("randomSeq").addEventListener("click", ()=>{
+    const n = clamp(parseInt($("nbp").value || "36", 10), 6, 180);
+    const bases = ["A","T","G","C"];
+    let s = "";
+    for (let i=0;i<n;i++) s += bases[(Math.random()*4)|0];
+    setSeqAndCount(s);
+  });
+
+  $("classicSeq").addEventListener("click", ()=>{
+    const demo = cleanSeq(("ATGCGTACGTTAGCGATCGATGCTAGCTAGCTAGCT" + "ATGCGTACGTTAGCGATCGATGCTAGCTAGCTAGCT").slice(0, 36));
+    setSeqAndCount(demo);
+  });
+
+  // Export: PDB / XYZ
+  function pdbLine(serial, name, resn, chain, resi, x, y, z, elem){
+    // fixed width, PDB-ish (HETATM)
+    const pad = (s, n, left=true) => {
+      s = String(s);
+      if (s.length >= n) return s.slice(0,n);
+      const p = " ".repeat(n - s.length);
+      return left ? (s + p) : (p + s);
+    };
+    // Columns: "HETATM", serial(5), name(4), resn(3), chain(1), resi(4), x,y,z (8.3)
+    const sx = pad(x.toFixed(3), 8, false);
+    const sy = pad(y.toFixed(3), 8, false);
+    const sz = pad(z.toFixed(3), 8, false);
+    const line =
+      "HETATM" +
+      pad(serial, 5, false) + " " +
+      pad(name, 4, true) +
+      pad(resn, 3, false) + " " +
+      chain +
+      pad(resi, 4, false) + "    " +
+      sx + sy + sz +
+      "  1.00 20.00          " +
+      pad(elem, 2, false) + "\n";
+    return line;
+  }
+
+  function baseResName(b){
+    return ({A:"DA", T:"DT", G:"DG", C:"DC"})[b] || "DN";
+  }
+
+  function exportPDB(frame){
+    const N = P.N_BP;
+    const TW = twistRad();
+
+    let serial = 1;
+    let out = "";
+
+    // strand 1 chain A, strand 2 chain B
+    const breath = 1.0 + (P.BREATH_AMP / P.BASE_SEP_MEAN) * Math.sin(TAU * frame / P.BREATH_PERIOD);
+    const torsionPhase = TAU * frame / 80.0;
+
+    for (let i=0;i<N;i++){
+      const z = i * P.RISE;
+      const bendPhase = TAU * (z / P.BEND_WAVELEN) + TAU * frame / 90.0;
+      const bx = P.BEND_AMP * Math.sin(bendPhase);
+      const by = P.BEND_AMP * Math.cos(bendPhase);
+      const ax = bx, ay = by, az = z;
+
+      const tors = P.TORSION_AMP * Math.sin(torsionPhase + TAU * i / P.TORSION_WAVELEN);
+      const ang = i * TW + tors;
+
+      const a1 = ang;
+      const a2 = ang + Math.PI + P.GROOVE_OFFSET;
+
+      const p1x = ax + P.R_BACKBONE * Math.cos(a1);
+      const p1y = ay + P.R_BACKBONE * Math.sin(a1);
+      const p2x = ax + P.R_BACKBONE * Math.cos(a2);
+      const p2y = ay + P.R_BACKBONE * Math.sin(a2);
+
+      const s1x = ax + P.R_SUGAR * Math.cos(a1);
+      const s1y = ay + P.R_SUGAR * Math.sin(a1);
+      const s2x = ax + P.R_SUGAR * Math.cos(a2);
+      const s2y = ay + P.R_SUGAR * Math.sin(a2);
+
+      const b1 = seq1[i % seq1.length];
+      const b2 = seq2[i % seq2.length];
+      const resn1 = baseResName(b1);
+      const resn2 = baseResName(b2);
+      const resi = i + 1;
+
+      out += pdbLine(serial++, "P",   resn1, "A", resi, p1x, p1y, az, "P");
+      out += pdbLine(serial++, "C1'", resn1, "A", resi, s1x, s1y, az, "C");
+
+      out += pdbLine(serial++, "P",   resn2, "B", resi, p2x, p2y, az, "P");
+      out += pdbLine(serial++, "C1'", resn2, "B", resi, s2x, s2y, az, "C");
+
+      // Bases (pseudo atoms)
+      const xloc = unitXY(s2x - s1x, s2y - s1y);
+      const yloc = [-xloc[1], xloc[0], 0];
+
+      const baseSep = P.BASE_SEP_MEAN * breath * (1.0 + 0.10 * Math.sin(TAU*i/17.0 + TAU*frame/60.0));
+      const b1c = [ax - xloc[0]*(baseSep/2), ay - xloc[1]*(baseSep/2), az];
+      const b2c = [ax + xloc[0]*(baseSep/2), ay + xloc[1]*(baseSep/2), az];
+
+      let prop = P.PROP_TWIST * Math.sin(TAU*frame/70.0 + TAU*i/19.0);
+      prop *= (i % 2) ? -1 : 1;
+
+      const tmpl1 = BASE_TEMPLATES[b1] || [];
+      const tmpl2 = BASE_TEMPLATES[b2] || [];
+
+      for (let j=0;j<tmpl1.length;j++){
+        const p = rotateAboutXLocal(tmpl1[j], prop);
+        const gx = b1c[0] + p[0]*xloc[0] + p[1]*yloc[0];
+        const gy = b1c[1] + p[0]*xloc[1] + p[1]*yloc[1];
+        const gz = b1c[2] + p[2];
+        out += pdbLine(serial++, "B"+(j+1), resn1, "A", resi, gx, gy, gz, "C");
+      }
+      for (let j=0;j<tmpl2.length;j++){
+        const p = rotateAboutXLocal(tmpl2[j], -prop);
+        const gx = b2c[0] + p[0]*(-xloc[0]) + p[1]*yloc[0];
+        const gy = b2c[1] + p[0]*(-xloc[1]) + p[1]*yloc[1];
+        const gz = b2c[2] + p[2];
+        out += pdbLine(serial++, "B"+(j+1), resn2, "B", resi, gx, gy, gz, "C");
+      }
+    }
+
+    out += "END\n";
+    return out;
+  }
+
+  function downloadText(filename, text){
+    const blob = new Blob([text], {type:"text/plain"});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    a.click();
+    setTimeout(()=> URL.revokeObjectURL(url), 1000);
+  }
+
+  $("exportPDB").addEventListener("click", ()=>{
+    const pdb = exportPDB(lastFrame);
+    downloadText("dna_helix_pseudoatomic.pdb", pdb);
+    toast("Exported PDB (current frame).");
+  });
+
+  $("exportXYZ").addEventListener("click", ()=>{
+    const FR = 80;
+    const N = P.N_BP;
+    toast("Generating XYZ (80 frames)…");
+    // Small async chunking to keep UI responsive
+    let fr = 0;
+    let out = "";
+    const step = () => {
+      const g = computeGeometry(fr);
+      // points: P1,S1,P2,S2, basePts
+      const pts = [];
+      for (let i=0;i<N;i++){ pts.push(["P", ...g.P1[i]]); }
+      for (let i=0;i<N;i++){ pts.push(["C", ...g.S1[i]]); }
+      for (let i=0;i<N;i++){ pts.push(["P", ...g.P2[i]]); }
+      for (let i=0;i<N;i++){ pts.push(["C", ...g.S2[i]]); }
+      for (let i=0;i<g.basePts.length;i++){
+        const bp = g.basePts[i];
+        pts.push(["C", bp.x, bp.y, bp.z]);
+      }
+
+      out += pts.length + "\n";
+      out += "frame " + fr + "\n";
+      for (let i=0;i<pts.length;i++){
+        const p = pts[i];
+        out += `${p[0]} ${p[1].toFixed(5)} ${p[2].toFixed(5)} ${p[3].toFixed(5)}\n`;
+      }
+
+      fr++;
+      if (fr < FR){
+        // chunk every 2 frames
+        if (fr % 2 === 0) setTimeout(step, 0);
+        else step();
+      } else {
+        downloadText("dna_helix_trajectory.xyz", out);
+        toast("Exported XYZ trajectory.");
+      }
+    };
+    step();
+  });
+
+  // -----------------------------
+  // Render loop
+  // -----------------------------
+  let tFrame = 0;         // "frame units"
+  let lastTS = performance.now();
+  let lastFrame = 0;
+
+  function drawFrame(frame){
+    // Clear background
+    ctx.fillStyle = COLORS.bg;
+    ctx.fillRect(0,0,W,H);
+
+    // compute geometry
+    const g = computeGeometry(frame);
+
+    const prims = [];
+
+    // Backbone segments
+    if (vis.showBackbone){
+      for (let i=0;i<P.N_BP-1;i++){
+        const a = g.P1[i], b = g.P1[i+1];
+        prims.push({kind:"line", style:COLORS.backbone1, w:1.15, dash:null, a, b});
+      }
+      for (let i=0;i<P.N_BP-1;i++){
+        const a = g.P2[i], b = g.P2[i+1];
+        prims.push({kind:"line", style:COLORS.backbone2, w:1.0, dash:null, a, b});
+      }
+    }
+
+    // Hydrogen bonds (thin dashed)
+    if (vis.showHB){
+      for (let i=0;i<g.hbSegs.length;i++){
+        const s = g.hbSegs[i];
+        prims.push({kind:"lineHB", style:COLORS.hb, w:0.9, dash:[4,6], a:[s.ax,s.ay,s.az], b:[s.bx,s.by,s.bz]});
+      }
+    }
+
+    // Sugars as diamonds
+    if (vis.showS){
+      for (let i=0;i<P.N_BP;i++){
+        prims.push({kind:"sugar", x:g.S1[i][0], y:g.S1[i][1], z:g.S1[i][2]});
+        prims.push({kind:"sugar", x:g.S2[i][0], y:g.S2[i][1], z:g.S2[i][2]});
+      }
+    }
+
+    // Phosphates as spheres
+    if (vis.showP){
+      for (let i=0;i<P.N_BP;i++){
+        prims.push({kind:"phos", x:g.P1[i][0], y:g.P1[i][1], z:g.P1[i][2]});
+        prims.push({kind:"phos", x:g.P2[i][0], y:g.P2[i][1], z:g.P2[i][2]});
+      }
+    }
+
+    // Bases (pseudo-atoms)
+    if (vis.showB){
+      for (let i=0;i<g.basePts.length;i++){
+        const bp = g.basePts[i];
+        prims.push({kind:"base", x:bp.x, y:bp.y, z:bp.z, b:bp.b});
+      }
+    }
+
+    // Project + assign depth for sorting
+    for (let i=0;i<prims.length;i++){
+      const p = prims[i];
+      if (p.kind === "line" || p.kind === "lineHB"){
+        const pa = projectPoint(p.a[0], p.a[1], p.a[2]);
+        const pb = projectPoint(p.b[0], p.b[1], p.b[2]);
+        p._pa = pa; p._pb = pb;
+        p.depth = (pa.zc + pb.zc) * 0.5;
+      } else {
+        const pr = projectPoint(p.x, p.y, p.z);
+        p._p = pr;
+        p.depth = pr.zc;
+      }
+    }
+
+    // Painter: far -> near (larger zc is farther in our convention because zc includes cam.dist)
+    prims.sort((a,b)=> b.depth - a.depth);
+
+    // Draw
+    for (let i=0;i<prims.length;i++){
+      const p = prims[i];
+      if (p.kind === "line" || p.kind === "lineHB"){
+        const a = p._pa, b = p._pb;
+        const alpha = (p.kind === "lineHB") ? 0.85 : 1.0;
+        drawLine(a.sx, a.sy, b.sx, b.sy, p.style, p.w, p.dash, alpha);
+      } else if (p.kind === "phos"){
+        const pr = p._p;
+        const r = clamp(3.2 * pr.s, 1.2, 9.0);
+        drawSphere(pr.sx, pr.sy, r, COLORS.phosphate);
+      } else if (p.kind === "sugar"){
+        const pr = p._p;
+        const r = clamp(3.0 * pr.s, 1.0, 7.0);
+        drawDiamond(pr.sx, pr.sy, r, COLORS.sugar, 0.95);
+      } else if (p.kind === "base"){
+        const pr = p._p;
+        // tiny pseudo-atoms
+        const r = clamp(1.05 * pr.s, 0.55, 3.0);
+        ctx.globalAlpha = 0.95;
+        ctx.fillStyle = COLORS[p.b] || "rgba(255,255,255,.7)";
+        ctx.beginPath();
+        ctx.arc(pr.sx, pr.sy, r, 0, TAU);
+        ctx.fill();
+        ctx.globalAlpha = 1;
+      }
+    }
+
+    // Subtle vignette for depth
+    const vg = ctx.createRadialGradient(W*0.5, H*0.5, Math.min(W,H)*0.12, W*0.5, H*0.5, Math.min(W,H)*0.62);
+    vg.addColorStop(0, "rgba(0,0,0,0)");
+    vg.addColorStop(1, "rgba(0,0,0,.42)");
+    ctx.fillStyle = vg;
+    ctx.fillRect(0,0,W,H);
+  }
+
+  function tick(ts){
+    const dt = Math.min(0.05, (ts - lastTS) / 1000);
+    lastTS = ts;
+
+    // Convert dt seconds -> "frame units"
+    if (vis.play){
+      tFrame += dt * 25.0 * vis.speed; // ~25 fps timebase
+    }
+
+    if (vis.autorot && !dragging){
+      cam.azim += P.ROT_SPEED * dt * 25.0 * 0.4; // gentle
+    }
+
+    lastFrame = tFrame;
+    drawFrame(tFrame);
+
+    requestAnimationFrame(tick);
+  }
+  requestAnimationFrame(tick);
+
+  // Initial sync
+  $("playVal").textContent = vis.play ? "On" : "Off";
+  $("autorotVal").textContent = vis.autorot ? "On" : "Off";
+  $("speedVal").textContent = vis.speed.toFixed(2) + "×";
+  syncZoomSlider();
+  syncFovSlider();
+
+  toast("Ready. Drag to rotate, scroll to zoom. Space = pause.");
+})();
+</script>
+</body>
+</html>
