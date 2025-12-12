@@ -3,907 +3,623 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>EcoSim v3: Neuro-Hive & Morphology</title>
-
-  <!-- Chart.js -->
+  <title>EcoSim v4: The Ultimate Hybrid</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.5.1/dist/chart.umd.min.js"></script>
-  <!-- TensorFlow.js -->
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.22.0/dist/tf.min.js"></script>
-  <!-- TF.js WebGPU (Optional) -->
-  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-backend-webgpu@4.22.0/dist/tf-backend-webgpu.min.js"></script>
 
   <style>
-    :root {
-      --bg: #0f1115;
-      --panel: rgba(18, 22, 28, 0.9);
-      --border: rgba(255, 255, 255, 0.1);
-      --accent: #00d2ff;
-      --text: #c0c5ce;
-    }
-    html, body {
-      margin: 0; padding: 0;
-      font-family: 'Roboto Mono', monospace;
-      background: var(--bg);
-      color: var(--text);
-      height: 100vh;
-      overflow: hidden;
-      user-select: none;
-    }
-    canvas { display: block; }
-
-    /* UI Overlay Wrapper */
-    .ui-layer {
-      position: absolute;
-      top: 0; left: 0;
-      width: 100%; height: 100%;
-      pointer-events: none;
-      z-index: 10;
-    }
-    .panel {
-      pointer-events: auto;
-      background: var(--panel);
-      backdrop-filter: blur(8px);
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      padding: 12px;
-      margin: 10px;
-      box-shadow: 0 4px 12px rgba(0,0,0,0.4);
-    }
-
-    /* Top Left: Controls */
-    #controls {
-      position: absolute; top: 0; left: 0;
-      width: 260px;
-      font-size: 11px;
-    }
-    #controls h3 { margin: 0 0 8px 0; color: #fff; font-size: 13px; text-transform: uppercase; letter-spacing: 1px; }
-    .ctrl-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px; }
-    input[type=range] { width: 50%; }
-    input[type=number] { width: 40px; background: #222; border: 1px solid #444; color: #fff; border-radius: 3px; }
-    select { background: #222; color: #fff; border: 1px solid #444; border-radius: 3px; width: 100%; margin-bottom: 5px; }
-    button {
-      width: 100%; background: #2a3038; color: var(--accent);
-      border: 1px solid var(--accent); padding: 6px; border-radius: 4px;
-      cursor: pointer; margin-top: 4px; font-weight: bold; transition: 0.2s;
-    }
+    :root { --bg: #0b0d10; --panel: rgba(15, 19, 24, 0.9); --accent: #00d2ff; --text: #c0c5ce; }
+    body { margin: 0; background: var(--bg); color: var(--text); font-family: monospace; overflow: hidden; }
+    canvas { position: absolute; top: 0; left: 0; }
+    
+    /* UI Overlay */
+    .ui { position: absolute; pointer-events: none; width: 100%; height: 100%; z-index: 10; }
+    .panel { pointer-events: auto; background: var(--panel); border: 1px solid rgba(255,255,255,0.1); padding: 10px; border-radius: 6px; backdrop-filter: blur(4px); }
+    
+    #controls { top: 10px; left: 10px; width: 250px; position: absolute; }
+    #stats { top: 10px; right: 10px; width: 220px; position: absolute; }
+    #inspector { bottom: 10px; left: 10px; width: 260px; height: 200px; position: absolute; display: flex; flex-direction: column; }
+    #env-readout { bottom: 10px; right: 10px; position: absolute; text-align: right; }
+    
+    h3 { margin: 0 0 5px 0; font-size: 12px; color: var(--accent); text-transform: uppercase; }
+    .row { display: flex; justify-content: space-between; font-size: 11px; margin-bottom: 4px; }
+    button { width: 100%; background: #222; color: var(--accent); border: 1px solid var(--accent); cursor: pointer; padding: 4px; margin-top: 5px; }
     button:hover { background: var(--accent); color: #000; }
-    .hint { font-size: 10px; opacity: 0.6; margin-top: 8px; line-height: 1.4; }
-
-    /* Top Right: Dashboard */
-    #dashboard {
-      position: absolute; top: 0; right: 0;
-      width: 240px;
-    }
-    .stat-row { display: flex; justify-content: space-between; font-size: 12px; margin-bottom: 3px; }
-    .stat-val { color: #fff; font-weight: bold; }
-    #metricsChart { width: 100%; height: 100px; margin-top: 5px; background: #1a1e24; border-radius: 4px; }
-
-    /* Bottom Left: Brain Inspector */
-    #inspector {
-      position: absolute; bottom: 0; left: 0;
-      width: 260px; height: 240px;
-      display: flex; flex-direction: column;
-    }
-    #inspector canvas {
-      background: #000;
-      border: 1px solid #333;
-      border-radius: 4px;
-      margin-top: auto;
-    }
-    .inspector-header { font-size: 11px; color: var(--accent); margin-bottom: 4px; }
-
-    /* Bottom Right: Performance */
-    #perfPanel {
-      position: absolute; bottom: 0; right: 0;
-      font-size: 10px; text-align: right;
-      opacity: 0.7;
-    }
-
-    /* Pheromone Canvas (Layer 0) */
-    #pheroCanvas { position: absolute; z-index: 0; opacity: 0.6; }
-    /* Main Canvas (Layer 1) */
-    #mainCanvas { position: absolute; z-index: 1; }
+    
+    /* Layering */
+    #pheroCanvas { z-index: 0; opacity: 0.5; }
+    #mainCanvas { z-index: 1; }
   </style>
 </head>
 <body>
 
-  <!-- Layer 0: Pheromones -->
-  <canvas id="pheroCanvas"></canvas>
-  <!-- Layer 1: Agents & Items -->
-  <canvas id="mainCanvas"></canvas>
+<canvas id="pheroCanvas"></canvas>
+<canvas id="mainCanvas"></canvas>
 
-  <div class="ui-layer">
-    <!-- Controls -->
-    <div id="controls" class="panel">
-      <h3>EcoSim v3: Hive Mind</h3>
-      <div class="ctrl-row">
-        <label>Pop Cap</label>
-        <input type="number" id="popCap" value="150">
-      </div>
-      <div class="ctrl-row">
-        <label>Mutation Rate</label>
-        <input type="range" id="mutationRate" min="0" max="100" value="5">
-      </div>
-      <div class="ctrl-row">
-        <label>Time Scale</label>
-        <input type="range" id="timeScale" min="1" max="5" value="1">
-      </div>
-      <label>Pheromone Decay</label>
-      <input type="range" id="pheroDecay" style="width:100%" min="80" max="99" value="96">
-      
-      <select id="backendSelect">
-        <option value="cpu">Backend: CPU (Safe)</option>
-        <option value="webgl" selected>Backend: WebGL (Fast)</option>
-        <option value="webgpu">Backend: WebGPU (Exp)</option>
-      </select>
-
-      <button onclick="resetSim()">RESET WORLD</button>
-      <div class="hint">
-        L-Click: Select Agent / Add Food<br>
-        Shift+Click: Add Predator<br>
-        Ctrl+Click: Add Prey
-      </div>
-    </div>
-
-    <!-- Dashboard -->
-    <div id="dashboard" class="panel">
-      <div class="stat-row"><span>Agents</span><span id="statAgents" class="stat-val">0</span></div>
-      <div class="stat-row" style="color:#4f4;"><span>Herbivores</span><span id="statHerb" class="stat-val">0</span></div>
-      <div class="stat-row" style="color:#f44;"><span>Carnivores</span><span id="statCarn" class="stat-val">0</span></div>
-      <div class="stat-row"><span>Gen #</span><span id="statGen" class="stat-val">0</span></div>
-      <div class="stat-row"><span>Weather</span><span id="statWeather" class="stat-val">Clear</span></div>
-      <canvas id="metricsChart"></canvas>
-    </div>
-
-    <!-- Inspector -->
-    <div id="inspector" class="panel" style="display:none;">
-      <div class="inspector-header">NEURAL MONITOR <span id="inspId"></span></div>
-      <div style="font-size:10px; margin-bottom:4px;">
-        Health: <span id="inspHealth"></span> | Energy: <span id="inspEnergy"></span>
-      </div>
-      <canvas id="brainCanvas" width="230" height="160"></canvas>
-    </div>
-
-    <!-- Perf -->
-    <div id="perfPanel" class="panel">
-      <span id="fps">0 FPS</span> | <span id="tensorCount">0 Tensors</span>
+<div class="ui">
+  <!-- Controls -->
+  <div id="controls" class="panel">
+    <h3>EcoSim v4: Hybrid</h3>
+    <div class="row"><label>Pop Limit</label><input type="number" id="popCap" value="120" style="width:50px"></div>
+    <div class="row"><label>Sim Speed</label><input type="range" id="timeScale" min="1" max="10" value="1"></div>
+    <div class="row"><label>Pheromones</label><input type="checkbox" id="showPhero" checked></div>
+    <button onclick="resetSim()">RESET SIMULATION</button>
+    <div style="font-size:10px; margin-top:8px; opacity:0.7;">
+      Features: PBT Learning, Curiosity, Lidar Vision, Day/Night Cycle, Spatial Hash.
     </div>
   </div>
 
-  <script>
-  (async () => {
-    /* ================= SYSTEM CONFIG ================= */
-    const CONFIG = {
-      // 8 sectors (eyes) * 4 channels (wall, food, threat, friend) + 2 (pheromone) + 3 (internal)
-      // Total Inputs: 37
-      inputDim: 37, 
-      sectors: 8,
-      fovRange: 160,
-      pheroGridSize: 10, // px per grid cell
-      gridCellSize: 60,  // Spatial hash cell size
-    };
+  <!-- Dashboard -->
+  <div id="stats" class="panel">
+    <div class="row"><span>Agents</span><span id="stCount">0</span></div>
+    <div class="row" style="color:#4f4"><span>Herbivores</span><span id="stHerb">0</span></div>
+    <div class="row" style="color:#f44"><span>Carnivores</span><span id="stCarn">0</span></div>
+    <div class="row"><span>Avg Age</span><span id="stAge">0</span></div>
+    <div class="row"><span>Best Policy</span><span id="stBest">ID: -</span></div>
+    <canvas id="chart" height="80"></canvas>
+  </div>
 
-    /* ================= UTILS ================= */
-    const rand = (min, max) => Math.random() * (max - min) + min;
-    const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
-    const vecLen = (x, y) => Math.sqrt(x*x + y*y);
+  <!-- Inspector -->
+  <div id="inspector" class="panel" style="display:none">
+    <h3>Neural Inspector</h3>
+    <div class="row">ID: <span id="inspId"></span></div>
+    <div class="row">State: <span id="inspState"></span></div>
+    <div class="row">Curiosity: <span id="inspCuriosity">0</span></div>
+    <canvas id="brainView" width="240" height="120" style="background:#000; border:1px solid #333; margin-top:auto"></canvas>
+  </div>
+  
+  <!-- Environment Readout -->
+  <div id="env-readout" class="panel">
+    <div style="font-size:14px; font-weight:bold;" id="clock">12:00</div>
+    <div style="font-size:11px;" id="weather">Sunny</div>
+    <div style="font-size:11px;" id="temp">25°C</div>
+  </div>
+</div>
 
-    // Box-Muller Random
-    const randn = () => {
-      let u=0, v=0;
-      while(u===0) u=Math.random(); 
-      while(v===0) v=Math.random();
-      return Math.sqrt(-2.0 * Math.log(u)) * Math.cos(2.0 * Math.PI * v);
+<script>
+(async () => {
+  /* ================= CONFIG & GLOBALS ================= */
+  const CFG = {
+    grid: 60,         // Spatial Hash Cell
+    pGrid: 10,        // Pheromone Resolution
+    fov: 140,         // Vision Range
+    sectors: 8,       // Lidar Rays
+    inputs: 36,       // 8*(Wall,Food,Enemy,Friend) + 4 Phero/State
+    outputs: 2,       // Turn, Speed
+    noveltyCell: 50   // Size of grid for curiosity tracking
+  };
+
+  const cvs = document.getElementById('mainCanvas');
+  const ctx = cvs.getContext('2d', {alpha: false});
+  const pCvs = document.getElementById('pheroCanvas');
+  const pCtx = pCvs.getContext('2d');
+  
+  // Resizing
+  const resize = () => {
+    cvs.width = pCvs.width = window.innerWidth;
+    cvs.height = pCvs.height = window.innerHeight;
+    initGrids();
+  };
+  window.addEventListener('resize', resize);
+
+  /* ================= HELPERS ================= */
+  const rand = (min, max) => Math.random() * (max - min) + min;
+  const clamp = (v, m, M) => Math.max(m, Math.min(M, v));
+  // Standard Normal Variate (Box-Muller)
+  const randn = () => {
+    let u=0,v=0; 
+    while(u===0)u=Math.random(); while(v===0)v=Math.random();
+    return Math.sqrt(-2.0*Math.log(u))*Math.cos(2.0*Math.PI*v);
+  };
+
+  /* ================= SPATIAL HASH (Optimization) ================= */
+  class SpatialHash {
+    constructor(size) { this.size = size; this.map = new Map(); }
+    clear() { this.map.clear(); }
+    key(x, y) { return (Math.floor(x/this.size)) + ',' + (Math.floor(y/this.size)); }
+    add(agent) {
+      const k = this.key(agent.x, agent.y);
+      if(!this.map.has(k)) this.map.set(k, []);
+      this.map.get(k).push(agent);
     }
+    query(x, y) {
+      const cx = Math.floor(x/this.size), cy = Math.floor(y/this.size);
+      let res = [];
+      for(let i=-1; i<=1; i++) for(let j=-1; j<=1; j++) {
+        const k = (cx+i)+','+(cy+j);
+        if(this.map.has(k)) res.push(...this.map.get(k));
+      }
+      return res;
+    }
+  }
+  const spatial = new SpatialHash(CFG.grid);
 
-    /* ================= SETUP CANVAS & TF ================= */
-    const cvs = document.getElementById('mainCanvas');
-    const ctx = cvs.getContext('2d', { alpha: false });
-    const pCvs = document.getElementById('pheroCanvas');
-    const pCtx = pCvs.getContext('2d');
-    const bCvs = document.getElementById('brainCanvas');
-    const bCtx = bCvs.getContext('2d');
+  /* ================= PHEROMONES & CURIOSITY GRIDS ================= */
+  let pData, pW, pH;
+  let visitMap = new Map(); // For Curiosity (Novelty Search)
 
-    const resize = () => {
-      cvs.width = pCvs.width = window.innerWidth;
-      cvs.height = pCvs.height = window.innerHeight;
-      initPheromones();
-    };
-    window.addEventListener('resize', resize);
+  function initGrids() {
+    pW = Math.ceil(cvs.width / CFG.pGrid);
+    pH = Math.ceil(cvs.height / CFG.pGrid);
+    pData = new Float32Array(pW * pH * 2); // [FoodScent, DangerScent]
+    visitMap.clear();
+  }
+  resize();
+
+  function updatePhero() {
+    // Decay
+    for(let i=0; i<pData.length; i++) pData[i] *= 0.97; 
     
-    // UI Elements
-    const el = {
-      agents: document.getElementById('statAgents'),
-      herb: document.getElementById('statHerb'),
-      carn: document.getElementById('statCarn'),
-      gen: document.getElementById('statGen'),
-      weather: document.getElementById('statWeather'),
-      fps: document.getElementById('fps'),
-      tensors: document.getElementById('tensorCount'),
-      inspector: document.getElementById('inspector'),
-      inspId: document.getElementById('inspId'),
-      inspH: document.getElementById('inspHealth'),
-      inspE: document.getElementById('inspEnergy'),
-      backend: document.getElementById('backendSelect'),
-      popCap: document.getElementById('popCap'),
-      mutation: document.getElementById('mutationRate'),
-      timeScale: document.getElementById('timeScale'),
-      pheroDecay: document.getElementById('pheroDecay')
-    };
-
-    let chart;
-    function initChart(){
-      const ctx = document.getElementById('metricsChart').getContext('2d');
-      chart = new Chart(ctx, {
-        type: 'line',
-        data: { labels: [], datasets: [{ label: 'Pop', data: [], borderColor: '#00d2ff', tension: 0.4, borderWidth: 1, pointRadius: 0 }] },
-        options: { 
-          plugins: { legend: {display:false} }, 
-          scales: { x: {display:false}, y: {display:false, min:0} },
-          animation: false,
-          maintainAspectRatio: false
-        }
-      });
-    }
-
-    /* ================= SPATIAL HASHING (OPTIMIZATION) ================= */
-    class SpatialHash {
-      constructor(cellSize) {
-        this.cellSize = cellSize;
-        this.grid = new Map();
-      }
-      key(x, y) {
-        return `${Math.floor(x/this.cellSize)},${Math.floor(y/this.cellSize)}`;
-      }
-      clear() { this.grid.clear(); }
-      insert(agent) {
-        const k = this.key(agent.x, agent.y);
-        if(!this.grid.has(k)) this.grid.set(k, []);
-        this.grid.get(k).push(agent);
-      }
-      // Return agents in 3x3 neighboring cells
-      query(x, y) {
-        const cx = Math.floor(x/this.cellSize);
-        const cy = Math.floor(y/this.cellSize);
-        let found = [];
-        for(let i=-1; i<=1; i++){
-          for(let j=-1; j<=1; j++){
-            const k = `${cx+i},${cy+j}`;
-            if(this.grid.has(k)) found.push(...this.grid.get(k));
-          }
-        }
-        return found;
-      }
-    }
-    const spatial = new SpatialHash(CONFIG.gridCellSize);
-
-    /* ================= PHEROMONE SYSTEM ================= */
-    let pheroGrid = null;
-    let pheroW = 0, pheroH = 0;
-    
-    function initPheromones() {
-      pheroW = Math.ceil(cvs.width / CONFIG.pheroGridSize);
-      pheroH = Math.ceil(cvs.height / CONFIG.pheroGridSize);
-      // R: Food Scent, G: Danger Scent
-      pheroGrid = new Float32Array(pheroW * pheroH * 2); 
-    }
-    resize(); // call once
-
-    function updatePheromones() {
-      // Fade out
-      const decay = parseInt(el.pheroDecay.value) / 100;
-      for(let i=0; i<pheroGrid.length; i++) {
-        pheroGrid[i] *= decay;
-      }
-      // Draw
-      pCtx.clearRect(0,0,pCvs.width, pCvs.height);
-      const imgData = pCtx.createImageData(pheroW, pheroH);
-      const data = imgData.data;
-      
-      for(let i=0; i<pheroW * pheroH; i++) {
-        const food = pheroGrid[i*2];
-        const danger = pheroGrid[i*2+1];
-        if (food > 0.1 || danger > 0.1) {
-          const idx = i*4;
-          data[idx] = Math.min(255, danger * 200);   // R
-          data[idx+1] = Math.min(255, food * 200);   // G
-          data[idx+2] = Math.min(255, (food+danger)*50); // B
-          data[idx+3] = Math.min(100, (food+danger)*80); // Alpha
-        }
-      }
-      // Scale up by drawing to a temporary canvas or using putImageData then drawImage?
-      // For speed, let's just use putImageData to a small offscreen then scale up.
-      // But for simplicity in this single file, we draw direct to offscreen small canvas then scale.
-      const tmpCvs = document.createElement('canvas');
-      tmpCvs.width = pheroW; tmpCvs.height = pheroH;
-      tmpCvs.getContext('2d').putImageData(imgData, 0, 0);
-      
-      pCtx.imageSmoothingEnabled = false;
-      pCtx.drawImage(tmpCvs, 0, 0, pCvs.width, pCvs.height);
-    }
-
-    function addPheromone(x, y, type, amount) {
-      const gx = Math.floor(x / CONFIG.pheroGridSize);
-      const gy = Math.floor(y / CONFIG.pheroGridSize);
-      if(gx < 0 || gx >= pheroW || gy < 0 || gy >= pheroH) return;
-      const idx = (gy * pheroW + gx) * 2 + type;
-      pheroGrid[idx] = Math.min(10.0, pheroGrid[idx] + amount);
-    }
-
-    function samplePheromone(x, y) {
-      const gx = Math.floor(x / CONFIG.pheroGridSize);
-      const gy = Math.floor(y / CONFIG.pheroGridSize);
-      if(gx < 0 || gx >= pheroW || gy < 0 || gy >= pheroH) return [0,0];
-      const idx = (gy * pheroW + gx) * 2;
-      return [pheroGrid[idx], pheroGrid[idx+1]];
-    }
-
-    /* ================= AGENT SYSTEM ================= */
-    class Agent {
-      constructor(x, y, type, genome=null) {
-        this.id = Math.random().toString(36).substr(2,9);
-        this.x = x; this.y = y;
-        this.vx = rand(-1,1); this.vy = rand(-1,1);
-        this.angle = Math.random() * Math.PI * 2;
-        this.type = type; // 0=Herb, 1=Carn
-        this.alive = true;
-        this.age = 0;
-        this.energy = 100;
-        this.health = 100;
-        
-        // Genetics (0.0 - 1.0)
-        this.genome = genome || {
-          speed: rand(0.3, 0.8),
-          size: rand(0.4, 0.8),
-          sense: rand(0.3, 0.9),
-          aggr: type === 1 ? rand(0.6, 1.0) : rand(0.0, 0.4),
-          color: type === 0 ? {h:120, s:80, l:50} : {h:0, s:80, l:50}
-        };
-
-        // Derived stats
-        this.radius = 4 + (this.genome.size * 6);
-        this.maxSpeed = (1.5 - this.genome.size * 0.5) * (1 + this.genome.speed) * 1.5;
-        this.viewDist = CONFIG.fovRange * this.genome.sense;
-
-        // Neural Net (We store weights, model is created on fly or batched)
-        // For individual agents to evolve, we need individual weights.
-        // We will do a simple Forward Pass manually or via TF if batched. 
-        // To support 100s of agents with different brains, we'll use a single class 
-        // with a `predict` method that uses TF.js tidy.
-        
-        this.brain = tf.sequential();
-        this.brain.add(tf.layers.dense({units: 20, inputShape: [CONFIG.inputDim], activation: 'relu'}));
-        this.brain.add(tf.layers.dense({units: 16, activation: 'relu'}));
-        this.brain.add(tf.layers.dense({units: 2, activation: 'tanh'})); // [Turn, Speed]
-        
-        // Mutate logic happening in reproduction
-      }
-
-      async think(inputs) {
-        // inputs is array length 37
-        const outTensor = tf.tidy(() => {
-          const inputTensor = tf.tensor2d([inputs]);
-          return this.brain.predict(inputTensor);
-        });
-        const res = await outTensor.data();
-        outTensor.dispose();
-        return res; // [turn, accel]
-      }
-      
-      mutate(rate) {
-        // Mutate Weights
-        const weights = this.brain.getWeights();
-        const mutated = weights.map(w => {
-          const shape = w.shape;
-          const values = w.dataSync().slice();
-          for(let i=0; i<values.length; i++) {
-            if(Math.random() < 0.05) values[i] += randn() * (rate/50); 
-          }
-          return tf.tensor(values, shape);
-        });
-        this.brain.setWeights(mutated);
-        weights.forEach(w => w.dispose()); // Clean up old
-        mutated.forEach(w => w.dispose()); // Clean up tensor wrappers
-
-        // Mutate Genome
-        const g = this.genome;
-        if(Math.random()<0.1) g.speed = clamp(g.speed + randn()*0.05, 0, 1);
-        if(Math.random()<0.1) g.size = clamp(g.size + randn()*0.05, 0, 1);
-        if(Math.random()<0.1) g.sense = clamp(g.sense + randn()*0.05, 0, 1);
-        if(Math.random()<0.1) g.aggr = clamp(g.aggr + randn()*0.05, 0, 1);
-        
-        // Color Shift
-        g.color.l = clamp(g.color.l + rand(-5,5), 30, 80);
-      }
-
-      copy() {
-        // Create child
-        const child = new Agent(this.x, this.y, this.type, JSON.parse(JSON.stringify(this.genome)));
-        
-        // Copy weights
-        const oldW = this.brain.getWeights();
-        const newW = oldW.map(w => w.clone());
-        child.brain.setWeights(newW);
-        oldW.forEach(w => w.dispose()); // clean wrapper
-        newW.forEach(w => w.dispose()); // clean wrapper
-        
-        return child;
-      }
-      
-      dispose() {
-        this.brain.dispose();
-      }
-    }
-
-    /* ================= WORLD STATE ================= */
-    let agents = [];
-    let food = [];
-    let selectedId = null;
-    let frameCount = 0;
-    let generation = 1;
-    let weather = 0; // 0 sun, 1 rain
-
-    function spawn(n=10) {
-      for(let i=0; i<n; i++) {
-        agents.push(new Agent(rand(20, cvs.width-20), rand(20, cvs.height-20), Math.random()>0.8?1:0));
-      }
+    // Render
+    if (!document.getElementById('showPhero').checked) {
+       pCtx.clearRect(0,0,pCvs.width,pCvs.height); return;
     }
     
-    // Add food
-    for(let i=0; i<60; i++) food.push({x:rand(0,window.innerWidth), y:rand(0,window.innerHeight)});
-
-    /* ================= SENSORS & VISION ================= */
-    function getSensors(a) {
-      // 8 Sectors. Each sector: [WallDist, FoodDist, ThreatDist, FriendDist]
-      // Values normalized 0..1 (1 = close, 0 = far/none)
-      const sectors = new Float32Array(CONFIG.sectors * 4);
-      const anglePerSector = (Math.PI * 2) / CONFIG.sectors;
-
-      // Reset
-      for(let i=0; i<sectors.length; i++) sectors[i] = 0;
-
-      // 1. Check Walls
-      for(let i=0; i<CONFIG.sectors; i++) {
-        const th = a.angle + i * anglePerSector;
-        const dx = Math.cos(th); 
-        const dy = Math.sin(th);
-        // Raycast to wall
-        let d = a.viewDist;
-        // Simple bounding box checks for wall distance in that direction
-        // (Approximation for performance)
-        if (dx > 0) d = Math.min(d, (cvs.width - a.x)/dx);
-        else if (dx < 0) d = Math.min(d, (0 - a.x)/dx);
-        if (dy > 0) d = Math.min(d, (cvs.height - a.y)/dy);
-        else if (dy < 0) d = Math.min(d, (0 - a.y)/dy);
-        
-        sectors[i*4 + 0] = 1 - clamp(d / a.viewDist, 0, 1);
-      }
-
-      // 2. Check Entities (using Spatial Hash)
-      const nearby = spatial.query(a.x, a.y);
-      const rSq = a.viewDist * a.viewDist;
-
-      for (const other of nearby) {
-        if (other === a || !other.alive) continue;
-        const dx = other.x - a.x;
-        const dy = other.y - a.y;
-        const distSq = dx*dx + dy*dy;
-        
-        if (distSq < rSq) {
-          const dist = Math.sqrt(distSq);
-          // Angle to target relative to agent heading
-          let angleTo = Math.atan2(dy, dx) - a.angle;
-          // Normalize to 0..2PI
-          while(angleTo < 0) angleTo += Math.PI*2;
-          while(angleTo >= Math.PI*2) angleTo -= Math.PI*2;
-          
-          const sectorIdx = Math.floor(angleTo / anglePerSector) % CONFIG.sectors;
-          const val = 1 - (dist / a.viewDist);
-
-          // Type
-          if (a.type === 0 && other.type === 1) {
-            // Predator!
-             sectors[sectorIdx*4 + 2] = Math.max(sectors[sectorIdx*4 + 2], val);
-          } else if (a.type === 1 && other.type === 0) {
-            // Food (Prey)!
-             sectors[sectorIdx*4 + 1] = Math.max(sectors[sectorIdx*4 + 1], val);
-          } else if (a.type === other.type) {
-            // Friend
-             sectors[sectorIdx*4 + 3] = Math.max(sectors[sectorIdx*4 + 3], val);
-          }
-        }
-      }
-
-      // 3. Check Food
-      for (const f of food) {
-        const dx = f.x - a.x;
-        const dy = f.y - a.y;
-        if (Math.abs(dx) > a.viewDist || Math.abs(dy) > a.viewDist) continue;
-        const dSq = dx*dx + dy*dy;
-        if (dSq < rSq) {
-           const dist = Math.sqrt(dSq);
-           let angleTo = Math.atan2(dy, dx) - a.angle;
-           while(angleTo < 0) angleTo += Math.PI*2;
-           while(angleTo >= Math.PI*2) angleTo -= Math.PI*2;
-           const sectorIdx = Math.floor(angleTo / anglePerSector) % CONFIG.sectors;
-           
-           // If herbivore, this is food channel
-           if(a.type === 0) {
-              sectors[sectorIdx*4 + 1] = Math.max(sectors[sectorIdx*4 + 1], 1 - dist/a.viewDist);
-           }
-        }
-      }
-
-      // 4. Pheromones (At current location)
-      const [pFood, pDanger] = samplePheromone(a.x, a.y);
-
-      // 5. Internal State
-      const state = [
-        a.energy / 100,
-        a.health / 100,
-        Math.sin(frameCount * 0.01) // Clock
-      ];
-
-      return [...sectors, pFood/5, pDanger/5, ...state];
-    }
-
-    /* ================= MAIN LOOP ================= */
-    async function simStep() {
-      // Manage population
-      const popCap = parseInt(el.popCap.value);
-      if (agents.length < 20) spawn(1);
-      
-      // Update Spatial Hash
-      spatial.clear();
-      agents.forEach(a => { if(a.alive) spatial.insert(a); });
-
-      // Weather logic
-      if(frameCount % 1000 === 0) weather = Math.random() > 0.8 ? 1 : 0;
-      el.weather.innerText = weather ? "Rain (Scent Decays Fast)" : "Clear";
-
-      // 1. THINK & MOVE
-      // (Batching would be better, but doing sequential for code clarity/genetic diversity)
-      for (const a of agents) {
-        if (!a.alive) continue;
-        
-        // Decay
-        a.energy -= 0.15 + (a.genome.size * 0.1) + (a.genome.speed * 0.1);
-        a.age++;
-        
-        // Vision
-        const inputs = getSensors(a);
-        
-        // Decide
-        const [turn, speed] = await a.think(inputs);
-        
-        // Store inputs/outputs for Inspector if selected
-        if (a.id === selectedId) {
-            drawInspector(a, inputs, [turn, speed]);
-        }
-
-        // Apply Physics
-        a.angle += turn * 0.3; // Turning rate
-        const spd = clamp(speed, -0.2, 1) * a.maxSpeed;
-        
-        // Terrain Modifiers
-        let mod = 1;
-        if (weather === 1) mod = 0.8; // Rain slows down
-        
-        a.vx = Math.cos(a.angle) * spd * mod;
-        a.vy = Math.sin(a.angle) * spd * mod;
-        
-        a.x += a.vx; 
-        a.y += a.vy;
-
-        // Boundaries
-        if (a.x < 0) a.x = cvs.width; if (a.x > cvs.width) a.x = 0;
-        if (a.y < 0) a.y = cvs.height; if (a.y > cvs.height) a.y = 0;
-
-        // Pheromone Dropping
-        if (frameCount % 10 === 0) {
-            if (a.type === 0 && a.energy > 80) addPheromone(a.x, a.y, 0, 0.5); // "Food here"
-            if (a.health < 90) addPheromone(a.x, a.y, 1, 1.0); // "Danger!"
-        }
-      }
-
-      // 2. INTERACT (Collision, Eating)
-      // Re-query spatial hash for interactions
-      for (const a of agents) {
-        if (!a.alive) continue;
-
-        // Herbivore Eat
-        if (a.type === 0) {
-          for (let i = food.length - 1; i >= 0; i--) {
-             const f = food[i];
-             const dx = a.x - f.x, dy = a.y - f.y;
-             if (dx*dx + dy*dy < (a.radius + 4)**2) {
-               a.energy = Math.min(100, a.energy + 30);
-               food.splice(i, 1);
-               // Leave strong scent
-               addPheromone(a.x, a.y, 0, 2.0);
-             }
-          }
-        }
-
-        // Carnivore Hunt
-        if (a.type === 1) {
-          const neighbors = spatial.query(a.x, a.y);
-          for (const n of neighbors) {
-            if (n !== a && n.alive && n.type === 0) {
-              const dist = Math.hypot(n.x - a.x, n.y - a.y);
-              if (dist < a.radius + n.radius + 2) {
-                 // Combat Roll
-                 const dmg = 20 * (1 + a.genome.aggr);
-                 n.health -= dmg;
-                 n.energy -= 10;
-                 a.energy += 20;
-                 // Visual blood/scent
-                 addPheromone(n.x, n.y, 1, 3.0);
-                 
-                 if (n.health <= 0) {
-                   n.alive = false;
-                   a.energy += 50; // Big meal
-                   a.health = Math.min(100, a.health + 10);
-                 }
-              }
-            }
-          }
-        }
-
-        // Starvation / Death
-        if (a.energy <= 0) a.health -= 1;
-        if (a.health <= 0) a.alive = false;
-
-        // Reproduction
-        if (a.alive && a.energy > 90 && agents.length < popCap) {
-           if (Math.random() < 0.02) { // Small chance per frame if healthy
-              a.energy -= 40;
-              const child = a.copy();
-              child.mutate(parseInt(el.mutation.value));
-              child.x += rand(-10, 10);
-              child.y += rand(-10, 10);
-              agents.push(child);
-           }
-        }
-      }
-
-      // 3. CLEANUP
-      agents = agents.filter(a => {
-         if(!a.alive) { a.dispose(); return false; }
-         return true;
-      });
-
-      // Food Regen
-      if (food.length < 80 && Math.random() < 0.1) {
-        food.push({x:rand(0,cvs.width), y:rand(0,cvs.height)});
-      }
-
-      updatePheromones();
-      draw();
-      updateStats();
-      frameCount++;
-    }
-
-    /* ================= RENDERER ================= */
-    function draw() {
-      // Clear
-      ctx.clearRect(0,0,cvs.width, cvs.height);
-
-      // Draw Food
-      ctx.fillStyle = '#4f4';
-      for(const f of food) {
-        ctx.beginPath(); ctx.arc(f.x, f.y, 2, 0, 7); ctx.fill();
-      }
-
-      // Draw Agents
-      for(const a of agents) {
-        const r = a.radius;
-        ctx.save();
-        ctx.translate(a.x, a.y);
-        ctx.rotate(a.angle);
-
-        // Body Color based on genome
-        const col = a.genome.color;
-        // Selection Highlight
-        if (a.id === selectedId) {
-          ctx.shadowBlur = 15; ctx.shadowColor = '#fff';
-          ctx.strokeStyle = '#fff'; ctx.lineWidth = 2;
-          ctx.beginPath(); ctx.arc(0,0, r+5, 0, 7); ctx.stroke();
-        }
-
-        ctx.fillStyle = `hsl(${col.h}, ${col.s}%, ${col.l}%)`;
-        
-        // Morphology: Body Shape
-        ctx.beginPath();
-        // Spikes for aggression
-        if (a.genome.aggr > 0.5) {
-            const spikes = 3 + Math.floor(a.genome.aggr * 5);
-            for(let i=0; i<spikes*2; i++) {
-                const angle = (Math.PI*2 * i) / (spikes*2);
-                const rad = i%2===0 ? r : r + (a.genome.aggr * 6);
-                ctx.lineTo(Math.cos(angle)*rad, Math.sin(angle)*rad);
-            }
-        } else {
-            ctx.arc(0, 0, r, 0, 7);
-        }
-        ctx.fill();
-
-        // Eyes (Vision Range Indicator - faint)
-        if (a.id === selectedId) {
-             ctx.fillStyle = 'rgba(255,255,255,0.05)';
-             ctx.beginPath(); ctx.moveTo(0,0);
-             ctx.arc(0,0, a.viewDist, -0.5, 0.5);
-             ctx.fill();
-        }
-        
-        // Tail for Speed
-        if (a.genome.speed > 0.5) {
-            ctx.beginPath();
-            ctx.moveTo(-r, 0);
-            ctx.lineTo(-r - (a.genome.speed*15), 0);
-            ctx.strokeStyle = ctx.fillStyle;
-            ctx.lineWidth = 2;
-            ctx.stroke();
-        }
-
-        ctx.restore();
+    const img = pCtx.createImageData(pW, pH);
+    for(let i=0; i<pW*pH; i++) {
+      const f = pData[i*2], d = pData[i*2+1];
+      if(f>0.1 || d>0.1) {
+        const idx = i*4;
+        img.data[idx] = Math.min(255, d*200);   // R (Danger)
+        img.data[idx+1] = Math.min(255, f*200); // G (Food)
+        img.data[idx+2] = Math.min(255, (f+d)*50); // B
+        img.data[idx+3] = Math.min(120, (f+d)*100); // Alpha
       }
     }
+    // Draw scaled
+    const tC = document.createElement('canvas'); tC.width=pW; tC.height=pH;
+    tC.getContext('2d').putImageData(img,0,0);
+    pCtx.clearRect(0,0,pCvs.width,pCvs.height);
+    pCtx.drawImage(tC, 0, 0, pCvs.width, pCvs.height);
+  }
 
-    /* ================= INSPECTOR UI ================= */
-    function drawInspector(agent, inputs, outputs) {
-      if (el.inspector.style.display === 'none') el.inspector.style.display = 'flex';
-      
-      el.inspId.innerText = agent.type===0 ? "HERBIVORE" : "PREDATOR";
-      el.inspH.innerText = agent.health.toFixed(0);
-      el.inspE.innerText = agent.energy.toFixed(0);
-
-      // Draw Brain Visualization
-      const w = bCvs.width, h = bCvs.height;
-      bCtx.fillStyle = '#000'; bCtx.fillRect(0,0,w,h);
-      
-      // Draw Vision (Sectors)
-      const cx = 40, cy = h/2;
-      const rad = 30;
-      
-      bCtx.strokeStyle = '#333';
-      bCtx.beginPath(); bCtx.arc(cx,cy, rad, 0, 7); bCtx.stroke();
-      
-      // Draw 8 sectors
-      const arc = (Math.PI*2)/8;
-      for(let i=0; i<8; i++) {
-        // Find max activation in this sector
-        const base = i*4;
-        const val = Math.max(inputs[base], inputs[base+1], inputs[base+2], inputs[base+3]);
-        
-        if (val > 0.1) {
-           bCtx.fillStyle = inputs[base+1] > 0.1 ? '#0f0' : (inputs[base+2] > 0.1 ? '#f00' : '#888');
-           bCtx.beginPath();
-           bCtx.moveTo(cx,cy);
-           bCtx.arc(cx,cy, rad*val, i*arc, (i+1)*arc);
-           bCtx.fill();
-        }
-      }
-
-      // Draw Network Flow (simplified)
-      // Inputs (Column 1) -> Hidden (Column 2) -> Output (Column 3)
-      const drawNodes = (x, count, activations, color) => {
-         const space = h / (count+1);
-         for(let i=0; i<count; i++) {
-             const val = activations ? activations[i] : 0.1;
-             bCtx.fillStyle = color || `rgba(0, 210, 255, ${Math.abs(val)})`;
-             bCtx.beginPath(); bCtx.arc(x, space*(i+1), 3, 0, 7); bCtx.fill();
-         }
-      };
-
-      // Just visual placeholders for hidden layer as we don't pull internal tensor state every frame for perf
-      drawNodes(100, 10, null, '#444'); 
-      
-      // Outputs
-      const turn = outputs[0]; // -1 to 1
-      const acc = outputs[1];  // -1 to 1
-      
-      // Turn Bar
-      bCtx.fillStyle = '#fff'; bCtx.fillText("Turn", 150, 40);
-      bCtx.fillStyle = '#333'; bCtx.fillRect(150, 50, 60, 10);
-      bCtx.fillStyle = turn > 0 ? '#0ff' : '#f0f';
-      bCtx.fillRect(180, 50, turn*30, 10);
-      
-      // Accel Bar
-      bCtx.fillStyle = '#fff'; bCtx.fillText("Gas", 150, 80);
-      bCtx.fillStyle = '#333'; bCtx.fillRect(150, 90, 60, 10);
-      bCtx.fillStyle = '#0f0';
-      bCtx.fillRect(180, 90, acc*30, 10);
+  function addScent(x, y, type, val) {
+    const gx=Math.floor(x/CFG.pGrid), gy=Math.floor(y/CFG.pGrid);
+    if(gx>=0 && gx<pW && gy>=0 && gy<pH) {
+      const i = (gy*pW + gx)*2 + type;
+      pData[i] = Math.min(10, pData[i] + val);
     }
+  }
 
-    /* ================= INTERACTION ================= */
-    cvs.addEventListener('mousedown', e => {
-      const rect = cvs.getBoundingClientRect();
-      const x = e.clientX - rect.left;
-      const y = e.clientY - rect.top;
-      
-      // Selection
-      let clickedAgent = null;
-      for(const a of agents) {
-        if(Math.hypot(a.x-x, a.y-y) < a.radius + 10) {
-           clickedAgent = a; break;
-        }
-      }
+  /* ================= PBT (POPULATION BASED TRAINING) ================= */
+  // We keep a "Policy Bank" of the best weights. New agents borrow from this bank.
+  const POLICY_BANK_SIZE = 5;
+  let policyBank = []; // Array of {weights: Tensor[], score: num}
 
-      if(clickedAgent) {
-        selectedId = clickedAgent.id;
-      } else {
-        selectedId = null;
-        el.inspector.style.display = 'none';
-        
-        // Add Entites
-        if (e.shiftKey) { // Add Predator
-           const a = new Agent(x, y, 1);
-           a.energy = 150;
-           agents.push(a);
-        } else if (e.ctrlKey) { // Add Prey
-           agents.push(new Agent(x, y, 0));
-        } else { // Add Food
-           food.push({x, y});
-        }
-      }
-    });
-
-    window.resetSim = () => {
-       agents.forEach(a => a.dispose());
-       agents = [];
-       food = [];
-       initPheromones();
-       spawn(30);
-       frameCount = 0;
-       generation = 1;
-       initChart();
-    };
-
-    function updateStats() {
-       if (frameCount % 60 === 0) {
-         el.agents.innerText = agents.length;
-         el.herb.innerText = agents.filter(a=>a.type===0).length;
-         el.carn.innerText = agents.filter(a=>a.type===1).length;
-         el.gen.innerText = generation; // Simplified generation tracking
-         el.tensors.innerText = tf.memory().numTensors + ' Tensors';
-         
-         // Chart
-         if (chart.data.labels.length > 50) {
-             chart.data.labels.shift();
-             chart.data.datasets[0].data.shift();
-         }
-         chart.data.labels.push(frameCount);
-         chart.data.datasets[0].data.push(agents.length);
-         chart.update();
+  function addToBank(brain, score) {
+    if (policyBank.length < POLICY_BANK_SIZE) {
+       policyBank.push({weights: brain.getWeights().map(w=>w.clone()), score});
+    } else {
+       // Replace worst if better
+       policyBank.sort((a,b) => a.score - b.score);
+       if (score > policyBank[0].score) {
+          policyBank[0].weights.forEach(w=>w.dispose());
+          policyBank[0] = {weights: brain.getWeights().map(w=>w.clone()), score};
        }
     }
+  }
 
-    /* ================= RUN ================= */
-    await tf.ready();
-    el.backend.addEventListener('change', async (e) => {
-       await tf.setBackend(e.target.value);
-    });
-
-    initChart();
-    spawn(40);
-    
-    let lastTime = 0;
-    function loop(t) {
-      const dt = t - lastTime;
-      lastTime = t;
-      el.fps.innerText = Math.round(1000/dt) + " FPS";
+  /* ================= AGENT ================= */
+  class Agent {
+    constructor(x, y, type, brainWeights = null) {
+      this.id = Math.random().toString(36).substr(2,5);
+      this.x = x; this.y = y;
+      this.type = type; // 0=Herb, 1=Carn
+      this.angle = rand(0, Math.PI*2);
+      this.vx = 0; this.vy = 0;
       
-      const loops = parseInt(el.timeScale.value);
-      for(let i=0; i<loops; i++) {
-         simStep();
+      // Stats
+      this.energy = 100;
+      this.health = 100;
+      this.age = 0;
+      this.curiosityScore = 0;
+      
+      // Genome (Morphology)
+      this.genes = {
+        speed: rand(0.5, 1.2),
+        size: rand(0.5, 1.2),
+        aggr: type===1 ? rand(0.5,1) : rand(0,0.3),
+        color: type===0 ? {h:110,s:80} : {h:0,s:90}
+      };
+      
+      this.radius = 5 + this.genes.size*5;
+      
+      // Brain
+      this.brain = tf.sequential();
+      this.brain.add(tf.layers.dense({units: 16, inputShape:[CFG.inputs], activation:'relu'}));
+      this.brain.add(tf.layers.dense({units: 16, activation:'relu'}));
+      this.brain.add(tf.layers.dense({units: CFG.outputs, activation:'tanh'})); // Turn, Speed
+      
+      if (brainWeights) {
+        // Inherit
+        const mutated = brainWeights.map(w => {
+           return tf.tidy(() => w.add(tf.randomNormal(w.shape, 0, 0.05)));
+        });
+        this.brain.setWeights(mutated);
+        mutated.forEach(t=>t.dispose());
+      } else if (policyBank.length > 0 && Math.random() < 0.7) {
+        // PBT: Borrow from best
+        const donor = policyBank[Math.floor(Math.random()*policyBank.length)];
+        const copy = donor.weights.map(w=>w.clone());
+        // Slight mutation
+        const mutated = copy.map(w => {
+           const res = tf.tidy(() => w.add(tf.randomNormal(w.shape, 0, 0.02)));
+           w.dispose(); return res;
+        });
+        this.brain.setWeights(mutated);
+        mutated.forEach(t=>t.dispose());
+      }
+    }
+
+    async think(envData) {
+      // 1. SENSORS (Lidar)
+      // 8 Rays. Each returns [Wall, Food, Danger, Friend]
+      const sensors = new Float32Array(CFG.inputs);
+      const angleStep = (Math.PI*2)/CFG.sectors;
+      
+      // Apply Environment (Night reduces vision)
+      const currentVision = CFG.fov * envData.lightLevel * (this.genes.size > 0.8 ? 1.2 : 1.0);
+      
+      // Raycast logic
+      const nearby = spatial.query(this.x, this.y);
+      
+      for(let i=0; i<CFG.sectors; i++) {
+        const th = this.angle + i*angleStep;
+        const dx = Math.cos(th), dy = Math.sin(th);
+        
+        let wallDist = 1.0;
+        // Wall check (simple box)
+        if(dx>0) wallDist = Math.min(wallDist, (cvs.width-this.x)/(dx*currentVision));
+        else if(dx<0) wallDist = Math.min(wallDist, (0-this.x)/(dx*currentVision));
+        if(dy>0) wallDist = Math.min(wallDist, (cvs.height-this.y)/(dy*currentVision));
+        else if(dy<0) wallDist = Math.min(wallDist, (0-this.y)/(dy*currentVision));
+        
+        sensors[i*4] = 1 - clamp(Math.abs(wallDist), 0, 1);
+        
+        // Entity Check
+        let fDist=0, dDist=0, frDist=0;
+        
+        for(let e of nearby) {
+          if(e === this || !e.alive) continue;
+          const ex = e.x-this.x, ey = e.y-this.y;
+          const d2 = ex*ex + ey*ey;
+          if(d2 > currentVision*currentVision) continue;
+          
+          // Angle check (is it in this sector?)
+          let angTo = Math.atan2(ey, ex) - this.angle;
+          while(angTo < 0) angTo += Math.PI*2;
+          while(angTo >= Math.PI*2) angTo -= Math.PI*2;
+          
+          // Rough sector check
+          const secIdx = Math.floor(angTo/angleStep) % CFG.sectors;
+          if (secIdx !== i) continue;
+          
+          const val = 1 - (Math.sqrt(d2)/currentVision);
+          
+          if(this.type === 0) { // Herbivore
+             if(e.type===1) dDist = Math.max(dDist, val);
+             else frDist = Math.max(frDist, val);
+          } else { // Carnivore
+             if(e.type===0) fDist = Math.max(fDist, val);
+             else frDist = Math.max(frDist, val);
+          }
+        }
+        
+        // Food items (Global list, optimized if grid implemented for items, iterating all for simplicity here < 100 items)
+        if (this.type===0) {
+           for(let f of foods) {
+              const fx = f.x-this.x, fy = f.y-this.y;
+              if (fx*fx+fy*fy < currentVision*currentVision) {
+                 let angTo = Math.atan2(fy, fx) - this.angle;
+                 while(angTo < 0) angTo += Math.PI*2;
+                 while(angTo >= Math.PI*2) angTo -= Math.PI*2;
+                 if ((Math.floor(angTo/angleStep)%CFG.sectors) === i) {
+                    fDist = Math.max(fDist, 1 - Math.sqrt(fx*fx+fy*fy)/currentVision);
+                 }
+              }
+           }
+        }
+        
+        sensors[i*4 + 1] = fDist;
+        sensors[i*4 + 2] = dDist;
+        sensors[i*4 + 3] = frDist;
       }
       
-      requestAnimationFrame(loop);
-    }
-    requestAnimationFrame(loop);
+      // Pheromones (Smell)
+      const gx=Math.floor(this.x/CFG.pGrid), gy=Math.floor(this.y/CFG.pGrid);
+      let smF=0, smD=0;
+      if(gx>=0 && gx<pW && gy>=0 && gy<pH) {
+        const idx = (gy*pW+gx)*2;
+        smF = pData[idx]; smD = pData[idx+1];
+      }
+      sensors[32] = clamp(smF/5,0,1);
+      sensors[33] = clamp(smD/5,0,1);
+      sensors[34] = this.energy/100;
+      sensors[35] = Math.sin(envData.time);
 
-  })();
-  </script>
+      // 2. INFERENCE
+      const output = tf.tidy(() => {
+         return this.brain.predict(tf.tensor2d([sensors]));
+      });
+      const data = await output.data();
+      output.dispose();
+      
+      return { turn: data[0], speed: data[1], sensors };
+    }
+
+    applyPhysics(turn, speed, env) {
+      this.angle += turn * 0.4;
+      const baseSpd = (this.genes.speed * 2.5) * env.tempMod;
+      const fwd = clamp(speed, 0, 1) * baseSpd;
+      
+      this.vx = Math.cos(this.angle)*fwd;
+      this.vy = Math.sin(this.angle)*fwd;
+      
+      this.x += this.vx; this.y += this.vy;
+      
+      // Bounce
+      if(this.x<0||this.x>cvs.width) { this.x=clamp(this.x,0,cvs.width); this.angle = Math.PI - this.angle; }
+      if(this.y<0||this.y>cvs.height) { this.y=clamp(this.y,0,cvs.height); this.angle = -this.angle; }
+      
+      // Curiosity Reward (Novelty)
+      const ck = Math.floor(this.x/CFG.noveltyCell)+','+Math.floor(this.y/CFG.noveltyCell);
+      if (!visitMap.has(ck)) visitMap.set(ck, 0);
+      const visits = visitMap.get(ck);
+      if (visits < 5) {
+         this.curiosityScore += 1;
+         this.energy += 0.5; // Small energy boost for exploration
+         visitMap.set(ck, visits+1);
+      }
+    }
+  }
+
+  /* ================= SIMULATION LOOP ================= */
+  let agents = [], foods = [];
+  let frame = 0, timeOfDay = 0; // 0..24
+  let selectedId = null;
+  let chart;
+
+  function initSim() {
+    agents.forEach(a=>a.brain.dispose());
+    agents = []; foods = [];
+    policyBank.forEach(p=>p.weights.forEach(w=>w.dispose()));
+    policyBank = [];
+    initGrids();
+    
+    // Initial Spawn
+    for(let i=0; i<40; i++) agents.push(new Agent(rand(50,cvs.width-50), rand(50,cvs.height-50), Math.random()>0.8?1:0));
+    for(let i=0; i<80; i++) foods.push({x:rand(0,cvs.width), y:rand(0,cvs.height)});
+    
+    // Chart
+    if(chart) chart.destroy();
+    chart = new Chart(document.getElementById('chart'), {
+      type:'line', data:{labels:[], datasets:[{label:'Pop', data:[], borderColor:'#00d2ff', tension:0.1, pointRadius:0}]},
+      options:{plugins:{legend:{display:false}}, scales:{x:{display:false}, y:{display:false}}, animation:false}
+    });
+  }
+
+  async function step() {
+    // Environment Cycle
+    timeOfDay = (timeOfDay + 0.05) % 24;
+    const isNight = timeOfDay > 20 || timeOfDay < 5;
+    const lightLevel = isNight ? 0.4 : 1.0;
+    const temp = 20 + Math.sin((timeOfDay-6)/24 * Math.PI*2) * 15; // 5C to 35C
+    const tempMod = temp > 15 ? 1.0 : 0.7; // Cold slows down
+    
+    // Update UI Env
+    const min = Math.floor((timeOfDay%1)*60).toString().padStart(2,'0');
+    document.getElementById('clock').innerText = Math.floor(timeOfDay).toString().padStart(2,'0') + ":" + min;
+    document.getElementById('weather').innerText = isNight ? "Night" : "Day";
+    document.getElementById('temp').innerText = temp.toFixed(1) + "°C";
+
+    // Spatial Rebuild
+    spatial.clear();
+    agents.forEach(a => { if(a.energy>0) spatial.add(a); });
+
+    // Agent Logic
+    for (const a of agents) {
+      if (a.energy <= 0) continue;
+      
+      // Decay
+      a.energy -= 0.2 + (a.genes.speed*0.1); 
+      a.age++;
+
+      // Think
+      const decision = await a.think({lightLevel, tempMod, time: timeOfDay});
+      a.applyPhysics(decision.turn, decision.speed, {tempMod});
+      
+      // Visualize Inspector
+      if (a.id === selectedId) drawInspector(a, decision);
+
+      // Interactions (Spatial)
+      const near = spatial.query(a.x, a.y);
+      
+      // Eating / Fighting
+      if (a.type === 0) { // Herbivore
+         for(let i=foods.length-1; i>=0; i--) {
+           const f = foods[i];
+           if ((a.x-f.x)**2 + (a.y-f.y)**2 < (a.radius+5)**2) {
+             a.energy = Math.min(100, a.energy+30);
+             foods.splice(i,1);
+             addScent(a.x, a.y, 0, 2.0); // Food Scent
+           }
+         }
+      } else { // Carnivore
+         for(const n of near) {
+           if(n !== a && n.type === 0 && n.energy>0) {
+             if ((a.x-n.x)**2 + (a.y-n.y)**2 < (a.radius+n.radius)**2) {
+                // Fight
+                n.health -= 20 * (1+a.genes.aggr);
+                a.energy += 10;
+                addScent(a.x, a.y, 1, 3.0); // Danger Scent
+                if (n.health <= 0) {
+                   n.energy = 0; // Kill
+                   a.energy += 60;
+                   addToBank(a.brain, a.age + a.curiosityScore); // Save killer instinct
+                }
+             }
+           }
+         }
+      }
+      
+      // Reproduction (PBT)
+      const popCap = parseInt(document.getElementById('popCap').value);
+      if (a.energy > 90 && agents.length < popCap && Math.random() < 0.05) {
+         a.energy -= 40;
+         const child = new Agent(a.x, a.y, a.type, a.brain.getWeights());
+         // Morphology Mutation
+         child.genes.speed = clamp(a.genes.speed + randn()*0.1, 0.2, 1.5);
+         child.genes.aggr = clamp(a.genes.aggr + randn()*0.1, 0, 1);
+         child.genes.size = clamp(a.genes.size + randn()*0.1, 0.3, 1.5);
+         agents.push(child);
+         
+         // If old enough, save policy to bank
+         if (a.age > 500) addToBank(a.brain, a.age + a.curiosityScore);
+      }
+    }
+    
+    // Cleanup
+    agents = agents.filter(a => {
+       if (a.energy <= 0) { a.brain.dispose(); return false; }
+       return true;
+    });
+    
+    // Food Respawn
+    if (foods.length < 80 && Math.random()<0.1) foods.push({x:rand(0,cvs.width), y:rand(0,cvs.height)});
+
+    // Render
+    draw();
+    updatePhero();
+    
+    frame++;
+    if(frame%60===0) updateStats();
+  }
+
+  function draw() {
+    ctx.clearRect(0,0,cvs.width,cvs.height);
+    
+    // Food
+    ctx.fillStyle = '#6f6';
+    for(const f of foods) { ctx.beginPath(); ctx.arc(f.x,f.y,3,0,7); ctx.fill(); }
+    
+    // Agents
+    for(const a of agents) {
+      ctx.save();
+      ctx.translate(a.x, a.y);
+      ctx.rotate(a.angle);
+      
+      // Selection Glow
+      if(a.id === selectedId) {
+        ctx.shadowBlur=20; ctx.shadowColor='#fff';
+        ctx.strokeStyle='rgba(255,255,255,0.5)';
+        ctx.lineWidth=1;
+        ctx.beginPath(); ctx.arc(0,0,CFG.fov, -0.5, 0.5); ctx.stroke(); // Cone
+      }
+      
+      // Body
+      const c = a.genes.color;
+      ctx.fillStyle = `hsl(${c.h}, ${c.s}%, 50%)`;
+      ctx.beginPath();
+      
+      // Morphology Draw
+      if (a.genes.aggr > 0.6) { // Spikes
+         for(let i=0; i<5; i++) {
+           const ang = (Math.PI*2*i)/5;
+           ctx.lineTo(Math.cos(ang)*(a.radius+4), Math.sin(ang)*(a.radius+4));
+         }
+      } else {
+         ctx.arc(0,0, a.radius, 0, 7);
+      }
+      ctx.fill();
+      
+      // Tail (Speed)
+      if (a.genes.speed > 0.8) {
+         ctx.beginPath(); ctx.moveTo(-a.radius,0); ctx.lineTo(-a.radius-10, 0); 
+         ctx.strokeStyle=ctx.fillStyle; ctx.lineWidth=3; ctx.stroke();
+      }
+
+      ctx.restore();
+    }
+  }
+
+  function drawInspector(agent, dec) {
+    const bCv = document.getElementById('brainView');
+    const bCtx = bCv.getContext('2d');
+    bCtx.clearRect(0,0,240,120);
+    
+    document.getElementById('inspector').style.display='flex';
+    document.getElementById('inspId').innerText = `${agent.id} (${agent.type===0?'Herb':'Carn'})`;
+    document.getElementById('inspState').innerText = `E:${agent.energy.toFixed(0)} H:${agent.health.toFixed(0)}`;
+    document.getElementById('inspCuriosity').innerText = agent.curiosityScore;
+    
+    // Draw Inputs (Lidar)
+    const cx=50, cy=60, r=30;
+    bCtx.strokeStyle='#444'; bCtx.beginPath(); bCtx.arc(cx,cy,r,0,7); bCtx.stroke();
+    
+    const sens = dec.sensors;
+    const arc = (Math.PI*2)/CFG.sectors;
+    
+    for(let i=0; i<CFG.sectors; i++) {
+       const wall = sens[i*4], food = sens[i*4+1], dang = sens[i*4+2];
+       if (Math.max(wall,food,dang) > 0.1) {
+          bCtx.beginPath();
+          bCtx.moveTo(cx,cy);
+          bCtx.arc(cx,cy, r, i*arc, (i+1)*arc);
+          if (dang>food) bCtx.fillStyle = `rgba(255,0,0,${dang})`;
+          else if (food>wall) bCtx.fillStyle = `rgba(0,255,0,${food})`;
+          else bCtx.fillStyle = `rgba(255,255,255,${wall})`;
+          bCtx.fill();
+       }
+    }
+    
+    // Bars
+    bCtx.fillStyle='#fff'; bCtx.fillText("Turn", 120, 40);
+    bCtx.fillStyle='#333'; bCtx.fillRect(160, 30, 60, 10);
+    bCtx.fillStyle='#0ff'; bCtx.fillRect(190, 30, dec.turn*30, 10);
+
+    bCtx.fillStyle='#fff'; bCtx.fillText("Speed", 120, 60);
+    bCtx.fillStyle='#333'; bCtx.fillRect(160, 50, 60, 10);
+    bCtx.fillStyle='#0f0'; bCtx.fillRect(160, 50, clamp(dec.speed,0,1)*60, 10);
+  }
+
+  function updateStats() {
+    document.getElementById('stCount').innerText = agents.length;
+    document.getElementById('stHerb').innerText = agents.filter(a=>a.type===0).length;
+    document.getElementById('stCarn').innerText = agents.filter(a=>a.type===1).length;
+    const avgAge = agents.reduce((a,b)=>a+b.age,0)/ (agents.length||1);
+    document.getElementById('stAge').innerText = avgAge.toFixed(0);
+    document.getElementById('stBest').innerText = policyBank.length + " saved";
+    
+    chart.data.labels.push(frame);
+    chart.data.datasets[0].data.push(agents.length);
+    if(chart.data.labels.length>50) { chart.data.labels.shift(); chart.data.datasets[0].data.shift(); }
+    chart.update();
+  }
+
+  cvs.addEventListener('mousedown', e => {
+     const r = cvs.getBoundingClientRect();
+     const x = e.clientX-r.left, y=e.clientY-r.top;
+     let hit = false;
+     for(let a of agents) {
+        if ((a.x-x)**2+(a.y-y)**2 < 400) { selectedId=a.id; hit=true; break; }
+     }
+     if(!hit) { selectedId=null; document.getElementById('inspector').style.display='none'; }
+  });
+
+  window.resetSim = initSim;
+
+  // Boot
+  await tf.ready();
+  initSim();
+  
+  const loop = () => {
+     const times = parseInt(document.getElementById('timeScale').value);
+     for(let i=0; i<times; i++) step();
+     requestAnimationFrame(loop);
+  };
+  loop();
+
+})();
+</script>
 </body>
 </html>
