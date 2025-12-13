@@ -1,0 +1,3140 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>KeyCoach — Science-Based Touch Typing</title>
+  <meta name="description" content="Standalone touch-typing coach: spacing, retrieval, interleaving, low-cognitive-load UI. Offline, local-only." />
+  <meta name="theme-color" content="#0b1020" />
+
+  <!-- PWA: manifest via data URL (works for installability; SW still must be same-origin file) -->
+  <link rel="manifest" id="manifestLink" href="">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 96 96'%3E%3Cdefs%3E%3CradialGradient id='g' cx='30%25' cy='20%25' r='90%25'%3E%3Cstop offset='0%25' stop-color='%237bdcff'/%3E%3Cstop offset='55%25' stop-color='%2349e28b'/%3E%3Cstop offset='100%25' stop-color='%23ff5c7a'/%3E%3C/radialGradient%3E%3C/defs%3E%3Crect x='10' y='10' width='76' height='76' rx='18' fill='url(%23g)'/%3E%3Crect x='26' y='26' width='44' height='44' rx='14' fill='rgba(0,0,0,0.25)' stroke='rgba(255,255,255,0.25)'/%3E%3C/svg%3E">
+
+  <style>
+    :root{
+      --bg:#0b1020;
+      --panel: rgba(255,255,255,.06);
+      --panel2: rgba(255,255,255,.09);
+      --text: rgba(255,255,255,.92);
+      --muted: rgba(255,255,255,.65);
+      --faint: rgba(255,255,255,.42);
+      --border: rgba(255,255,255,.12);
+      --accent:#7bdcff;
+      --good:#49e28b;
+      --warn:#ffd166;
+      --bad:#ff5c7a;
+      --shadow: 0 10px 30px rgba(0,0,0,.35);
+      --radius: 14px;
+      --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono","Courier New", monospace;
+      --sans: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji","Segoe UI Emoji";
+      --focus: 0 0 0 3px rgba(123,220,255,.22), 0 0 0 1px rgba(123,220,255,.25) inset;
+    }
+    @media (prefers-color-scheme: light){
+      :root{
+        --bg:#f6f7fb;
+        --panel: rgba(10,20,40,.04);
+        --panel2: rgba(10,20,40,.07);
+        --text: rgba(10,20,40,.92);
+        --muted: rgba(10,20,40,.62);
+        --faint: rgba(10,20,40,.42);
+        --border: rgba(10,20,40,.12);
+        --shadow: 0 10px 30px rgba(10,20,40,.12);
+      }
+    }
+    *{box-sizing:border-box}
+    html,body{height:100%}
+    body{
+      margin:0;
+      font-family:var(--sans);
+      background:
+        radial-gradient(1200px 700px at 25% 10%, rgba(123,220,255,.12), transparent 45%),
+        radial-gradient(1200px 700px at 80% 0%, rgba(255,92,122,.10), transparent 50%),
+        radial-gradient(900px 700px at 60% 90%, rgba(73,226,139,.10), transparent 50%),
+        var(--bg);
+      color:var(--text);
+    }
+    button,input,select,textarea{font:inherit;color:inherit}
+    a{color:inherit;text-decoration:none}
+    .app{min-height:100%;display:flex;flex-direction:column}
+    header{
+      position:sticky;top:0;z-index:50;
+      backdrop-filter: blur(10px);
+      background: linear-gradient(to bottom, rgba(0,0,0,.25), transparent);
+      border-bottom:1px solid var(--border);
+    }
+    .topbar{
+      max-width:1120px;margin:0 auto;padding:14px 18px;
+      display:flex;align-items:center;gap:14px;
+    }
+    .brand{display:flex;align-items:center;gap:10px;font-weight:850}
+    .logo{
+      width:34px;height:34px;border-radius:10px;
+      background: conic-gradient(from 220deg, rgba(123,220,255,.9), rgba(73,226,139,.9), rgba(255,92,122,.9), rgba(123,220,255,.9));
+      box-shadow: 0 10px 20px rgba(0,0,0,.25);
+      position:relative;
+    }
+    .logo:after{
+      content:"";position:absolute;inset:7px;border-radius:8px;
+      background: rgba(0,0,0,.25);border:1px solid rgba(255,255,255,.18);
+    }
+    nav{margin-left:auto;display:flex;gap:8px;align-items:center}
+    .tab{
+      padding:10px 12px;border-radius:12px;border:1px solid transparent;
+      background:transparent;color:var(--muted);cursor:pointer;
+      transition: transform .08s ease, background .12s ease, border-color .12s ease;
+      user-select:none;
+    }
+    .tab:hover{background:var(--panel);color:var(--text)}
+    .tab[aria-selected="true"]{
+      background:var(--panel2);color:var(--text);border-color:var(--border);
+    }
+    .tab:active{transform:translateY(1px)}
+    main{
+      flex:1;max-width:1120px;margin:0 auto;padding:18px;width:100%;
+    }
+    .view{display:none}
+    .view.active{display:block}
+
+    .grid{display:grid;grid-template-columns: 1.15fr .85fr;gap:14px;align-items:start}
+    .split{display:grid;grid-template-columns: 1.05fr .95fr;gap:14px;align-items:start}
+    @media(max-width:980px){
+      .grid,.split{grid-template-columns:1fr}
+    }
+
+    .card{
+      background:var(--panel);
+      border:1px solid var(--border);
+      border-radius:var(--radius);
+      box-shadow:var(--shadow);
+      overflow:hidden;
+    }
+    .card .hd{
+      padding:14px 16px;border-bottom:1px solid var(--border);
+      display:flex;align-items:center;justify-content:space-between;gap:10px;
+    }
+    .card .hd h2{margin:0;font-size:14px;font-weight:900;letter-spacing:.2px}
+    .card .bd{padding:16px}
+
+    .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+    .pill{
+      font-size:12px;padding:7px 10px;border-radius:999px;
+      border:1px solid var(--border);background:rgba(255,255,255,.03);
+      color:var(--muted);white-space:nowrap;
+    }
+    .btn{
+      appearance:none;border:1px solid var(--border);
+      background:rgba(255,255,255,.06);
+      padding:10px 12px;border-radius:12px;cursor:pointer;
+      transition: transform .08s ease, background .12s ease, border-color .12s ease, opacity .12s ease;
+      user-select:none;
+    }
+    .btn:hover{background:rgba(255,255,255,.09)}
+    .btn:active{transform:translateY(1px)}
+    .btn.primary{background:linear-gradient(135deg, rgba(123,220,255,.22), rgba(73,226,139,.18));border-color:rgba(123,220,255,.22)}
+    .btn.danger{background:linear-gradient(135deg, rgba(255,92,122,.18), rgba(255,209,102,.10));border-color:rgba(255,92,122,.22)}
+    .btn.small{padding:8px 10px;border-radius:11px;font-size:13px}
+    .btn.ghost{background:transparent}
+    .btn[disabled]{opacity:.55;cursor:not-allowed}
+    .btn:focus-visible{outline:none;box-shadow:var(--focus)}
+
+    .field{display:flex;flex-direction:column;gap:6px;min-width:220px}
+    .field label{font-size:12px;color:var(--muted)}
+    .field select,.field input[type="number"],.field input[type="text"], .field input[type="range"]{
+      width:100%;padding:10px 11px;border-radius:12px;border:1px solid var(--border);
+      background:rgba(255,255,255,.05);outline:none;
+    }
+    .field select:focus-visible,.field input:focus-visible{box-shadow:var(--focus)}
+    .help{color:var(--muted);font-size:13px;line-height:1.5}
+    .divider{height:1px;background:var(--border);margin:14px 0}
+    .code{
+      font-family:var(--mono);padding:2px 6px;border-radius:8px;border:1px solid var(--border);
+      background:rgba(255,255,255,.04);font-size:12px;color:var(--text)
+    }
+
+    /* Practice runner */
+    .runner{display:none}
+    .runner.active{display:block}
+    .phasebar{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+    .phase{
+      padding:8px 10px;border-radius:999px;border:1px solid var(--border);
+      background:rgba(255,255,255,.03);color:var(--muted);font-size:12px;
+      display:flex;gap:8px;align-items:center;
+    }
+    .phase .dot{width:8px;height:8px;border-radius:50%;background:rgba(255,255,255,.25)}
+    .phase.active{background:rgba(123,220,255,.12);border-color:rgba(123,220,255,.22);color:var(--text)}
+    .phase.active .dot{background:var(--accent)}
+    .practiceArea{padding:16px}
+    .prompt{
+      font-family:var(--mono);font-size:18px;line-height:1.55;white-space:pre-wrap;word-break:break-word;
+      border:1px solid var(--border);background:rgba(255,255,255,.03);
+      padding:14px;border-radius:14px;min-height:120px;position:relative;
+    }
+    .prompt .ellipsis{color:var(--faint)}
+    .prompt .cursor{
+      background:rgba(123,220,255,.20);
+      border:1px solid rgba(123,220,255,.24);
+      border-radius:6px;padding:0 2px;
+      box-shadow: 0 0 0 1px rgba(0,0,0,.08) inset;
+    }
+    .typed{
+      margin-top:12px;font-family:var(--mono);font-size:17px;line-height:1.55;white-space:pre-wrap;word-break:break-word;
+      border:1px solid var(--border);background:rgba(255,255,255,.02);
+      padding:14px;border-radius:14px;min-height:92px;
+    }
+    .typed .ok{color:var(--text)}
+    .typed .err{color:var(--bad);text-decoration:underline;text-decoration-thickness:2px;text-underline-offset:3px}
+    .typed .ghost{color:rgba(255,255,255,.35)}
+    @media (prefers-color-scheme: light){ .typed .ghost{color:rgba(10,20,40,.35)} }
+
+    .coachline{
+      display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap;
+      margin-top:12px;padding:10px 12px;border-radius:14px;border:1px solid var(--border);background:rgba(255,255,255,.03);
+    }
+    .coachline .msg{color:var(--muted);font-size:13px;line-height:1.35;max-width:72ch}
+    .coachline .msg b{color:var(--text)}
+    .controls{display:flex;gap:8px;flex-wrap:wrap;align-items:center;justify-content:flex-end}
+
+    .pacebar{margin-top:10px;display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap}
+    .meter{
+      flex:1;min-width:260px;border:1px solid var(--border);background:rgba(255,255,255,.03);
+      border-radius:999px;height:12px;overflow:hidden;position:relative;
+    }
+    .meter .fill{position:absolute;top:0;left:0;height:100%;width:0%;background:linear-gradient(90deg, rgba(73,226,139,.65), rgba(123,220,255,.55))}
+    .meter .tick{position:absolute;top:-4px;width:2px;height:20px;background:rgba(255,255,255,.22);left:50%;transform:translateX(-1px)}
+    .beat{
+      width:12px;height:12px;border-radius:50%;
+      border:2px solid rgba(123,220,255,.35);
+      background:rgba(123,220,255,.08);
+      box-shadow:0 0 0 0 rgba(123,220,255,.0);
+      transition:transform .08s ease, box-shadow .08s ease, background .08s ease;
+    }
+    .beat.pulse{transform:scale(1.12);background:rgba(123,220,255,.24);box-shadow:0 0 0 8px rgba(123,220,255,.12)}
+
+    .statsbar{
+      display:flex;gap:10px;flex-wrap:wrap;align-items:center;justify-content:space-between;
+      padding:12px 14px;border-top:1px solid var(--border);background:rgba(0,0,0,.08);
+    }
+    @media (prefers-color-scheme: light){ .statsbar{background:rgba(10,20,40,.03)} }
+    .stat{display:flex;flex-direction:column;gap:2px;min-width:92px}
+    .stat .k{font-size:11px;color:var(--muted)}
+    .stat .v{font-weight:900;letter-spacing:.2px}
+    .stat .v small{font-weight:800;color:var(--muted)}
+
+    /* Keyboard */
+    .kbd{user-select:none;display:flex;flex-direction:column;gap:6px}
+    .kbdRow{display:flex;gap:6px}
+    .keycap{
+      min-width:38px;height:40px;padding:0 8px;border-radius:10px;border:1px solid var(--border);
+      background:rgba(255,255,255,.04);
+      display:flex;align-items:center;justify-content:center;
+      font-family:var(--mono);font-size:12px;color:var(--muted);
+      position:relative;box-shadow:0 6px 16px rgba(0,0,0,.18);
+    }
+    @media (prefers-color-scheme: light){ .keycap{box-shadow:0 6px 16px rgba(10,20,40,.10)} }
+    .keycap.wide{min-width:64px}
+    .keycap.xwide{min-width:90px}
+    .keycap.space{min-width:240px}
+    .keycap .sub{
+      position:absolute;bottom:4px;right:7px;font-size:10px;color:rgba(255,255,255,.45);
+      font-family:var(--sans);letter-spacing:.1px;
+    }
+    @media (prefers-color-scheme: light){ .keycap .sub{color:rgba(10,20,40,.45)} }
+    .keycap.hint{border-color:rgba(123,220,255,.35);box-shadow:0 0 0 3px rgba(123,220,255,.14);color:var(--text)}
+
+    /* Overlay */
+    .overlay{
+      position:fixed;inset:0;background:rgba(0,0,0,.38);backdrop-filter:blur(8px);
+      display:none;align-items:center;justify-content:center;z-index:80;padding:18px;
+    }
+    .overlay.active{display:flex}
+    .overlay .panel{
+      width:min(920px, 98vw);
+      background:rgba(10,15,30,.85);
+      border:1px solid rgba(255,255,255,.14);
+      border-radius:18px;
+      box-shadow:0 20px 60px rgba(0,0,0,.55);
+      overflow:hidden;
+    }
+    @media (prefers-color-scheme: light){
+      .overlay .panel{background:rgba(255,255,255,.90);border:1px solid rgba(10,20,40,.12)}
+    }
+    .overlay .panel .hd{
+      display:flex;align-items:center;justify-content:space-between;padding:12px 14px;
+      border-bottom:1px solid rgba(255,255,255,.12);
+    }
+    @media (prefers-color-scheme: light){ .overlay .panel .hd{border-bottom:1px solid rgba(10,20,40,.10)} }
+    .overlay .panel .hd .title{font-weight:900;font-size:13px}
+    .overlay .panel .bd{padding:14px}
+    .kbdHintRow{
+      display:flex;gap:10px;flex-wrap:wrap;align-items:center;justify-content:space-between;margin-top:10px;
+      color:var(--muted);font-size:13px;
+    }
+
+    /* Insights lists */
+    .list{display:flex;flex-direction:column;gap:10px}
+    .item{
+      padding:12px;border-radius:14px;border:1px solid var(--border);background:rgba(255,255,255,.03);
+      display:flex;justify-content:space-between;align-items:center;gap:10px;
+    }
+    .item .left{display:flex;flex-direction:column;gap:2px}
+    .item .left .t{font-weight:900;font-family:var(--mono);letter-spacing:.2px}
+    .item .left .s{color:var(--muted);font-size:12px}
+    .badge{
+      font-size:12px;border:1px solid var(--border);background:rgba(255,255,255,.04);
+      padding:6px 10px;border-radius:999px;color:var(--muted);font-variant-numeric:tabular-nums;white-space:nowrap;
+    }
+    .canvasWrap{border:1px solid var(--border);background:rgba(255,255,255,.03);border-radius:14px;padding:12px}
+    canvas{width:100%;height:170px;display:block}
+
+    /* Replay */
+    .replayBox{
+      border:1px solid var(--border);background:rgba(255,255,255,.03);border-radius:14px;padding:12px;
+    }
+    .replayText{
+      font-family:var(--mono);font-size:14px;line-height:1.5;
+      border:1px solid var(--border);background:rgba(255,255,255,.02);
+      border-radius:12px;padding:10px;white-space:pre-wrap;word-break:break-word;
+      min-height:92px;
+    }
+    .replayText .cur{background:rgba(123,220,255,.18);border:1px solid rgba(123,220,255,.20);border-radius:6px;padding:0 1px}
+    .replayText .bad{color:var(--bad);text-decoration:underline;text-underline-offset:2px}
+    .replayText .dim{color:var(--faint)}
+    .rangeRow{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+    .rangeRow input[type="range"]{flex:1;min-width:260px}
+
+    /* Toast */
+    .toast{
+      position:fixed;left:50%;bottom:16px;transform:translateX(-50%);
+      background:rgba(10,15,30,.92);border:1px solid rgba(255,255,255,.14);
+      color:rgba(255,255,255,.92);box-shadow:0 16px 50px rgba(0,0,0,.45);
+      border-radius:999px;padding:10px 14px;font-size:13px;display:none;z-index:120;
+      max-width:min(980px,92vw);line-height:1.35;
+    }
+    @media (prefers-color-scheme: light){
+      .toast{background:rgba(255,255,255,.95);border:1px solid rgba(10,20,40,.12);color:rgba(10,20,40,.92)}
+    }
+    .toast.show{display:block}
+    .toast b{color:var(--text)}
+
+    /* Capture input: FIXED — keep on-screen so focus works reliably (desktop + mobile) */
+    #capture{
+      position:fixed;
+      left:10px;
+      bottom:10px;
+      width:2px;height:2px;
+      opacity:0;
+      pointer-events:none;
+    }
+
+    /* Mobile readability */
+    @media (pointer: coarse){
+      .prompt{font-size:20px;line-height:1.65}
+      .typed{font-size:18px}
+    }
+  </style>
+</head>
+
+<body>
+<div class="app">
+
+  <header>
+    <div class="topbar">
+      <div class="brand" title="Standalone prototype — no network, data stored in your browser only">
+        <div class="logo" aria-hidden="true"></div>
+        <div>
+          KeyCoach
+          <div style="font-size:12px; font-weight:750; color: var(--muted); letter-spacing:.1px;">science-based touch typing</div>
+        </div>
+      </div>
+
+      <nav aria-label="Primary">
+        <button class="tab" id="tabPractice" aria-selected="true" aria-controls="viewPractice">Practice</button>
+        <button class="tab" id="tabInsights" aria-selected="false" aria-controls="viewInsights">Insights</button>
+        <button class="tab" id="tabSettings" aria-selected="false" aria-controls="viewSettings">Settings</button>
+      </nav>
+    </div>
+  </header>
+
+  <main>
+    <!-- PRACTICE -->
+    <section class="view active" id="viewPractice" aria-labelledby="tabPractice">
+      <div class="grid">
+        <div class="card">
+          <div class="hd">
+            <h2>Daily session</h2>
+            <div class="row">
+              <span class="pill" id="pillStreak">Streak: 0</span>
+              <span class="pill" id="pillNextFocus">Focus: —</span>
+            </div>
+          </div>
+
+          <div class="bd">
+            <div id="setup" class="setup">
+              <div class="row">
+                <div class="field">
+                  <label for="modeSel">Goal / text mode</label>
+                  <select id="modeSel">
+                    <option value="office">Office writing (emails, docs)</option>
+                    <option value="student">Student writing (essays)</option>
+                    <option value="programmer">Programmer (symbols, snippets)</option>
+                  </select>
+                </div>
+
+                <div class="field">
+                  <label for="minutesSel">Session length</label>
+                  <select id="minutesSel">
+                    <option value="6">6 min (quick)</option>
+                    <option value="10" selected>10 min (default)</option>
+                    <option value="15">15 min (deep)</option>
+                  </select>
+                </div>
+
+                <div class="field">
+                  <label for="targetWpm">Target pace (WPM)</label>
+                  <input id="targetWpm" type="number" min="10" max="140" step="1" value="35" />
+                </div>
+
+                <div class="field">
+                  <label for="planSel">Plan</label>
+                  <select id="planSel">
+                    <option value="auto" selected>Auto (recommended)</option>
+                    <option value="bigrams">Bigrams (focus hard transitions)</option>
+                    <option value="keys">Keys (accuracy + hesitation)</option>
+                    <option value="mixed">Mixed (more interleaving)</option>
+                    <option value="transferAI">Transfer (AI text)</option>
+                  </select>
+                </div>
+
+                <div class="field">
+                  <label for="aiDiff">AI difficulty</label>
+                  <input id="aiDiff" type="range" min="0" max="100" value="35" />
+                </div>
+              </div>
+
+              <div class="divider"></div>
+
+              <div class="row" style="justify-content: space-between;">
+                <div class="help" style="max-width: 74ch;">
+                  Uses <b>short phases</b> (warm-up → drills → interleaved review → transfer) and adapts via <b>errors</b>, <b>hesitations</b>, and <b>spaced review</b>.
+                  <div style="margin-top:8px;">
+                    Tip: During drills, try <b>Flow</b> (don’t backspace). During transfer, use <b>Realistic</b> corrections if you prefer.
+                  </div>
+                  <div style="margin-top:8px;">
+                    <b>Typing fix:</b> this version captures typing reliably even if focus slips. Mobile IME supported via the hidden capture field.
+                  </div>
+                </div>
+
+                <div class="controls">
+                  <button class="btn primary" id="btnStart">Start session</button>
+                  <button class="btn ghost" id="btnResume" disabled title="Resume if you paused mid-session">Resume</button>
+                </div>
+              </div>
+            </div>
+
+            <div id="runner" class="runner" aria-live="polite">
+              <div class="phasebar" id="phasebar"></div>
+
+              <div class="practiceArea" id="practiceArea">
+                <div class="prompt" id="prompt" aria-label="Text to type"></div>
+                <div class="typed" id="typed" aria-label="Your typing"></div>
+
+                <div class="pacebar">
+                  <div class="meter" title="Rhythm meter (turn on Rhythm in controls)">
+                    <div class="tick" id="paceTick"></div>
+                    <div class="fill" id="paceFill" style="width:0%"></div>
+                  </div>
+                  <div class="beat" id="beat" aria-label="Metronome pulse"></div>
+                </div>
+
+                <div class="coachline">
+                  <div class="msg" id="coachMsg">
+                    Click anywhere here to focus. <span class="code">Esc</span> pauses. Press <span class="code">?</span> for keyboard peek (unless the prompt needs “?”).
+                  </div>
+                  <div class="controls">
+                    <button class="btn small" id="btnPause">Pause</button>
+                    <button class="btn small" id="btnShowKb">Show keyboard</button>
+                    <button class="btn small" id="btnSlowDown" title="Reduce pace pressure (desirable difficulty dial)">Slow down</button>
+                    <button class="btn small" id="btnSkip">Skip phase</button>
+                  </div>
+                </div>
+              </div>
+
+              <div class="statsbar">
+                <div class="stat"><div class="k">Mode</div><div class="v" id="statMode">—</div></div>
+                <div class="stat"><div class="k">Phase</div><div class="v" id="statPhase">—</div></div>
+                <div class="stat"><div class="k">WPM</div><div class="v" id="statWpm">0 <small>(live)</small></div></div>
+                <div class="stat"><div class="k">Accuracy</div><div class="v" id="statAcc">100%</div></div>
+                <div class="stat"><div class="k">Consistency</div><div class="v" id="statCons">—</div></div>
+                <div class="stat"><div class="k">Hints</div><div class="v" id="statHints">—</div></div>
+                <div class="stat"><div class="k">Progress</div><div class="v" id="statProg">0%</div></div>
+                <div class="stat"><div class="k">ETA</div><div class="v" id="statEta">—</div></div>
+                <div class="stat"><div class="k">Phase left</div><div class="v" id="statPhaseLeft">—</div></div>
+              </div>
+
+              <textarea id="capture" autocomplete="off" autocapitalize="off" spellcheck="false"></textarea>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="hd">
+            <h2>Coach</h2>
+            <span class="pill" id="pillDue">Due review: —</span>
+          </div>
+          <div class="bd">
+            <div class="help" id="coachSummary">
+              <b>What this does:</b>
+              <ul style="margin:10px 0 0 18px; padding:0; color: var(--muted); line-height:1.5;">
+                <li><b>Spacing:</b> items become “due” later when you do well.</li>
+                <li><b>Retrieval:</b> interleaved review and transfer remove hints.</li>
+                <li><b>Interleaving:</b> mixes confusable items to build discrimination.</li>
+                <li><b>Feedback:</b> immediate error marking; hints fade unless needed.</li>
+              </ul>
+            </div>
+
+            <div class="divider"></div>
+
+            <div class="row">
+              <button class="btn" id="btnTransferTest" title="Run a no-hints transfer check (short)">Transfer check</button>
+              <button class="btn" id="btnResetToday" title="Clear only today's session plan (keeps learning data)">Reset session</button>
+              <button class="btn" id="btnDrillBigrams" title="Jump into a bigram-heavy session using weak/due bigrams">Drill bigrams</button>
+            </div>
+
+            <div class="divider"></div>
+
+            <div class="help">
+              <b>Keyboard peek:</b> <span class="code">?</span> or “Show keyboard”.<br/>
+              <b>Pause:</b> <span class="code">Esc</span> or “Pause”.<br/>
+              <b>Replay:</b> every session is recorded and viewable in Insights (scrub + play).
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- INSIGHTS -->
+    <section class="view" id="viewInsights" aria-labelledby="tabInsights">
+      <div class="split">
+
+        <div class="card">
+          <div class="hd">
+            <h2>Heatmap</h2>
+            <div class="row">
+              <button class="btn small" id="heatModeErrors">Errors</button>
+              <button class="btn small" id="heatModeHes">Hesitation</button>
+              <button class="btn small" id="heatModeFinger">Fingers</button>
+            </div>
+          </div>
+          <div class="bd">
+            <div id="heatmapKb" class="kbd" aria-label="Keyboard heatmap"></div>
+            <div class="kbdHintRow">
+              <div>
+                <span class="code">Green</span> = stronger,
+                <span class="code">Red</span> = needs work.
+              </div>
+              <div class="badge" id="heatIdeal">Ideal key interval: —</div>
+            </div>
+            <div class="divider"></div>
+            <div class="help" id="fingerSummary">Finger summary: —</div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="hd">
+            <h2>Targets & progress</h2>
+            <span class="pill" id="pillLastSession">Last session: —</span>
+          </div>
+          <div class="bd">
+            <div class="list" id="targetsList"></div>
+
+            <div class="divider"></div>
+
+            <div class="canvasWrap">
+              <div class="row" style="justify-content: space-between; margin-bottom: 8px;">
+                <div style="font-weight:900; font-size: 13px;">Recent progress</div>
+                <div class="badge" id="chartBadge">WPM & Accuracy</div>
+              </div>
+              <canvas id="progressChart" width="820" height="260" aria-label="Progress chart"></canvas>
+              <div class="help" style="margin-top:10px;">
+                Tracks transfer-relevant outcomes: WPM + accuracy. Don’t chase speed if accuracy drops.
+              </div>
+            </div>
+
+            <div class="divider"></div>
+
+            <div style="font-weight:900; font-size: 13px; margin-bottom: 8px;">Top confusions</div>
+            <div class="list" id="confusionsList"></div>
+          </div>
+        </div>
+
+      </div>
+
+      <div style="height:14px"></div>
+
+      <div class="card">
+        <div class="hd">
+          <h2>Session replay</h2>
+          <span class="pill" id="replayPill">Replays: —</span>
+        </div>
+        <div class="bd">
+          <div class="row" style="justify-content: space-between;">
+            <div class="field" style="min-width:320px;">
+              <label for="replaySel">Choose a session</label>
+              <select id="replaySel"></select>
+            </div>
+            <div class="controls">
+              <button class="btn small" id="btnReplayPlay">Play</button>
+              <button class="btn small" id="btnReplayPause">Pause</button>
+              <div class="field" style="min-width:140px;">
+                <label for="replaySpeed">Speed</label>
+                <select id="replaySpeed">
+                  <option value="0.5">0.5×</option>
+                  <option value="1" selected>1×</option>
+                  <option value="1.5">1.5×</option>
+                  <option value="2">2×</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          <div class="divider"></div>
+
+          <div class="replayBox">
+            <div class="rangeRow">
+              <input id="replayRange" type="range" min="0" max="0" value="0"/>
+              <span class="badge" id="replayPos">—</span>
+              <span class="badge" id="replayStats">—</span>
+            </div>
+            <div style="height:10px"></div>
+            <div class="replayText" id="replayText"></div>
+            <div style="height:10px"></div>
+            <div class="help" id="replayMeta">—</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- SETTINGS -->
+    <section class="view" id="viewSettings" aria-labelledby="tabSettings">
+      <div class="grid">
+        <div class="card">
+          <div class="hd">
+            <h2>Training behavior</h2>
+            <span class="pill">Stored locally</span>
+          </div>
+          <div class="bd">
+            <div class="row">
+              <div class="field">
+                <label for="hintPolicy">Hint policy</label>
+                <select id="hintPolicy">
+                  <option value="afterTry">After try (recommended)</option>
+                  <option value="always">Always (early learners)</option>
+                  <option value="off">Off (test / advanced)</option>
+                </select>
+              </div>
+
+              <div class="field">
+                <label for="correctionMode">Correction mode</label>
+                <select id="correctionMode">
+                  <option value="flow">Flow (no backspace; keep moving)</option>
+                  <option value="realistic">Realistic (allow backspace)</option>
+                  <option value="strict">Strict (must correct errors)</option>
+                </select>
+              </div>
+
+              <div class="field">
+                <label for="rhythmDefault">Rhythm mode (default)</label>
+                <select id="rhythmDefault">
+                  <option value="off">Off</option>
+                  <option value="on">On</option>
+                </select>
+              </div>
+
+              <div class="field">
+                <label for="rhythmSound">Rhythm sound</label>
+                <select id="rhythmSound">
+                  <option value="off" selected>Off</option>
+                  <option value="on">On</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="divider"></div>
+
+            <div class="row">
+              <button class="btn" id="btnExport">Export data</button>
+              <button class="btn" id="btnImport">Import data</button>
+              <button class="btn danger" id="btnResetAll">Reset ALL data</button>
+            </div>
+
+            <div class="divider"></div>
+
+            <div class="help">
+              <b>Data model:</b> per-key + per-bigram accuracy & hesitation, spaced review scheduling, confusions, per-finger stats, and replays.<br/>
+              <b>Privacy:</b> no network calls; everything stays in your browser.
+            </div>
+
+            <input type="file" id="fileImport" accept="application/json" style="display:none" />
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="hd">
+            <h2>PWA (installable app)</h2>
+            <span class="pill" id="pwaStatus">Status: —</span>
+          </div>
+          <div class="bd">
+            <div class="help">
+              This file runs offline already. For <b>“Install app”</b> (home screen / desktop app), browsers typically require a <b>service worker file</b> on the same origin.
+            </div>
+
+            <div class="divider"></div>
+
+            <div class="row">
+              <button class="btn primary" id="btnInstall" disabled>Install app</button>
+              <button class="btn" id="btnTryRegisterSW">Try register service worker</button>
+              <button class="btn" id="btnDownloadSW">Download sw.js</button>
+              <button class="btn" id="btnDownloadManifest">Download manifest.json</button>
+            </div>
+
+            <div class="divider"></div>
+
+            <div class="help" id="pwaHelp">
+              Tip: if you want full PWA installability, place <span class="code">sw.js</span> + <span class="code">manifest.json</span> next to this HTML and open it via a local server (e.g. localhost).
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+  </main>
+
+  <!-- Keyboard overlay -->
+  <div class="overlay" id="kbOverlay" role="dialog" aria-modal="true" aria-label="Keyboard overlay">
+    <div class="panel">
+      <div class="hd">
+        <div class="title">Keyboard peek (hints fade — try first)</div>
+        <button class="btn small" id="btnCloseKb">Close</button>
+      </div>
+      <div class="bd">
+        <div id="overlayKb" class="kbd" aria-label="Keyboard"></div>
+        <div class="kbdHintRow">
+          <div>
+            Tip: drills → <b>Flow</b>. Transfer → <b>Realistic</b> if desired.
+          </div>
+          <div class="badge" id="overlayHint">Hint: —</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+</div>
+
+<script>
+(() => {
+  "use strict";
+
+  /**********************
+   * Utilities
+   **********************/
+  const DAY = 24 * 60 * 60 * 1000;
+  const nowMs = () => Date.now();
+  const clamp = (n,a,b)=>Math.max(a,Math.min(b,n));
+  const round = (n,d=0)=>{ const p = 10**d; return Math.round(n*p)/p; };
+  const fmtPct = (x)=>`${Math.round(x*100)}%`;
+  const todayStr = ()=>new Date().toISOString().slice(0,10);
+  const ydayStr = ()=>{ const d=new Date(); d.setDate(d.getDate()-1); return d.toISOString().slice(0,10); };
+  const escapeHtml = (s)=>String(s).replace(/[&<>"']/g, ch => ({
+    "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"
+  }[ch]));
+  const sample = (arr)=>arr[Math.floor(Math.random()*arr.length)];
+  const shuffle = (arr)=>{ for(let i=arr.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [arr[i],arr[j]]=[arr[j],arr[i]]; } return arr; };
+  const uniq = (arr)=>Array.from(new Set(arr));
+  const mean = (arr)=>arr.length ? arr.reduce((a,b)=>a+b,0)/arr.length : null;
+  const std = (arr)=>{
+    if(arr.length<2) return null;
+    const m=mean(arr);
+    const v=arr.reduce((acc,x)=>acc+(x-m)*(x-m),0)/(arr.length-1);
+    return Math.sqrt(v);
+  };
+  const fmtMMSS = (seconds)=>{
+    if(seconds==null || !isFinite(seconds)) return "—";
+    const s=Math.max(0,Math.round(seconds));
+    const m=Math.floor(s/60), ss=s%60;
+    return `${m}:${String(ss).padStart(2,"0")}`;
+  };
+  const IS_MOBILE = matchMedia("(pointer: coarse)").matches;
+
+  /**********************
+   * Content pools
+   **********************/
+  const COMMON_WORDS = [
+    "the","and","to","of","a","in","that","is","it","you","for","on","with","as","are","be","at","this","have","from",
+    "or","by","an","not","we","can","your","will","if","but","they","do","my","one","all","about","there","what","so","when",
+    "who","which","more","no","up","out","just","time","like","me","people","into","year","good","some","could","them","see","other",
+    "than","then","now","look","only","come","its","over","think","also","back","after","use","two","how","our","work","first","well",
+    "way","even","new","want","because","any","these","give","day","most","us","make","take","know","right","really","need","feel",
+    "try","still","find","last","long","next","great","little","own","place","while","keep","leave","help","talk","read","write","move",
+    "small","large","same","each","every","again","around","without","under","between","important","different","always","often","maybe"
+  ];
+
+  const TRANSFER_TEXT = {
+    office: [
+      "Hi team, quick update: the draft is ready and I added notes in the doc. Please review today and send any changes by 4 pm. Thanks!",
+      "Hello, I can meet on Tuesday at 2:30 pm. If that does not work, share two alternate times and I will confirm.",
+      "Just checking in on the invoice. If you need a PO number or a different billing address, let me know and I will resend.",
+      "Thanks for the feedback. I will revise the first section, simplify the summary, and add a short example for clarity."
+    ],
+    student: [
+      "In this paragraph, I explain the main claim and support it with a clear example. I also define key terms before I use them again.",
+      "A strong argument includes evidence, reasoning, and a counterpoint. The goal is not to win, but to be accurate and fair.",
+      "When I revise, I remove extra words, improve transitions, and check that each sentence supports the thesis.",
+      "The results suggest a pattern, but the conclusion should stay cautious until more data is collected."
+    ],
+    programmer: [
+      "const clamp = (n, a, b) => Math.max(a, Math.min(b, n)); // keep values in range",
+      "function sum(arr){ let t = 0; for (const x of arr) t += x; return t; }",
+      "if (error) { console.log('retry'); } else { console.log('ok'); }",
+      "let i = 0; while (i < 10) { i++; } // simple loop"
+    ]
+  };
+
+  const DEFAULT_BIGRAMS = [
+    "th","he","in","er","an","re","on","at","en","nd","ti","es","or","te","of","ed","is","it","al","ar","st","to","nt","ng","se","ha","as","ou","io","le"
+  ];
+
+  /**********************
+   * Keyboard layout + finger mapping
+   **********************/
+  const KBD_LAYOUT = [
+    [{k:"`"},{k:"1"},{k:"2"},{k:"3"},{k:"4"},{k:"5"},{k:"6"},{k:"7"},{k:"8"},{k:"9"},{k:"0"},{k:"-"},{k:"="},{k:"Backspace",w:"xwide"}],
+    [{k:"Tab",w:"wide"},{k:"q"},{k:"w"},{k:"e"},{k:"r"},{k:"t"},{k:"y"},{k:"u"},{k:"i"},{k:"o"},{k:"p"},{k:"["},{k:"]"},{k:"\\",w:"wide"}],
+    [{k:"Caps",w:"xwide"},{k:"a"},{k:"s"},{k:"d"},{k:"f"},{k:"g"},{k:"h"},{k:"j"},{k:"k"},{k:"l"},{k:";"},{k:"'"},{k:"Enter",w:"xwide"}],
+    [{k:"Shift",w:"xwide"},{k:"z"},{k:"x"},{k:"c"},{k:"v"},{k:"b"},{k:"n"},{k:"m"},{k:","},{k:"."},{k:"/"},{k:"Shift",w:"xwide"}],
+    [{k:"Space",w:"space"}]
+  ];
+  const KBD_CANON = (k)=>{
+    if(k==="Space") return " ";
+    if(k==="Tab") return "\t";
+    if(k==="Enter") return "\n";
+    return k;
+  };
+  const DISPLAY_KEY = (k)=>{
+    if(k===" ") return "Space";
+    if(k==="\n") return "Enter";
+    if(k==="\t") return "Tab";
+    return k;
+  };
+
+  // Finger IDs: LP/LR/LM/LI  |  RI/RM/RR/RP  | TH(thumb)
+  const FINGER_MAP = {
+    q:"LP", a:"LP", z:"LP",
+    w:"LR", s:"LR", x:"LR",
+    e:"LM", d:"LM", c:"LM",
+    r:"LI", f:"LI", v:"LI", t:"LI", g:"LI", b:"LI",
+    y:"RI", h:"RI", n:"RI", u:"RI", j:"RI", m:"RI",
+    i:"RM", k:"RM", ",":"RM",
+    o:"RR", l:"RR", ".":"RR",
+    p:"RP", ";":"RP", "/":"RP", "[":"RP", "]":"RP", "'":"RP", "\\":"RP", "-":"RP", "=":"RP",
+    " ":"TH"
+  };
+  const ALL_FINGERS = ["LP","LR","LM","LI","RI","RM","RR","RP","TH"];
+
+  /**********************
+   * Persistence
+   **********************/
+  const STORE_KEY = "keycoach.v2";
+  const defaultState = ()=>({
+    version:2,
+    profile:{
+      mode:"office",
+      sessionMinutes:10,
+      targetWpm:35,
+      hintPolicy:"afterTry",
+      correctionMode:"flow",
+      rhythmDefault:false,
+      rhythmSound:false,
+      plan:"auto",
+      aiDifficulty:35
+    },
+    stats:{
+      streak:0,
+      lastPracticeDate:null,
+      sessions:[],    // {date, mode, minutes, wpm, acc, transferWpm, transferAcc, focusKeys, focusBigrams, plan}
+      replays:[]      // {id, dateTime, mode, minutes, plan, focus, phases, prompt, events, summary}
+    },
+    keys:{},
+    bigrams:{},
+    fingers:{} // finger -> {attempts, errors}
+  });
+
+  let state = loadState();
+
+  function loadState(){
+    try{
+      const raw = localStorage.getItem(STORE_KEY);
+      if(!raw) return defaultState();
+      const parsed = JSON.parse(raw);
+      const d = defaultState();
+      return {
+        ...d,
+        ...parsed,
+        profile: {...d.profile, ...(parsed.profile||{})},
+        stats: {...d.stats, ...(parsed.stats||{})},
+        keys: parsed.keys || {},
+        bigrams: parsed.bigrams || {},
+        fingers: parsed.fingers || {}
+      };
+    }catch(e){
+      console.warn("loadState failed:", e);
+      return defaultState();
+    }
+  }
+  function saveState(){
+    localStorage.setItem(STORE_KEY, JSON.stringify(state));
+  }
+
+  /**********************
+   * Metrics
+   **********************/
+  function ensureKey(ch){
+    const key = String(ch);
+    if(!state.keys[key]){
+      state.keys[key] = {
+        attempts:0, correct:0, errors:0,
+        latCount:0, latSum:0, latSqSum:0,
+        intervalDays:0.5, nextDue:0, lastSeen:0,
+        consecutiveErrors:0,
+        subs:{}
+      };
+    }
+    return state.keys[key];
+  }
+  function ensureBigram(bg){
+    const k = String(bg);
+    if(!state.bigrams[k]){
+      state.bigrams[k] = {
+        attempts:0, correct:0, errors:0,
+        latCount:0, latSum:0, latSqSum:0,
+        intervalDays:0.5, nextDue:0, lastSeen:0
+      };
+    }
+    return state.bigrams[k];
+  }
+
+  function idealKeyIntervalMs(targetWpm){
+    const charsPerMin = Math.max(1, targetWpm) * 5;
+    return 60000 / charsPerMin;
+  }
+  function accuracyOf(item){ return item.attempts ? (item.correct/item.attempts) : null; }
+  function meanLatencyOf(item){ return item.latCount ? (item.latSum/item.latCount) : null; }
+  function strengthOf(item, idealMs){
+    const acc = accuracyOf(item);
+    const lat = meanLatencyOf(item);
+    const accScore = acc == null ? 0.2 : clamp(acc,0,1);
+    const speedScore = lat == null ? 0.5 : clamp(idealMs/lat,0,1);
+    return clamp(0.72*accScore + 0.28*speedScore, 0, 1);
+  }
+  function dueItems(stats, n=8){
+    const n0 = nowMs();
+    return stats
+      .filter(x => !x.nextDue || x.nextDue <= n0)
+      .sort((a,b)=>(a.nextDue-b.nextDue) || (a.strength-b.strength))
+      .slice(0,n);
+  }
+  function topWeak(stats, n=6, minAttempts=10){
+    return stats
+      .filter(x => (x.attempts||0) >= minAttempts)
+      .sort((a,b)=>(a.strength-b.strength) || ((a.acc??1)-(b.acc??1)))
+      .slice(0,n);
+  }
+  function listKeyStats(){
+    const ideal = idealKeyIntervalMs(state.profile.targetWpm);
+    return Object.entries(state.keys).map(([ch,item])=>({
+      id: ch, type:"key",
+      attempts:item.attempts, acc:accuracyOf(item), lat:meanLatencyOf(item),
+      strength:strengthOf(item, ideal), nextDue:item.nextDue||0
+    }));
+  }
+  function listBigramStats(){
+    const ideal = idealKeyIntervalMs(state.profile.targetWpm);
+    return Object.entries(state.bigrams).map(([bg,item])=>({
+      id: bg, type:"bigram",
+      attempts:item.attempts, acc:accuracyOf(item), lat:meanLatencyOf(item),
+      strength:strengthOf(item, ideal), nextDue:item.nextDue||0
+    }));
+  }
+
+  function computeStreak(){
+    const last = state.stats.lastPracticeDate;
+    const t = todayStr();
+    if(!last) return state.stats.streak||0;
+    if(last===t) return state.stats.streak||0;
+    if(last===ydayStr()) return state.stats.streak||0;
+    return 0;
+  }
+  function updateStreakOnPractice(){
+    const t = todayStr();
+    const last = state.stats.lastPracticeDate;
+    if(!last){ state.stats.streak=1; state.stats.lastPracticeDate=t; return; }
+    if(last===t) return;
+    if(last===ydayStr()){ state.stats.streak=(state.stats.streak||0)+1; state.stats.lastPracticeDate=t; return; }
+    state.stats.streak=1; state.stats.lastPracticeDate=t;
+  }
+
+  /**********************
+   * Offline "AI" text generation (Markov + templates)
+   **********************/
+  function buildMarkovChain(){
+    const corpus = [
+      ...COMMON_WORDS.map(w=>` ${w} `),
+      ...Object.values(TRANSFER_TEXT).flat()
+    ].join(" ");
+    const clean = corpus.replace(/\s+/g," ").trim();
+    const map = new Map(); // word -> [nextWords]
+    const words = clean.split(" ");
+    for(let i=0;i<words.length-1;i++){
+      const a = words[i].toLowerCase();
+      const b = words[i+1].toLowerCase();
+      if(!map.has(a)) map.set(a, []);
+      map.get(a).push(b);
+    }
+    return map;
+  }
+  const MARKOV = buildMarkovChain();
+
+  function generateAIText({mode, focus, minChars, difficulty01}){
+    // difficulty: 0..1
+    const basePool = TRANSFER_TEXT[mode] || TRANSFER_TEXT.office;
+    const targetB = (focus?.bigrams||[]).map(x=>String(x).toLowerCase()).filter(x=>x.length===2);
+    const targetK = (focus?.keys||[]).map(x=>String(x)).filter(x=>x.length===1);
+
+    // Low difficulty: template-ish (cleaner)
+    if(difficulty01 < 0.33){
+      let t = sample(basePool);
+      // Inject focus bigrams/keys by appending a short phrase
+      const add = [];
+      if(targetB.length) add.push(`Focus: ${targetB.join(", ")}`);
+      if(targetK.length) add.push(`Keys: ${targetK.join(", ")}`);
+      if(add.length) t += " " + add.join(". ") + ".";
+      while(t.length < minChars) t += " " + sample(basePool);
+      return t.trim();
+    }
+
+    // Medium/high: Markov-ish sentences with constraints
+    const seed = (mode==="programmer") ? "function" : "the";
+    let w = seed;
+    let out = [w];
+    const maxWords = Math.max(40, Math.round(minChars/4));
+    const punctuationRate = difficulty01 > 0.7 ? 0.16 : 0.10;
+
+    for(let i=0;i<maxWords;i++){
+      const nexts = MARKOV.get(w) || MARKOV.get(seed) || ["the"];
+      let nxt = sample(nexts);
+      // More challenge: occasionally splice programmer tokens
+      if(mode==="programmer" && difficulty01>0.55 && Math.random()<0.20){
+        nxt = sample(["const","let","if","else","return","=>","{","}","(",")",";","//"]);
+      }
+      out.push(nxt);
+      w = nxt;
+      if(Math.random() < punctuationRate && out.length>8){
+        out[out.length-1] = out[out.length-1].replace(/[.?!]$/,"");
+        out[out.length-1] += sample([".","!","?"]);
+      }
+    }
+    let text = out.join(" ");
+    // Clean spacing around punctuation
+    text = text.replace(/\s+([.,!?;:])/g,"$1").replace(/\s+/g," ").trim();
+
+    // Ensure includes focus bigrams by injecting small segments
+    for(const bg of targetB){
+      if(!text.toLowerCase().includes(bg)){
+        text += " " + ` ${bg} `.repeat(2).trim() + ".";
+      }
+    }
+    // Ensure includes focus keys (easy injection)
+    for(const k of targetK){
+      if(!text.toLowerCase().includes(k.toLowerCase())){
+        text += " " + `${k}${k}${k} ${k} ${k}${k}.`;
+      }
+    }
+    while(text.length < minChars) text += " " + sample(basePool);
+    return text.trim();
+  }
+
+  /**********************
+   * UI bindings
+   **********************/
+  const $ = (sel)=>document.querySelector(sel);
+
+  const tabPractice = $("#tabPractice");
+  const tabInsights = $("#tabInsights");
+  const tabSettings = $("#tabSettings");
+
+  const viewPractice = $("#viewPractice");
+  const viewInsights = $("#viewInsights");
+  const viewSettings = $("#viewSettings");
+
+  const modeSel = $("#modeSel");
+  const minutesSel = $("#minutesSel");
+  const targetWpmInput = $("#targetWpm");
+  const planSel = $("#planSel");
+  const aiDiff = $("#aiDiff");
+
+  const btnStart = $("#btnStart");
+  const btnResume = $("#btnResume");
+  const btnPause = $("#btnPause");
+  const btnSkip = $("#btnSkip");
+  const btnShowKb = $("#btnShowKb");
+  const btnSlowDown = $("#btnSlowDown");
+
+  const btnTransferTest = $("#btnTransferTest");
+  const btnResetToday = $("#btnResetToday");
+  const btnDrillBigrams = $("#btnDrillBigrams");
+
+  const setupEl = $("#setup");
+  const runnerEl = $("#runner");
+  const phasebarEl = $("#phasebar");
+  const practiceArea = $("#practiceArea");
+  const promptEl = $("#prompt");
+  const typedEl = $("#typed");
+  const coachMsg = $("#coachMsg");
+
+  const statMode = $("#statMode");
+  const statPhase = $("#statPhase");
+  const statWpm = $("#statWpm");
+  const statAcc = $("#statAcc");
+  const statCons = $("#statCons");
+  const statHints = $("#statHints");
+  const statProg = $("#statProg");
+  const statEta = $("#statEta");
+  const statPhaseLeft = $("#statPhaseLeft");
+
+  const pillStreak = $("#pillStreak");
+  const pillNextFocus = $("#pillNextFocus");
+  const pillDue = $("#pillDue");
+  const pillLastSession = $("#pillLastSession");
+
+  const kbOverlay = $("#kbOverlay");
+  const overlayKb = $("#overlayKb");
+  const heatmapKb = $("#heatmapKb");
+  const btnCloseKb = $("#btnCloseKb");
+  const overlayHint = $("#overlayHint");
+  const fingerSummary = $("#fingerSummary");
+
+  const toastEl = $("#toast");
+
+  const paceFill = $("#paceFill");
+  const paceTick = $("#paceTick");
+  const beatEl = $("#beat");
+
+  const heatModeErrors = $("#heatModeErrors");
+  const heatModeHes = $("#heatModeHes");
+  const heatModeFinger = $("#heatModeFinger");
+  const heatIdeal = $("#heatIdeal");
+
+  const targetsList = $("#targetsList");
+  const confusionsList = $("#confusionsList");
+  const progressChart = $("#progressChart");
+  const chartBadge = $("#chartBadge");
+
+  // Replay UI
+  const replaySel = $("#replaySel");
+  const replayRange = $("#replayRange");
+  const replayText = $("#replayText");
+  const replayPos = $("#replayPos");
+  const replayStats = $("#replayStats");
+  const replayMeta = $("#replayMeta");
+  const replayPill = $("#replayPill");
+  const btnReplayPlay = $("#btnReplayPlay");
+  const btnReplayPause = $("#btnReplayPause");
+  const replaySpeed = $("#replaySpeed");
+
+  // Settings
+  const hintPolicySel = $("#hintPolicy");
+  const correctionModeSel = $("#correctionMode");
+  const rhythmDefaultSel = $("#rhythmDefault");
+  const rhythmSoundSel = $("#rhythmSound");
+  const btnExport = $("#btnExport");
+  const btnImport = $("#btnImport");
+  const btnResetAll = $("#btnResetAll");
+  const fileImport = $("#fileImport");
+
+  // PWA
+  const pwaStatus = $("#pwaStatus");
+  const btnInstall = $("#btnInstall");
+  const btnTryRegisterSW = $("#btnTryRegisterSW");
+  const btnDownloadSW = $("#btnDownloadSW");
+  const btnDownloadManifest = $("#btnDownloadManifest");
+  const pwaHelp = $("#pwaHelp");
+  const manifestLink = document.getElementById("manifestLink");
+
+  // Capture
+  const capture = $("#capture");
+
+  function toast(msg, ms=2400){
+    toastEl.innerHTML = msg;
+    toastEl.classList.add("show");
+    window.clearTimeout(toastEl._t);
+    toastEl._t = window.setTimeout(()=>toastEl.classList.remove("show"), ms);
+  }
+
+  function setTab(active){
+    const map = {
+      practice: [tabPractice, viewPractice],
+      insights: [tabInsights, viewInsights],
+      settings: [tabSettings, viewSettings]
+    };
+
+    // Auto-pause when leaving Practice
+    if(session && session.active && active !== "practice" && !session.paused){
+      pauseSession();
+      toast("Paused (switched tabs).", 1600);
+    }
+
+    for(const [k,[tab,view]] of Object.entries(map)){
+      const on = (k===active);
+      tab.setAttribute("aria-selected", on ? "true":"false");
+      view.classList.toggle("active", on);
+    }
+    if(active==="insights") renderInsights();
+    if(active==="settings") renderSettings();
+    if(active==="practice") {
+      // restore focus if session active
+      if(runnerEl.classList.contains("active")) focusCaptureSoon();
+    }
+  }
+
+  tabPractice.addEventListener("click", ()=>setTab("practice"));
+  tabInsights.addEventListener("click", ()=>setTab("insights"));
+  tabSettings.addEventListener("click", ()=>setTab("settings"));
+
+  /**********************
+   * Keyboard build + hints
+   **********************/
+  function cssEscape(s){ return String(s).replace(/"/g,'\\"').replace(/\\/g,"\\\\"); }
+
+  function buildKeyboard(container){
+    container.innerHTML = "";
+    for(const row of KBD_LAYOUT){
+      const r = document.createElement("div");
+      r.className = "kbdRow";
+      for(const key of row){
+        const el = document.createElement("div");
+        const canon = KBD_CANON(key.k);
+        el.className = "keycap" + (key.w ? (" "+key.w) : "");
+        el.dataset.canon = canon;
+        if(key.k==="Space") el.innerHTML = `<span style="opacity:.75">Space</span>`;
+        else el.textContent = key.k;
+        r.appendChild(el);
+      }
+      container.appendChild(r);
+    }
+  }
+  function clearKeyboardHints(container){
+    container.querySelectorAll(".keycap").forEach(el=>el.classList.remove("hint"));
+  }
+  function highlightKeyboardKey(container, ch){
+    clearKeyboardHints(container);
+    if(!ch) return;
+    const canon = String(ch);
+    const el = container.querySelector(`.keycap[data-canon="${cssEscape(canon)}"]`);
+    if(el) el.classList.add("hint");
+  }
+
+  buildKeyboard(overlayKb);
+  buildKeyboard(heatmapKb);
+
+  function showKeyboardOverlay({hintChar=null, autoHideMs=1800}={}){
+    kbOverlay.classList.add("active");
+    overlayHint.textContent = hintChar ? `Target key: ${DISPLAY_KEY(hintChar)}` : "Hint: keyboard peek";
+    highlightKeyboardKey(overlayKb, hintChar);
+    if(autoHideMs){
+      window.clearTimeout(kbOverlay._autoHide);
+      kbOverlay._autoHide = window.setTimeout(()=>{
+        if(kbOverlay.dataset.locked==="1") return;
+        kbOverlay.classList.remove("active");
+      }, autoHideMs);
+    }
+  }
+  function closeKeyboardOverlay(){
+    kbOverlay.classList.remove("active");
+    kbOverlay.dataset.locked="0";
+    clearKeyboardHints(overlayKb);
+  }
+  btnCloseKb.addEventListener("click", closeKeyboardOverlay);
+  kbOverlay.addEventListener("mousedown",(e)=>{ if(e.target===kbOverlay) closeKeyboardOverlay(); });
+
+  /**********************
+   * Metronome
+   **********************/
+  let metro = {on:false,timer:0,audio:null};
+
+  function startMetronomeIfNeeded(){
+    if(!session) return;
+    stopMetronome();
+    if(!session.phaseRhythm) return;
+
+    const interval = session.paceMs || idealKeyIntervalMs(state.profile.targetWpm);
+    metro.on = true;
+
+    try{
+      if(!metro.audio){
+        const AC = window.AudioContext || window.webkitAudioContext;
+        if(AC) metro.audio = new AC();
+      }
+    }catch(_){}
+
+    metro.timer = window.setInterval(()=>{
+      pulseBeat();
+      if(state.profile.rhythmSound) tryBeep();
+    }, interval);
+
+    paceTick.style.left = "50%";
+  }
+
+  function stopMetronome(){
+    metro.on = false;
+    if(metro.timer) window.clearInterval(metro.timer);
+    metro.timer = 0;
+    beatEl.classList.remove("pulse");
+  }
+
+  function pulseBeat(){
+    beatEl.classList.add("pulse");
+    window.clearTimeout(beatEl._t);
+    beatEl._t = window.setTimeout(()=>beatEl.classList.remove("pulse"), 90);
+  }
+
+  function tryBeep(){
+    if(!metro.audio) return;
+    if(metro.audio.state==="suspended"){ try{ metro.audio.resume(); }catch(_){ } }
+    if(metro.audio.state!=="running") return;
+    try{
+      const ctx = metro.audio;
+      const o = ctx.createOscillator();
+      const g = ctx.createGain();
+      o.frequency.value = 880;
+      g.gain.value = 0.015;
+      o.connect(g); g.connect(ctx.destination);
+      o.start(); o.stop(ctx.currentTime + 0.03);
+    }catch(_){}
+  }
+
+  /**********************
+   * Session Engine
+   **********************/
+  let session = null;
+
+  function wpmFrom(charsTyped, msElapsed){
+    if(!msElapsed || msElapsed<=0) return 0;
+    const minutes = msElapsed/60000;
+    return (charsTyped/5)/minutes;
+  }
+
+  function buildPhaseBar(phases, idx){
+    phasebarEl.innerHTML = "";
+    phases.forEach((p,i)=>{
+      const el = document.createElement("div");
+      el.className = "phase" + (i===idx ? " active":"");
+      el.innerHTML = `<span class="dot"></span>${escapeHtml(p.name)}${p.coachMode==="test" ? " <span class='pill' style='padding:4px 7px;font-size:11px;border-radius:999px;'>test</span>" : ""}`;
+      phasebarEl.appendChild(el);
+    });
+  }
+
+  /* === FIX: robust focus + IME capture === */
+  function focusCapture(){
+    if(!runnerEl.classList.contains("active")) return;
+    capture.focus({preventScroll:true});
+  }
+  function focusCaptureSoon(){
+    requestAnimationFrame(()=>requestAnimationFrame(()=>focusCapture()));
+  }
+  function ensureCaptureFocus(){
+    if(!runnerEl.classList.contains("active")) return;
+    if(document.activeElement !== capture) focusCaptureSoon();
+  }
+  practiceArea.addEventListener("mousedown", ensureCaptureFocus);
+  practiceArea.addEventListener("touchstart", ensureCaptureFocus, {passive:true});
+
+  // If returning to tab, refocus
+  document.addEventListener("visibilitychange", ()=>{
+    if(document.hidden){
+      if(session && session.active && !session.paused){
+        pauseSession();
+        toast("Paused (tab hidden).", 1400);
+      }
+      return;
+    }
+    if(runnerEl.classList.contains("active")) focusCaptureSoon();
+  });
+
+  // IME/mobile input capture: process inserted characters on input event
+  capture.addEventListener("input", ()=>{
+    if(!session || !session.active || session.paused) { capture.value=""; return; }
+    if(!viewPractice.classList.contains("active")) { capture.value=""; return; }
+    const v = capture.value;
+    capture.value = "";
+    if(!v) return;
+    for(const ch of v){
+      // ignore surrogate artifacts
+      if(ch === "\r") continue;
+      onCharTyped(ch);
+      if(!session || !session.active || session.paused) break;
+    }
+  });
+
+  function startSession({forceTransferCheck=false, forcePlan=null}={}){
+    // apply setup fields
+    state.profile.mode = modeSel.value;
+    state.profile.sessionMinutes = parseInt(minutesSel.value,10);
+    state.profile.targetWpm = clamp(parseInt(targetWpmInput.value||"35",10),10,140);
+    state.profile.plan = forcePlan || planSel.value;
+    state.profile.aiDifficulty = clamp(parseInt(aiDiff.value||"35",10), 0, 100);
+
+    // mobile friendly defaults (without changing user settings permanently)
+    const mobilePlan = (IS_MOBILE && state.profile.plan==="auto") ? "mixed" : state.profile.plan;
+
+    saveState();
+    renderHeaderPills();
+
+    session = buildSessionPlan({forceTransferCheck, planOverride: mobilePlan});
+    session.paused=false;
+    session.active=true;
+    session.currentPhase=0;
+
+    // replay record
+    session.replay = createReplayRecord(session);
+
+    setupEl.style.display="none";
+    runnerEl.classList.add("active");
+    btnResume.disabled=true;
+
+    startPhase(0);
+    toast(`Session started: <b>${escapeHtml(state.profile.mode)}</b> · ${state.profile.sessionMinutes} min`, 2200);
+  }
+
+  function resumeSession(){
+    if(!session || !session.active) return;
+    session.paused=false;
+    session.pauseStartedAt=0;
+    btnResume.disabled=true;
+    btnPause.disabled=false;
+    coachMsg.innerHTML = `Resumed. Focus on <b>accuracy</b> first; speed comes from smoothness.`;
+    recordReplayEvent({type:"resume"});
+    focusCaptureSoon();
+    startMetronomeIfNeeded();
+  }
+
+  function pauseSession(){
+    if(!session || !session.active) return;
+    session.paused=true;
+    session.pauseStartedAt = nowMs();
+    btnResume.disabled=false;
+    btnPause.disabled=true;
+    coachMsg.innerHTML = `Paused. Press <span class="code">Esc</span> or click <b>Resume</b> to continue.`;
+    recordReplayEvent({type:"pause"});
+    stopMetronome();
+  }
+
+  function endSession(){
+    if(!session) return;
+    session.active=false;
+    stopMetronome();
+
+    const total = session.phaseSummaries.reduce((acc,p)=>acc+p.chars,0);
+    const totalCorrect = session.phaseSummaries.reduce((acc,p)=>acc+p.correctChars,0);
+    const totalMs = session.phaseSummaries.reduce((acc,p)=>acc+p.elapsedMs,0);
+
+    const wpm = wpmFrom(total, totalMs);
+    const acc = total ? (totalCorrect/total) : 1;
+
+    const transfer = session.phaseSummaries.find(p=>p.kind==="transfer"||p.kind==="transferCheck");
+    const transferWpm = transfer ? transfer.wpm : null;
+    const transferAcc = transfer ? transfer.acc : null;
+
+    // Adaptive pace (feature #3 tie-in): nudge target pace gently
+    // Good session => +2 WPM; low accuracy => -3 WPM
+    if(acc >= 0.97 && wpm >= state.profile.targetWpm){
+      state.profile.targetWpm = clamp(state.profile.targetWpm + 2, 10, 140);
+      toast("Nice — slight pace increase next time.", 2200);
+    }else if(acc < 0.90){
+      state.profile.targetWpm = clamp(state.profile.targetWpm - 3, 10, 140);
+      toast("Accuracy first — easing pace next time.", 2200);
+    }
+
+    updateStreakOnPractice();
+
+    state.stats.sessions.push({
+      date: todayStr(),
+      mode: state.profile.mode,
+      minutes: state.profile.sessionMinutes,
+      plan: state.profile.plan,
+      wpm: round(wpm,1),
+      acc: round(acc,4),
+      transferWpm: transferWpm != null ? round(transferWpm,1) : null,
+      transferAcc: transferAcc != null ? round(transferAcc,4) : null,
+      focusKeys: session.focus.keys,
+      focusBigrams: session.focus.bigrams
+    });
+    if(state.stats.sessions.length>120) state.stats.sessions = state.stats.sessions.slice(-120);
+
+    // finalize replay
+    finalizeReplayRecord(session, {wpm, acc, transferWpm, transferAcc});
+    saveState();
+    renderHeaderPills();
+
+    const next = recommendFocus();
+    const focusLine = `Next focus: <b>${escapeHtml(next.bigrams.join(", "))}</b> + <b>${escapeHtml(next.keys.join(", "))}</b>`;
+    const perfLine = `Session: <b>${round(wpm,1)} WPM</b> at <b>${fmtPct(acc)}</b>.`;
+    const transferLine = transfer ? `Transfer: <b>${round(transfer.wpm,1)} WPM</b> at <b>${fmtPct(transfer.acc)}</b>.` : `Transfer: —`;
+    coachMsg.innerHTML = `${perfLine} ${transferLine}<br/>${focusLine}`;
+
+    toast(`Session complete: <b>${round(wpm,1)} WPM</b> · <b>${fmtPct(acc)}</b>`, 3200);
+
+    setTimeout(()=>{
+      runnerEl.classList.remove("active");
+      setupEl.style.display="block";
+      session=null;
+      btnResume.disabled=true;
+      renderHeaderPills();
+      renderInsights();
+    }, 900);
+  }
+
+  function skipPhase(){
+    if(!session || !session.active) return;
+    finalizePhase({skipped:true});
+    nextPhase();
+  }
+  function nextPhase(){
+    if(!session) return;
+    const nextIdx = session.currentPhase+1;
+    if(nextIdx >= session.phases.length){
+      endSession();
+      return;
+    }
+    startPhase(nextIdx);
+  }
+
+  function startPhase(i){
+    if(!session) return;
+    session.currentPhase=i;
+    const phase = session.phases[i];
+
+    buildPhaseBar(session.phases, i);
+
+    session.targetText = phase.text;
+    session.typed = [];
+    session.index = 0;
+    session.startedAt = 0;
+    session.lastKeyAt = 0;
+    session.latencies = [];
+    session.pauseAccum = 0;
+    session.strictLocked = false;
+    session.phaseItemStats = {keys:{}, bigrams:{}};
+    session.phaseInfo = phase;
+
+    statMode.textContent = state.profile.mode;
+    statPhase.textContent = phase.name;
+    statWpm.textContent = `0 (live)`;
+    statAcc.textContent = `100%`;
+    statCons.textContent = `—`;
+    statProg.textContent = `0%`;
+    statEta.textContent = `—`;
+    statPhaseLeft.textContent = `—`;
+
+    session.phaseHintPolicy = phase.hintPolicyOverride ?? (phase.coachMode==="test" ? "off" : state.profile.hintPolicy);
+    session.phaseCorrectionMode = phase.correctionModeOverride ?? state.profile.correctionMode;
+    session.phaseRhythm = phase.rhythmOverride ?? state.profile.rhythmDefault;
+
+    statHints.textContent = session.phaseHintPolicy==="off" ? "Off" : (session.phaseHintPolicy==="always" ? "On" : "After try");
+
+    const hintsPart = session.phaseHintPolicy==="off"
+      ? `No hints. This is <b>retrieval</b>.`
+      : session.phaseHintPolicy==="always"
+        ? `Hints on. Keep accuracy high; hints will fade later.`
+        : `Hints after try. Attempt first; hints appear only if you miss.`;
+
+    const corrPart = session.phaseCorrectionMode==="flow"
+      ? `Flow: keep moving (no backspace).`
+      : session.phaseCorrectionMode==="strict"
+        ? `Strict: must correct errors.`
+        : `Realistic: backspace allowed.`;
+
+    const rhythmPart = session.phaseRhythm ? `Rhythm: stay near the tick.` : `Rhythm: off.`;
+
+    coachMsg.innerHTML = `<b>${escapeHtml(phase.name)}:</b> ${hintsPart} ${corrPart} ${rhythmPart}`;
+
+    recordReplayEvent({type:"phase", phaseIndex:i, phaseName:phase.name, kind:phase.kind});
+
+    renderPrompt();
+    renderTyped();
+    updatePaceUI(0);
+
+    startMetronomeIfNeeded();
+    focusCaptureSoon();
+  }
+
+  function finalizePhase({skipped=false}={}){
+    if(!session) return;
+    const phase = session.phaseInfo;
+    const elapsed = session.startedAt ? (nowMs() - session.startedAt - (session.pauseAccum||0)) : 0;
+    const chars = session.typed.length;
+    const correctChars = session.typed.reduce((acc,t)=>acc+(t.correct?1:0),0);
+    const wpm = wpmFrom(chars, elapsed);
+    const acc = chars ? (correctChars/chars) : 1;
+
+    if(!skipped){
+      applySpacingUpdates(session.phaseItemStats, acc, wpm);
+    }
+
+    session.phaseSummaries.push({
+      name: phase.name, kind: phase.kind, coachMode: phase.coachMode,
+      elapsedMs: elapsed, chars, correctChars, wpm, acc
+    });
+    recordReplayEvent({type:"phaseEnd", phaseIndex:session.currentPhase, wpm, acc});
+  }
+
+  function applySpacingUpdates(phaseStats, phaseAcc, phaseWpm){
+    const idealMs = idealKeyIntervalMs(state.profile.targetWpm);
+    const now = nowMs();
+    const keys = phaseStats.keys || {};
+    const bigrams = phaseStats.bigrams || {};
+
+    const updateItem = (item, itemAcc, itemLat)=>{
+      if(!item) return;
+      const acc = itemAcc==null ? 0 : itemAcc;
+      const latRatio = itemLat!=null ? (itemLat/idealMs) : 1.0;
+
+      let mult = 1.0;
+      if(acc>=0.985 && latRatio<=1.25) mult=2.0;
+      else if(acc>=0.965 && latRatio<=1.40) mult=1.55;
+      else if(acc>=0.94) mult=1.20;
+      else if(acc>=0.88) mult=1.0;
+      else mult=0.55;
+
+      item.intervalDays = clamp((item.intervalDays||0.5)*mult, 0.20, 30);
+      const minMs = 6*60*60*1000;
+      const next = now + Math.max(minMs, item.intervalDays*DAY);
+      item.nextDue = next;
+      item.lastSeen = now;
+    };
+
+    for(const [ch,s] of Object.entries(keys)){
+      const item = ensureKey(ch);
+      const itemAcc = s.attempts ? (s.correct/s.attempts) : null;
+      const itemLat = s.latCount ? (s.latSum/s.latCount) : null;
+      updateItem(item, itemAcc, itemLat);
+    }
+    for(const [bg,s] of Object.entries(bigrams)){
+      const item = ensureBigram(bg);
+      const itemAcc = s.attempts ? (s.correct/s.attempts) : null;
+      const itemLat = s.latCount ? (s.latSum/s.latCount) : null;
+      updateItem(item, itemAcc, itemLat);
+    }
+    saveState();
+    renderHeaderPills();
+  }
+
+  function recommendFocus(){
+    const keyStats = listKeyStats();
+    const bgStats = listBigramStats();
+
+    const dueK = dueItems(keyStats, 10);
+    const dueB = dueItems(bgStats, 10);
+
+    const weakK = topWeak(keyStats, 8, 12);
+    const weakB = topWeak(bgStats, 8, 10);
+
+    const bootstrapKeys = ["f","j","d","k","s","l","a",";"];
+    const bootstrapBigrams = DEFAULT_BIGRAMS;
+
+    const pick2 = (arr, fallback)=>{
+      const ids = arr.map(x=>x.id).filter(Boolean);
+      const out = uniq(ids).slice(0,2);
+      if(out.length<2){
+        for(const f of fallback){
+          if(!out.includes(f)) out.push(f);
+          if(out.length>=2) break;
+        }
+      }
+      return out.slice(0,2);
+    };
+
+    const bBlend = uniq([...dueB, ...weakB].sort((a,b)=>a.strength-b.strength)).slice(0,8);
+    const kBlend = uniq([...dueK, ...weakK].sort((a,b)=>a.strength-b.strength)).slice(0,10);
+
+    const focusB = pick2(bBlend, bootstrapBigrams);
+    const focusK = pick2(kBlend, bootstrapKeys);
+
+    return {keys:focusK, bigrams:focusB};
+  }
+
+  // Confusable bigrams: pick weak + similar letters near each other (simple heuristic)
+  function recommendConfusableBigrams(limit=6){
+    const bgStats = listBigramStats();
+    const weak = topWeak(bgStats, 18, 8).map(x=>x.id);
+    const candidates = uniq([...weak, ...DEFAULT_BIGRAMS]).filter(x=>x.length===2);
+    // Prefer those with low accuracy
+    const scored = candidates.map(bg=>{
+      const item = state.bigrams[bg];
+      const acc = item ? (accuracyOf(item) ?? 1) : 0.9;
+      return {bg, acc, attempts: item?.attempts||0};
+    }).sort((a,b)=>(a.acc-b.acc) || (b.attempts-a.attempts));
+    return scored.slice(0,limit).map(x=>x.bg);
+  }
+
+  function buildSessionPlan({forceTransferCheck=false, planOverride=null}={}){
+    const focus = recommendFocus();
+    const minutes = state.profile.sessionMinutes;
+    const targetWpm = state.profile.targetWpm;
+
+    const plan = planOverride || state.profile.plan || "auto";
+    const totalChars = Math.round(minutes * targetWpm * 5);
+
+    const warmChars = Math.max(120, Math.round(totalChars*0.12));
+    const drillChars = Math.max(260, Math.round(totalChars*0.28));
+    const drill2Chars = Math.max(240, Math.round(totalChars*0.22));
+    const reviewChars = Math.max(260, Math.round(totalChars*0.20));
+    const transferChars = Math.max(260, Math.round(totalChars*0.18));
+
+    const phases = [];
+
+    phases.push({
+      name:"Warm-up",
+      kind:"warmup",
+      coachMode:"training",
+      hintPolicyOverride:"always",
+      correctionModeOverride:"flow",
+      rhythmOverride: state.profile.rhythmDefault && !IS_MOBILE,
+      text: generateWarmupText(warmChars)
+    });
+
+    // Bigram drill variations (feature #3)
+    const confB = recommendConfusableBigrams(4);
+    const bigramSet = uniq([...focus.bigrams, ...confB]).slice(0,4);
+
+    if(plan==="keys"){
+      phases.push({
+        name:`Targeted drill (keys: ${focus.keys.join(", ")})`,
+        kind:"targeted",
+        coachMode:"training",
+        hintPolicyOverride: state.profile.hintPolicy,
+        correctionModeOverride:"flow",
+        rhythmOverride: state.profile.rhythmDefault && !IS_MOBILE,
+        text: generateKeyDrillText(focus.keys, drill2Chars + drillChars)
+      });
+    }else if(plan==="bigrams"){
+      phases.push({
+        name:`Bigram mastery (bigrams: ${bigramSet.join(", ")})`,
+        kind:"targeted",
+        coachMode:"training",
+        hintPolicyOverride: state.profile.hintPolicy,
+        correctionModeOverride:"flow",
+        rhythmOverride: state.profile.rhythmDefault && !IS_MOBILE,
+        text: generateBigramDrillText(bigramSet, drillChars + drill2Chars)
+      });
+    }else{
+      phases.push({
+        name:`Targeted drill (bigrams: ${bigramSet.slice(0,2).join(", ")})`,
+        kind:"targeted",
+        coachMode:"training",
+        hintPolicyOverride: state.profile.hintPolicy,
+        correctionModeOverride:"flow",
+        rhythmOverride: state.profile.rhythmDefault && !IS_MOBILE,
+        text: generateBigramDrillText(bigramSet.slice(0,2), drillChars)
+      });
+      phases.push({
+        name:`Targeted drill (keys: ${focus.keys.join(", ")})`,
+        kind:"targeted",
+        coachMode:"training",
+        hintPolicyOverride: state.profile.hintPolicy,
+        correctionModeOverride:"flow",
+        rhythmOverride: state.profile.rhythmDefault && !IS_MOBILE,
+        text: generateKeyDrillText(focus.keys, drill2Chars)
+      });
+    }
+
+    // More interleaving if mixed
+    phases.push({
+      name:"Interleaved review",
+      kind:"review",
+      coachMode:"test",
+      hintPolicyOverride:"off",
+      correctionModeOverride:"flow",
+      rhythmOverride:false,
+      text: generateInterleavedReviewText(focus, plan==="mixed" ? Math.round(reviewChars*1.15) : reviewChars)
+    });
+
+    const transferKind = forceTransferCheck ? "transferCheck" : "transfer";
+    const useAITransfer = (plan==="transferAI");
+    const transferText = useAITransfer
+      ? generateAIText({mode: state.profile.mode, focus, minChars: transferChars, difficulty01: clamp(state.profile.aiDifficulty/100,0,1)})
+      : pickTransferText(state.profile.mode, focus.bigrams, transferChars);
+
+    phases.push({
+      name: forceTransferCheck ? "Transfer check (no hints)" : (useAITransfer ? "Transfer (AI)" : "Transfer"),
+      kind: transferKind,
+      coachMode:"test",
+      hintPolicyOverride:"off",
+      correctionModeOverride: (state.profile.correctionMode==="strict") ? "strict" : "realistic",
+      rhythmOverride:false,
+      text: transferText
+    });
+
+    return {
+      active:false, paused:false,
+      phaseSummaries:[],
+      phases,
+      focus,
+      plannedMinutes: minutes,
+      plannedChars: totalChars,
+      paceWpm: targetWpm,
+      paceMs: idealKeyIntervalMs(targetWpm),
+      plan
+    };
+  }
+
+  function generateWarmupText(charCount){
+    const patterns = [
+      "asdf jkl; asdf jkl; ",
+      "fj fj fj dj dk sl a; ",
+      "the the the and and ",
+      "we will do this well ",
+      "keep it smooth and calm "
+    ];
+    let out="";
+    while(out.length < charCount){
+      out += sample(patterns);
+      if(Math.random()<0.55) out += sample(COMMON_WORDS) + " ";
+    }
+    return out.trim();
+  }
+  function wordsContaining(substr, limit=40){
+    const s = String(substr).toLowerCase();
+    return COMMON_WORDS.filter(w=>w.includes(s)).slice(0, limit);
+  }
+  function generateBigramDrillText(bigrams, charCount){
+    const bgs = bigrams.map(x=>x.toLowerCase()).filter(x=>x.length===2);
+    let out="";
+    while(out.length < charCount){
+      const bg = sample(bgs);
+      const candidates = wordsContaining(bg, 30);
+      if(candidates.length){
+        out += candidates.slice(0, Math.min(6, candidates.length)).join(" ") + " ";
+      }else{
+        out += `${bg} ${bg} ${bg} `;
+      }
+      if(Math.random()<0.35){
+        out += `we ${sample(COMMON_WORDS)} ${sample(COMMON_WORDS)} ${sample(COMMON_WORDS)}. `;
+      }
+      if(Math.random()<0.60) out += `${bg} ${bg} `;
+    }
+    return out.trim();
+  }
+  function generateKeyDrillText(keys, charCount){
+    const ks = keys.map(k=>String(k).toLowerCase()).filter(k=>k.length===1);
+    let out="";
+    while(out.length < charCount){
+      const k = sample(ks);
+      const candidates = COMMON_WORDS.filter(w=>w.includes(k)).slice(0, 18);
+      if(candidates.length){
+        const cluster = shuffle([...candidates]).slice(0, 7);
+        out += cluster.join(" ") + " ";
+      }else{
+        out += `${k}${k}${k} ${k} ${k}${k} `;
+      }
+      if(Math.random()<0.25) out += " ";
+    }
+    return out.trim();
+  }
+  function generateInterleavedReviewText(focus, charCount){
+    const keyStats = listKeyStats();
+    const bgStats = listBigramStats();
+    const dueB = dueItems(bgStats, 8).map(x=>x.id).filter(Boolean);
+    const dueK = dueItems(keyStats, 10).map(x=>x.id).filter(Boolean);
+
+    const poolB = uniq([...focus.bigrams, ...dueB, ...DEFAULT_BIGRAMS]).slice(0, 10);
+    const poolK = uniq([...focus.keys, ...dueK, "e","t","a","o","n","i","s","r"]).slice(0, 14);
+
+    let out="";
+    while(out.length < charCount){
+      const b = sample(poolB);
+      const k = sample(poolK);
+      const candidatesB = COMMON_WORDS.filter(w=>w.includes(b)).slice(0, 12);
+      const candidatesK = COMMON_WORDS.filter(w=>w.includes(k)).slice(0, 12);
+      const chunk = shuffle([...candidatesB, ...candidatesK]).slice(0, 10);
+      out += chunk.join(" ") + ". ";
+    }
+    return out.trim();
+  }
+  function pickTransferText(mode, focusBigrams, minChars){
+    const pool = TRANSFER_TEXT[mode] || TRANSFER_TEXT.office;
+    const f = focusBigrams.map(x=>x.toLowerCase()).filter(x=>x.length===2);
+
+    let best = pool[0], bestScore = -1;
+    for(const t of pool){
+      const low = t.toLowerCase();
+      let score=0;
+      for(const bg of f) if(low.includes(bg)) score += 1;
+      score += Math.min(1.0, t.length/160);
+      if(score > bestScore){ bestScore = score; best = t; }
+    }
+    let out = best.trim();
+    while(out.length < minChars) out += " " + sample(pool).trim();
+    return out.trim();
+  }
+
+  /**********************
+   * Replay (feature #1)
+   **********************/
+  function uid(){
+    return Math.random().toString(36).slice(2,9) + "-" + Date.now().toString(36);
+  }
+  function createReplayRecord(sess){
+    const dt = new Date().toISOString();
+    return {
+      id: uid(),
+      dateTime: dt,
+      date: dt.slice(0,10),
+      mode: state.profile.mode,
+      minutes: state.profile.sessionMinutes,
+      plan: sess.plan,
+      focus: sess.focus,
+      phases: sess.phases.map(p=>({name:p.name, kind:p.kind, coachMode:p.coachMode})),
+      events: [], // {t, type, ...}
+      summary: null
+    };
+  }
+  function recordReplayEvent(evt){
+    if(!session || !session.replay) return;
+    const t0 = session.replay._t0 || (session.replay._t0 = nowMs());
+    session.replay.events.push({t: nowMs()-t0, ...evt});
+    // cap to avoid runaway (very large sessions)
+    if(session.replay.events.length > 25000){
+      session.replay.events = session.replay.events.slice(-25000);
+    }
+  }
+  function finalizeReplayRecord(sess, summary){
+    if(!sess || !sess.replay) return;
+    sess.replay.summary = {
+      wpm: round(summary.wpm,1),
+      acc: round(summary.acc,4),
+      transferWpm: summary.transferWpm!=null ? round(summary.transferWpm,1) : null,
+      transferAcc: summary.transferAcc!=null ? round(summary.transferAcc,4) : null
+    };
+    // store
+    state.stats.replays = state.stats.replays || [];
+    state.stats.replays.push(sess.replay);
+    // keep last 30
+    if(state.stats.replays.length > 30) state.stats.replays = state.stats.replays.slice(-30);
+  }
+
+  /**********************
+   * Input + feedback
+   **********************/
+  function shouldTreatQuestionAsHint(){
+    if(!session) return false;
+    const expected = session.targetText[session.index] || "";
+    return expected !== "?";
+  }
+  function inTestNoHints(){ return session && session.phaseHintPolicy==="off"; }
+  function hintPolicy(){ return session ? session.phaseHintPolicy : state.profile.hintPolicy; }
+  function correctionMode(){ return session ? session.phaseCorrectionMode : state.profile.correctionMode; }
+  function allowBackspace(){ return correctionMode() !== "flow"; }
+  function strictMode(){ return correctionMode() === "strict"; }
+
+  function recordPhaseKey(ch, correct, latencyMs){
+    if(!session) return;
+    const k = String(ch);
+    if(!session.phaseItemStats.keys[k]){
+      session.phaseItemStats.keys[k] = {attempts:0, correct:0, latCount:0, latSum:0};
+    }
+    const s = session.phaseItemStats.keys[k];
+    s.attempts += 1;
+    if(correct) s.correct += 1;
+    if(latencyMs!=null){ s.latCount += 1; s.latSum += latencyMs; }
+  }
+  function recordPhaseBigram(bg, correct, latencyMs){
+    if(!session) return;
+    const b = String(bg);
+    if(!session.phaseItemStats.bigrams[b]){
+      session.phaseItemStats.bigrams[b] = {attempts:0, correct:0, latCount:0, latSum:0};
+    }
+    const s = session.phaseItemStats.bigrams[b];
+    s.attempts += 1;
+    if(correct) s.correct += 1;
+    if(latencyMs!=null){ s.latCount += 1; s.latSum += latencyMs; }
+  }
+
+  function updateFingerStats(expectedChar, correct){
+    const ch = String(expectedChar).toLowerCase();
+    const finger = FINGER_MAP[ch];
+    if(!finger) return;
+    if(!state.fingers[finger]) state.fingers[finger] = {attempts:0, errors:0};
+    state.fingers[finger].attempts += 1;
+    if(!correct) state.fingers[finger].errors += 1;
+  }
+
+  function updateGlobalMetrics(expectedChar, typedChar, correct, latencyMs, prevExpected, prevCorrect){
+    const now = nowMs();
+
+    const key = ensureKey(expectedChar);
+    key.attempts += 1;
+    if(correct){
+      key.correct += 1;
+      key.consecutiveErrors = 0;
+    }else{
+      key.errors += 1;
+      key.consecutiveErrors = (key.consecutiveErrors||0) + 1;
+      const t = String(typedChar);
+      key.subs[t] = (key.subs[t]||0) + 1;
+    }
+    if(latencyMs!=null){
+      key.latCount += 1;
+      key.latSum += latencyMs;
+      key.latSqSum += latencyMs*latencyMs;
+    }
+    key.lastSeen = now;
+
+    updateFingerStats(expectedChar, correct);
+
+    if(prevExpected!=null){
+      const bg = String(prevExpected)+String(expectedChar);
+      if(!bg.includes("\n") && !bg.includes("\t")){
+        const big = ensureBigram(bg);
+        big.attempts += 1;
+        const bgCorrect = Boolean(prevCorrect && correct);
+        if(bgCorrect) big.correct += 1;
+        else big.errors += 1;
+        if(latencyMs!=null){
+          big.latCount += 1;
+          big.latSum += latencyMs;
+          big.latSqSum += latencyMs*latencyMs;
+        }
+        big.lastSeen = now;
+      }
+    }
+  }
+
+  function renderPrompt(){
+    if(!session) return;
+    const t = session.targetText;
+    const i = session.index;
+    const beforeWindow = 22;
+    const afterWindow = 86;
+    const start = Math.max(0, i - beforeWindow);
+    const end = Math.min(t.length, i + afterWindow);
+    const prefixEllipsis = start > 0;
+    const suffixEllipsis = end < t.length;
+    const pre = escapeHtml(t.slice(start, i));
+    const cur = i < t.length ? escapeHtml(t[i]) : "";
+    const post = escapeHtml(t.slice(i+1, end));
+    promptEl.innerHTML =
+      `${prefixEllipsis ? "<span class='ellipsis'>…</span>" : ""}` +
+      pre +
+      (i < t.length ? `<span class="cursor">${cur}</span>` : `<span class="cursor">✓</span>`) +
+      post +
+      `${suffixEllipsis ? "<span class='ellipsis'>…</span>" : ""}`;
+  }
+  function renderTyped(){
+    if(!session) return;
+    const items = session.typed;
+    const maxShow = 140;
+    const start = Math.max(0, items.length - maxShow);
+    const slice = items.slice(start);
+    const prefixEllipsis = start > 0;
+    let html = prefixEllipsis ? `<span class="ghost">…</span>` : "";
+    for(const it of slice){
+      const ch = escapeHtml(it.ch);
+      html += it.correct ? `<span class="ok">${ch}</span>` : `<span class="err">${ch}</span>`;
+    }
+    typedEl.innerHTML = html || `<span class="ghost">(start typing)</span>`;
+  }
+
+  function updatePaceUI(accMaybe){
+    if(accMaybe==null){ paceFill.style.width="0%"; return; }
+    const pct = clamp(accMaybe*100,0,100);
+    paceFill.style.width = `${pct}%`;
+  }
+
+  function updateLiveStats(){
+    if(!session) return;
+
+    const now = nowMs();
+    const elapsed = session.startedAt ? (now - session.startedAt - (session.pauseAccum||0)) : 0;
+    const chars = session.typed.length;
+    const correctChars = session.typed.reduce((acc,t)=>acc+(t.correct?1:0),0);
+    const wpm = wpmFrom(chars, elapsed);
+    const acc = chars ? (correctChars/chars) : 1;
+
+    statWpm.textContent = `${round(wpm,1)} (live)`;
+    statAcc.textContent = fmtPct(acc);
+
+    const cons = session.latencies.length >= 6 ? std(session.latencies) : null;
+    if(cons==null){
+      statCons.textContent = "—";
+    }else{
+      const ideal = session.paceMs || idealKeyIntervalMs(state.profile.targetWpm);
+      const ratio = cons/ideal;
+      let label="steady";
+      if(ratio>1.15) label="jumpy";
+      else if(ratio>0.85) label="ok";
+      else label="steady";
+      statCons.textContent = `${label} (${Math.round(cons)}ms)`;
+    }
+
+    // Overall progress across planned chars
+    const doneOverall =
+      session.phaseSummaries.reduce((acc,p)=>acc+(p.chars||0),0) + session.typed.length;
+    const plannedOverall = session.plannedChars || session.targetText.length;
+    const overallPct = plannedOverall ? (doneOverall/plannedOverall) : 0;
+    statProg.textContent = `${Math.round(overallPct*100)}%`;
+
+    // ETA
+    const remainingChars = Math.max(0, plannedOverall - doneOverall);
+    if(wpm > 1){
+      const cps = (wpm*5)/60;
+      statEta.textContent = fmtMMSS(remainingChars/Math.max(1e-6,cps));
+    }else{
+      statEta.textContent = "—";
+    }
+
+    // Phase left
+    const phaseRemaining = Math.max(0, session.targetText.length - session.index);
+    if(wpm > 1){
+      const cps = (wpm*5)/60;
+      statPhaseLeft.textContent = fmtMMSS(phaseRemaining/Math.max(1e-6,cps));
+    }else{
+      statPhaseLeft.textContent = "—";
+    }
+
+    if(session.phaseRhythm) updatePaceUI(acc);
+    else updatePaceUI(null);
+  }
+
+  function maybeAutoHint(expectedChar){
+    if(!session) return;
+    if(inTestNoHints()) return;
+
+    const policy = hintPolicy();
+    if(policy==="off") return;
+    if(policy==="always"){
+      showKeyboardOverlay({hintChar: expectedChar, autoHideMs: 1500});
+      kbOverlay.dataset.locked="0";
+      return;
+    }
+    const key = ensureKey(expectedChar);
+    if((key.consecutiveErrors||0) >= 2){
+      showKeyboardOverlay({hintChar: expectedChar, autoHideMs: 1600});
+      kbOverlay.dataset.locked="0";
+    }
+  }
+
+  function normalizeKeyEvent(e){
+    if(e.key==="Enter") return "\n";
+    if(e.key==="Tab") return "\t";
+    if(e.key===" ") return " ";
+    if(e.key.length===1) return e.key;
+    return null;
+  }
+
+  // Core char handler used by keydown + IME input
+  function onCharTyped(ch, from="input"){
+    if(!session || !session.active) return;
+    if(session.paused) return;
+    if(session.index >= session.targetText.length) return;
+
+    const now = nowMs();
+    if(!session.startedAt){
+      session.startedAt = now;
+      session.pauseAccum = 0;
+    }
+
+    const expected = session.targetText[session.index];
+    const correct = (ch === expected);
+
+    let latency = null;
+    if(session.lastKeyAt){
+      latency = now - session.lastKeyAt;
+      session.latencies.push(latency);
+      if(session.latencies.length > 90) session.latencies = session.latencies.slice(-90);
+    }
+    session.lastKeyAt = now;
+
+    const prev = (session.index > 0) ? session.targetText[session.index-1] : null;
+    const prevTyped = (session.index > 0) ? session.typed[session.index-1] : null;
+    const prevCorrect = prevTyped ? prevTyped.correct : null;
+
+    updateGlobalMetrics(expected, ch, correct, latency, prev, prevCorrect);
+
+    recordPhaseKey(expected, correct, latency);
+    if(prev != null && !String(prev).includes("\n") && !String(expected).includes("\n")){
+      const bg = String(prev)+String(expected);
+      const bgCorrect = Boolean(prevCorrect && correct);
+      recordPhaseBigram(bg, bgCorrect, latency);
+    }
+
+    session.typed.push({ch, expected, correct});
+
+    // Replay record
+    recordReplayEvent({
+      type:"key",
+      idx: session.index,
+      expected,
+      typed: ch,
+      correct,
+      latency: latency==null ? null : Math.round(latency),
+      phaseIndex: session.currentPhase
+    });
+
+    if(strictMode() && !correct) session.strictLocked = true;
+
+    session.index += 1;
+
+    if(!correct) maybeAutoHint(expected);
+    else if(hintPolicy()==="always" && !inTestNoHints()){
+      kbOverlay.dataset.locked="0";
+      showKeyboardOverlay({hintChar: session.targetText[session.index], autoHideMs: 900});
+    }
+
+    renderPrompt();
+    renderTyped();
+    updateLiveStats();
+
+    if(session.index >= session.targetText.length){
+      finalizePhase();
+      nextPhase();
+    }
+  }
+
+  function onKeyDown(e){
+    if(!session || !session.active) return;
+    if(!viewPractice.classList.contains("active")) return;
+
+    // Esc toggles pause
+    if(e.key==="Escape"){
+      e.preventDefault();
+      if(session.paused) resumeSession(); else pauseSession();
+      return;
+    }
+
+    // If paused: don't hijack other keys (except optional scroll prevention)
+    if(session.paused){
+      if(e.key===" " || e.key==="Tab") e.preventDefault();
+      return;
+    }
+
+    // If finished phase, ignore
+    if(session.index >= session.targetText.length){
+      e.preventDefault();
+      return;
+    }
+
+    // Keyboard peek with ? (unless prompt expects ?)
+    if(e.key==="?" && shouldTreatQuestionAsHint()){
+      e.preventDefault();
+      kbOverlay.dataset.locked="0";
+      showKeyboardOverlay({hintChar: session.targetText[session.index], autoHideMs: 1400});
+      return;
+    }
+
+    // allow browser shortcuts
+    if(e.ctrlKey || e.metaKey) return;
+
+    // backspace
+    if(e.key==="Backspace"){
+      e.preventDefault();
+      if(!allowBackspace()){
+        toast(`Flow mode: keep moving. (Enable backspace in Settings: Realistic/Strict)`, 2300);
+        return;
+      }
+      if(session.typed.length===0) return;
+
+      // replay event
+      recordReplayEvent({type:"backspace", idx: session.index, phaseIndex: session.currentPhase});
+
+      session.typed.pop();
+      session.index = Math.max(0, session.index-1);
+      if(session.strictLocked) session.strictLocked=false;
+
+      renderPrompt();
+      renderTyped();
+      updateLiveStats();
+      return;
+    }
+
+    if(strictMode() && session.strictLocked){
+      e.preventDefault();
+      toast(`Strict mode: backspace to correct.`, 900);
+      return;
+    }
+
+    const ch = normalizeKeyEvent(e);
+    if(ch==null) return;
+
+    e.preventDefault();
+
+    // Important: for physical keyboard we process here; for IME, input handler processes.
+    onCharTyped(ch, "keydown");
+  }
+
+  // === FIX: global key capture so typing works even if focus slips ===
+  document.addEventListener("keydown", onKeyDown, true);
+
+  // Keep capture focus while runner active (non-invasive)
+  window.addEventListener("mousedown", ()=>{
+    if(runnerEl.classList.contains("active")) ensureCaptureFocus();
+  });
+
+  btnShowKb.addEventListener("click", ()=>{
+    kbOverlay.dataset.locked="1";
+    showKeyboardOverlay({hintChar: session ? session.targetText[session.index] : null, autoHideMs: 0});
+    focusCaptureSoon();
+  });
+
+  /**********************
+   * Buttons & controls
+   **********************/
+  btnStart.addEventListener("click", ()=>startSession());
+  btnResume.addEventListener("click", ()=>resumeSession());
+  btnPause.addEventListener("click", ()=>pauseSession());
+  btnSkip.addEventListener("click", ()=>skipPhase());
+
+  btnSlowDown.addEventListener("click", ()=>{
+    if(!session){
+      state.profile.targetWpm = Math.max(10, state.profile.targetWpm - 5);
+      targetWpmInput.value = state.profile.targetWpm;
+      saveState();
+      toast(`Target pace adjusted: <b>${state.profile.targetWpm} WPM</b>`, 1800);
+      renderHeaderPills();
+      return;
+    }
+    session.paceWpm = Math.max(10, session.paceWpm - 5);
+    session.paceMs = idealKeyIntervalMs(session.paceWpm);
+    toast(`Session pace: <b>${session.paceWpm} WPM</b> (pressure down)`, 1800);
+    startMetronomeIfNeeded();
+    heatIdeal.textContent = `Ideal key interval: ${Math.round(session.paceMs)} ms`;
+  });
+
+  btnTransferTest.addEventListener("click", ()=>{
+    if(session && session.active){ toast("Finish or pause the current session first.", 2000); return; }
+    startSession({forceTransferCheck:true});
+  });
+
+  btnDrillBigrams.addEventListener("click", ()=>{
+    if(session && session.active){ toast("Finish or pause the current session first.", 2000); return; }
+    startSession({forceTransferCheck:false, forcePlan:"bigrams"});
+  });
+
+  btnResetToday.addEventListener("click", ()=>{
+    if(session && session.active){ toast("End the current session first.", 2000); return; }
+    toast("Session reset (learning data kept).", 1800);
+    runnerEl.classList.remove("active");
+    setupEl.style.display="block";
+    btnResume.disabled=true;
+  });
+
+  modeSel.addEventListener("change", ()=>{ state.profile.mode = modeSel.value; saveState(); renderHeaderPills(); });
+  minutesSel.addEventListener("change", ()=>{ state.profile.sessionMinutes = parseInt(minutesSel.value,10); saveState(); renderHeaderPills(); });
+  targetWpmInput.addEventListener("change", ()=>{ state.profile.targetWpm = clamp(parseInt(targetWpmInput.value||"35",10),10,140); saveState(); renderHeaderPills(); });
+  planSel.addEventListener("change", ()=>{ state.profile.plan = planSel.value; saveState(); renderHeaderPills(); });
+  aiDiff.addEventListener("input", ()=>{ state.profile.aiDifficulty = clamp(parseInt(aiDiff.value||"35",10),0,100); saveState(); });
+
+  /**********************
+   * Insights: Heatmap + targets + chart + confusions
+   **********************/
+  let heatMode = "errors"; // errors | hesitation | finger
+
+  heatModeErrors.addEventListener("click", ()=>{ heatMode="errors"; renderHeatmap(); });
+  heatModeHes.addEventListener("click", ()=>{ heatMode="hesitation"; renderHeatmap(); });
+  heatModeFinger.addEventListener("click", ()=>{ heatMode="finger"; renderHeatmap(); });
+
+  function colorForScore(score01){
+    const h = 120 - (120 * clamp(score01,0,1));
+    const s = 70;
+    const l = 28 + (1 - clamp(score01,0,1))*16;
+    return `hsl(${h} ${s}% ${l}%)`;
+  }
+
+  function fingerErrorRate(f){
+    const s = state.fingers[f];
+    if(!s || !s.attempts) return null;
+    return s.errors / s.attempts;
+  }
+
+  function renderFingerSummary(){
+    const parts = [];
+    for(const f of ALL_FINGERS){
+      const r = fingerErrorRate(f);
+      if(r==null) continue;
+      parts.push(`${f}: ${Math.round(r*100)}%`);
+    }
+    fingerSummary.textContent = parts.length ? `Finger error rates: ${parts.join(" · ")}` : "Finger summary: not enough data yet.";
+  }
+
+  function renderHeatmap(){
+    const ideal = idealKeyIntervalMs(state.profile.targetWpm);
+    heatIdeal.textContent = `Ideal key interval: ${Math.round(ideal)} ms`;
+    renderFingerSummary();
+
+    heatmapKb.querySelectorAll(".keycap").forEach(el=>{
+      const canon = el.dataset.canon;
+      const tracked = state.keys[canon] || null;
+
+      // neutral default
+      const neutralBg = "rgba(255,255,255,.04)";
+      const neutralFg = "var(--muted)";
+
+      let score = 0.0;
+      let label = "";
+
+      // finger mode uses aggregated finger error
+      if(heatMode === "finger"){
+        const finger = FINGER_MAP[String(canon).toLowerCase()] || null;
+        const r = finger ? fingerErrorRate(finger) : null;
+        if(r == null){
+          el.style.background = neutralBg;
+          el.style.color = neutralFg;
+          el.title = `${DISPLAY_KEY(canon)}: not enough finger data yet`;
+          el.querySelector(".sub")?.remove();
+          return;
+        }
+        score = clamp(r / 0.22, 0, 1);
+        el.style.background = colorForScore(score);
+        el.style.color = "rgba(255,255,255,.92)";
+        el.title = `${DISPLAY_KEY(canon)}\nFinger: ${finger}\nFinger error rate: ${Math.round(r*100)}%`;
+        let sub = el.querySelector(".sub");
+        if(!sub){ sub=document.createElement("div"); sub.className="sub"; el.appendChild(sub); }
+        sub.textContent = `${finger} ${Math.round(r*100)}%`;
+        return;
+      }
+
+      // key-based modes
+      if(!tracked || (tracked.attempts||0) < 3){
+        el.style.background = neutralBg;
+        el.style.color = neutralFg;
+        el.title = `${DISPLAY_KEY(canon)}: not enough data yet`;
+        el.querySelector(".sub")?.remove();
+        return;
+      }
+
+      const acc = accuracyOf(tracked) ?? 1;
+      const lat = meanLatencyOf(tracked);
+
+      if(heatMode === "errors"){
+        const errRate = 1 - acc;
+        score = clamp(errRate / 0.22, 0, 1);
+        label = `${DISPLAY_KEY(canon)}\nAccuracy: ${fmtPct(acc)}\nAttempts: ${tracked.attempts}`;
+      }else{
+        const ratio = lat ? (lat/ideal) : 1.0;
+        score = clamp((ratio - 1.0) / 1.0, 0, 1);
+        label = `${DISPLAY_KEY(canon)}\nMean latency: ${Math.round(lat)} ms\nIdeal: ${Math.round(ideal)} ms`;
+      }
+
+      el.style.background = colorForScore(score);
+      el.style.color = "rgba(255,255,255,.92)";
+      el.title = label;
+
+      let sub = el.querySelector(".sub");
+      if(!sub){ sub=document.createElement("div"); sub.className="sub"; el.appendChild(sub); }
+      if(heatMode==="errors"){
+        sub.textContent = `${Math.round((1-acc)*100)}%`;
+      }else{
+        const ratio = lat ? (lat/ideal) : 1.0;
+        sub.textContent = `${round(ratio,1)}×`;
+      }
+    });
+
+    heatModeErrors.classList.toggle("primary", heatMode==="errors");
+    heatModeHes.classList.toggle("primary", heatMode==="hesitation");
+    heatModeFinger.classList.toggle("primary", heatMode==="finger");
+  }
+
+  function renderTargets(){
+    const ks = listKeyStats();
+    const bs = listBigramStats();
+
+    const weakB = topWeak(bs, 4, 10);
+    const weakK = topWeak(ks, 4, 12);
+    const dueB = dueItems(bs, 3);
+    const dueK = dueItems(ks, 3);
+
+    const rows = [];
+    for(const x of [...dueB, ...weakB]){
+      rows.push({
+        label: x.id,
+        sub: `${fmtPct(x.acc ?? 0)} acc · ${x.lat ? Math.round(x.lat)+"ms" : "—"} latency`,
+        badge: (x.nextDue && x.nextDue <= nowMs()) ? "due" : "weak",
+        type: "bigram"
+      });
+    }
+    for(const x of [...dueK, ...weakK]){
+      rows.push({
+        label: DISPLAY_KEY(x.id),
+        sub: `${fmtPct(x.acc ?? 0)} acc · ${x.lat ? Math.round(x.lat)+"ms" : "—"} latency`,
+        badge: (x.nextDue && x.nextDue <= nowMs()) ? "due" : "weak",
+        type: "key"
+      });
+    }
+
+    const seen = new Set();
+    const final = [];
+    for(const r of rows){
+      const k = r.type+":"+r.label;
+      if(seen.has(k)) continue;
+      seen.add(k);
+      final.push(r);
+      if(final.length>=8) break;
+    }
+
+    targetsList.innerHTML = "";
+    if(!final.length){
+      targetsList.innerHTML = `<div class="help">No targets yet — do one practice session to generate data.</div>`;
+      return;
+    }
+    for(const r of final){
+      const el = document.createElement("div");
+      el.className = "item";
+      el.innerHTML = `
+        <div class="left">
+          <div class="t">${escapeHtml(r.label)}</div>
+          <div class="s">${escapeHtml(r.sub)}</div>
+        </div>
+        <div class="badge">${escapeHtml(r.badge)}</div>
+      `;
+      targetsList.appendChild(el);
+    }
+  }
+
+  function renderConfusions(){
+    const rows = [];
+    for(const [exp,item] of Object.entries(state.keys||{})){
+      if(!item || !item.subs) continue;
+      if(exp === "\n" || exp === "\t") continue;
+      for(const [typed,n] of Object.entries(item.subs)){
+        if(!n) continue;
+        if(typed === "\n" || typed === "\t") continue;
+        rows.push({exp, typed, n});
+      }
+    }
+    rows.sort((a,b)=>b.n-a.n);
+    const top = rows.slice(0, 8);
+    confusionsList.innerHTML = "";
+    if(!top.length){
+      confusionsList.innerHTML = `<div class="help">No confusion data yet — do a session to generate it.</div>`;
+      return;
+    }
+    for(const r of top){
+      const el = document.createElement("div");
+      el.className = "item";
+      const label = `${DISPLAY_KEY(r.exp)} → ${DISPLAY_KEY(r.typed)}`;
+      el.innerHTML = `
+        <div class="left">
+          <div class="t">${escapeHtml(label)}</div>
+          <div class="s">Substitution count</div>
+        </div>
+        <div class="badge">${r.n}</div>
+      `;
+      confusionsList.appendChild(el);
+    }
+  }
+
+  function renderChart(){
+    const ctx = progressChart.getContext("2d");
+    const sessions = state.stats.sessions || [];
+    const recent = sessions.slice(-14);
+
+    ctx.clearRect(0,0,progressChart.width,progressChart.height);
+
+    if(!recent.length){
+      ctx.fillStyle = "rgba(255,255,255,.65)";
+      ctx.font = "14px " + getComputedStyle(document.body).fontFamily;
+      ctx.fillText("Do a few sessions to see progress here.", 18, 36);
+      return;
+    }
+
+    const W = progressChart.width;
+    const H = progressChart.height;
+    const pad = {l:46,r:16,t:14,b:32};
+    const x0=pad.l,y0=pad.t,x1=W-pad.r,y1=H-pad.b;
+    const plotW=x1-x0, plotH=y1-y0;
+
+    const wpms = recent.map(s=>s.transferWpm ?? s.wpm ?? 0);
+    const accs = recent.map(s=> (s.transferAcc ?? s.acc ?? 1)*100);
+
+    const wMin = Math.max(0, Math.min(...wpms)-5);
+    const wMax = Math.max(10, Math.max(...wpms)+5);
+
+    const aMin = Math.max(80, Math.min(...accs)-5);
+    const aMax = Math.min(100, Math.max(...accs)+3);
+
+    const xAt = i => x0 + (i/Math.max(1,recent.length-1))*plotW;
+    const yWpm = v => y1 - ((v-wMin)/Math.max(1e-6,(wMax-wMin)))*plotH;
+    const yAcc = v => y1 - ((v-aMin)/Math.max(1e-6,(aMax-aMin)))*plotH;
+
+    ctx.strokeStyle="rgba(255,255,255,.12)";
+    ctx.lineWidth=1;
+    for(let g=0;g<=4;g++){
+      const y=y0+(g/4)*plotH;
+      ctx.beginPath(); ctx.moveTo(x0,y); ctx.lineTo(x1,y); ctx.stroke();
+    }
+
+    ctx.fillStyle="rgba(255,255,255,.55)";
+    ctx.font="12px "+getComputedStyle(document.body).fontFamily;
+    ctx.fillText(`${Math.round(wMax)} wpm`, 6, yWpm(wMax)+4);
+    ctx.fillText(`${Math.round(wMin)} wpm`, 6, yWpm(wMin)+4);
+
+    ctx.strokeStyle="rgba(123,220,255,.85)";
+    ctx.lineWidth=2;
+    ctx.beginPath();
+    recent.forEach((s,i)=>{
+      const v=s.transferWpm ?? s.wpm ?? 0;
+      const x=xAt(i), y=yWpm(v);
+      if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+    });
+    ctx.stroke();
+
+    ctx.strokeStyle="rgba(73,226,139,.85)";
+    ctx.lineWidth=2;
+    ctx.beginPath();
+    recent.forEach((s,i)=>{
+      const v=(s.transferAcc ?? s.acc ?? 1)*100;
+      const x=xAt(i), y=yAcc(v);
+      if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+    });
+    ctx.stroke();
+
+    ctx.fillStyle="rgba(123,220,255,.95)";
+    recent.forEach((s,i)=>{
+      const v=s.transferWpm ?? s.wpm ?? 0;
+      const x=xAt(i), y=yWpm(v);
+      ctx.beginPath(); ctx.arc(x,y,3.2,0,Math.PI*2); ctx.fill();
+    });
+
+    ctx.fillStyle="rgba(73,226,139,.95)";
+    recent.forEach((s,i)=>{
+      const v=(s.transferAcc ?? s.acc ?? 1)*100;
+      const x=xAt(i), y=yAcc(v);
+      ctx.beginPath(); ctx.arc(x,y,3.2,0,Math.PI*2); ctx.fill();
+    });
+
+    ctx.fillStyle="rgba(255,255,255,.55)";
+    ctx.font="11px "+getComputedStyle(document.body).fontFamily;
+    const first=recent[0].date, last=recent[recent.length-1].date;
+    ctx.fillText(first, x0, H-10);
+    const lastW=ctx.measureText(last).width;
+    ctx.fillText(last, x1-lastW, H-10);
+
+    chartBadge.textContent = "Blue: WPM · Green: Accuracy";
+  }
+
+  /**********************
+   * Replay UI logic (scrub + play)
+   **********************/
+  let replayState = {id:null, data:null, playing:false, t0:0, speed:1};
+
+  function listReplaysNewest(){
+    const reps = (state.stats.replays || []).slice();
+    reps.sort((a,b)=> (b.dateTime||"").localeCompare(a.dateTime||""));
+    return reps;
+  }
+
+  function renderReplaySelect(){
+    const reps = listReplaysNewest();
+    replaySel.innerHTML = "";
+    if(!reps.length){
+      replaySel.innerHTML = `<option value="">No replays yet</option>`;
+      replayPill.textContent = "Replays: 0";
+      replayRange.max = 0;
+      replayRange.value = 0;
+      replayText.textContent = "Do a session to record a replay.";
+      replayMeta.textContent = "—";
+      return;
+    }
+    replayPill.textContent = `Replays: ${reps.length}`;
+    for(const r of reps){
+      const opt = document.createElement("option");
+      const dt = r.dateTime ? r.dateTime.replace("T"," ").slice(0,19) : r.date;
+      const sum = r.summary ? `${r.summary.wpm}wpm ${Math.round(r.summary.acc*100)}%` : "—";
+      opt.value = r.id;
+      opt.textContent = `${dt} · ${r.mode} · ${r.plan} · ${sum}`;
+      replaySel.appendChild(opt);
+    }
+    // auto select latest
+    if(!replayState.id) replayState.id = reps[0].id;
+    replaySel.value = replayState.id;
+    loadReplay(replayState.id);
+  }
+
+  function loadReplay(id){
+    const reps = state.stats.replays || [];
+    const r = reps.find(x=>x.id===id) || null;
+    replayState.id = id;
+    replayState.data = r;
+    replayState.playing = false;
+
+    if(!r){
+      replayRange.max=0; replayRange.value=0;
+      replayText.textContent="—";
+      replayMeta.textContent="—";
+      replayPos.textContent="—";
+      replayStats.textContent="—";
+      return;
+    }
+    const n = r.events?.length || 0;
+    replayRange.max = Math.max(0, n-1);
+    replayRange.value = "0";
+    replaySpeed.value = "1";
+    replayState.speed = 1;
+    renderReplayFrame(0);
+  }
+
+  function replayIndexByTime(ms){
+    const r = replayState.data;
+    if(!r) return 0;
+    const ev = r.events || [];
+    // linear scan is ok for <= 25k; could binary search but fine
+    let lo=0, hi=ev.length-1, ans=0;
+    while(lo<=hi){
+      const mid = (lo+hi)>>1;
+      if(ev[mid].t <= ms){ ans=mid; lo=mid+1; } else hi=mid-1;
+    }
+    return ans;
+  }
+
+  function renderReplayFrame(idx){
+    const r = replayState.data;
+    if(!r){ return; }
+    const ev = r.events || [];
+    idx = clamp(idx, 0, Math.max(0, ev.length-1));
+    const e = ev[idx];
+
+    replayRange.value = String(idx);
+    replayPos.textContent = `Event ${idx+1}/${ev.length}`;
+
+    // reconstruct prompt index from latest key/backspace events
+    // We'll compute cursor index by replaying up to idx (fast enough for typical replay sizes).
+    let cursor = 0;
+    let typed = [];
+    let phaseIndex = 0;
+    let lastWpm = null;
+    let lastAcc = null;
+
+    for(let i=0;i<=idx;i++){
+      const x = ev[i];
+      if(x.type==="phase") phaseIndex = x.phaseIndex ?? phaseIndex;
+      if(x.type==="key"){
+        cursor = x.idx + 1; // x.idx is pre-advance
+        typed.push({ch:x.typed, correct:!!x.correct});
+      }else if(x.type==="backspace"){
+        // backspace reduces index by 1
+        cursor = Math.max(0, (x.idx ?? cursor) - 1);
+        typed.pop();
+      }else if(x.type==="phaseEnd"){
+        lastWpm = x.wpm;
+        lastAcc = x.acc;
+      }
+    }
+
+    const phaseName = r.phases?.[phaseIndex]?.name || "—";
+
+    // For display, use current phase text if available from event snapshots? We store only session plan, not per-phase text.
+    // We'll instead show a compact typed stream + cursor and metadata, which is reliable.
+    const typedHtml = typed.slice(-220).map(t =>
+      t.correct ? `<span>${escapeHtml(t.ch)}</span>` : `<span class="bad">${escapeHtml(t.ch)}</span>`
+    ).join("");
+
+    const curMark = `<span class="cur">▍</span>`;
+    replayText.innerHTML = typedHtml + curMark + `<span class="dim"> (cursor at ${cursor})</span>`;
+
+    const sum = r.summary ? `Summary: ${r.summary.wpm} WPM @ ${Math.round(r.summary.acc*100)}%` : "Summary: —";
+    replayStats.textContent = `${phaseName}`;
+
+    replayMeta.textContent = `${r.dateTime?.replace("T"," ").slice(0,19) || r.date} · mode=${r.mode} · plan=${r.plan} · ${sum}`;
+  }
+
+  function replayLoop(){
+    if(!replayState.playing) return;
+    const r = replayState.data;
+    if(!r) { replayState.playing=false; return; }
+
+    const speed = replayState.speed;
+    const base = replayState.t0;
+    const tNow = (nowMs() - base) * speed;
+    const idx = replayIndexByTime(tNow);
+    renderReplayFrame(idx);
+
+    // stop if at end
+    const maxIdx = (r.events?.length||1) - 1;
+    if(idx >= maxIdx){
+      replayState.playing = false;
+      return;
+    }
+    requestAnimationFrame(replayLoop);
+  }
+
+  replaySel.addEventListener("change", ()=>loadReplay(replaySel.value));
+  replayRange.addEventListener("input", ()=>{ replayState.playing=false; renderReplayFrame(parseInt(replayRange.value,10)||0); });
+  replaySpeed.addEventListener("change", ()=>{ replayState.speed = parseFloat(replaySpeed.value||"1"); });
+
+  btnReplayPlay.addEventListener("click", ()=>{
+    const r = replayState.data;
+    if(!r) return;
+    replayState.playing = true;
+
+    // Set t0 so current slider position is preserved
+    const idx = parseInt(replayRange.value,10)||0;
+    const tAt = r.events?.[idx]?.t || 0;
+    replayState.t0 = nowMs() - (tAt / replayState.speed);
+
+    requestAnimationFrame(replayLoop);
+  });
+  btnReplayPause.addEventListener("click", ()=>{ replayState.playing=false; });
+
+  /**********************
+   * Settings
+   **********************/
+  function renderSettings(){
+    hintPolicySel.value = state.profile.hintPolicy;
+    correctionModeSel.value = state.profile.correctionMode;
+    rhythmDefaultSel.value = state.profile.rhythmDefault ? "on":"off";
+    rhythmSoundSel.value = state.profile.rhythmSound ? "on":"off";
+  }
+
+  hintPolicySel.addEventListener("change", ()=>{
+    state.profile.hintPolicy = hintPolicySel.value;
+    saveState();
+    toast(`Hint policy: <b>${escapeHtml(state.profile.hintPolicy)}</b>`, 1600);
+  });
+  correctionModeSel.addEventListener("change", ()=>{
+    state.profile.correctionMode = correctionModeSel.value;
+    saveState();
+    toast(`Correction mode: <b>${escapeHtml(state.profile.correctionMode)}</b>`, 1600);
+  });
+  rhythmDefaultSel.addEventListener("change", ()=>{
+    state.profile.rhythmDefault = (rhythmDefaultSel.value==="on");
+    saveState();
+    toast(`Rhythm default: <b>${state.profile.rhythmDefault ? "on":"off"}</b>`, 1600);
+  });
+  rhythmSoundSel.addEventListener("change", ()=>{
+    state.profile.rhythmSound = (rhythmSoundSel.value==="on");
+    saveState();
+    toast(`Rhythm sound: <b>${state.profile.rhythmSound ? "on":"off"}</b>`, 1600);
+  });
+
+  btnExport.addEventListener("click", ()=>{
+    const data = JSON.stringify(state, null, 2);
+    const blob = new Blob([data], {type:"application/json"});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `keycoach-export-${todayStr()}.json`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(()=>URL.revokeObjectURL(url), 2500);
+    toast("Exported JSON file.", 1600);
+  });
+
+  btnImport.addEventListener("click", ()=>fileImport.click());
+  fileImport.addEventListener("change", async ()=>{
+    const file = fileImport.files && fileImport.files[0];
+    if(!file) return;
+    try{
+      const text = await file.text();
+      const imported = JSON.parse(text);
+      if(!imported || typeof imported!=="object" || !imported.profile || !imported.stats){
+        toast("Import failed: invalid file.", 2200);
+        return;
+      }
+      const d = defaultState();
+      state = {
+        ...d,
+        ...imported,
+        profile: {...d.profile, ...(imported.profile||{})},
+        stats: {...d.stats, ...(imported.stats||{})},
+        keys: imported.keys || {},
+        bigrams: imported.bigrams || {},
+        fingers: imported.fingers || {}
+      };
+      saveState();
+      renderHeaderPills();
+      renderInsights();
+      renderSettings();
+      toast("Imported data successfully.", 1800);
+    }catch(e){
+      console.warn(e);
+      toast("Import failed: could not parse JSON.", 2200);
+    }finally{
+      fileImport.value = "";
+    }
+  });
+
+  btnResetAll.addEventListener("click", ()=>{
+    const ok = confirm("Reset ALL KeyCoach data on this device? This cannot be undone.");
+    if(!ok) return;
+    localStorage.removeItem(STORE_KEY);
+    state = defaultState();
+    saveState();
+    session = null;
+    runnerEl.classList.remove("active");
+    setupEl.style.display="block";
+    btnResume.disabled=true;
+    renderHeaderPills();
+    renderInsights();
+    renderSettings();
+    toast("All data reset.", 1600);
+  });
+
+  /**********************
+   * Header pills
+   **********************/
+  function renderHeaderPills(){
+    modeSel.value = state.profile.mode;
+    minutesSel.value = String(state.profile.sessionMinutes);
+    targetWpmInput.value = String(state.profile.targetWpm);
+    planSel.value = state.profile.plan;
+    aiDiff.value = String(state.profile.aiDifficulty);
+
+    pillStreak.textContent = `Streak: ${computeStreak()}`;
+
+    const focus = recommendFocus();
+    pillNextFocus.textContent = `Focus: ${focus.bigrams.join(", ")} + ${focus.keys.join(", ")}`;
+
+    const dueCount = (()=>{
+      const now = nowMs();
+      let n=0;
+      for(const it of Object.values(state.keys)) if(!it.nextDue || it.nextDue<=now) n++;
+      for(const it of Object.values(state.bigrams)) if(!it.nextDue || it.nextDue<=now) n++;
+      return n;
+    })();
+    pillDue.textContent = `Due review: ${dueCount}`;
+
+    heatIdeal.textContent = `Ideal key interval: ${Math.round(idealKeyIntervalMs(state.profile.targetWpm))} ms`;
+  }
+
+  /**********************
+   * Insights render
+   **********************/
+  function renderInsights(){
+    renderHeaderPills();
+    renderHeatmap();
+    renderTargets();
+    renderConfusions();
+    renderChart();
+    renderReplaySelect();
+
+    const last = state.stats.sessions[state.stats.sessions.length-1];
+    if(last){
+      pillLastSession.textContent = `Last session: ${last.date} · ${last.wpm} wpm · ${Math.round(last.acc*100)}% · ${last.plan}`;
+    }else{
+      pillLastSession.textContent = "Last session: —";
+    }
+  }
+
+  /**********************
+   * PWA support (feature #4)
+   **********************/
+  function buildManifest(){
+    const manifest = {
+      name: "KeyCoach",
+      short_name: "KeyCoach",
+      start_url: ".",
+      display: "standalone",
+      background_color: "#0b1020",
+      theme_color: "#0b1020",
+      icons: [
+        {
+          src: "data:image/svg+xml," + encodeURIComponent(
+            `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192">
+              <defs>
+                <radialGradient id="g" cx="30%" cy="20%" r="90%">
+                  <stop offset="0%" stop-color="#7bdcff"/>
+                  <stop offset="55%" stop-color="#49e28b"/>
+                  <stop offset="100%" stop-color="#ff5c7a"/>
+                </radialGradient>
+              </defs>
+              <rect x="20" y="20" width="152" height="152" rx="36" fill="url(#g)"/>
+              <rect x="52" y="52" width="88" height="88" rx="28" fill="rgba(0,0,0,0.25)" stroke="rgba(255,255,255,0.25)"/>
+            </svg>`
+          ),
+          sizes: "192x192",
+          type: "image/svg+xml"
+        }
+      ]
+    };
+    return manifest;
+  }
+
+  function setManifestLink(){
+    const m = buildManifest();
+    const url = "data:application/manifest+json," + encodeURIComponent(JSON.stringify(m));
+    manifestLink.href = url;
+  }
+
+  // Install prompt
+  let deferredPrompt = null;
+  window.addEventListener("beforeinstallprompt", (e)=>{
+    e.preventDefault();
+    deferredPrompt = e;
+    btnInstall.disabled = false;
+    pwaStatus.textContent = "Status: install available";
+  });
+
+  btnInstall.addEventListener("click", async ()=>{
+    if(!deferredPrompt){
+      toast("Install prompt not available (needs HTTPS/localhost + manifest + SW).", 2600);
+      return;
+    }
+    deferredPrompt.prompt();
+    const choice = await deferredPrompt.userChoice;
+    deferredPrompt = null;
+    btnInstall.disabled = true;
+    toast(`Install: <b>${escapeHtml(choice.outcome)}</b>`, 2000);
+  });
+
+  // Service worker code (download + optional register)
+  const SW_CODE =
+`/* KeyCoach service worker (simple cache-first) */
+const CACHE = "keycoach-cache-v1";
+self.addEventListener("install", (e)=> {
+  e.waitUntil((async()=>{
+    const cache = await caches.open(CACHE);
+    // cache the root; if served as a file, caching may vary by browser
+    await cache.addAll(["./"]);
+    self.skipWaiting();
+  })());
+});
+self.addEventListener("activate", (e)=>{
+  e.waitUntil((async()=>{
+    const keys = await caches.keys();
+    await Promise.all(keys.map(k => (k===CACHE)?null:caches.delete(k)));
+    self.clients.claim();
+  })());
+});
+self.addEventListener("fetch", (e)=>{
+  const req = e.request;
+  if(req.method !== "GET") return;
+  e.respondWith((async()=>{
+    const cache = await caches.open(CACHE);
+    const cached = await cache.match(req, {ignoreSearch:true});
+    if(cached) return cached;
+    try{
+      const res = await fetch(req);
+      // best-effort cache
+      if(res && res.ok) cache.put(req, res.clone());
+      return res;
+    }catch(err){
+      // offline fallback to cached root if available
+      return cached || cache.match("./", {ignoreSearch:true});
+    }
+  })());
+});
+`;
+
+  async function tryRegisterSW(){
+    if(!("serviceWorker" in navigator)){
+      pwaStatus.textContent = "Status: SW not supported";
+      toast("Service workers not supported in this browser.", 2400);
+      return;
+    }
+    try{
+      const reg = await navigator.serviceWorker.register("./sw.js", {scope:"./"});
+      pwaStatus.textContent = "Status: SW registered";
+      toast("Service worker registered (sw.js).", 2000);
+      return reg;
+    }catch(e){
+      pwaStatus.textContent = "Status: SW not registered";
+      toast("Could not register sw.js (download it + serve via localhost/https).", 2600);
+      console.warn(e);
+      return null;
+    }
+  }
+
+  btnTryRegisterSW.addEventListener("click", ()=>tryRegisterSW());
+
+  btnDownloadSW.addEventListener("click", ()=>{
+    const blob = new Blob([SW_CODE], {type:"text/javascript"});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "sw.js";
+    document.body.appendChild(a);
+    a.click(); a.remove();
+    setTimeout(()=>URL.revokeObjectURL(url), 2000);
+    toast("Downloaded sw.js", 1600);
+  });
+
+  btnDownloadManifest.addEventListener("click", ()=>{
+    const m = buildManifest();
+    const blob = new Blob([JSON.stringify(m,null,2)], {type:"application/json"});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "manifest.json";
+    document.body.appendChild(a);
+    a.click(); a.remove();
+    setTimeout(()=>URL.revokeObjectURL(url), 2000);
+    toast("Downloaded manifest.json", 1600);
+  });
+
+  /**********************
+   * Practice setup + init
+   **********************/
+  function renderCoachPills(){
+    // placeholder for future coach summaries
+  }
+
+  function renderInitial(){
+    setManifestLink();
+
+    renderHeaderPills();
+    renderSettings();
+    renderInsights();
+
+    setTab("practice");
+
+    // Overlay close with Esc if paused or no session
+    window.addEventListener("keydown",(e)=>{
+      if(e.key==="Escape" && kbOverlay.classList.contains("active") && (!session || session.paused)){
+        closeKeyboardOverlay();
+      }
+    });
+
+    // Place tick at 50%
+    paceTick.style.left = "50%";
+
+    // initial PWA status
+    if("serviceWorker" in navigator){
+      pwaStatus.textContent = "Status: SW ready (not registered)";
+    }else{
+      pwaStatus.textContent = "Status: SW unsupported";
+    }
+  }
+
+  /**********************
+   * “Typing bug” proofing: always keep capture viable
+   **********************/
+  function focusGuardLoop(){
+    if(runnerEl.classList.contains("active") && session && session.active && !session.paused){
+      // Don’t steal focus if user is interacting with selects in runner (rare); we still capture globally.
+      // But keep capture ready for mobile keyboard.
+      const ae = document.activeElement;
+      const isEditable = ae && (ae.tagName==="INPUT" || ae.tagName==="SELECT" || ae.tagName==="TEXTAREA" || ae.isContentEditable);
+      if(!isEditable) ensureCaptureFocus();
+    }
+    requestAnimationFrame(focusGuardLoop);
+  }
+
+  renderInitial();
+  requestAnimationFrame(focusGuardLoop);
+
+})();
+</script>
+</body>
+</html>
