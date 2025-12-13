@@ -1,0 +1,2650 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Kai9987kai BioExplorer</title>
+  <meta name="description" content="Standalone biology-first protein explorer: UniProt → STRING → Reactome → AlphaFold (Network + Pathways + Structure + Features)."/>
+  <style>
+    :root{
+      --bg: #0b1020;
+      --panel: rgba(255,255,255,0.06);
+      --panel2: rgba(255,255,255,0.10);
+      --text: rgba(255,255,255,0.92);
+      --muted: rgba(255,255,255,0.70);
+      --faint: rgba(255,255,255,0.50);
+      --danger: #ff5c5c;
+      --warn: #ffcc66;
+      --ok: #62d26f;
+      --accent: #7aa2ff;
+      --accent2: #b37aff;
+      --border: rgba(255,255,255,0.12);
+      --shadow: rgba(0,0,0,0.35);
+      --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      --sans: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji","Segoe UI Emoji";
+    }
+    *{ box-sizing: border-box; }
+    body{
+      margin:0;
+      font-family: var(--sans);
+      color: var(--text);
+      background:
+        radial-gradient(900px 500px at 10% -10%, rgba(122,162,255,0.30), transparent 60%),
+        radial-gradient(900px 500px at 90% 0%, rgba(179,122,255,0.24), transparent 55%),
+        radial-gradient(900px 500px at 40% 120%, rgba(98,210,111,0.14), transparent 55%),
+        linear-gradient(180deg, #070a14, var(--bg) 25%, #070a14 120%);
+      min-height: 100vh;
+    }
+    a{ color: var(--accent); text-decoration: none; }
+    a:hover{ text-decoration: underline; }
+
+    header{
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      backdrop-filter: blur(10px);
+      background: rgba(7,10,20,0.72);
+      border-bottom: 1px solid var(--border);
+      padding: 12px 14px;
+    }
+    .topbar{
+      display:flex;
+      gap: 12px;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+    }
+    .brand{
+      display:flex; gap:10px; align-items:center;
+    }
+    .logo{
+      width: 34px; height: 34px; border-radius: 10px;
+      background: linear-gradient(135deg, rgba(122,162,255,1), rgba(179,122,255,1));
+      box-shadow: 0 8px 22px rgba(122,162,255,0.25);
+    }
+    .brand h1{
+      margin:0;
+      font-size: 15px;
+      letter-spacing: 0.2px;
+      font-weight: 700;
+      line-height: 1.1;
+    }
+    .brand .sub{
+      font-size: 12px; color: var(--muted); font-weight: 500;
+    }
+
+    .controls{
+      display:flex; gap:10px; align-items:center; flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+    .field{
+      display:flex; flex-direction: column;
+      gap: 6px;
+    }
+    .field label{
+      font-size: 11px;
+      letter-spacing: 0.2px;
+      color: var(--muted);
+    }
+    input[type="text"], input[type="number"], select, textarea{
+      background: rgba(255,255,255,0.08);
+      border: 1px solid var(--border);
+      color: var(--text);
+      border-radius: 10px;
+      padding: 9px 10px;
+      outline: none;
+      min-width: 180px;
+    }
+    input[type="number"]{ min-width: 110px; }
+    select{ min-width: 150px; }
+    textarea{ width: 100%; min-height: 140px; font-family: var(--mono); font-size: 12px; line-height: 1.35; }
+
+    .row{
+      display:flex; gap: 10px; align-items: center; flex-wrap: wrap;
+    }
+    .btn{
+      cursor: pointer;
+      border: 1px solid var(--border);
+      background: rgba(255,255,255,0.08);
+      color: var(--text);
+      padding: 9px 11px;
+      border-radius: 10px;
+      font-weight: 650;
+      font-size: 12px;
+      transition: transform 0.04s ease, background 0.15s ease, border-color 0.15s ease;
+      user-select: none;
+    }
+    .btn:hover{ background: rgba(255,255,255,0.12); border-color: rgba(255,255,255,0.20); }
+    .btn:active{ transform: translateY(1px); }
+    .btn.primary{
+      background: linear-gradient(135deg, rgba(122,162,255,0.95), rgba(179,122,255,0.95));
+      border-color: rgba(255,255,255,0.18);
+    }
+    .btn.primary:hover{ filter: brightness(1.05); }
+    .btn.danger{ border-color: rgba(255,92,92,0.55); }
+    .btn.ghost{
+      background: transparent;
+    }
+    .pill{
+      display:inline-flex;
+      align-items:center;
+      gap: 6px;
+      padding: 6px 10px;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      background: rgba(255,255,255,0.06);
+      font-size: 12px;
+      color: var(--muted);
+      white-space: nowrap;
+    }
+    .pill strong{ color: var(--text); font-weight: 750; }
+    .pill .dot{
+      width: 8px; height: 8px; border-radius: 50%;
+      background: var(--muted);
+      box-shadow: 0 0 0 3px rgba(255,255,255,0.06);
+    }
+    .dot.ok{ background: var(--ok); }
+    .dot.warn{ background: var(--warn); }
+    .dot.bad{ background: var(--danger); }
+
+    .layout{
+      display:grid;
+      grid-template-columns: 390px 1fr;
+      gap: 12px;
+      padding: 12px;
+      align-items: start;
+    }
+    @media (max-width: 980px){
+      .layout{ grid-template-columns: 1fr; }
+    }
+    .panel{
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      box-shadow: 0 10px 25px var(--shadow);
+      overflow: hidden;
+    }
+    .panel .hd{
+      padding: 12px 12px 10px 12px;
+      border-bottom: 1px solid var(--border);
+      display:flex; align-items:center; justify-content: space-between; gap:10px;
+      background: rgba(255,255,255,0.04);
+    }
+    .panel .hd h2{
+      margin: 0;
+      font-size: 13px;
+      letter-spacing: 0.2px;
+    }
+    .panel .bd{
+      padding: 12px;
+    }
+    .muted{ color: var(--muted); }
+    .faint{ color: var(--faint); }
+    .mono{ font-family: var(--mono); }
+
+    .kv{
+      display:grid;
+      grid-template-columns: 120px 1fr;
+      gap: 6px 10px;
+      font-size: 12px;
+      align-items: start;
+    }
+    .kv .k{ color: var(--muted); }
+    .kv .v{ color: var(--text); }
+    .kv .v code{ font-family: var(--mono); font-size: 11px; }
+    .small{ font-size: 12px; }
+    .tiny{ font-size: 11px; }
+    .badge{
+      display:inline-flex; align-items:center;
+      gap: 6px;
+      font-size: 11px;
+      padding: 3px 8px;
+      border-radius: 999px;
+      background: rgba(255,255,255,0.08);
+      border: 1px solid var(--border);
+      color: var(--muted);
+    }
+    .badge strong{ color: var(--text); }
+    .grid2{ display:grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    @media (max-width: 980px){
+      .grid2{ grid-template-columns: 1fr; }
+    }
+
+    .tabs{
+      display:flex;
+      gap: 8px;
+      padding: 10px 12px 0 12px;
+      flex-wrap: wrap;
+    }
+    .tabbtn{
+      cursor:pointer;
+      border: 1px solid var(--border);
+      background: rgba(255,255,255,0.06);
+      color: var(--muted);
+      padding: 8px 10px;
+      border-radius: 10px;
+      font-size: 12px;
+      font-weight: 650;
+      user-select: none;
+    }
+    .tabbtn.active{
+      color: var(--text);
+      background: rgba(255,255,255,0.12);
+      border-color: rgba(255,255,255,0.20);
+    }
+    .tab{
+      display:none;
+      padding: 12px;
+      padding-top: 10px;
+    }
+    .tab.active{ display:block; }
+
+    /* Network */
+    #cy{
+      width: 100%;
+      height: 520px;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      background: rgba(255,255,255,0.03);
+      overflow:hidden;
+    }
+    #nodeDetails{
+      margin-top: 10px;
+      display:flex; gap: 10px; flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .split{
+      display:grid;
+      grid-template-columns: 1.2fr 1fr;
+      gap: 12px;
+    }
+    @media (max-width: 1100px){
+      .split{ grid-template-columns: 1fr; }
+    }
+    .list{
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      overflow:hidden;
+      background: rgba(255,255,255,0.03);
+    }
+    .list .head{
+      display:flex; gap:10px; align-items:center; justify-content: space-between;
+      padding: 10px;
+      border-bottom: 1px solid var(--border);
+      background: rgba(255,255,255,0.04);
+    }
+    .list .head h3{ margin:0; font-size: 12px; }
+    .list .items{ max-height: 440px; overflow:auto; }
+    .item{
+      padding: 10px;
+      border-bottom: 1px solid rgba(255,255,255,0.07);
+      cursor: pointer;
+    }
+    .item:hover{ background: rgba(255,255,255,0.06); }
+    .item:last-child{ border-bottom: none; }
+    .item .title{ font-size: 12px; font-weight: 750; color: var(--text); }
+    .item .meta{ font-size: 11px; color: var(--muted); margin-top: 3px; }
+    .item .meta code{ font-family: var(--mono); font-size: 10px; }
+
+    /* Structure */
+    #viewer3d{
+      width: 100%;
+      height: 520px;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      background: rgba(255,255,255,0.03);
+      overflow:hidden;
+      position: relative;
+    }
+    .legend{
+      position:absolute;
+      top: 10px;
+      left: 10px;
+      background: rgba(7,10,20,0.70);
+      border: 1px solid rgba(255,255,255,0.16);
+      border-radius: 10px;
+      padding: 8px 10px;
+      font-size: 11px;
+      color: var(--muted);
+      max-width: 260px;
+      backdrop-filter: blur(10px);
+    }
+    .legend strong{ color: var(--text); }
+
+    /* Feature track */
+    #featureTrackWrap{
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      background: rgba(255,255,255,0.03);
+      padding: 10px;
+    }
+    #featureSvg{
+      width: 100%;
+      height: 150px;
+      display:block;
+      border-radius: 10px;
+      background: rgba(255,255,255,0.02);
+    }
+    .tooltip{
+      position: fixed;
+      pointer-events: none;
+      z-index: 9999;
+      background: rgba(10,12,22,0.94);
+      border: 1px solid rgba(255,255,255,0.14);
+      border-radius: 10px;
+      padding: 8px 10px;
+      font-size: 11px;
+      color: var(--text);
+      max-width: 360px;
+      box-shadow: 0 10px 25px rgba(0,0,0,0.35);
+      display:none;
+    }
+    .tooltip .t{ font-weight: 800; margin-bottom: 4px; }
+    .tooltip .m{ color: var(--muted); font-family: var(--mono); font-size: 10px; }
+
+
+    /* Autocomplete */
+    .autocomplete{
+      position: relative;
+      min-width: 240px;
+      max-width: 520px;
+      flex: 1 1 auto;
+    }
+    .autocomplete input{
+      width: 360px;
+      max-width: 70vw;
+    }
+    .suggestions{
+      position: absolute;
+      top: 42px;
+      left: 0;
+      right: 0;
+      z-index: 99;
+      background: rgba(10,12,22,0.96);
+      border: 1px solid rgba(255,255,255,0.16);
+      border-radius: 12px;
+      overflow: hidden;
+      box-shadow: 0 14px 30px rgba(0,0,0,0.45);
+      backdrop-filter: blur(10px);
+      max-height: 340px;
+      overflow-y: auto;
+    }
+    .suggestions.hidden{ display:none; }
+    .sitem{
+      padding: 9px 10px;
+      border-bottom: 1px solid rgba(255,255,255,0.08);
+      cursor: pointer;
+      user-select: none;
+    }
+    .sitem:last-child{ border-bottom: none; }
+    .sitem:hover{ background: rgba(255,255,255,0.08); }
+    .sitem.active{ background: rgba(255,255,255,0.12); }
+    .sitem .main{
+      font-size: 12px;
+      font-weight: 800;
+      color: rgba(255,255,255,0.92);
+      line-height: 1.15;
+    }
+    .sitem .sub{
+      margin-top: 3px;
+      font-size: 11px;
+      color: rgba(255,255,255,0.70);
+      line-height: 1.2;
+    }
+    .sitem .sub code{ font-family: var(--mono); font-size: 10px; }
+    .sitem .tag{
+      display:inline-flex;
+      align-items:center;
+      gap: 6px;
+      padding: 2px 8px;
+      border-radius: 999px;
+      border: 1px solid rgba(255,255,255,0.14);
+      background: rgba(255,255,255,0.06);
+      font-size: 10px;
+      color: rgba(255,255,255,0.70);
+      margin-left: 6px;
+    }
+    .sitem .tag strong{ color: rgba(255,255,255,0.92); }
+
+    /* Footer */
+    footer{
+      padding: 10px 12px 16px 12px;
+      color: var(--muted);
+      font-size: 11px;
+      text-align: center;
+    }
+    code.inline{
+      font-family: var(--mono);
+      font-size: 11px;
+      background: rgba(255,255,255,0.06);
+      padding: 1px 6px;
+      border-radius: 999px;
+      border: 1px solid rgba(255,255,255,0.10);
+    }
+  </style>
+
+  <!-- External libs (CDN) -->
+  <script src="https://unpkg.com/cytoscape@3.28.1/dist/cytoscape.min.js"></script>
+  <script src="https://3dmol.csb.pitt.edu/build/3Dmol-min.js"></script>
+</head>
+<body>
+  <header>
+    <div class="topbar">
+      <div class="brand">
+        <div class="logo" aria-hidden="true"></div>
+        <div>
+          <h1>Kai9987kai BioExplorer</h1>
+          <div class="sub">UniProt → STRING → Reactome → AlphaFold (Network · Pathways · Structure · Features)</div>
+        </div>
+      </div>
+
+      <div class="controls">
+        <div class="field">
+          <label for="q">Gene / UniProt / text</label>
+          <div class="row" style="align-items:flex-start;">
+            <div class="autocomplete">
+              <input id="q" type="text" placeholder="TP53, BRCA1, PTEN, P04637 …" autocomplete="off" />
+              <div id="suggestions" class="suggestions hidden" role="listbox" aria-label="Gene suggestions"></div>
+            </div>
+            <button class="btn primary" id="btnLoad">Load</button>
+          </div>
+        </div>
+
+        <div class="field">
+          <label for="species">Species (taxId)</label>
+          <select id="species">
+            <option value="9606">9606 — Human</option>
+            <option value="10090">10090 — Mouse</option>
+            <option value="10116">10116 — Rat</option>
+            <option value="7955">7955 — Zebrafish</option>
+            <option value="7227">7227 — Drosophila</option>
+            <option value="6239">6239 — C. elegans</option>
+            <option value="559292">559292 — Yeast (S. cerevisiae)</option>
+            <option value="3702">3702 — Arabidopsis</option>
+          </select>
+        </div>
+
+        <div class="field">
+          <label for="score">STRING score</label>
+          <input id="score" type="number" min="0" max="1000" step="10" value="700" />
+        </div>
+
+        <div class="field">
+          <label for="neighbors">Neighbors</label>
+          <input id="neighbors" type="number" min="0" max="100" step="1" value="20" />
+        </div>
+
+        <div class="field">
+          <label for="nettype">Network type</label>
+          <select id="nettype">
+            <option value="functional">functional</option>
+            <option value="physical">physical</option>
+          </select>
+        </div>
+
+        <div class="row">
+          <button class="btn" id="btnExample">Example</button>
+          <button class="btn ghost" id="btnShare">Copy share link</button>
+          <button class="btn danger" id="btnClearCache">Clear cache</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="row" style="margin-top:10px; gap:10px;">
+      <span class="pill" title="UniProt status"><span class="dot" id="dotUniprot"></span> UniProt <strong id="stUniprot">idle</strong></span>
+      <span class="pill" title="STRING status"><span class="dot" id="dotString"></span> STRING <strong id="stString">idle</strong></span>
+      <span class="pill" title="Reactome status"><span class="dot" id="dotReactome"></span> Reactome <strong id="stReactome">idle</strong></span>
+      <span class="pill" title="AlphaFold status"><span class="dot" id="dotAF"></span> AlphaFold <strong id="stAF">idle</strong></span>
+      <span class="pill" title="App status"><span class="dot" id="dotApp"></span> <strong id="stApp">ready</strong></span>
+      <span class="pill" style="margin-left:auto;" id="statusLine">Tip: try <span class="mono">TP53</span> (human) then click pathway items to highlight network nodes.</span>
+    </div>
+  </header>
+
+  <div class="layout">
+    <aside class="panel" id="sidebar">
+      <div class="hd">
+        <h2>Protein summary</h2>
+        <span class="badge" id="badgeAcc">Acc: <strong class="mono">—</strong></span>
+      </div>
+      <div class="bd">
+        <div id="summaryEmpty" class="muted small">
+          Load a gene/protein to populate this panel.
+        </div>
+
+        <div id="summary" style="display:none;">
+          <div class="kv">
+            <div class="k">Name</div><div class="v" id="sumName">—</div>
+            <div class="k">Genes</div><div class="v" id="sumGenes">—</div>
+            <div class="k">Organism</div><div class="v" id="sumOrg">—</div>
+            <div class="k">Length</div><div class="v" id="sumLen">—</div>
+            <div class="k">Function</div><div class="v" id="sumFn">—</div>
+            <div class="k">UniProt</div><div class="v" id="sumLinks">—</div>
+          </div>
+
+          <div style="margin-top:10px;" class="grid2">
+            <div class="panel" style="box-shadow:none;">
+              <div class="hd"><h2 style="font-size:12px;">Quick metrics</h2></div>
+              <div class="bd">
+                <div class="kv">
+                  <div class="k">Reactome pathways</div><div class="v"><span id="mReactome">—</span></div>
+                  <div class="k">STRING nodes</div><div class="v"><span id="mNodes">—</span></div>
+                  <div class="k">STRING edges</div><div class="v"><span id="mEdges">—</span></div>
+                  <div class="k">AlphaFold model</div><div class="v"><span id="mAF">—</span></div>
+                  <div class="k">Network density</div><div class="v"><span id="mDensity">—</span></div>
+                  <div class="k">Mean pLDDT</div><div class="v"><span id="mPlddt">—</span></div>
+                </div>
+              </div>
+            </div>
+
+            <div class="panel" style="box-shadow:none;">
+              <div class="hd"><h2 style="font-size:12px;">Exports</h2></div>
+              <div class="bd">
+                <div class="row" style="gap:8px;">
+                  <button class="btn" id="btnNetJSON">Network JSON</button>
+                  <button class="btn" id="btnNetPNG">Network PNG</button>
+                  <button class="btn" id="btnReport">Report.md</button>
+                </div>
+                <div class="tiny muted" style="margin-top:8px;">
+                  Exports are generated client-side (no server).
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="panel" style="box-shadow:none; margin-top:10px;">
+            <div class="hd"><h2 style="font-size:12px;">Node → Pathways</h2></div>
+            <div class="bd">
+              <div class="tiny muted" id="nodePathHint">Click a node in the network to see its mapped Reactome pathways here.</div>
+              <div id="nodePathways" style="margin-top:8px;"></div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </aside>
+
+    <main class="panel">
+      <div class="tabs">
+        <div class="tabbtn active" data-tab="network">Network</div>
+        <div class="tabbtn" data-tab="pathways">Pathways</div>
+        <div class="tabbtn" data-tab="structure">Structure</div>
+        <div class="tabbtn" data-tab="features">Features</div>
+        <div class="tabbtn" data-tab="notes">Notes / Report</div>
+      </div>
+
+      <section class="tab active" id="tab-network">
+        <div class="split">
+          <div>
+            <div id="cy"></div>
+            <div id="nodeDetails">
+              <div class="row" style="gap:10px;">
+                <span class="badge">Selected: <strong class="mono" id="selNode">—</strong></span>
+                <span class="badge">Edge score: <strong class="mono" id="selEdge">—</strong></span>
+              </div>
+              <div class="row" style="gap:8px;">
+                <button class="btn" id="btnFit">Fit</button>
+                <button class="btn" id="btnLayout">Layout</button>
+                <input id="netSearch" type="text" placeholder="Find node…" style="min-width: 180px;" />
+                <button class="btn" id="btnFind">Find</button>
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <div class="list">
+              <div class="head">
+                <h3>Network stats</h3>
+                <span class="badge">STRING</span>
+              </div>
+              <div class="bd small muted" id="netStats" style="padding:10px;">
+                Load a protein to build the network.
+              </div>
+            </div>
+
+            <div class="list" style="margin-top:10px;">
+              <div class="head">
+                <h3>Selection details</h3>
+                <span class="badge">node / edge</span>
+              </div>
+              <div class="bd small muted" id="selDetails" style="padding:10px;">
+                Click a node or edge to see evidence + quick metrics.
+              </div>
+            </div>
+
+            <div class="list" style="margin-top:10px;">
+              <div class="head">
+                <h3>Highlighted by pathway</h3>
+                <span class="badge">Reactome</span>
+              </div>
+              <div class="bd small muted" id="pathHighlightInfo" style="padding:10px;">
+                Select a pathway in the Pathways tab to highlight its participants here.
+              </div>
+            </div>
+
+            <div class="list" style="margin-top:10px;">
+              <div class="head">
+                <h3>Top hubs</h3>
+                <span class="badge">degree</span>
+              </div>
+              <div class="items" id="hubList" style="max-height: 240px;">
+                <div class="item"><div class="meta">Load a network to compute hub nodes.</div></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="tab" id="tab-pathways">
+        <div class="split">
+          <div class="list">
+            <div class="head">
+              <h3>Mapped pathways (Reactome)</h3>
+              <span class="badge"><span id="pathCount">0</span> items</span>
+            </div>
+            <div class="bd" style="padding:10px;">
+              <div class="row" style="gap:8px; justify-content: space-between;">
+                <input id="pathFilter" type="text" placeholder="Filter pathways…" style="min-width: 220px;"/>
+                <div class="row" style="gap:8px;">
+                  <button class="btn" id="btnMapPathways">Pathways</button>
+                  <button class="btn" id="btnMapReactions">Reactions</button>
+                </div>
+              </div>
+            </div>
+            <div class="items" id="pathList"></div>
+          </div>
+
+          <div class="list">
+            <div class="head">
+              <h3>Participants (selected event)</h3>
+              <span class="badge"><span id="partCount">0</span></span>
+            </div>
+            <div class="bd" style="padding:10px;">
+              <div class="row" style="gap:8px; justify-content: space-between;">
+                <input id="partFilter" type="text" placeholder="Filter participants…" style="min-width: 220px;"/>
+                <div class="row" style="gap:8px;">
+                  <a class="btn" id="btnOpenReactome" target="_blank" rel="noopener">Open in Reactome</a>
+                  <button class="btn" id="btnHighlight">Highlight in network</button>
+                </div>
+              </div>
+              <div class="tiny muted" style="margin-top:8px;" id="partHint">
+                Selecting a pathway will fetch its participating reference entities from Reactome.
+              </div>
+            </div>
+            <div class="items" id="partList"></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="tab" id="tab-structure">
+        <div id="viewer3d">
+          <div class="legend" id="structLegend">
+            <div><strong>AlphaFold</strong> (if available)</div>
+            <div class="tiny muted">Cartoon colored by B-factor (AlphaFold pLDDT proxy). Higher ≈ more confident.</div>
+          </div>
+        </div>
+        <div style="margin-top:10px;" class="grid2">
+          <div class="panel" style="box-shadow:none;">
+            <div class="hd"><h2 style="font-size:12px;">Model metadata</h2></div>
+            <div class="bd" id="afMeta" class="small muted">Load a protein to fetch AlphaFold metadata.</div>
+          </div>
+          <div class="panel" style="box-shadow:none;">
+            <div class="hd"><h2 style="font-size:12px;">PAE</h2></div>
+            <div class="bd" id="afPae" class="small muted">If the API provides a PAE image URL, it will appear here.</div>
+          </div>
+        </div>
+      </section>
+
+      <section class="tab" id="tab-features">
+        <div id="featureTrackWrap">
+          <div class="row" style="justify-content: space-between; gap:10px;">
+            <div class="row" style="gap:10px;">
+              <span class="badge">Track</span>
+              <span class="badge">Click features for details</span>
+            </div>
+            <div class="row" style="gap:8px;">
+              <button class="btn" id="btnFeatAll">All</button>
+              <button class="btn" id="btnFeatDomains">Domains/Regions</button>
+              <button class="btn" id="btnFeatSites">Sites/PTMs</button>
+            </div>
+          </div>
+          <svg id="featureSvg" viewBox="0 0 1000 150" preserveAspectRatio="none" aria-label="Protein feature track"></svg>
+        </div>
+
+        <div class="split" style="margin-top:10px;">
+          <div class="list">
+            <div class="head">
+              <h3>Features</h3>
+              <span class="badge"><span id="featCount">0</span></span>
+            </div>
+            <div class="bd" style="padding:10px;">
+              <input id="featFilter" type="text" placeholder="Filter features…" style="min-width: 220px;"/>
+            </div>
+            <div class="items" id="featList"></div>
+          </div>
+
+          <div class="list">
+            <div class="head">
+              <h3>Sequence (FASTA)</h3>
+              <span class="badge mono" id="seqRange">—</span>
+            </div>
+            <div class="bd" style="padding:10px;">
+              <div class="tiny muted">Tip: click a feature to jump to its sequence window.</div>
+            </div>
+            <div class="bd" style="padding:10px; padding-top:0;">
+              <pre id="seq" class="mono" style="white-space: pre-wrap; word-break: break-word; margin:0; max-height: 380px; overflow:auto; border:1px solid var(--border); border-radius:12px; background: rgba(255,255,255,0.03); padding: 10px;">—</pre>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="tab" id="tab-notes">
+        <div class="grid2">
+          <div class="panel" style="box-shadow:none;">
+            <div class="hd"><h2 style="font-size:12px;">Auto-generated report (Markdown)</h2></div>
+            <div class="bd">
+              <div class="tiny muted">This is generated from the loaded data (no AI). Edit and export as <span class="inline code">report.md</span>.</div>
+              <textarea id="reportText" placeholder="Load a protein to generate a report…"></textarea>
+              <div class="row" style="margin-top:8px; gap:8px;">
+                <button class="btn" id="btnCopyReport">Copy</button>
+                <button class="btn" id="btnDownloadReport">Download report.md</button>
+              </div>
+            </div>
+          </div>
+          <div class="panel" style="box-shadow:none;">
+            <div class="hd"><h2 style="font-size:12px;">Notes / ideas</h2></div>
+            <div class="bd">
+              <div class="tiny muted">Use this to sketch hypotheses, experiments, or pipeline ideas for Kai9987kai.</div>
+              <textarea id="notes" placeholder="Notes…"></textarea>
+              <div class="row" style="margin-top:8px; gap:8px;">
+                <button class="btn" id="btnCopyNotes">Copy</button>
+                <button class="btn" id="btnDownloadNotes">Download notes.md</button>
+              </div>
+              <div class="tiny muted" style="margin-top:10px;">
+                Suggestion starter:
+                <ul style="margin:6px 0 0 18px; padding:0;">
+                  <li>Which pathway nodes are <em>most connected</em> and how would you perturb them?</li>
+                  <li>Does AlphaFold show disordered regions that match PTMs / short motifs?</li>
+                  <li>Which pathway participants are missing from the STRING neighborhood (data gap)?</li>
+                </ul>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <div class="tooltip" id="tooltip"></div>
+
+  <footer>
+    Built as a single-file web app. Data sources: UniProt (REST), STRING (API), Reactome (ContentService), AlphaFold DB (API).<br/>
+    If you hit CORS issues when opening as <span class="mono">file://</span>, run a local server: <span class="mono">python -m http.server 8000</span> then open <span class="mono">http://localhost:8000/</span>.
+  </footer>
+
+<script>
+/**
+ * Kai9987kai BioExplorer — single file (v2)
+ * Features:
+ * - UniProt: summary, FASTA, feature track
+ * - STRING: interactive network + evidence channels + exports + hub analysis
+ * - Reactome: mapping + participants + network highlighting
+ * - AlphaFold: structure viewer + pLDDT parsing + PAE image (when available)
+ * - Autocomplete: gene/protein suggestions as you type (UniProt-backed)
+ *
+ * Data sources:
+ * - UniProt REST:   https://rest.uniprot.org/
+ * - STRING API:     https://string-db.org/api/
+ * - Reactome:       https://reactome.org/ContentService/data/
+ * - AlphaFold DB:   https://alphafold.ebi.ac.uk/api/prediction/{UniProtAcc}
+ *
+ * Notes on CORS:
+ * Some browsers block requests from file:// (null origin). Serve locally:
+ *   python -m http.server 8000
+ *   http://localhost:8000/kai9987kai_bioexplorer.html
+ */
+
+const TTL_MS = 24 * 60 * 60 * 1000; // 24h cache for "big" resources
+const app = {
+  state: {
+    queryRaw: "",
+    taxId: 9606,
+
+    uniprotAcc: null,
+    uniprot: null,
+    uniprotSummary: null,
+    features: [],
+
+    reactome: {
+      mode: "pathways",
+      items: [],
+      selected: null,
+      participants: [],
+      highlightSet: new Set()
+    },
+
+    string: {
+      requiredScore: 700,
+      neighbors: 20,
+      networkType: "functional",
+      elements: null,
+      selectedNode: null,
+      selectedEdge: null,
+      hubs: []
+    },
+
+    alphafold: {
+      meta: null,
+      pdbUrl: null,
+      paeImageUrl: null,
+      plddt: null,            // per-residue array (1-indexed, values 0..100)
+      plddtSummary: null,     // mean/min/max/frac + segments
+      segments50: [],
+      segments70: []
+    },
+
+    report: "",
+    notes: ""
+  },
+
+  cache: {
+    get(key){
+      try{
+        const raw = localStorage.getItem(key);
+        if(!raw) return null;
+        const obj = JSON.parse(raw);
+        if(!obj || typeof obj !== "object") return null;
+        if(Date.now() > obj.exp){
+          localStorage.removeItem(key);
+          return null;
+        }
+        return obj.val;
+      }catch{
+        return null;
+      }
+    },
+    set(key, val, ttl=TTL_MS){
+      try{
+        const obj = { exp: Date.now() + ttl, val };
+        localStorage.setItem(key, JSON.stringify(obj));
+      }catch{}
+    },
+    clear(){
+      try{ localStorage.clear(); }catch{}
+    }
+  }
+};
+
+// Autocomplete state (in-memory only; avoids localStorage bloat)
+const ac = {
+  open: false,
+  items: [],
+  index: -1,
+  timer: null,
+  abort: null,
+  lastKey: "",
+  mem: new Map(), // key -> items
+  memOrder: []
+};
+
+// ------- DOM helpers -------
+const $ = (sel) => document.querySelector(sel);
+const $$ = (sel) => Array.from(document.querySelectorAll(sel));
+
+function setPill(idDot, idText, status, level){
+  const dot = $(idDot);
+  const text = $(idText);
+  if(text) text.textContent = status;
+  if(dot){
+    dot.classList.remove("ok","warn","bad");
+    if(level === "ok") dot.classList.add("ok");
+    else if(level === "warn") dot.classList.add("warn");
+    else if(level === "bad") dot.classList.add("bad");
+  }
+}
+
+function setStatus(msg, level=""){
+  $("#statusLine").textContent = msg;
+  const dot = $("#dotApp");
+  dot.classList.remove("ok","warn","bad");
+  if(level === "ok") dot.classList.add("ok");
+  else if(level === "warn") dot.classList.add("warn");
+  else if(level === "bad") dot.classList.add("bad");
+}
+
+function safeText(x, fallback="—"){
+  if(x === null || x === undefined) return fallback;
+  const s = String(x).trim();
+  return s.length ? s : fallback;
+}
+
+function escapeHtml(str){
+  return String(str)
+    .replaceAll("&","&amp;")
+    .replaceAll("<","&lt;")
+    .replaceAll(">","&gt;")
+    .replaceAll('"',"&quot;")
+    .replaceAll("'","&#039;");
+}
+
+function downloadText(filename, text){
+  const blob = new Blob([text], { type: "text/plain;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url), 4000);
+}
+
+// ------- Fetch helpers -------
+async function fetchJsonCached(url, opts={}, ttl=TTL_MS){
+  const key = "cache:" + url;
+  const cached = app.cache.get(key);
+  if(cached) return cached;
+  const res = await fetch(url, opts);
+  if(!res.ok){
+    const txt = await res.text().catch(()=> "");
+    throw new Error(`HTTP ${res.status} for ${url}${txt ? " — " + txt.slice(0,200) : ""}`);
+  }
+  const data = await res.json();
+  app.cache.set(key, data, ttl);
+  return data;
+}
+
+// No-cache JSON (for suggestions)
+async function fetchJson(url, opts={}){
+  const res = await fetch(url, opts);
+  if(!res.ok){
+    const txt = await res.text().catch(()=> "");
+    throw new Error(`HTTP ${res.status} for ${url}${txt ? " — " + txt.slice(0,200) : ""}`);
+  }
+  return await res.json();
+}
+
+async function fetchText(url, opts={}){
+  const res = await fetch(url, opts);
+  if(!res.ok){
+    const txt = await res.text().catch(()=> "");
+    throw new Error(`HTTP ${res.status} for ${url}${txt ? " — " + txt.slice(0,200) : ""}`);
+  }
+  return await res.text();
+}
+
+// ------- UniProt -------
+function looksLikeAccession(q){
+  // Broad heuristics; accepts common UniProt accession forms and isoforms (P04637-1)
+  return /^[A-Za-z0-9]{6,10}(-\d+)?$/.test(q.trim());
+}
+
+async function uniprotFetchEntry(acc){
+  const url = `https://rest.uniprot.org/uniprotkb/${encodeURIComponent(acc)}.json`;
+  return await fetchJsonCached(url);
+}
+
+async function uniprotSearch(query, taxId, size=10, opts={}, ttl=TTL_MS){
+  const q = encodeURIComponent(`(${query}) AND (organism_id:${taxId})`);
+  const url = `https://rest.uniprot.org/uniprotkb/search?query=${q}&format=json&size=${size}`;
+  return await fetchJsonCached(url, opts, ttl);
+}
+
+// Suggest API (no localStorage cache; includes in-memory cache + abort)
+async function uniprotSuggest(query, taxId, signal){
+  const normalized = query.trim();
+  if(normalized.length < 2) return [];
+  const key = `${taxId}:${normalized.toUpperCase()}`;
+  if(ac.mem.has(key)) return ac.mem.get(key);
+
+  const q = encodeURIComponent(`(${normalized}) AND (organism_id:${taxId})`);
+  const url = `https://rest.uniprot.org/uniprotkb/search?query=${q}&format=json&size=10`;
+  const data = await fetchJson(url, { signal });
+
+  const results = Array.isArray(data?.results) ? data.results : [];
+  const items = results.slice(0, 10).map(r => {
+    const acc = r.primaryAccession || r.uniProtkbId || r.accession || "";
+    const proteinName =
+      r.proteinDescription?.recommendedName?.fullName?.value
+      || r.proteinDescription?.submissionNames?.[0]?.fullName?.value
+      || r.proteinDescription?.alternativeNames?.[0]?.fullName?.value
+      || "—";
+    const genes = (r.genes || []).map(g => g.geneName?.value).filter(Boolean);
+    const gene = genes[0] || "";
+    const org = r.organism?.scientificName || r.organism?.commonName || "";
+    const entryType = r.entryType || "";
+    const reviewed = String(entryType).toLowerCase().includes("reviewed");
+    return { acc, gene, proteinName, org, reviewed, entryType };
+  }).filter(it => it.acc);
+
+  // Deduplicate: prefer unique (gene|acc)
+  const seen = new Set();
+  const dedup = [];
+  for(const it of items){
+    const k = (it.gene || it.acc).toUpperCase();
+    if(seen.has(k)) continue;
+    seen.add(k);
+    dedup.push(it);
+  }
+
+  // keep a tiny LRU
+  ac.mem.set(key, dedup);
+  ac.memOrder.push(key);
+  if(ac.memOrder.length > 120){
+    const drop = ac.memOrder.shift();
+    if(drop) ac.mem.delete(drop);
+  }
+  return dedup;
+}
+
+function pickBestUniProtResult(results){
+  if(!results || !Array.isArray(results.results)) return null;
+  const arr = results.results;
+  if(!arr.length) return null;
+  const reviewed = arr.find(r => r.entryType && String(r.entryType).toLowerCase().includes("reviewed"));
+  return reviewed || arr[0];
+}
+
+function uniprotExtractSummary(entry){
+  const acc = entry.primaryAccession || entry.uniProtkbId || entry.accession;
+  const proteinName =
+    entry.proteinDescription?.recommendedName?.fullName?.value
+    || entry.proteinDescription?.submissionNames?.[0]?.fullName?.value
+    || entry.proteinDescription?.alternativeNames?.[0]?.fullName?.value
+    || entry.proteinDescription?.proteinName?.value
+    || entry.proteinDescription?.recommendedName?.fullName
+    || entry.proteinDescription?.recommendedName
+    || "—";
+  const genes = (entry.genes || []).map(g => g.geneName?.value).filter(Boolean);
+  const geneSyn = (entry.genes || []).flatMap(g => (g.synonyms||[]).map(s=>s.value)).filter(Boolean);
+  const org = entry.organism?.scientificName || entry.organism?.commonName || "—";
+  const tax = entry.organism?.taxonId || null;
+  const len = entry.sequence?.length || null;
+  const seq = entry.sequence?.value || "";
+  const fn = (entry.comments || [])
+    .find(c => String(c.commentType).toLowerCase() === "function")?.texts?.[0]?.value
+    || "";
+  return { acc, proteinName, genes, geneSyn, org, tax, len, seq, fn };
+}
+
+function uniprotExtractFeatures(entry){
+  const features = entry.features || [];
+  return features.map(f => {
+    const type = f.type || f.featureType || "Feature";
+    const desc = f.description || f.featureDescription || "";
+    const loc = f.location || {};
+    const start = loc.start?.value || loc.begin?.value || loc.position?.value || null;
+    const end = loc.end?.value || loc.finish?.value || loc.position?.value || null;
+    return {
+      type,
+      desc,
+      start: start ? Number(start) : null,
+      end: end ? Number(end) : null,
+      evidence: f.evidences || []
+    };
+  }).filter(f => f.start && f.end && f.start <= f.end);
+}
+
+// ------- Reactome -------
+async function reactomeMapping(resource, identifier, mapTo, species){
+  const base = "https://reactome.org/ContentService/data/mapping";
+  const url = `${base}/${encodeURIComponent(resource)}/${encodeURIComponent(identifier)}/${encodeURIComponent(mapTo)}?species=${encodeURIComponent(species)}`;
+  return await fetchJsonCached(url);
+}
+
+async function reactomeParticipantsReferenceEntities(eventId){
+  const url = `https://reactome.org/ContentService/data/participants/${encodeURIComponent(eventId)}/referenceEntities`;
+  return await fetchJsonCached(url);
+}
+
+function reactomeEventLink(stId){
+  return `https://reactome.org/content/detail/${encodeURIComponent(stId)}`;
+}
+
+// ------- STRING -------
+async function stringNetwork(identifier, species, requiredScore=700, neighbors=20, networkType="functional"){
+  const base = "https://string-db.org/api/json/network";
+  const params = new URLSearchParams({
+    identifiers: identifier,
+    species: String(species),
+    required_score: String(requiredScore),
+    network_type: networkType,
+    add_white_nodes: String(neighbors),
+    caller_identity: "kai9987kai_bioexplorer"
+  });
+  const url = `${base}?${params.toString()}`;
+  return await fetchJsonCached(url, {}, 6 * 60 * 60 * 1000); // 6h cache
+}
+
+function parseStringNetwork(edges){
+  const nodesMap = new Map();
+  const edgeEls = [];
+
+  const channels = ["nscore","fscore","pscore","ascore","escore","dscore","tscore"];
+
+  for(const e of edges){
+    const aId = e.stringId_A || e.preferredName_A;
+    const bId = e.stringId_B || e.preferredName_B;
+    const aName = e.preferredName_A || aId;
+    const bName = e.preferredName_B || bId;
+
+    if(!nodesMap.has(aId)) nodesMap.set(aId, { data: { id: aId, label: aName, isQuery: "false" } });
+    if(!nodesMap.has(bId)) nodesMap.set(bId, { data: { id: bId, label: bName, isQuery: "false" } });
+
+    const score = typeof e.score === "number" ? e.score : Number(e.score || 0);
+
+    const edata = { id: `${aId}__${bId}`, source: aId, target: bId, score };
+    // evidence channels if provided by API
+    for(const c of channels){
+      if(e[c] !== undefined){
+        const v = Number(e[c] || 0);
+        if(Number.isFinite(v)) edata[c] = v;
+      }
+    }
+    edgeEls.push({ data: edata });
+  }
+
+  return { nodes: Array.from(nodesMap.values()), edges: edgeEls };
+}
+
+// ------- Tooltip (shared) -------
+function tipEl(){ return $("#tooltip"); }
+
+function showTip(html, x, y){
+  const tip = tipEl();
+  tip.innerHTML = html;
+  tip.style.display = "block";
+  tip.style.left = (x + 12) + "px";
+  tip.style.top  = (y + 12) + "px";
+}
+
+function moveTip(x, y){
+  const tip = tipEl();
+  if(tip.style.display === "none") return;
+  tip.style.left = (x + 12) + "px";
+  tip.style.top  = (y + 12) + "px";
+}
+
+function hideTip(){
+  const tip = tipEl();
+  tip.style.display = "none";
+}
+
+// ------- Cytoscape network -------
+let cy = null;
+
+function buildCy(elements, queryLabel){
+  if(!cy){
+    cy = cytoscape({
+      container: $("#cy"),
+      elements,
+      layout: { name: "cose", animate: false, padding: 20 },
+      wheelSensitivity: 0.18,
+      style: [
+        { selector: "node", style: {
+            "background-color": "rgba(255,255,255,0.18)",
+            "border-width": 1,
+            "border-color": "rgba(255,255,255,0.18)",
+            "label": "data(label)",
+            "color": "rgba(255,255,255,0.82)",
+            "font-size": 10,
+            "text-outline-width": 2,
+            "text-outline-color": "rgba(7,10,20,0.75)",
+            "text-valign": "center",
+            "text-halign": "center",
+            "width": 22,
+            "height": 22,
+          }
+        },
+        { selector: "node[isQuery = 'true']", style: {
+            "background-color": "rgba(122,162,255,0.95)",
+            "border-color": "rgba(255,255,255,0.35)",
+            "border-width": 2,
+            "width": 30,
+            "height": 30,
+            "font-size": 11,
+            "font-weight": 800,
+          }
+        },
+        { selector: "node.selected", style: {
+            "border-width": 3,
+            "border-color": "rgba(255,255,255,0.65)",
+            "width": 30,
+            "height": 30,
+          }
+        },
+        { selector: "node.inPathway", style: {
+            "background-color": "rgba(98,210,111,0.90)",
+            "border-color": "rgba(255,255,255,0.40)",
+          }
+        },
+        { selector: "edge", style: {
+            "line-color": "rgba(255,255,255,0.14)",
+            "width": "mapData(score, 0, 1, 1, 5)",
+            "curve-style": "bezier",
+            "target-arrow-shape": "none",
+          }
+        },
+        { selector: "edge.selected", style: {
+            "line-color": "rgba(179,122,255,0.90)",
+          }
+        },
+      ]
+    });
+
+    cy.on("tap", "node", (evt) => selectNode(evt.target));
+    cy.on("tap", "edge", (evt) => selectEdge(evt.target));
+    cy.on("tap", (evt) => { if(evt.target === cy) clearSelection(); });
+
+    // Hover tooltips (tiny but useful)
+    cy.on("mouseover", "node", (evt) => {
+      const n = evt.target;
+      const oe = evt.originalEvent;
+      const deg = n.connectedEdges().length;
+      showTip(`<div class="t">${escapeHtml(n.data("label")||n.id())}</div><div class="m">degree=${deg} · id=${escapeHtml(n.id())}</div>`, oe.clientX, oe.clientY);
+    });
+    cy.on("mousemove", "node", (evt) => {
+      const oe = evt.originalEvent;
+      moveTip(oe.clientX, oe.clientY);
+    });
+    cy.on("mouseout", "node", () => hideTip());
+
+    cy.on("mouseover", "edge", (evt) => {
+      const e = evt.target;
+      const oe = evt.originalEvent;
+      const s = Number(e.data("score")||0);
+      const src = e.source().data("label") || e.source().id();
+      const tgt = e.target().data("label") || e.target().id();
+      showTip(`<div class="t">${escapeHtml(src)} ↔ ${escapeHtml(tgt)}</div><div class="m">score=${isFinite(s)?s.toFixed(3):"—"}</div>`, oe.clientX, oe.clientY);
+    });
+    cy.on("mousemove", "edge", (evt) => {
+      const oe = evt.originalEvent;
+      moveTip(oe.clientX, oe.clientY);
+    });
+    cy.on("mouseout", "edge", () => hideTip());
+  }else{
+    cy.elements().remove();
+    cy.add(elements);
+  }
+
+  // Mark query node by exact label (best effort)
+  const qUpper = String(queryLabel || "").toUpperCase();
+  let qNode = cy.nodes().filter(n => String(n.data("label")||"").toUpperCase() === qUpper);
+  if(qNode.length === 0 && qUpper){
+    qNode = cy.nodes().filter(n => String(n.data("label")||"").toUpperCase().includes(qUpper)).slice(0,1);
+  }
+  cy.nodes().forEach(n => n.data("isQuery", "false"));
+  if(qNode && qNode.length){
+    qNode.data("isQuery", "true");
+  }
+
+  runLayout();
+  cy.fit(undefined, 30);
+  updateNetworkAnalytics();
+}
+
+function runLayout(){
+  if(!cy) return;
+  cy.layout({ name: "cose", animate: false, padding: 20, randomize: true }).run();
+}
+
+function clearSelection(){
+  if(!cy) return;
+  cy.nodes().removeClass("selected");
+  cy.edges().removeClass("selected");
+  app.state.string.selectedNode = null;
+  app.state.string.selectedEdge = null;
+  $("#selNode").textContent = "—";
+  $("#selEdge").textContent = "—";
+  updateSelectionDetails();
+}
+
+function selectNode(node){
+  if(!cy) return;
+  cy.nodes().removeClass("selected");
+  node.addClass("selected");
+  app.state.string.selectedNode = { id: node.id(), label: node.data("label") || node.id() };
+  app.state.string.selectedEdge = null;
+  $("#selNode").textContent = node.data("label") || node.id();
+  $("#selEdge").textContent = "—";
+  updateSelectionDetails();
+  // Load node pathways mapping lazily
+  loadNodePathways(node.data("label") || node.id()).catch(err => {
+    $("#nodePathways").innerHTML = `<div class="tiny" style="color: var(--warn);">Node mapping failed: ${escapeHtml(err.message)}</div>`;
+  });
+}
+
+function selectEdge(edge){
+  if(!cy) return;
+  cy.edges().removeClass("selected");
+  edge.addClass("selected");
+  const s = Number(edge.data("score") || 0);
+  const src = edge.source().id();
+  const tgt = edge.target().id();
+  const srcLabel = edge.source().data("label") || src;
+  const tgtLabel = edge.target().data("label") || tgt;
+
+  const channels = {};
+  for(const k of ["nscore","fscore","pscore","ascore","escore","dscore","tscore"]){
+    if(edge.data(k) !== undefined) channels[k] = Number(edge.data(k) || 0);
+  }
+
+  app.state.string.selectedEdge = { source: src, target: tgt, sourceLabel: srcLabel, targetLabel: tgtLabel, score: s, channels };
+  app.state.string.selectedNode = null;
+
+  $("#selEdge").textContent = isFinite(s) ? s.toFixed(3) : "—";
+  $("#selNode").textContent = "—";
+  updateSelectionDetails();
+}
+
+function highlightNodesBySet(labelOrIdSet){
+  if(!cy) return 0;
+  cy.nodes().removeClass("inPathway");
+  let count = 0;
+  cy.nodes().forEach(n => {
+    const label = String(n.data("label") || "").toUpperCase();
+    const id = String(n.id() || "").toUpperCase();
+    if(labelOrIdSet.has(label) || labelOrIdSet.has(id)){
+      n.addClass("inPathway");
+      count += 1;
+    }
+  });
+  return count;
+}
+
+function countComponents(){
+  if(!cy) return 0;
+  const visited = new Set();
+  let comps = 0;
+  cy.nodes().forEach(n => {
+    if(visited.has(n.id())) return;
+    comps += 1;
+    const stack = [n];
+    visited.add(n.id());
+    while(stack.length){
+      const cur = stack.pop();
+      cur.neighborhood("node").forEach(nb => {
+        if(!visited.has(nb.id())){
+          visited.add(nb.id());
+          stack.push(nb);
+        }
+      });
+    }
+  });
+  return comps;
+}
+
+function updateNetworkAnalytics(){
+  if(!cy){
+    $("#hubList").innerHTML = `<div class="item"><div class="meta">Load a network to compute hub nodes.</div></div>`;
+    return;
+  }
+  const N = cy.nodes().length;
+  const E = cy.edges().length;
+  const density = (N > 1) ? (2*E)/(N*(N-1)) : 0;
+  const avgDeg = (N > 0) ? (2*E)/N : 0;
+  const comps = countComponents();
+
+  // quick metric widgets
+  $("#mDensity").textContent = (N > 1) ? density.toFixed(3) : "—";
+
+  // network stats box (append density)
+  const netStats = $("#netStats");
+  if(netStats){
+    netStats.innerHTML = `
+      <div class="kv">
+        <div class="k">Nodes</div><div class="v mono">${N}</div>
+        <div class="k">Edges</div><div class="v mono">${E}</div>
+        <div class="k">Density</div><div class="v mono">${(N>1)?density.toFixed(3):"—"}</div>
+        <div class="k">Avg degree</div><div class="v mono">${(N>0)?avgDeg.toFixed(2):"—"}</div>
+        <div class="k">Components</div><div class="v mono">${comps}</div>
+        <div class="k">Score ≥</div><div class="v mono">${app.state.string.requiredScore}</div>
+        <div class="k">Neighbors</div><div class="v mono">${app.state.string.neighbors}</div>
+        <div class="k">Type</div><div class="v mono">${escapeHtml(app.state.string.networkType)}</div>
+      </div>
+      <div class="tiny muted" style="margin-top:8px;">
+        Tip: click nodes to see Node→Pathways (sidebar) and edges for evidence channels.
+      </div>
+    `;
+  }
+
+  // hubs
+  const hubs = cy.nodes().map(n => ({
+    id: n.id(),
+    label: n.data("label") || n.id(),
+    degree: n.connectedEdges().length
+  })).sort((a,b) => b.degree - a.degree);
+
+  app.state.string.hubs = hubs.slice(0, 25);
+
+  const hubList = $("#hubList");
+  if(hubList){
+    hubList.innerHTML = "";
+    const top = hubs.slice(0, 12);
+    if(!top.length){
+      hubList.innerHTML = `<div class="item"><div class="meta">No nodes.</div></div>`;
+    }else{
+      for(const h of top){
+        const el = document.createElement("div");
+        el.className = "item";
+        el.innerHTML = `
+          <div class="title">${escapeHtml(h.label)} <span class="badge mono">deg ${h.degree}</span></div>
+          <div class="meta"><code>${escapeHtml(h.id)}</code></div>
+        `;
+        el.addEventListener("click", () => focusNodeByLabel(String(h.label).toUpperCase(), String(h.id).toUpperCase()));
+        hubList.appendChild(el);
+      }
+    }
+  }
+
+  refreshReport();
+}
+
+function updateSelectionDetails(){
+  const el = $("#selDetails");
+  if(!el) return;
+
+  if(app.state.string.selectedEdge){
+    const e = app.state.string.selectedEdge;
+    const s = isFinite(e.score) ? e.score : 0;
+    const channelPairs = Object.entries(e.channels || {})
+      .map(([k,v]) => [k, Number(v||0)])
+      .filter(([k,v]) => Number.isFinite(v) && v > 0.01)
+      .sort((a,b)=>b[1]-a[1]);
+
+    const channelHtml = channelPairs.length
+      ? channelPairs.map(([k,v]) => {
+          const pct = Math.max(2, Math.min(100, Math.round(v*100)));
+          const label = k.replace("score","").toUpperCase();
+          return `<div class="tiny" style="display:flex; gap:10px; align-items:center; margin:6px 0;">
+            <div class="mono" style="min-width: 38px; color: rgba(255,255,255,0.70);">${label}</div>
+            <div style="flex:1; height:8px; border-radius:999px; background: rgba(255,255,255,0.08); border:1px solid rgba(255,255,255,0.10); overflow:hidden;">
+              <div style="height:100%; width:${pct}%; background: rgba(179,122,255,0.85);"></div>
+            </div>
+            <div class="mono" style="min-width: 48px; text-align:right; color: rgba(255,255,255,0.75);">${v.toFixed(2)}</div>
+          </div>`;
+        }).join("")
+      : `<div class="tiny muted">No per-channel scores returned by API for this edge.</div>`;
+
+    el.innerHTML = `
+      <div class="kv">
+        <div class="k">Edge</div><div class="v">${escapeHtml(e.sourceLabel)} ↔ ${escapeHtml(e.targetLabel)}</div>
+        <div class="k">Score</div><div class="v mono">${s.toFixed(3)}</div>
+      </div>
+      <div class="tiny muted" style="margin-top:10px;">Evidence channels (relative; 0..1):</div>
+      ${channelHtml}
+    `;
+    return;
+  }
+
+  if(app.state.string.selectedNode && cy){
+    const nId = app.state.string.selectedNode.id;
+    const n = cy.getElementById(nId);
+    const label = app.state.string.selectedNode.label;
+
+    const degree = n.connectedEdges().length;
+    const neighbors = n.connectedEdges().map(e => {
+      const other = (e.source().id() === nId) ? e.target() : e.source();
+      const otherLabel = other.data("label") || other.id();
+      const sc = Number(e.data("score")||0);
+      return { otherLabel, otherId: other.id(), score: sc };
+    }).sort((a,b)=>b.score-a.score).slice(0, 8);
+
+    const neighHtml = neighbors.length ? neighbors.map(x => `
+      <div class="tiny" style="margin: 6px 0;">
+        <span class="mono">${escapeHtml(x.otherLabel)}</span>
+        <span class="faint mono"> (${escapeHtml(x.otherId)})</span>
+        <span class="badge mono" style="margin-left:6px;">${x.score.toFixed(3)}</span>
+      </div>
+    `).join("") : `<div class="tiny muted">No neighbors.</div>`;
+
+    el.innerHTML = `
+      <div class="kv">
+        <div class="k">Node</div><div class="v">${escapeHtml(label)}</div>
+        <div class="k">ID</div><div class="v mono">${escapeHtml(nId)}</div>
+        <div class="k">Degree</div><div class="v mono">${degree}</div>
+      </div>
+      <div class="tiny muted" style="margin-top:10px;">Top neighbors by score:</div>
+      ${neighHtml}
+    `;
+    return;
+  }
+
+  el.textContent = "Click a node or edge to see evidence + quick metrics.";
+}
+
+function focusNodeByLabel(labelUpper, idUpper=""){
+  if(!cy) return;
+  const nodes = cy.nodes().filter(n =>
+    String(n.data("label")||"").toUpperCase() === labelUpper ||
+    (idUpper && String(n.id()||"").toUpperCase() === idUpper) ||
+    String(n.id()||"").toUpperCase() === labelUpper
+  );
+  if(nodes.length){
+    const n = nodes[0];
+    cy.nodes().removeClass("selected");
+    n.addClass("selected");
+    cy.center(n);
+    cy.fit(n, 80);
+    selectNode(n);
+  }else{
+    setStatus("Couldn't find that node in the network.", "warn");
+  }
+}
+
+// ------- Feature track -------
+function hashHue(str){
+  let h = 0;
+  for(let i=0;i<str.length;i++) h = (h * 31 + str.charCodeAt(i)) >>> 0;
+  return h % 360;
+}
+
+function featureCategory(type){
+  const t = String(type).toLowerCase();
+  if(t.includes("domain") || t.includes("region") || t.includes("repeat") || t.includes("coiled") || t.includes("helix") || t.includes("strand") || t.includes("turn")) return "domains";
+  if(t.includes("site") || t.includes("binding") || t.includes("active") || t.includes("mod") || t.includes("glycos") || t.includes("phospho") || t.includes("disulfide")) return "sites";
+  return "other";
+}
+
+function segmentsToRects(segments, seqLen, y, h, fill, label){
+  const rects = [];
+  for(const seg of segments){
+    const x1 = 20 + (960 * (seg[0]-1) / Math.max(1, seqLen));
+    const x2 = 20 + (960 * (seg[1]-1) / Math.max(1, seqLen));
+    const w = Math.max(2, x2 - x1);
+    rects.push(`<rect x="${x1.toFixed(2)}" y="${y}" width="${w.toFixed(2)}" height="${h}" rx="3" ry="3"
+      fill="${fill}" stroke="rgba(255,255,255,0.10)" stroke-width="1"
+      data-desc="${escapeHtml(label)} ${seg[0]}-${seg[1]}"></rect>`);
+  }
+  return rects.join("\n");
+}
+
+function renderFeatures(features, seqLen, filterMode="all", textFilter=""){
+  const svg = $("#featureSvg");
+  const list = $("#featList");
+  const featCount = $("#featCount");
+  const q = textFilter.trim().toLowerCase();
+
+  const filtered = (features || []).filter(f => {
+    if(filterMode === "domains" && featureCategory(f.type) !== "domains") return false;
+    if(filterMode === "sites" && featureCategory(f.type) !== "sites") return false;
+    if(q){
+      const hay = `${f.type} ${f.desc} ${f.start}-${f.end}`.toLowerCase();
+      if(!hay.includes(q)) return false;
+    }
+    return true;
+  });
+
+  featCount.textContent = String(filtered.length);
+
+  // list
+  list.innerHTML = "";
+  for(const f of filtered.slice(0, 800)){
+    const el = document.createElement("div");
+    el.className = "item";
+    el.innerHTML = `
+      <div class="title">${escapeHtml(f.type)} <span class="badge mono">${f.start}-${f.end}</span></div>
+      <div class="meta">${escapeHtml(f.desc || "")}</div>
+    `;
+    el.addEventListener("click", () => {
+      focusSequenceWindow(f.start, f.end);
+      flashFeatureInSvg(f);
+    });
+    list.appendChild(el);
+  }
+  if(filtered.length > 800){
+    const el = document.createElement("div");
+    el.className = "item";
+    el.innerHTML = `<div class="meta">Showing first 800 features. Refine filters to view more.</div>`;
+    list.appendChild(el);
+  }
+
+  // draw SVG
+  const rows = [];
+  const placements = [];
+  for(const f of filtered){
+    const start = f.start, end = f.end;
+    let rowIndex = 0;
+    while(true){
+      if(!rows[rowIndex]) rows[rowIndex] = [];
+      const row = rows[rowIndex];
+      const overlaps = row.some(r => !(end < r.start || start > r.end));
+      if(!overlaps){
+        row.push({ start, end });
+        placements.push({ f, row: rowIndex });
+        break;
+      }
+      rowIndex += 1;
+      if(rowIndex > 8) break;
+    }
+  }
+
+  const maxRows = Math.min(rows.length, 9);
+  const rowH = 12;
+  const topPad = 26;
+  const trackH = 150;
+
+  svg.innerHTML = "";
+
+  // baseline
+  svg.insertAdjacentHTML("beforeend", `
+    <rect x="0" y="0" width="1000" height="${trackH}" fill="rgba(255,255,255,0.00)"></rect>
+    <line x1="20" y1="${topPad}" x2="980" y2="${topPad}" stroke="rgba(255,255,255,0.25)" stroke-width="2"/>
+    <text x="20" y="16" fill="rgba(255,255,255,0.65)" font-size="11" font-family="ui-monospace, monospace">1</text>
+    <text x="980" y="16" fill="rgba(255,255,255,0.65)" font-size="11" text-anchor="end" font-family="ui-monospace, monospace">${seqLen}</text>
+  `);
+
+  // ticks
+  const ticks = 10;
+  for(let i=1;i<ticks;i++){
+    const x = 20 + (960 * i / ticks);
+    svg.insertAdjacentHTML("beforeend", `<line x1="${x}" y1="${topPad-4}" x2="${x}" y2="${topPad+6}" stroke="rgba(255,255,255,0.18)" stroke-width="1"/>`);
+  }
+
+  // AlphaFold pLDDT overlays (innovative cross-view linkage)
+  const seg50 = app.state.alphafold?.segments50 || [];
+  const seg70 = app.state.alphafold?.segments70 || [];
+  if(seg70.length){
+    svg.insertAdjacentHTML("beforeend", segmentsToRects(seg70, seqLen, topPad-12, 6, "rgba(255,204,102,0.18)", "pLDDT<70"));
+  }
+  if(seg50.length){
+    svg.insertAdjacentHTML("beforeend", segmentsToRects(seg50, seqLen, topPad-12, 6, "rgba(255,92,92,0.22)", "pLDDT<50"));
+  }
+  if(seg50.length || seg70.length){
+    svg.insertAdjacentHTML("beforeend", `<text x="20" y="${topPad-16}" fill="rgba(255,255,255,0.55)" font-size="10">AlphaFold confidence overlay: <tspan fill="rgba(255,204,102,0.70)">pLDDT&lt;70</tspan>, <tspan fill="rgba(255,92,92,0.70)">pLDDT&lt;50</tspan></text>`);
+  }
+
+  // features
+  for(const p of placements){
+    if(p.row >= maxRows) continue;
+    const f = p.f;
+    const hue = hashHue(f.type || "Feature");
+    const x1 = 20 + (960 * (f.start - 1) / Math.max(1, seqLen));
+    const x2 = 20 + (960 * (f.end - 1) / Math.max(1, seqLen));
+    const w = Math.max(2, x2 - x1);
+    const y = topPad + 10 + p.row * rowH;
+    const id = `feat_${f.type}_${f.start}_${f.end}`.replaceAll(/[^a-zA-Z0-9_]/g, "_");
+    svg.insertAdjacentHTML("beforeend", `
+      <rect id="${id}" x="${x1.toFixed(2)}" y="${y}" width="${w.toFixed(2)}" height="10"
+        rx="3" ry="3"
+        fill="hsla(${hue}, 85%, 65%, 0.85)"
+        stroke="rgba(255,255,255,0.25)"
+        stroke-width="1"
+        data-type="${escapeHtml(f.type)}"
+        data-desc="${escapeHtml(f.desc || "")}"
+        data-range="${f.start}-${f.end}"
+      ></rect>
+    `);
+  }
+
+  // Tooltips for track features
+  svg.querySelectorAll("rect[id^='feat_']").forEach(r => {
+    r.addEventListener("mousemove", (e) => {
+      const type = r.getAttribute("data-type") || "";
+      const desc = r.getAttribute("data-desc") || "";
+      const range = r.getAttribute("data-range") || "";
+      showTip(`<div class="t">${type} <span class="badge mono">${range}</span></div><div>${desc}</div><div class="m">Click to jump to sequence</div>`, e.clientX, e.clientY);
+    });
+    r.addEventListener("mouseleave", () => hideTip());
+    r.addEventListener("click", () => {
+      const range = (r.getAttribute("data-range") || "").split("-").map(x => Number(x));
+      if(range.length === 2 && range[0] && range[1]){
+        focusSequenceWindow(range[0], range[1]);
+      }
+    });
+  });
+}
+
+function flashFeatureInSvg(f){
+  const svg = $("#featureSvg");
+  const id = `feat_${f.type}_${f.start}_${f.end}`.replaceAll(/[^a-zA-Z0-9_]/g, "_");
+  const el = svg.querySelector("#" + CSS.escape(id));
+  if(!el) return;
+  el.animate([{ filter: "brightness(1)" }, { filter: "brightness(1.6)" }, { filter: "brightness(1)" }], { duration: 550 });
+}
+
+function focusSequenceWindow(start, end){
+  const seq = app.state.uniprotSummary?.seq || "";
+  if(!seq) return;
+  const pad = 40;
+  const s = Math.max(1, start - pad);
+  const e = Math.min(seq.length, end + pad);
+  const slice = seq.slice(s-1, e);
+
+  const header = `>${app.state.uniprotAcc || "UNIPROT"}|${app.state.uniprotSummary?.genes?.[0] || ""} ${app.state.uniprotSummary?.proteinName || ""}\n`;
+  const formatted = slice.replace(/(.{1,60})/g, "$1\n");
+  $("#seq").textContent = header + formatted;
+  $("#seqRange").textContent = `${s}-${e}`;
+  $("#seq").scrollTop = 0;
+}
+
+// ------- Pathways UI -------
+function renderReactomeList(items){
+  const list = $("#pathList");
+  const count = $("#pathCount");
+  const filter = $("#pathFilter").value.trim().toLowerCase();
+  const filtered = (items || []).filter(p => {
+    if(!filter) return true;
+    const hay = `${p.displayName || ""} ${p.stId || ""} ${p.speciesName || ""}`.toLowerCase();
+    return hay.includes(filter);
+  });
+
+  count.textContent = String(filtered.length);
+  list.innerHTML = "";
+
+  for(const p of filtered.slice(0, 400)){
+    const el = document.createElement("div");
+    el.className = "item";
+    const title = escapeHtml(p.displayName || p.name || "—");
+    const id = escapeHtml(p.stId || p.stIdVersion || p.dbId || "");
+    const sp = escapeHtml(p.speciesName || "");
+    el.innerHTML = `
+      <div class="title">${title}</div>
+      <div class="meta"><code>${id}</code> ${sp ? "· " + sp : ""}</div>
+    `;
+    el.addEventListener("click", () => selectReactomeEvent(p));
+    list.appendChild(el);
+  }
+  if(filtered.length > 400){
+    const el = document.createElement("div");
+    el.className = "item";
+    el.innerHTML = `<div class="meta">Showing first 400 items. Refine filter to see more.</div>`;
+    list.appendChild(el);
+  }
+}
+
+async function selectReactomeEvent(eventObj){
+  app.state.reactome.selected = eventObj;
+  $("#btnOpenReactome").href = reactomeEventLink(eventObj.stId || eventObj.stIdVersion || eventObj.dbId || "");
+  $("#partHint").textContent = "Loading participants…";
+  $("#partList").innerHTML = "";
+  $("#partCount").textContent = "0";
+  setPill("#dotReactome", "#stReactome", "participants…", "warn");
+
+  try{
+    const id = eventObj.stId || eventObj.stIdVersion || eventObj.dbId;
+    const refs = await reactomeParticipantsReferenceEntities(id);
+    app.state.reactome.participants = Array.isArray(refs) ? refs : [];
+    renderParticipants(app.state.reactome.participants);
+    setPill("#dotReactome", "#stReactome", "ready", "ok");
+    setStatus(`Loaded participants for ${eventObj.displayName || id}.`, "ok");
+  }catch(err){
+    $("#partHint").textContent = "Failed to load participants (CORS or API error).";
+    $("#partList").innerHTML = `<div class="bd tiny" style="color: var(--warn); padding:10px;">${escapeHtml(err.message)}</div>`;
+    setPill("#dotReactome", "#stReactome", "error", "bad");
+    setStatus("Reactome participants fetch failed.", "warn");
+  }
+}
+
+function renderParticipants(participants){
+  const list = $("#partList");
+  const count = $("#partCount");
+  const filter = $("#partFilter").value.trim().toLowerCase();
+  const filtered = (participants || []).filter(p => {
+    if(!filter) return true;
+    const hay = `${p.identifier || ""} ${p.name || ""} ${p.databaseName || ""} ${p.displayName || ""}`.toLowerCase();
+    return hay.includes(filter);
+  });
+
+  count.textContent = `${filtered.length} refs`;
+  list.innerHTML = "";
+
+  // Build highlight set
+  const set = new Set();
+  for(const p of filtered){
+    if(p.identifier) set.add(String(p.identifier).toUpperCase());
+    if(p.name) set.add(String(p.name).toUpperCase());
+    if(p.displayName){
+      const parts = String(p.displayName).split(" ");
+      for(const part of parts){
+        if(part.includes(":")){
+          const after = part.split(":")[1];
+          if(after) set.add(after.toUpperCase());
+        }else{
+          set.add(part.toUpperCase());
+        }
+      }
+    }
+  }
+  app.state.reactome.highlightSet = set;
+
+  for(const p of filtered.slice(0, 600)){
+    const el = document.createElement("div");
+    el.className = "item";
+    const title = escapeHtml(p.name || p.displayName || p.identifier || "—");
+    const meta = `${escapeHtml(p.databaseName || "")} · <code>${escapeHtml(p.identifier || "")}</code>`;
+    el.innerHTML = `
+      <div class="title">${title}</div>
+      <div class="meta">${meta}</div>
+    `;
+    el.addEventListener("click", () => {
+      const target = (p.name || p.identifier || "").toUpperCase();
+      focusNodeByLabel(target, target);
+    });
+    list.appendChild(el);
+  }
+  if(filtered.length > 600){
+    const el = document.createElement("div");
+    el.className = "item";
+    el.innerHTML = `<div class="meta">Showing first 600 participants. Refine filter to see more.</div>`;
+    list.appendChild(el);
+  }
+
+  $("#partHint").textContent = `Loaded ${filtered.length} reference entities. Click “Highlight in network” to mark overlaps.`;
+}
+
+// ------- Node → Pathways (lazy) -------
+const nodePathCache = new Map();
+
+async function loadNodePathways(nodeLabelOrId){
+  if(!nodeLabelOrId) return;
+  const key = `${app.state.taxId}:${nodeLabelOrId}`;
+  $("#nodePathways").innerHTML = `<div class="tiny muted">Loading pathways for <span class="mono">${escapeHtml(nodeLabelOrId)}</span>…</div>`;
+  $("#nodePathHint").style.display = "none";
+
+  if(nodePathCache.has(key)){
+    renderNodePathways(nodeLabelOrId, nodePathCache.get(key));
+    return;
+  }
+
+  // Attempt direct mapping (Reactome accepts some IDs/names)
+  let data = null;
+  try{
+    data = await reactomeMapping("UniProt", nodeLabelOrId, "pathways", app.state.taxId);
+  }catch{}
+
+  // fallback: gene -> UniProt -> Reactome
+  if(!Array.isArray(data) || data.length === 0){
+    try{
+      const search = await uniprotSearch(nodeLabelOrId, app.state.taxId, 3);
+      const best = pickBestUniProtResult(search);
+      const acc = best?.primaryAccession;
+      if(acc){
+        data = await reactomeMapping("UniProt", acc, "pathways", app.state.taxId);
+      }
+    }catch{}
+  }
+
+  data = Array.isArray(data) ? data : [];
+  nodePathCache.set(key, data);
+  renderNodePathways(nodeLabelOrId, data);
+}
+
+function renderNodePathways(nodeLabelOrId, pathways){
+  if(!pathways.length){
+    $("#nodePathways").innerHTML = `<div class="tiny muted">No mapped pathways found for <span class="mono">${escapeHtml(nodeLabelOrId)}</span>.</div>`;
+    return;
+  }
+  const top = pathways.slice(0, 8).map(p => {
+    const name = escapeHtml(p.displayName || "—");
+    const id = escapeHtml(p.stId || p.stIdVersion || p.dbId || "");
+    const link = reactomeEventLink(p.stId || p.stIdVersion || p.dbId);
+    return `<div class="tiny" style="margin: 6px 0;">
+      <a href="${link}" target="_blank" rel="noopener">${name}</a>
+      <span class="faint mono"> (${id})</span>
+    </div>`;
+  }).join("");
+  const more = pathways.length > 8 ? `<div class="tiny faint">+ ${pathways.length - 8} more… (see Pathways tab)</div>` : "";
+  $("#nodePathways").innerHTML = `${top}${more}`;
+}
+
+// ------- AlphaFold + 3D viewer -------
+let viewer3d = null;
+
+function init3D(){
+  const el = $("#viewer3d");
+  viewer3d = $3Dmol.createViewer(el, { backgroundColor: "rgba(0,0,0,0)" });
+}
+
+function parsePdbPlddt(pdbText){
+  const map = new Map(); // resSeq -> [b]
+  const lines = pdbText.split(/\r?\n/);
+  for(const line of lines){
+    if(!line.startsWith("ATOM")) continue;
+    // PDB columns: resSeq 23-26, B-factor 61-66
+    const resSeqStr = line.slice(22, 26).trim();
+    const bStr = line.slice(60, 66).trim();
+    const res = parseInt(resSeqStr, 10);
+    const b = parseFloat(bStr);
+    if(!Number.isFinite(res) || !Number.isFinite(b)) continue;
+    if(!map.has(res)) map.set(res, []);
+    map.get(res).push(b);
+  }
+  const keys = Array.from(map.keys());
+  if(!keys.length) return null;
+  const maxRes = Math.max(...keys);
+  const perRes = new Array(maxRes + 1).fill(null);
+  for(const [res, arr] of map.entries()){
+    const avg = arr.reduce((a,c)=>a+c,0) / Math.max(1, arr.length);
+    perRes[res] = avg;
+  }
+  const vals = perRes.filter(v => v !== null);
+  const mean = vals.reduce((a,c)=>a+c,0) / Math.max(1, vals.length);
+  const min = Math.min(...vals);
+  const max = Math.max(...vals);
+
+  function segmentsBelow(thr, minLen=5){
+    const segs = [];
+    let start = null;
+    for(let i=1;i<perRes.length;i++){
+      const v = perRes[i];
+      const bad = (v !== null && v < thr);
+      if(bad && start === null) start = i;
+      if(!bad && start !== null){
+        const end = i-1;
+        if(end - start + 1 >= minLen) segs.push([start, end]);
+        start = null;
+      }
+    }
+    if(start !== null){
+      const end = perRes.length - 1;
+      if(end - start + 1 >= minLen) segs.push([start, end]);
+    }
+    return segs;
+  }
+
+  const below50 = vals.filter(v => v < 50).length;
+  const below70 = vals.filter(v => v < 70).length;
+  const fracBelow50 = below50 / Math.max(1, vals.length);
+  const fracBelow70 = below70 / Math.max(1, vals.length);
+
+  return {
+    maxRes,
+    perRes,
+    mean, min, max,
+    fracBelow50,
+    fracBelow70,
+    segments50: segmentsBelow(50, 5),
+    segments70: segmentsBelow(70, 5)
+  };
+}
+
+function renderStructureFromPdb(pdb){
+  if(!viewer3d) init3D();
+  viewer3d.clear();
+  viewer3d.addModel(pdb, "pdb");
+  // AlphaFold encodes pLDDT in B-factor; color by b
+  viewer3d.setStyle({}, { cartoon: { colorscheme: { prop: "b", gradient: "roygb", min: 0, max: 100 } } });
+  viewer3d.zoomTo();
+  viewer3d.render();
+}
+
+async function loadAlphaFold(acc){
+  setPill("#dotAF", "#stAF", "loading…", "warn");
+  $("#afMeta").textContent = "Loading AlphaFold metadata…";
+  $("#afPae").textContent = "Loading…";
+
+  try{
+    const url = `https://alphafold.ebi.ac.uk/api/prediction/${encodeURIComponent(acc)}`;
+    const data = await fetchJsonCached(url, {}, 24 * 60 * 60 * 1000);
+    const first = Array.isArray(data) && data.length ? data[0] : null;
+
+    if(!first){
+      app.state.alphafold = { meta: null, pdbUrl: null, paeImageUrl: null, plddt: null, plddtSummary: null, segments50: [], segments70: [] };
+      $("#afMeta").textContent = "No AlphaFold prediction found for this UniProt accession.";
+      $("#afPae").textContent = "—";
+      $("#mAF").textContent = "none";
+      $("#mPlddt").textContent = "—";
+      setPill("#dotAF", "#stAF", "none", "warn");
+      if(viewer3d) { viewer3d.clear(); viewer3d.render(); }
+      return;
+    }
+
+    app.state.alphafold.meta = first;
+    app.state.alphafold.pdbUrl = first.pdbUrl || null;
+    app.state.alphafold.paeImageUrl = first.paeImageUrl || null;
+
+    $("#mAF").textContent = app.state.alphafold.pdbUrl ? "yes" : "metadata only";
+
+    // PAE image
+    if(first.paeImageUrl){
+      $("#afPae").innerHTML = `<a href="${escapeHtml(first.paeImageUrl)}" target="_blank" rel="noopener">
+        <img src="${escapeHtml(first.paeImageUrl)}" alt="PAE" style="width:100%; border-radius:12px; border:1px solid var(--border);"/>
+      </a>`;
+    }else{
+      $("#afPae").textContent = "PAE image URL not provided by API for this entry.";
+    }
+
+    // PDB fetch + parse pLDDT
+    let plddtStats = null;
+    if(first.pdbUrl){
+      const pdb = await fetchText(first.pdbUrl);
+      renderStructureFromPdb(pdb);
+      plddtStats = parsePdbPlddt(pdb);
+      if(plddtStats){
+        app.state.alphafold.plddt = plddtStats.perRes;
+        app.state.alphafold.plddtSummary = plddtStats;
+        app.state.alphafold.segments50 = plddtStats.segments50;
+        app.state.alphafold.segments70 = plddtStats.segments70;
+        $("#mPlddt").textContent = plddtStats.mean.toFixed(1);
+      }else{
+        $("#mPlddt").textContent = "—";
+      }
+    }else{
+      if(viewer3d) { viewer3d.clear(); viewer3d.render(); }
+      $("#mPlddt").textContent = "—";
+    }
+
+    // Meta panel (include pLDDT)
+    const metaLines = [];
+    metaLines.push(`<div class="kv">`);
+    metaLines.push(`<div class="k">model</div><div class="v mono">${escapeHtml(first.modelEntityId || "—")}</div>`);
+    metaLines.push(`<div class="k">created</div><div class="v mono">${escapeHtml(first.modelCreatedDate || "—")}</div>`);
+    metaLines.push(`<div class="k">global metric</div><div class="v mono">${escapeHtml(first.globalMetricValue ?? "—")}</div>`);
+    metaLines.push(`<div class="k">pdb</div><div class="v">${first.pdbUrl ? `<a href="${escapeHtml(first.pdbUrl)}" target="_blank" rel="noopener">Download PDB</a>` : "—"}</div>`);
+    metaLines.push(`<div class="k">cif</div><div class="v">${first.cifUrl ? `<a href="${escapeHtml(first.cifUrl)}" target="_blank" rel="noopener">Download mmCIF</a>` : "—"}</div>`);
+
+    if(plddtStats){
+      metaLines.push(`<div class="k">mean pLDDT</div><div class="v mono">${plddtStats.mean.toFixed(1)}</div>`);
+      metaLines.push(`<div class="k">&lt;70</div><div class="v mono">${Math.round(plddtStats.fracBelow70*100)}%</div>`);
+      metaLines.push(`<div class="k">&lt;50</div><div class="v mono">${Math.round(plddtStats.fracBelow50*100)}%</div>`);
+    }
+    metaLines.push(`</div>`);
+
+    if(plddtStats){
+      const segText = (segs) => segs.length ? segs.slice(0, 6).map(s => `${s[0]}-${s[1]}`).join(", ") + (segs.length>6 ? ", …" : "") : "none";
+      metaLines.push(`<div class="tiny muted" style="margin-top:10px;">
+        Low-confidence segments (min 5 aa):<br/>
+        <span class="mono">pLDDT&lt;70:</span> ${escapeHtml(segText(plddtStats.segments70))}<br/>
+        <span class="mono">pLDDT&lt;50:</span> ${escapeHtml(segText(plddtStats.segments50))}
+      </div>`);
+    }
+
+    $("#afMeta").innerHTML = metaLines.join("");
+
+    // Re-render feature track to include pLDDT overlays
+    const seqLen = app.state.uniprotSummary?.len || (app.state.uniprotSummary?.seq?.length || 1);
+    renderFeatures(app.state.features || [], seqLen, featMode, $("#featFilter").value);
+
+    setPill("#dotAF", "#stAF", "ready", "ok");
+    setStatus("AlphaFold loaded (structure + confidence).", "ok");
+    refreshReport();
+  }catch(err){
+    $("#afMeta").innerHTML = `<div class="tiny" style="color: var(--warn);">AlphaFold fetch failed: ${escapeHtml(err.message)}</div>`;
+    $("#afPae").textContent = "—";
+    $("#mAF").textContent = "error";
+    $("#mPlddt").textContent = "—";
+    setPill("#dotAF", "#stAF", "error", "bad");
+    if(viewer3d) { viewer3d.clear(); viewer3d.render(); }
+  }
+}
+
+// ------- Report generation -------
+function buildReport(){
+  const s = app.state.uniprotSummary;
+  if(!s) return "# BioExplorer Report\n\nNo protein loaded.\n";
+
+  const acc = s.acc || "—";
+  const gene = (s.genes && s.genes.length) ? s.genes[0] : "—";
+  const name = s.proteinName || "—";
+  const org = s.org || "—";
+  const len = s.len || "—";
+  const fn = s.fn ? s.fn.trim() : "";
+
+  const pathways = app.state.reactome.items || [];
+  const topPaths = pathways.slice(0, 10).map(p => `- ${p.displayName || "—"} (${p.stId || p.dbId || ""})`).join("\n");
+
+  const net = app.state.string.elements;
+  const nNodes = net ? net.nodes.length : 0;
+  const nEdges = net ? net.edges.length : 0;
+  const density = (cy && cy.nodes().length>1) ? (2*cy.edges().length)/(cy.nodes().length*(cy.nodes().length-1)) : null;
+
+  const hubs = (app.state.string.hubs || []).slice(0, 10).map(h => `- ${h.label} (deg ${h.degree})`).join("\n");
+
+  const af = app.state.alphafold;
+  const plddt = af?.plddtSummary;
+  const afLine = af?.pdbUrl ? `AlphaFold model: ${af.meta?.modelEntityId || "available"} (${af.pdbUrl})` : "AlphaFold model: not available / not loaded";
+  const plddtLines = plddt ? `
+- **mean pLDDT:** ${plddt.mean.toFixed(1)}
+- **% <70:** ${Math.round(plddt.fracBelow70*100)}%
+- **% <50:** ${Math.round(plddt.fracBelow50*100)}%
+- **segments <50 (min 5 aa):** ${plddt.segments50.length ? plddt.segments50.slice(0,8).map(s=>`${s[0]}-${s[1]}`).join(", ") : "none"}
+` : "";
+
+  return `# BioExplorer Report — ${gene} (${acc})
+
+## Summary
+- **Protein:** ${name}
+- **Gene(s):** ${s.genes.join(", ") || "—"}
+- **Organism:** ${org} (taxId ${s.tax || "—"})
+- **Length:** ${len} aa
+- **UniProt:** https://www.uniprot.org/uniprotkb/${acc}
+
+${fn ? "### UniProt Function\n" + fn + "\n" : ""}
+
+## STRING network
+- **Nodes:** ${nNodes}
+- **Edges:** ${nEdges}
+- **Density:** ${density !== null ? density.toFixed(3) : "—"}
+- **Parameters:** required_score=${app.state.string.requiredScore}, neighbors=${app.state.string.neighbors}, network_type=${app.state.string.networkType}
+
+${hubs ? "### Top hubs\n" + hubs + "\n" : ""}
+
+## Reactome mapping
+- **Mode:** ${app.state.reactome.mode}
+- **Mapped events:** ${pathways.length}
+${topPaths ? "\n### Top mapped events\n" + topPaths + "\n" : ""}
+
+## Structure
+- ${afLine}
+${plddtLines ? "\n### Confidence (AlphaFold pLDDT)\n" + plddtLines + "\n" : ""}
+
+## Next steps / ideas (non-AI heuristics)
+- Compare **Reactome participants** vs **STRING neighborhood** to find missing edges (data gaps).
+- Check if **features/domains** overlap with **low-confidence** regions (possible IDRs, flexible linkers).
+- Pick 1–2 high-connectivity nodes and design perturbations; validate with pathway readouts.
+
+---
+Generated by Kai9987kai BioExplorer (single-file web app).
+`;
+}
+
+function refreshReport(){
+  const report = buildReport();
+  app.state.report = report;
+  $("#reportText").value = report;
+}
+
+// ------- Reactome mapping for current protein -------
+async function loadReactomeForCurrent(mode){
+  if(!app.state.uniprotSummary) return;
+  app.state.reactome.mode = mode;
+  setPill("#dotReactome", "#stReactome", "loading…", "warn");
+  $("#pathList").innerHTML = "";
+  $("#partList").innerHTML = "";
+  $("#pathCount").textContent = "0";
+  $("#mReactome").textContent = "—";
+
+  try{
+    const acc = app.state.uniprotSummary.acc;
+    const gene = app.state.uniprotSummary.genes?.[0] || acc;
+
+    let items = await reactomeMapping("UniProt", acc, mode, app.state.taxId);
+    if(!Array.isArray(items) || items.length === 0){
+      items = await reactomeMapping("UniProt", gene, mode, app.state.taxId);
+    }
+
+    app.state.reactome.items = Array.isArray(items) ? items : [];
+    $("#mReactome").textContent = String(app.state.reactome.items.length);
+    renderReactomeList(app.state.reactome.items);
+    setPill("#dotReactome", "#stReactome", "ready", "ok");
+    refreshReport();
+  }catch(err){
+    setPill("#dotReactome", "#stReactome", "error", "bad");
+    $("#pathList").innerHTML = `<div class="bd tiny" style="color: var(--warn); padding:10px;">Reactome mapping failed: ${escapeHtml(err.message)}</div>`;
+    $("#mReactome").textContent = "error";
+  }
+}
+
+// ------- Main loading pipeline -------
+async function resolveAndLoad(){
+  const raw = $("#q").value.trim();
+  if(!raw){
+    setStatus("Enter a gene/protein identifier first.", "warn");
+    return;
+  }
+  app.state.queryRaw = raw;
+  app.state.taxId = Number($("#species").value) || 9606;
+  app.state.string.requiredScore = Number($("#score").value) || 700;
+  app.state.string.neighbors = Number($("#neighbors").value) || 20;
+  app.state.string.networkType = $("#nettype").value || "functional";
+
+  updateHashFromState();
+  hideSuggestions();
+  await loadProtein(raw);
+}
+
+async function loadProtein(rawQuery){
+  setStatus("Loading…", "warn");
+  clearSelection();
+  $("#summaryEmpty").style.display = "none";
+  $("#summary").style.display = "block";
+  $("#nodePathways").innerHTML = "";
+  $("#nodePathHint").style.display = "block";
+  $("#pathList").innerHTML = "";
+  $("#partList").innerHTML = "";
+  $("#netStats").textContent = "Loading…";
+  $("#pathHighlightInfo").textContent = "Select a pathway in the Pathways tab to highlight its participants here.";
+  $("#hubList").innerHTML = `<div class="item"><div class="meta">Computing…</div></div>`;
+
+  // reset pLDDT overlays (will be added back if AlphaFold loads)
+  app.state.alphafold.segments50 = [];
+  app.state.alphafold.segments70 = [];
+  $("#mPlddt").textContent = "—";
+
+  // UNI
+  setPill("#dotUniprot", "#stUniprot", "loading…", "warn");
+  let entry = null;
+
+  try{
+    const taxId = app.state.taxId;
+    let acc = null;
+
+    if(looksLikeAccession(rawQuery)){
+      const baseAcc = rawQuery.split("-")[0].toUpperCase();
+      try{
+        entry = await uniprotFetchEntry(baseAcc);
+        acc = baseAcc;
+      }catch{}
+    }
+
+    if(!entry){
+      const search = await uniprotSearch(rawQuery, taxId, 25);
+      const best = pickBestUniProtResult(search);
+      if(!best) throw new Error("No UniProtKB matches. Try a different query or species.");
+      acc = best.primaryAccession;
+      entry = await uniprotFetchEntry(acc);
+    }
+
+    app.state.uniprotAcc = entry.primaryAccession || entry.uniProtkbId || acc;
+    app.state.uniprot = entry;
+
+    const summary = uniprotExtractSummary(entry);
+    app.state.uniprotSummary = summary;
+
+    setPill("#dotUniprot", "#stUniprot", "ready", "ok");
+    $("#badgeAcc").innerHTML = `Acc: <strong class="mono">${escapeHtml(summary.acc || "—")}</strong>`;
+
+    // summary panel
+    $("#sumName").textContent = safeText(summary.proteinName);
+    $("#sumGenes").textContent = summary.genes.length ? summary.genes.join(", ") + (summary.geneSyn.length ? ` (syn: ${summary.geneSyn.slice(0,6).join(", ")}${summary.geneSyn.length>6?", …":""})` : "") : "—";
+    $("#sumOrg").textContent = `${summary.org}${summary.tax ? " (taxId " + summary.tax + ")" : ""}`;
+    $("#sumLen").textContent = summary.len ? `${summary.len} aa` : "—";
+    $("#sumFn").textContent = summary.fn ? summary.fn : "—";
+    $("#sumLinks").innerHTML = `<a target="_blank" rel="noopener" href="https://www.uniprot.org/uniprotkb/${encodeURIComponent(summary.acc)}">Entry</a> · <a target="_blank" rel="noopener" href="https://www.uniprot.org/uniprotkb?query=${encodeURIComponent(summary.acc)}">Search</a>`;
+
+  }catch(err){
+    setPill("#dotUniprot", "#stUniprot", "error", "bad");
+    $("#summaryEmpty").style.display = "block";
+    $("#summary").style.display = "none";
+    $("#summaryEmpty").innerHTML = `<div style="color: var(--warn);">UniProt error: ${escapeHtml(err.message)}</div>`;
+    setStatus("UniProt load failed.", "bad");
+    return;
+  }
+
+  // Features + sequence
+  try{
+    const feats = uniprotExtractFeatures(app.state.uniprot);
+    app.state.features = feats;
+    const seq = app.state.uniprotSummary.seq || "";
+    if(seq){
+      $("#seq").textContent = `>${app.state.uniprotSummary.acc}|${app.state.uniprotSummary.genes[0] || ""} ${app.state.uniprotSummary.proteinName || ""}\n` +
+        seq.slice(0, 200).replace(/(.{1,60})/g, "$1\n");
+      $("#seqRange").textContent = `1-${Math.min(seq.length, 200)}`;
+    }
+    renderFeatures(feats, app.state.uniprotSummary.len || seq.length || 1, featMode, $("#featFilter").value);
+    $("#mNodes").textContent = "—";
+    $("#mEdges").textContent = "—";
+    $("#mDensity").textContent = "—";
+  }catch(err){
+    $("#featList").innerHTML = `<div class="bd tiny" style="color: var(--warn); padding:10px;">Feature render error: ${escapeHtml(err.message)}</div>`;
+  }
+
+  // STRING
+  setPill("#dotString", "#stString", "loading…", "warn");
+  try{
+    const geneForString = (app.state.uniprotSummary.genes && app.state.uniprotSummary.genes.length) ? app.state.uniprotSummary.genes[0] : (app.state.uniprotSummary.acc || rawQuery);
+    const edges = await stringNetwork(geneForString, app.state.taxId, app.state.string.requiredScore, app.state.string.neighbors, app.state.string.networkType);
+    const parsed = parseStringNetwork(edges);
+
+    const els = {
+      nodes: parsed.nodes.map(n => ({ data: n.data })),
+      edges: parsed.edges.map(e => ({ data: e.data }))
+    };
+    app.state.string.elements = els;
+
+    buildCy([...els.nodes, ...els.edges], geneForString);
+
+    $("#mNodes").textContent = String(els.nodes.length);
+    $("#mEdges").textContent = String(els.edges.length);
+
+    setPill("#dotString", "#stString", "ready", "ok");
+  }catch(err){
+    setPill("#dotString", "#stString", "error", "bad");
+    $("#netStats").innerHTML = `<div class="tiny" style="color: var(--warn);">STRING error: ${escapeHtml(err.message)}</div>`;
+    $("#mNodes").textContent = "error";
+    $("#mEdges").textContent = "error";
+    $("#mDensity").textContent = "—";
+    $("#hubList").innerHTML = `<div class="item"><div class="meta">No hubs (network failed to load).</div></div>`;
+  }
+
+  // Reactome + AlphaFold in parallel (faster)
+  await Promise.allSettled([
+    loadReactomeForCurrent("pathways"),
+    loadAlphaFold(app.state.uniprotSummary.acc)
+  ]);
+
+  refreshReport();
+  setStatus("Loaded. Autocomplete is on — start typing to see gene suggestions.", "ok");
+}
+
+// ------- Share link via hash -------
+function updateHashFromState(){
+  const params = new URLSearchParams({
+    q: app.state.queryRaw || $("#q").value.trim(),
+    tax: String(Number($("#species").value) || 9606),
+    score: String(Number($("#score").value) || 700),
+    neighbors: String(Number($("#neighbors").value) || 20),
+    type: $("#nettype").value || "functional"
+  });
+  location.hash = params.toString();
+}
+
+function applyHashToControls(){
+  const h = location.hash.startsWith("#") ? location.hash.slice(1) : location.hash;
+  if(!h) return false;
+  const params = new URLSearchParams(h);
+  const q = params.get("q");
+  const tax = params.get("tax");
+  const score = params.get("score");
+  const neighbors = params.get("neighbors");
+  const type = params.get("type");
+  if(q) $("#q").value = q;
+  if(tax) $("#species").value = tax;
+  if(score) $("#score").value = score;
+  if(neighbors) $("#neighbors").value = neighbors;
+  if(type) $("#nettype").value = type;
+  return true;
+}
+
+// ------- Autocomplete UI -------
+function renderSuggestions(){
+  const box = $("#suggestions");
+  if(!box) return;
+
+  if(!ac.items.length){
+    box.innerHTML = `<div class="sitem"><div class="sub">No suggestions.</div></div>`;
+    return;
+  }
+
+  box.innerHTML = "";
+  ac.items.forEach((it, idx) => {
+    const row = document.createElement("div");
+    row.className = "sitem" + (idx === ac.index ? " active" : "");
+    if(it.loading){
+      row.innerHTML = `<div class="sub">Searching UniProt…</div>`;
+    }else if(it.error){
+      row.innerHTML = `<div class="sub" style="color: rgba(255,204,102,0.85);">Suggestion error: ${escapeHtml(it.error)}</div>`;
+    }else{
+      const key = it.gene || it.acc;
+      const tag = it.reviewed ? `<span class="tag"><strong>Reviewed</strong></span>` : `<span class="tag">Unreviewed</span>`;
+      row.innerHTML = `
+        <div class="main"><span class="mono">${escapeHtml(key)}</span> — ${escapeHtml(it.proteinName || "—")}${tag}</div>
+        <div class="sub"><code>${escapeHtml(it.acc)}</code>${it.org ? " · " + escapeHtml(it.org) : ""}</div>
+      `;
+      row.addEventListener("mousedown", (e) => {
+        // mousedown so blur doesn't hide list before click
+        e.preventDefault();
+        applySuggestion(it, true);
+      });
+    }
+    box.appendChild(row);
+  });
+}
+
+function showSuggestions(){
+  const box = $("#suggestions");
+  if(!box) return;
+  box.classList.remove("hidden");
+  ac.open = true;
+}
+
+function hideSuggestions(){
+  const box = $("#suggestions");
+  if(!box) return;
+  box.classList.add("hidden");
+  ac.open = false;
+  ac.index = -1;
+  ac.items = [];
+}
+
+function applySuggestion(item, autoLoad=true){
+  const val = item.gene || item.acc;
+  $("#q").value = val;
+  hideSuggestions();
+  if(autoLoad) resolveAndLoad();
+}
+
+async function requestSuggestions(){
+  const q = $("#q").value.trim();
+  const taxId = Number($("#species").value) || 9606;
+  if(q.length < 2){
+    hideSuggestions();
+    return;
+  }
+
+  // show box quickly
+  showSuggestions();
+  ac.items = [{ loading: true }];
+  ac.index = -1;
+  renderSuggestions();
+
+  // abort previous
+  if(ac.abort) ac.abort.abort();
+  ac.abort = new AbortController();
+
+  try{
+    const items = await uniprotSuggest(q, taxId, ac.abort.signal);
+    if(!items.length){
+      ac.items = [];
+      ac.index = -1;
+      renderSuggestions();
+      return;
+    }
+    ac.items = items;
+    ac.index = -1;
+    renderSuggestions();
+  }catch(err){
+    if(err.name === "AbortError") return;
+    ac.items = [{ error: err.message }];
+    ac.index = -1;
+    renderSuggestions();
+  }
+}
+
+function scheduleSuggestions(){
+  clearTimeout(ac.timer);
+  ac.timer = setTimeout(() => requestSuggestions().catch(()=>{}), 220);
+}
+
+// ------- UI Events -------
+function setTab(name){
+  $$(".tabbtn").forEach(b => b.classList.toggle("active", b.dataset.tab === name));
+  $$(".tab").forEach(t => t.classList.toggle("active", t.id === "tab-" + name));
+}
+
+$$(".tabbtn").forEach(btn => btn.addEventListener("click", () => setTab(btn.dataset.tab)));
+
+$("#btnLoad").addEventListener("click", () => resolveAndLoad());
+
+// Query input: suggestions + keyboard nav
+$("#q").addEventListener("input", () => scheduleSuggestions());
+$("#q").addEventListener("focus", () => scheduleSuggestions());
+$("#q").addEventListener("blur", () => setTimeout(() => { if(ac.open) hideSuggestions(); }, 140));
+
+$("#q").addEventListener("keydown", (e) => {
+  if(ac.open && (e.key === "ArrowDown" || e.key === "ArrowUp")){
+    e.preventDefault();
+    if(!ac.items || !ac.items.length) return;
+    const max = ac.items.length;
+    if(e.key === "ArrowDown"){
+      ac.index = (ac.index + 1) % max;
+    }else{
+      ac.index = (ac.index - 1 + max) % max;
+    }
+    renderSuggestions();
+    return;
+  }
+
+  if(ac.open && e.key === "Enter"){
+    // choose active item or first
+    e.preventDefault();
+    const it = (ac.index >= 0 && ac.items[ac.index] && !ac.items[ac.index].loading && !ac.items[ac.index].error)
+      ? ac.items[ac.index]
+      : (ac.items.find(x => !x.loading && !x.error));
+    if(it){
+      applySuggestion(it, true);
+    }else{
+      hideSuggestions();
+      resolveAndLoad();
+    }
+    return;
+  }
+
+  if(ac.open && e.key === "Escape"){
+    e.preventDefault();
+    hideSuggestions();
+    return;
+  }
+
+  if(e.key === "Enter"){
+    e.preventDefault();
+    resolveAndLoad();
+  }
+});
+
+// Update suggestions when species changes
+$("#species").addEventListener("change", () => {
+  if($("#q").value.trim().length >= 2) scheduleSuggestions();
+});
+
+// Extra buttons
+$("#btnExample").addEventListener("click", () => {
+  const examples = ["TP53", "BRCA1", "PTEN", "EGFR", "MTOR", "CFTR"];
+  const pick = examples[Math.floor(Math.random() * examples.length)];
+  $("#q").value = pick;
+  resolveAndLoad();
+});
+
+$("#btnClearCache").addEventListener("click", () => {
+  app.cache.clear();
+  setStatus("Cache cleared.", "ok");
+});
+
+$("#btnShare").addEventListener("click", async () => {
+  updateHashFromState();
+  const url = location.href;
+  try{
+    await navigator.clipboard.writeText(url);
+    setStatus("Share link copied to clipboard.", "ok");
+  }catch{
+    setStatus("Couldn't copy automatically; copy the URL from the address bar.", "warn");
+  }
+});
+
+// Network controls
+$("#btnFit").addEventListener("click", () => { if(cy) cy.fit(undefined, 30); });
+$("#btnLayout").addEventListener("click", () => runLayout());
+$("#btnFind").addEventListener("click", () => {
+  const q = $("#netSearch").value.trim().toUpperCase();
+  if(!q || !cy) return;
+  const nodes = cy.nodes().filter(n =>
+    String(n.data("label")||"").toUpperCase().includes(q) ||
+    String(n.id()||"").toUpperCase().includes(q)
+  );
+  if(nodes.length){
+    focusNodeByLabel(String(nodes[0].data("label") || nodes[0].id()).toUpperCase(), String(nodes[0].id()).toUpperCase());
+  }else{
+    setStatus("No node matched.", "warn");
+  }
+});
+
+// Reactome filters + controls
+$("#pathFilter").addEventListener("input", () => renderReactomeList(app.state.reactome.items || []));
+$("#partFilter").addEventListener("input", () => renderParticipants(app.state.reactome.participants || []));
+
+$("#btnHighlight").addEventListener("click", () => {
+  if(!cy){
+    setStatus("Load a network first.", "warn");
+    return;
+  }
+  const set = app.state.reactome.highlightSet;
+  if(!set || set.size === 0){
+    setStatus("Select a pathway and load participants first.", "warn");
+    return;
+  }
+  const count = highlightNodesBySet(set);
+  $("#pathHighlightInfo").innerHTML = `<div class="small muted">Highlighted <span class="mono">${count}</span> nodes that match current participant list (by name/ID).</div>`;
+  setTab("network");
+});
+
+$("#btnMapPathways").addEventListener("click", () => loadReactomeForCurrent("pathways"));
+$("#btnMapReactions").addEventListener("click", () => loadReactomeForCurrent("reactions"));
+
+// Features filtering
+let featMode = "all";
+$("#btnFeatAll").addEventListener("click", () => { featMode = "all"; renderFeatures(app.state.features||[], app.state.uniprotSummary?.len||1, featMode, $("#featFilter").value); });
+$("#btnFeatDomains").addEventListener("click", () => { featMode = "domains"; renderFeatures(app.state.features||[], app.state.uniprotSummary?.len||1, featMode, $("#featFilter").value); });
+$("#btnFeatSites").addEventListener("click", () => { featMode = "sites"; renderFeatures(app.state.features||[], app.state.uniprotSummary?.len||1, featMode, $("#featFilter").value); });
+$("#featFilter").addEventListener("input", () => renderFeatures(app.state.features||[], app.state.uniprotSummary?.len||1, featMode, $("#featFilter").value));
+
+// Report + Notes
+$("#btnCopyReport").addEventListener("click", async () => {
+  try{
+    await navigator.clipboard.writeText($("#reportText").value || "");
+    setStatus("Report copied.", "ok");
+  }catch{ setStatus("Couldn't copy report.", "warn"); }
+});
+$("#btnDownloadReport").addEventListener("click", () => downloadText("report.md", $("#reportText").value || ""));
+
+$("#btnCopyNotes").addEventListener("click", async () => {
+  try{
+    await navigator.clipboard.writeText($("#notes").value || "");
+    setStatus("Notes copied.", "ok");
+  }catch{ setStatus("Couldn't copy notes.", "warn"); }
+});
+$("#btnDownloadNotes").addEventListener("click", () => downloadText("notes.md", $("#notes").value || ""));
+
+// Sidebar export buttons
+$("#btnNetJSON").addEventListener("click", () => {
+  if(!cy){
+    setStatus("No network to export.", "warn");
+    return;
+  }
+  const json = cy.json();
+  downloadText(`network_${app.state.uniprotSummary?.genes?.[0] || app.state.uniprotAcc || "export"}.json`, JSON.stringify(json, null, 2));
+});
+$("#btnNetPNG").addEventListener("click", () => {
+  if(!cy){
+    setStatus("No network to export.", "warn");
+    return;
+  }
+  const png = cy.png({ full: true, bg: "rgba(7,10,20,1)" });
+  const a = document.createElement("a");
+  a.href = png;
+  a.download = `network_${app.state.uniprotSummary?.genes?.[0] || app.state.uniprotAcc || "export"}.png`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+});
+$("#btnReport").addEventListener("click", () => {
+  refreshReport();
+  downloadText(`report_${app.state.uniprotSummary?.genes?.[0] || app.state.uniprotAcc || "export"}.md`, $("#reportText").value || "");
+});
+
+// ------- Boot -------
+(function boot(){
+  setPill("#dotUniprot", "#stUniprot", "idle", "");
+  setPill("#dotString", "#stString", "idle", "");
+  setPill("#dotReactome", "#stReactome", "idle", "");
+  setPill("#dotAF", "#stAF", "idle", "");
+  setPill("#dotApp", "#stApp", "ready", "ok");
+
+  // Prepare viewers
+  buildCy([], "");
+  init3D();
+  viewer3d.clear();
+  viewer3d.render();
+
+  // Restore from hash
+  const applied = applyHashToControls();
+  if(applied && $("#q").value.trim()){
+    resolveAndLoad();
+  }else{
+    // Keep report placeholder
+    refreshReport();
+  }
+})();
+</script>
+</body>
+</html>
