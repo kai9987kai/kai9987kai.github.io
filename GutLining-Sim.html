@@ -1,0 +1,753 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Gut Lining Interaction Simulator (Educational)</title>
+  <style>
+    :root{
+      --bg:#0b1020; --card:#121a33; --muted:#aab3d1; --text:#eef1ff;
+      --good:#39d98a; --warn:#ffd166; --bad:#ff5c7a; --line:#2a3563;
+    }
+    *{box-sizing:border-box}
+    body{
+      margin:0; font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+      background: radial-gradient(1200px 800px at 20% 0%, #152056 0%, var(--bg) 55%);
+      color:var(--text);
+    }
+    header{padding:28px 18px 8px; max-width:1100px; margin:0 auto;}
+    h1{margin:0 0 8px; font-size:22px; letter-spacing:.2px}
+    .sub{color:var(--muted); line-height:1.45; max-width:880px}
+    .wrap{max-width:1100px; margin:0 auto; padding:14px 18px 40px;}
+    .grid{display:grid; gap:12px; grid-template-columns: 1.1fr .9fr;}
+    @media (max-width: 980px){ .grid{grid-template-columns: 1fr;} }
+    .card{
+      background: linear-gradient(180deg, rgba(255,255,255,.04), rgba(255,255,255,.02));
+      border:1px solid rgba(255,255,255,.08);
+      border-radius:14px; padding:14px;
+      box-shadow: 0 10px 30px rgba(0,0,0,.25);
+    }
+    .row{display:flex; gap:10px; flex-wrap:wrap; align-items:flex-end}
+    label{display:block; font-size:12px; color:var(--muted); margin:0 0 6px}
+    input, select, textarea{
+      width:100%; padding:10px 10px; border-radius:10px;
+      border:1px solid rgba(255,255,255,.12);
+      background: rgba(0,0,0,.18); color:var(--text);
+      outline:none;
+    }
+    textarea{min-height:80px; resize:vertical}
+    .field{flex:1; min-width:200px}
+    .field.small{min-width:150px; max-width:220px}
+    .btns{display:flex; gap:10px; flex-wrap:wrap; margin-top:10px}
+    button{
+      padding:10px 12px; border-radius:10px; border:1px solid rgba(255,255,255,.14);
+      background: rgba(255,255,255,.06); color:var(--text);
+      cursor:pointer; font-weight:600;
+    }
+    button.primary{background: rgba(57,217,138,.14); border-color: rgba(57,217,138,.35)}
+    button.ghost{background: transparent}
+    button:active{transform: translateY(1px)}
+    .kpis{display:grid; grid-template-columns: repeat(4, 1fr); gap:10px; margin-top:12px}
+    @media (max-width: 980px){ .kpis{grid-template-columns: repeat(2, 1fr);} }
+    .kpi{padding:10px; border-radius:12px; border:1px solid rgba(255,255,255,.09); background: rgba(0,0,0,.16)}
+    .kpi .v{font-size:18px; font-weight:800}
+    .kpi .l{color:var(--muted); font-size:12px}
+    .hr{height:1px; background: rgba(255,255,255,.10); margin:12px 0}
+    .pill{
+      display:inline-flex; gap:8px; align-items:center; padding:6px 10px; border-radius:999px;
+      border:1px solid rgba(255,255,255,.10); background: rgba(0,0,0,.16);
+      font-size:12px; color:var(--muted);
+    }
+    .dot{width:10px; height:10px; border-radius:50%}
+    .mono{font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace}
+    .two{display:grid; gap:12px; grid-template-columns: 1fr 1fr;}
+    @media (max-width: 980px){ .two{grid-template-columns: 1fr;} }
+    .note{color:var(--muted); font-size:12px; line-height:1.45}
+    .warnbox{
+      border:1px solid rgba(255,209,102,.35);
+      background: rgba(255,209,102,.10);
+      padding:10px; border-radius:12px;
+      color:#ffe8b0; font-size:12px; line-height:1.45;
+    }
+    canvas{width:100%; height:260px; background: rgba(0,0,0,.16); border:1px solid rgba(255,255,255,.10); border-radius:12px}
+    details summary{cursor:pointer; color:var(--muted)}
+    table{width:100%; border-collapse: collapse; font-size:12px}
+    th, td{padding:8px 6px; border-bottom:1px solid rgba(255,255,255,.08); text-align:left; vertical-align:top}
+    th{color:var(--muted); font-weight:700}
+    .muted{color:var(--muted)}
+    .right{display:flex; justify-content:flex-end}
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Gut Lining Interaction Simulator <span class="muted">(educational, not medical advice)</span></h1>
+    <div class="sub">
+      Enter a chemical <b>formula</b> (e.g., <span class="mono">HCl</span>, <span class="mono">NaOH</span>, <span class="mono">C2H6O</span>, <span class="mono">Ca(OH)2</span>) or a common name (limited offline list).
+      This tool produces a <b>rough hazard-style estimate</b> of mucosal irritation risk based on simple rules + a small built-in reference set.
+    </div>
+  </header>
+
+  <div class="wrap">
+    <div class="grid">
+      <div class="card">
+        <div class="row">
+          <div class="field">
+            <label>Chemical (formula or common name)</label>
+            <input id="chem" placeholder="e.g., H2SO4, NaOH, ethanol, aspirin" />
+          </div>
+          <div class="field small">
+            <label>Concentration</label>
+            <input id="conc" type="number" value="10" min="0" step="0.1" />
+          </div>
+          <div class="field small">
+            <label>Unit</label>
+            <select id="concUnit">
+              <option value="mM">mM</option>
+              <option value="M">M</option>
+              <option value="percent_wv">% w/v (approx)</option>
+            </select>
+          </div>
+          <div class="field small">
+            <label>Exposure (min)</label>
+            <input id="mins" type="number" value="15" min="0" step="1" />
+          </div>
+          <div class="field small">
+            <label>Region</label>
+            <select id="region">
+              <option value="stomach">Stomach (acidic)</option>
+              <option value="duodenum">Duodenum (near-neutral)</option>
+              <option value="colon">Colon (near-neutral)</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="row" style="margin-top:10px">
+          <div class="field">
+            <label>Notes (optional)</label>
+            <textarea id="notes" placeholder="Optional context (solvent mixture, formulation, etc.). The model does not truly simulate complex mixtures."></textarea>
+          </div>
+        </div>
+
+        <div class="btns">
+          <button class="primary" id="run">Simulate</button>
+          <button id="add">Add to Compare</button>
+          <button class="ghost" id="reset">Reset</button>
+          <div style="flex:1"></div>
+          <button id="export">Export JSON</button>
+        </div>
+
+        <div class="hr"></div>
+
+        <div class="kpis">
+          <div class="kpi">
+            <div class="v" id="riskScore">—</div>
+            <div class="l">Estimated irritation risk (0–100)</div>
+          </div>
+          <div class="kpi">
+            <div class="v" id="riskBand">—</div>
+            <div class="l">Band</div>
+          </div>
+          <div class="kpi">
+            <div class="v" id="pHEst">—</div>
+            <div class="l">Crude pH direction</div>
+          </div>
+          <div class="kpi">
+            <div class="v" id="confidence">—</div>
+            <div class="l">Confidence</div>
+          </div>
+        </div>
+
+        <div class="hr"></div>
+
+        <div class="two">
+          <div>
+            <div class="pill"><span class="dot" id="dot" style="background:var(--muted)"></span><span id="headline">Enter a chemical and click Simulate.</span></div>
+            <div style="height:10px"></div>
+            <div class="warnbox" id="caveat">
+              This is a simplified model. It cannot account for formulation, buffering, dilution, metabolism, tissue perfusion, pre-existing disease, or real dose/volume.
+              Do not use this to make medical or safety decisions. If ingestion/exposure occurred, contact local poison control or emergency services.
+            </div>
+
+            <details style="margin-top:10px" open>
+              <summary>Model breakdown</summary>
+              <div class="note" id="breakdown" style="margin-top:8px">—</div>
+            </details>
+
+            <details style="margin-top:10px">
+              <summary>Parsed composition</summary>
+              <div class="note mono" id="composition" style="margin-top:8px">—</div>
+            </details>
+          </div>
+
+          <div>
+            <label style="margin-bottom:8px; display:block">Barrier thickness (toy simulation)</label>
+            <canvas id="chart" width="900" height="420"></canvas>
+            <div class="note" style="margin-top:8px">
+              The curve is a toy “damage vs recovery” model driven by the risk score and region. It’s for intuition only.
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="row" style="align-items:center; justify-content:space-between">
+          <div>
+            <div style="font-weight:800">Compare</div>
+            <div class="note">Adds entries so you can compare risk components side-by-side.</div>
+          </div>
+          <div class="right"><button id="clearCompare" class="ghost">Clear</button></div>
+        </div>
+
+        <div class="hr"></div>
+
+        <div id="compareEmpty" class="note">No entries yet. Click “Add to Compare” after running a simulation.</div>
+        <div id="compareWrap" style="display:none">
+          <table>
+            <thead>
+              <tr>
+                <th>Chemical</th>
+                <th>Conc</th>
+                <th>Region</th>
+                <th>Risk</th>
+                <th class="muted">Drivers</th>
+              </tr>
+            </thead>
+            <tbody id="compareBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+<script>
+/** ---- Minimal offline reference (expandable) ----
+ * Values are rough, educational-only.
+ * "strength" is used only for coarse acid/base classification: "strong"|"weak"|"neutral"
+ */
+const REF = {
+  "HCL":   { name:"Hydrochloric acid", type:"acid", strength:"strong", reactive:["corrosive"], notes:"Strong acid; caustic at moderate-to-high concentration." },
+  "H2SO4": { name:"Sulfuric acid", type:"acid", strength:"strong", reactive:["corrosive","dehydrating"], notes:"Strong acid; severe caustic injury risk at sufficient concentration." },
+  "HNO3":  { name:"Nitric acid", type:"acid", strength:"strong", reactive:["corrosive","oxidizer"], notes:"Strong acid + oxidizing; can be highly damaging." },
+  "NAOH":  { name:"Sodium hydroxide", type:"base", strength:"strong", reactive:["corrosive"], notes:"Strong base; causes liquefaction necrosis at sufficient concentration." },
+  "KOH":   { name:"Potassium hydroxide", type:"base", strength:"strong", reactive:["corrosive"], notes:"Strong base; caustic." },
+  "H2O2":  { name:"Hydrogen peroxide", type:"oxidizer", strength:"neutral", reactive:["oxidizer"], notes:"Oxidizer; irritation depends strongly on concentration." },
+  "C2H6O": { name:"Ethanol", type:"solvent", strength:"neutral", reactive:["solvent"], notes:"Solvent; can disrupt membranes at high concentrations." },
+  "C3H8O": { name:"Isopropanol", type:"solvent", strength:"neutral", reactive:["solvent"], notes:"Solvent; irritant at sufficient concentration." },
+  "C9H8O4":{ name:"Aspirin (acetylsalicylic acid)", type:"acid", strength:"weak", reactive:["irritant"], notes:"Weak acid; local irritation possible depending on dose/formulation." },
+  "NACL":  { name:"Sodium chloride", type:"salt", strength:"neutral", reactive:["osmotic"], notes:"Generally low irritation at typical concentrations; high osmolarity can irritate." }
+};
+
+const PERIODIC = {
+  H:1.00794, He:4.002602, Li:6.941, Be:9.012182, B:10.811, C:12.0107, N:14.0067, O:15.9994, F:18.9984032, Ne:20.1797,
+  Na:22.98976928, Mg:24.3050, Al:26.9815386, Si:28.0855, P:30.973762, S:32.065, Cl:35.453, Ar:39.948, K:39.0983, Ca:40.078,
+  Sc:44.955912, Ti:47.867, V:50.9415, Cr:51.9961, Mn:54.938045, Fe:55.845, Co:58.933195, Ni:58.6934, Cu:63.546, Zn:65.38,
+  Br:79.904, I:126.90447
+};
+
+const BASELINE = {
+  stomach: { pH: 2.0, barrier: 1.00, buffer: 0.6 },
+  duodenum:{ pH: 6.0, barrier: 0.85, buffer: 1.0 },
+  colon:   { pH: 7.0, barrier: 0.90, buffer: 1.1 }
+};
+
+function normKey(s){ return (s||"").trim().toUpperCase().replace(/\s+/g,""); }
+
+function isProbablyFormula(s){
+  const t = (s||"").trim();
+  if (!t) return false;
+  // Heuristic: formulas tend to be made of element symbols, digits, parentheses, dots, charges.
+  return /^[A-Za-z0-9()+.\u00B7\u2212\-^]+$/.test(t) && /[A-Z]/.test(t) && !/\s/.test(t);
+}
+
+/** Parse chemical formulas with parentheses and hydrates (· or .).
+ * Example: Ca(OH)2, CuSO4·5H2O
+ */
+function parseFormula(raw){
+  const cleaned = (raw||"").trim()
+    .replace(/\s+/g,"")
+    .replace(/\u2212/g,"-")
+    .replace(/\^[-+0-9]+/g,""); // strip simple charge notations
+
+  const parts = cleaned.split(/[\.\u00B7]/).filter(Boolean); // '.' or '·'
+  const total = new Map();
+
+  for (const part of parts){
+    const m = part.match(/^(\d+)(.*)$/);
+    const mult = m ? parseInt(m[1],10) : 1;
+    const body = m ? m[2] : part;
+    const counts = parseFormulaNoHydrate(body);
+    for (const [el, n] of counts.entries()){
+      total.set(el, (total.get(el)||0) + n*mult);
+    }
+  }
+  return total;
+}
+
+function parseFormulaNoHydrate(s){
+  // Tokenize: element symbols, numbers, parentheses
+  const tokens = [];
+  for (let i=0;i<s.length;){
+    const ch = s[i];
+    if (ch === '(' || ch === ')'){ tokens.push(ch); i++; continue; }
+    if (/\d/.test(ch)){
+      let j=i+1; while (j<s.length && /\d/.test(s[j])) j++;
+      tokens.push(s.slice(i,j)); i=j; continue;
+    }
+    if (/[A-Z]/.test(ch)){
+      let j=i+1; if (j<s.length && /[a-z]/.test(s[j])) j++;
+      tokens.push(s.slice(i,j)); i=j; continue;
+    }
+    throw new Error("Unsupported character in formula: " + ch);
+  }
+
+  const stack = [new Map()];
+  for (let i=0;i<tokens.length;i++){
+    const tok = tokens[i];
+    if (tok === '('){
+      stack.push(new Map());
+      continue;
+    }
+    if (tok === ')'){
+      const top = stack.pop();
+      if (!top) throw new Error("Unbalanced parentheses");
+      let mul = 1;
+      const next = tokens[i+1];
+      if (next && /^\d+$/.test(next)){ mul = parseInt(next,10); i++; }
+      const dst = stack[stack.length-1];
+      for (const [el, n] of top.entries()){
+        dst.set(el, (dst.get(el)||0) + n*mul);
+      }
+      continue;
+    }
+    if (/^[A-Z][a-z]?$/.test(tok)){
+      let mul = 1;
+      const next = tokens[i+1];
+      if (next && /^\d+$/.test(next)){ mul = parseInt(next,10); i++; }
+      const dst = stack[stack.length-1];
+      dst.set(tok, (dst.get(tok)||0) + mul);
+      continue;
+    }
+    if (/^\d+$/.test(tok)){
+      // standalone number should not happen (handled as multiplier after element/paren)
+      throw new Error("Unexpected number in formula");
+    }
+  }
+  if (stack.length !== 1) throw new Error("Unbalanced parentheses");
+  return stack[0];
+}
+
+function molWeight(counts){
+  let mw = 0;
+  for (const [el,n] of counts.entries()){
+    const w = PERIODIC[el];
+    if (!w) return null;
+    mw += w*n;
+  }
+  return mw;
+}
+
+function countsToString(counts){
+  const els = Array.from(counts.keys()).sort((a,b)=>a.localeCompare(b));
+  return els.map(el => el + (counts.get(el)===1 ? "" : counts.get(el))).join(" ");
+}
+
+function toMolar(conc, unit, mw){
+  // Returns M (mol/L). For % w/v, assume g/100mL. Needs MW.
+  const x = Number(conc);
+  if (!isFinite(x) || x < 0) return null;
+  if (unit === "M") return x;
+  if (unit === "mM") return x/1000;
+  if (unit === "percent_wv"){
+    if (!mw) return null;
+    // % w/v ~ grams per 100 mL => (x g / 0.1 L) => (x*10 g/L) => (x*10)/mw mol/L
+    return (x*10)/mw;
+  }
+  return null;
+}
+
+function classifyAcidBase(chemKey, counts, ref){
+  if (ref) return {type: ref.type, strength: ref.strength, refName: ref.name, reactive: ref.reactive||[], notes: ref.notes||""};
+
+  // Heuristics from formula only:
+  const hasMetal = ["Li","Na","K","Mg","Ca","Al","Fe","Zn","Cu"].some(m => counts.has(m));
+  const hasOH = counts.has("O") && counts.has("H") && /OH/.test(chemKey); // weak check
+  const startsWithH = chemKey.startsWith("H") && !hasMetal;
+
+  if (chemKey === "HCL" || chemKey === "HBR" || chemKey === "HI" || chemKey === "HCLO4" || chemKey === "HNO3" || chemKey === "H2SO4"){
+    return {type:"acid", strength:"strong", refName:null, reactive:["corrosive"], notes:"Likely strong mineral acid (heuristic)."};
+  }
+  if (["NAOH","KOH","LIOH","CA(OH)2"].includes(chemKey)){
+    return {type:"base", strength:"strong", refName:null, reactive:["corrosive"], notes:"Likely strong hydroxide base (heuristic)."};
+  }
+
+  if (startsWithH){
+    // weak vs strong guess based on anion
+    const anion = chemKey.replace(/^H\d*/,"");
+    const strongish = ["CL","BR","I","NO3","CLO4","SO4"].some(x => anion.includes(x));
+    return {type:"acid", strength: strongish ? "strong" : "weak", refName:null, reactive:[strongish?"corrosive":"irritant"], notes:"Acid-like formula (heuristic)."};
+  }
+  if (hasMetal && (chemKey.includes("OH") || hasOH)){
+    return {type:"base", strength:"strong", refName:null, reactive:["corrosive"], notes:"Metal hydroxide base (heuristic)."};
+  }
+  if (counts.has("C") && counts.has("H") && !hasMetal){
+    return {type:"organic", strength:"neutral", refName:null, reactive:["membrane"], notes:"Organic compound; irritation depends on functional groups (unknown from formula)."};
+  }
+  return {type:"unknown", strength:"neutral", refName:null, reactive:[], notes:"Insufficient information from formula alone."};
+}
+
+function riskBand(score){
+  if (score == null) return {label:"—", color:"var(--muted)"};
+  if (score < 15) return {label:"Low", color:"var(--good)"};
+  if (score < 35) return {label:"Mild", color:"var(--warn)"};
+  if (score < 60) return {label:"Moderate", color:"var(--warn)"};
+  return {label:"High", color:"var(--bad)"};
+}
+
+function clamp(x,a,b){ return Math.max(a, Math.min(b, x)); }
+
+function simulate({chemInput, conc, unit, mins, region}){
+  const reg = BASELINE[region] || BASELINE.duodenum;
+  const raw = (chemInput||"").trim();
+  if (!raw) throw new Error("Enter a chemical.");
+
+  const key = normKey(raw);
+  const ref = REF[key] || REF[normKey(raw.replace(/-/g,""))] || null;
+
+  let counts = null;
+  let mw = null;
+  let parsedAs = "name";
+
+  if (isProbablyFormula(raw)){
+    parsedAs = "formula";
+    counts = parseFormula(raw);
+    mw = molWeight(counts);
+  } else if (ref){
+    parsedAs = "ref";
+    // try to parse formula if key is formula-like
+    if (isProbablyFormula(key)){
+      try{ counts = parseFormula(key); mw = molWeight(counts); }catch(_){}
+    }
+  }
+
+  // Molarity estimate (may be null)
+  const M = toMolar(conc, unit, mw);
+
+  // Acid/base/other classification
+  const cls = classifyAcidBase(key, counts || new Map(), ref);
+
+  // Compute components (very coarse)
+  // 1) pH/caustic component
+  let phComponent = 0;
+  let pHDir = "Unknown";
+  if (M != null){
+    const c = M;
+    const strong = cls.strength === "strong";
+    const weak = cls.strength === "weak";
+    if (cls.type === "acid"){
+      pHDir = "More acidic";
+      if (strong) phComponent = 15 + 55*clamp(Math.log10(1 + c*50), 0, 1);
+      else if (weak) phComponent = 8 + 30*clamp(Math.log10(1 + c*20), 0, 1);
+      else phComponent = 6 + 20*clamp(Math.log10(1 + c*10), 0, 1);
+    } else if (cls.type === "base"){
+      pHDir = "More basic";
+      if (strong) phComponent = 15 + 55*clamp(Math.log10(1 + c*50), 0, 1);
+      else phComponent = 8 + 30*clamp(Math.log10(1 + c*20), 0, 1);
+    } else {
+      pHDir = "No strong shift";
+      phComponent = 2 + 8*clamp(Math.log10(1 + c*5), 0, 1);
+    }
+  }
+
+  // 2) osmolarity-ish component (salts at high M)
+  let osmComponent = 0;
+  if (M != null){
+    const c = M;
+    const isSaltish = cls.type === "salt" || (counts && ["Na","K","Cl"].some(x=>counts.has(x)));
+    osmComponent = isSaltish ? 12*clamp(Math.log10(1 + c*10), 0, 1) : 5*clamp(Math.log10(1 + c*6), 0, 1);
+  }
+
+  // 3) oxidative/reactive component
+  let oxComponent = 0;
+  const reactive = new Set(cls.reactive || []);
+  if (reactive.has("oxidizer")) oxComponent += 18;
+  if (reactive.has("dehydrating")) oxComponent += 10;
+  if (reactive.has("corrosive")) oxComponent += 14;
+  // scale by concentration somewhat
+  if (M != null) oxComponent *= (0.6 + 0.4*clamp(Math.log10(1 + M*20), 0, 1));
+
+  // 4) membrane/solvent component (organic solvents, detergents — limited offline)
+  let memComponent = 0;
+  if (cls.type === "solvent") memComponent = 22 * (M != null ? clamp(Math.log10(1 + M*5), 0.2, 1) : 0.7);
+  if (reactive.has("membrane")) memComponent = Math.max(memComponent, 10);
+
+  // exposure scaling (longer contact increases injury potential)
+  const timeScale = clamp(Math.log10(1 + (mins/5)), 0.2, 1.2);
+
+  // regional buffering scaling
+  const regionScale = 1.0 / reg.buffer;
+
+  const rawScore = (phComponent + osmComponent + oxComponent + memComponent) * timeScale * regionScale;
+
+  const score = clamp(Math.round(rawScore), 0, 100);
+
+  // Confidence: higher if in REF and if molarity is known and MW known.
+  let conf = 0.35;
+  if (ref) conf += 0.35;
+  if (parsedAs === "formula") conf += 0.10;
+  if (mw != null) conf += 0.10;
+  if (M != null) conf += 0.10;
+  conf = clamp(conf, 0.15, 0.95);
+
+  // Toy barrier thickness simulation (0..60 min)
+  const baseline = reg.barrier; // relative
+  const dt = 1; // minute
+  const totalT = 60;
+  const series = [];
+  let thickness = baseline;
+
+  // Damage rate depends on score; recovery depends on region
+  const damageK = (score/100) * 0.020;        // per minute
+  const recoveryK = (region === "stomach" ? 0.010 : 0.014); // per minute
+  const contact = clamp(mins, 0, totalT);
+
+  for (let t=0; t<=totalT; t+=dt){
+    const inContact = t <= contact;
+    const damage = inContact ? damageK * thickness : 0;
+    const recovery = recoveryK * (baseline - thickness);
+    thickness = clamp(thickness - damage + recovery, 0.02, baseline);
+    series.push({t, thickness});
+  }
+
+  return {
+    input: {chemInput: raw, conc, unit, mins, region},
+    parsedAs,
+    ref: ref ? ref.name : null,
+    composition: counts ? Object.fromEntries(counts.entries()) : null,
+    molWeight: mw,
+    molarity_M: M,
+    classification: cls,
+    components: {
+      ph_or_caustic: phComponent,
+      osmotic: osmComponent,
+      oxidative_or_reactive: oxComponent,
+      membrane_or_solvent: memComponent,
+      timeScale,
+      regionScale
+    },
+    score,
+    pHDir,
+    confidence: conf,
+    series
+  };
+}
+
+function drawChart(canvas, series){
+  const ctx = canvas.getContext("2d");
+  const W = canvas.width, H = canvas.height;
+  ctx.clearRect(0,0,W,H);
+
+  // padding
+  const padL=50, padR=18, padT=18, padB=38;
+  const plotW = W-padL-padR, plotH = H-padT-padB;
+
+  const xs = series.map(p=>p.t);
+  const ys = series.map(p=>p.thickness);
+  const xmin = 0, xmax = Math.max(...xs);
+  const ymin = 0, ymax = Math.max(...ys) || 1;
+
+  // grid
+  ctx.globalAlpha = 1;
+  ctx.strokeStyle = "rgba(255,255,255,.10)";
+  ctx.lineWidth = 1;
+
+  for (let i=0;i<=6;i++){
+    const y = padT + (plotH*i/6);
+    ctx.beginPath(); ctx.moveTo(padL,y); ctx.lineTo(W-padR,y); ctx.stroke();
+  }
+  for (let i=0;i<=6;i++){
+    const x = padL + (plotW*i/6);
+    ctx.beginPath(); ctx.moveTo(x,padT); ctx.lineTo(x,H-padB); ctx.stroke();
+  }
+
+  // axes labels
+  ctx.fillStyle = "rgba(255,255,255,.70)";
+  ctx.font = "14px system-ui";
+  ctx.fillText("Relative barrier thickness", 12, 16);
+  ctx.fillText("Time (min)", W/2 - 30, H-10);
+
+  // ticks
+  ctx.font = "12px system-ui";
+  ctx.fillStyle = "rgba(255,255,255,.55)";
+  for (let i=0;i<=3;i++){
+    const t = Math.round(xmax*i/3);
+    const x = padL + plotW*(t-xmin)/(xmax-xmin);
+    ctx.fillText(String(t), x-6, H-padB+18);
+  }
+  for (let i=0;i<=3;i++){
+    const v = (ymax - (ymax-ymin)*i/3).toFixed(2);
+    const y = padT + plotH*i/3;
+    ctx.fillText(String(v), 10, y+4);
+  }
+
+  // line
+  ctx.strokeStyle = "rgba(255,255,255,.85)";
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  series.forEach((p, idx)=>{
+    const x = padL + plotW*(p.t-xmin)/(xmax-xmin);
+    const y = padT + plotH*(1 - (p.thickness-ymin)/(ymax-ymin || 1));
+    if (idx===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+  });
+  ctx.stroke();
+}
+
+function fmt(n, d=2){
+  if (n == null || !isFinite(n)) return "—";
+  return Number(n).toFixed(d);
+}
+
+function driversText(res){
+  const c = res.components;
+  const items = [
+    ["Caustic / pH shift", c.ph_or_caustic],
+    ["Osmotic load", c.osmotic],
+    ["Oxidative / reactive", c.oxidative_or_reactive],
+    ["Membrane / solvent", c.membrane_or_solvent]
+  ].sort((a,b)=>b[1]-a[1]);
+  return items.slice(0,2).map(x=>x[0]).join(", ");
+}
+
+let lastResult = null;
+let compare = [];
+
+function render(res){
+  lastResult = res;
+  const band = riskBand(res.score);
+
+  document.getElementById("riskScore").textContent = res.score;
+  document.getElementById("riskBand").textContent = band.label;
+  document.getElementById("pHEst").textContent = res.pHDir;
+  document.getElementById("confidence").textContent = Math.round(res.confidence*100) + "%";
+
+  document.getElementById("dot").style.background = band.color;
+
+  const name = res.ref || res.input.chemInput;
+  document.getElementById("headline").textContent =
+    `${name}: ${band.label} estimated irritation risk (score ${res.score}/100).`;
+
+  const comp = res.composition ? countsToString(new Map(Object.entries(res.composition).map(([k,v])=>[k,Number(v)]))) : "—";
+  document.getElementById("composition").textContent =
+    `Parsed as: ${res.parsedAs}\n` +
+    `Composition: ${comp}\n` +
+    `Molecular weight: ${res.molWeight ? fmt(res.molWeight,3) + " g/mol" : "unknown"}\n` +
+    `Estimated molarity: ${res.molarity_M != null ? fmt(res.molarity_M,4) + " M" : "unknown"}\n` +
+    `Class: ${res.classification.type} (${res.classification.strength})\n` +
+    `Reactive flags: ${(res.classification.reactive||[]).join(", ") || "none"}`;
+
+  const c = res.components;
+  document.getElementById("breakdown").innerHTML =
+    `<div><b>Drivers (largest contributors):</b> ${driversText(res)}</div><div style="height:6px"></div>` +
+    `<div>• Caustic / pH shift component: <span class="mono">${fmt(c.ph_or_caustic,2)}</span></div>` +
+    `<div>• Osmotic component: <span class="mono">${fmt(c.osmotic,2)}</span></div>` +
+    `<div>• Oxidative/reactive component: <span class="mono">${fmt(c.oxidative_or_reactive,2)}</span></div>` +
+    `<div>• Membrane/solvent component: <span class="mono">${fmt(c.membrane_or_solvent,2)}</span></div>` +
+    `<div style="height:6px"></div>` +
+    `<div class="muted">Time scaling: <span class="mono">${fmt(c.timeScale,2)}</span> • Region buffering scaling: <span class="mono">${fmt(c.regionScale,2)}</span></div>` +
+    `<div style="height:6px"></div>` +
+    `<div class="muted">${res.classification.notes || ""}</div>`;
+
+  drawChart(document.getElementById("chart"), res.series);
+}
+
+function refreshCompare(){
+  const empty = document.getElementById("compareEmpty");
+  const wrap = document.getElementById("compareWrap");
+  const body = document.getElementById("compareBody");
+
+  if (!compare.length){
+    empty.style.display = "";
+    wrap.style.display = "none";
+    body.innerHTML = "";
+    return;
+  }
+  empty.style.display = "none";
+  wrap.style.display = "";
+
+  body.innerHTML = "";
+  for (const r of compare){
+    const tr = document.createElement("tr");
+    const concTxt = `${r.input.conc} ${r.input.unit}` + (r.molarity_M!=null ? ` (${fmt(r.molarity_M,4)} M)` : "");
+    tr.innerHTML = `
+      <td><b>${(r.ref || r.input.chemInput)}</b><div class="muted">${r.classification.type} / ${r.classification.strength}</div></td>
+      <td>${concTxt}</td>
+      <td>${r.input.region}</td>
+      <td><b>${r.score}</b> <span class="muted">(${riskBand(r.score).label})</span></td>
+      <td class="muted">${driversText(r)}</td>
+    `;
+    body.appendChild(tr);
+  }
+}
+
+document.getElementById("run").addEventListener("click", ()=>{
+  try{
+    const chemInput = document.getElementById("chem").value;
+    const conc = Number(document.getElementById("conc").value);
+    const unit = document.getElementById("concUnit").value;
+    const mins = Number(document.getElementById("mins").value);
+    const region = document.getElementById("region").value;
+
+    const res = simulate({chemInput, conc, unit, mins, region});
+    render(res);
+  }catch(e){
+    alert(e.message || String(e));
+  }
+});
+
+document.getElementById("add").addEventListener("click", ()=>{
+  if (!lastResult){ alert("Run a simulation first."); return; }
+  compare.unshift(lastResult);
+  compare = compare.slice(0, 12);
+  refreshCompare();
+});
+
+document.getElementById("clearCompare").addEventListener("click", ()=>{
+  compare = [];
+  refreshCompare();
+});
+
+document.getElementById("reset").addEventListener("click", ()=>{
+  document.getElementById("chem").value = "";
+  document.getElementById("conc").value = 10;
+  document.getElementById("concUnit").value = "mM";
+  document.getElementById("mins").value = 15;
+  document.getElementById("region").value = "stomach";
+  document.getElementById("notes").value = "";
+  lastResult = null;
+
+  document.getElementById("riskScore").textContent = "—";
+  document.getElementById("riskBand").textContent = "—";
+  document.getElementById("pHEst").textContent = "—";
+  document.getElementById("confidence").textContent = "—";
+  document.getElementById("headline").textContent = "Enter a chemical and click Simulate.";
+  document.getElementById("composition").textContent = "—";
+  document.getElementById("breakdown").textContent = "—";
+  document.getElementById("dot").style.background = "var(--muted)";
+  drawChart(document.getElementById("chart"), [{t:0, thickness:1.0},{t:60, thickness:1.0}]);
+});
+
+document.getElementById("export").addEventListener("click", ()=>{
+  if (!lastResult){ alert("Run a simulation first."); return; }
+  const blob = new Blob([JSON.stringify(lastResult, null, 2)], {type:"application/json"});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "gut-lining-sim-result.json";
+  a.click();
+  URL.revokeObjectURL(url);
+});
+
+// initial chart
+drawChart(document.getElementById("chart"), [{t:0, thickness:1.0},{t:60, thickness:1.0}]);
+</script>
+</body>
+</html>
