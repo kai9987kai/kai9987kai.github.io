@@ -1,0 +1,1811 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Mars Gearbox Simulator (Standalone)</title>
+  <style>
+    :root{
+      --bg:#07080b;
+      --panel:#0d0f15;
+      --panel2:#0a0c10;
+      --text:#e6e6ea;
+      --muted:#a6a7ad;
+      --line:#242835;
+      --accent:#ff7a3d;
+      --good:#58e09a;
+      --warn:#ffd66b;
+      --bad:#ff5a6a;
+      --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      --ui: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji","Segoe UI Emoji";
+    }
+    html,body{height:100%; background:radial-gradient(1200px 800px at 20% 10%, #121526 0%, var(--bg) 55%, #04050a 100%); margin:0; color:var(--text); font-family:var(--ui);}
+    #app{
+      display:grid;
+      grid-template-columns: 1.25fr 0.85fr;
+      gap:14px;
+      padding:14px;
+      height:100%;
+      box-sizing:border-box;
+    }
+    .card{
+      background:linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0.02));
+      border:1px solid var(--line);
+      border-radius:14px;
+      overflow:hidden;
+      box-shadow: 0 12px 40px rgba(0,0,0,0.35);
+    }
+    #left.card{
+      display:grid;
+      grid-template-rows: auto 180px auto;
+      min-height: 640px;
+    }
+    #simWrap{ position:relative; background: radial-gradient(900px 600px at 25% 20%, rgba(255,122,61,0.08), rgba(0,0,0,0) 65%), linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01)); }
+    canvas{ display:block; width:100%; height:100%; }
+    #simCanvas{ height: 520px; }
+    #plotCanvas{ height:180px; background:linear-gradient(180deg, rgba(0,0,0,0.15), rgba(0,0,0,0.35)); border-top:1px solid var(--line); }
+    #readout{
+      border-top:1px solid var(--line);
+      background:linear-gradient(180deg, rgba(0,0,0,0.25), rgba(0,0,0,0.35));
+      padding:12px 12px 14px 12px;
+      display:grid;
+      grid-template-columns: 1fr 1fr;
+      gap:10px;
+      align-items:start;
+      font-family:var(--mono);
+      font-size:12.5px;
+      line-height:1.45;
+      color:#dcdce3;
+    }
+    .kv{
+      border:1px solid rgba(255,255,255,0.06);
+      background: rgba(0,0,0,0.18);
+      border-radius:12px;
+      padding:10px;
+    }
+    .kv b{color:#fff;}
+    .pill{
+      display:inline-block;
+      padding:2px 8px;
+      border-radius:999px;
+      font-size:11px;
+      border:1px solid rgba(255,255,255,0.10);
+      background:rgba(255,255,255,0.04);
+      margin-left:6px;
+      color:var(--muted);
+    }
+    #right.card{
+      display:flex;
+      flex-direction:column;
+      min-height:640px;
+    }
+    header{
+      padding:14px 14px 10px 14px;
+      border-bottom:1px solid var(--line);
+      background:linear-gradient(180deg, rgba(255,122,61,0.12), rgba(0,0,0,0));
+    }
+    header h1{
+      margin:0;
+      font-size:16px;
+      letter-spacing:0.2px;
+      display:flex;
+      align-items:baseline;
+      gap:10px;
+    }
+    header p{
+      margin:6px 0 0 0;
+      color:var(--muted);
+      font-size:12.5px;
+      line-height:1.35;
+    }
+    .controls{
+      padding:10px 12px 12px 12px;
+      overflow:auto;
+    }
+    .section{
+      border:1px solid rgba(255,255,255,0.08);
+      background:linear-gradient(180deg, rgba(0,0,0,0.15), rgba(0,0,0,0.08));
+      border-radius:14px;
+      padding:10px;
+      margin:10px 0;
+    }
+    .section h2{
+      margin:0 0 10px 0;
+      font-size:12px;
+      color:#fff;
+      letter-spacing:0.3px;
+      text-transform:uppercase;
+      opacity:0.9;
+      display:flex;
+      justify-content:space-between;
+      align-items:center;
+    }
+    .grid2{
+      display:grid;
+      grid-template-columns: 1fr 1fr;
+      gap:10px;
+    }
+    .row{ display:grid; grid-template-columns: 1fr auto; gap:10px; align-items:center; }
+    label{ font-size:12px; color:var(--muted); }
+    input[type="range"]{ width:100%; }
+    select, button, input[type="number"]{
+      font: inherit;
+      color: var(--text);
+      background: rgba(0,0,0,0.35);
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 10px;
+      padding:8px 10px;
+      outline:none;
+    }
+    input[type="number"]{ width:110px; }
+    .value{
+      font-family: var(--mono);
+      font-size:12px;
+      color:#eaeaf0;
+      min-width:92px;
+      text-align:right;
+      opacity:0.95;
+    }
+    .btns{
+      display:flex;
+      gap:10px;
+      flex-wrap:wrap;
+      margin-top:10px;
+    }
+    button{
+      cursor:pointer;
+      transition: transform 0.08s ease, background 0.15s ease, border-color 0.15s ease;
+    }
+    button:hover{ transform: translateY(-1px); border-color: rgba(255,255,255,0.20); }
+    button.primary{
+      background: linear-gradient(180deg, rgba(255,122,61,0.26), rgba(255,122,61,0.12));
+      border-color: rgba(255,122,61,0.38);
+    }
+    button.danger{
+      background: linear-gradient(180deg, rgba(255,90,106,0.26), rgba(255,90,106,0.12));
+      border-color: rgba(255,90,106,0.38);
+    }
+    .toggle{
+      display:flex;
+      gap:10px;
+      align-items:center;
+      justify-content:space-between;
+    }
+    .toggle input[type="checkbox"]{
+      width:18px; height:18px;
+      accent-color: var(--accent);
+    }
+    .tiny{
+      font-size:11.5px;
+      color: var(--muted);
+      line-height:1.35;
+      margin-top:8px;
+    }
+    @media (max-width: 1100px){
+      #app{ grid-template-columns: 1fr; }
+      #left.card{ min-height: unset; }
+      #simCanvas{ height: 460px; }
+    }
+  </style>
+</head>
+<body>
+<div id="app">
+  <div id="left" class="card">
+    <div id="simWrap">
+      <canvas id="simCanvas"></canvas>
+    </div>
+    <canvas id="plotCanvas"></canvas>
+    <div id="readout">
+      <div class="kv" id="kvA"></div>
+      <div class="kv" id="kvB"></div>
+    </div>
+  </div>
+
+  <div id="right" class="card">
+    <header>
+      <h1>
+        Mars Gearbox Simulator
+        <span class="pill">standalone</span>
+        <span class="pill">thermal + tribology + backlash + wear</span>
+      </h1>
+      <p>
+        Educational “lumped-parameter” model of a spur-gear stage under Mars-like environment (low pressure CO₂, low convection, cold ambient, dust).
+        It’s designed to <em>feel</em> realistic (losses, temperature, lubrication regime shifts, wear/backlash growth, mesh whine), but it is not a substitute for engineering validation.
+      </p>
+    </header>
+
+    <div class="controls">
+
+      <div class="section">
+        <h2>Run</h2>
+        <div class="grid2">
+          <div class="row">
+            <label>Time scale</label>
+            <div class="value" id="v_timeScale"></div>
+          </div>
+          <input id="timeScale" type="range" min="0" max="1000" value="220" />
+          <div class="row">
+            <label>Plot</label>
+            <select id="plotMode">
+              <option value="temp">Temperature</option>
+              <option value="eff">Efficiency</option>
+              <option value="loss">Loss power</option>
+              <option value="wear">Wear / Backlash</option>
+              <option value="speed">Shaft speeds</option>
+              <option value="torque">Torques</option>
+              <option value="mu">Friction coefficient</option>
+            </select>
+          </div>
+          <div class="toggle">
+            <label>Sound (mesh whine)</label>
+            <input id="sound" type="checkbox" />
+          </div>
+        </div>
+        <div class="btns">
+          <button id="btnStart" class="primary">Start</button>
+          <button id="btnReset">Reset</button>
+          <button id="btnMars" class="primary">Preset: Mars</button>
+          <button id="btnEarth">Preset: Earth</button>
+          <button id="btnVac">Preset: Near‑vacuum</button>
+        </div>
+        <div class="tiny">
+          Tip: For “Mars realism”, keep pressure ~600 Pa, ambient below −40°C, and dust above 20%. Try different lubricants to see boundary/mixed/hydrodynamic transitions.
+        </div>
+      </div>
+
+      <div class="section">
+        <h2>Environment</h2>
+        <div class="grid2">
+          <div class="row"><label>Ambient temp</label><div class="value" id="v_Tamb"></div></div>
+          <input id="Tamb" type="range" min="-130" max="40" step="1" value="-60" />
+
+          <div class="row"><label>Ambient pressure</label><div class="value" id="v_Pamb"></div></div>
+          <!-- log slider -->
+          <input id="Pamb" type="range" min="0" max="1000" step="1" value="155" />
+
+          <div class="row"><label>Wind speed</label><div class="value" id="v_wind"></div></div>
+          <input id="wind" type="range" min="0" max="25" step="0.1" value="6" />
+
+          <div class="row"><label>Dust level</label><div class="value" id="v_dust"></div></div>
+          <input id="dust" type="range" min="0" max="100" step="1" value="35" />
+
+          <div class="row"><label>Gravity</label><div class="value" id="v_g"></div></div>
+          <input id="g" type="range" min="1" max="15" step="0.01" value="3.711" />
+
+          <div class="toggle">
+            <label>Sealed gearbox (internal gas pressure)</label>
+            <input id="sealed" type="checkbox" />
+          </div>
+
+          <div class="row"><label>Internal pressure</label><div class="value" id="v_Pint"></div></div>
+          <input id="Pint" type="range" min="0" max="1000" step="1" value="1000" />
+        </div>
+        <div class="tiny">
+          Convection on Mars is weak. This model blends convection + radiation; you’ll often see radiation dominate at low pressure.
+        </div>
+      </div>
+
+      <div class="section">
+        <h2>Lubrication & materials</h2>
+        <div class="grid2">
+          <div class="row">
+            <label>Lubricant</label>
+            <select id="lube">
+              <option value="PFPE">PFPE (space-grade)</option>
+              <option value="VG68">Synthetic oil ISO VG 68</option>
+              <option value="MOLY">Dry film MoS₂</option>
+              <option value="DRY">None (dry steel)</option>
+            </select>
+          </div>
+          <div class="row"><label>Emissivity (radiation)</label><div class="value" id="v_eps"></div></div>
+          <input id="eps" type="range" min="0.1" max="0.98" step="0.01" value="0.82" />
+
+          <div class="row"><label>Thermal mass (gearbox)</label><div class="value" id="v_thMass"></div></div>
+          <input id="thMass" type="range" min="3" max="40" step="0.5" value="16" />
+
+          <div class="row"><label>Surface area (radiating)</label><div class="value" id="v_area"></div></div>
+          <input id="area" type="range" min="0.05" max="1.3" step="0.01" value="0.36" />
+
+          <div class="row"><label>Oil fill factor</label><div class="value" id="v_oilFill"></div></div>
+          <input id="oilFill" type="range" min="0" max="100" step="1" value="55" />
+        </div>
+        <div class="tiny">
+          Oil fill affects churning losses and heat capacity. Dry film is “space-friendly” but typically higher μ than full-film oil.
+        </div>
+      </div>
+
+      <div class="section">
+        <h2>Gears</h2>
+        <div class="grid2">
+          <div class="row"><label>Teeth (pinion)</label><input id="N1" type="number" min="8" max="80" value="18" /></div>
+          <div class="row"><label>Teeth (gear)</label><input id="N2" type="number" min="10" max="160" value="54" /></div>
+
+          <div class="row"><label>Module</label><div class="value" id="v_module"></div></div>
+          <input id="module" type="range" min="1.0" max="6.0" step="0.1" value="3.0" />
+
+          <div class="row"><label>Face width</label><div class="value" id="v_face"></div></div>
+          <input id="face" type="range" min="6" max="60" step="1" value="18" />
+
+          <div class="row"><label>Backlash (base)</label><div class="value" id="v_backlash"></div></div>
+          <input id="backlash" type="range" min="0.02" max="0.60" step="0.01" value="0.14" />
+
+          <div class="row"><label>Mesh stiffness</label><div class="value" id="v_kmesh"></div></div>
+          <input id="kmesh" type="range" min="20" max="250" step="1" value="120" />
+
+          <div class="row"><label>Mesh damping</label><div class="value" id="v_cmesh"></div></div>
+          <input id="cmesh" type="range" min="10" max="450" step="1" value="170" />
+        </div>
+        <div class="tiny">
+          Backlash grows with wear; thermal expansion slightly reduces backlash as temperature rises.
+        </div>
+      </div>
+
+      <div class="section">
+        <h2>Drive & load</h2>
+        <div class="grid2">
+          <div class="row">
+            <label>Input mode</label>
+            <select id="inMode">
+              <option value="speed">Motor speed controller (PID)</option>
+              <option value="torque">Constant torque</option>
+            </select>
+          </div>
+          <div class="row"><label>Target speed / torque</label><div class="value" id="v_cmd"></div></div>
+          <input id="cmd" type="range" min="0" max="100" step="0.1" value="55" />
+
+          <div class="row"><label>Torque limit</label><div class="value" id="v_tmax"></div></div>
+          <input id="tmax" type="range" min="5" max="250" step="1" value="120" />
+
+          <div class="row"><label>Output load torque</label><div class="value" id="v_loadT"></div></div>
+          <input id="loadT" type="range" min="0" max="350" step="1" value="85" />
+
+          <div class="row"><label>Load viscous</label><div class="value" id="v_loadB"></div></div>
+          <input id="loadB" type="range" min="0" max="2.0" step="0.01" value="0.28" />
+
+          <div class="row"><label>Input inertia</label><div class="value" id="v_J1"></div></div>
+          <input id="J1" type="range" min="0.002" max="0.10" step="0.001" value="0.018" />
+
+          <div class="row"><label>Output inertia</label><div class="value" id="v_J2"></div></div>
+          <input id="J2" type="range" min="0.005" max="0.35" step="0.001" value="0.075" />
+        </div>
+        <div class="tiny">
+          “Motor speed controller” will apply whatever torque it needs (up to the limit) to hold the target rpm. Torque ripple + mesh stiffness modulation create realistic “gear whine” behavior.
+        </div>
+      </div>
+
+      <div class="section">
+        <h2>Notes</h2>
+        <div class="tiny">
+          ✅ What’s modeled: gear ratio, torsional compliance, backlash, mesh stiffness modulation, bearing friction (load-dependent), windage (pressure/density dependent),
+          lubricant viscosity vs temperature, Stribeck-style μ(H), dust-abrasion effects, wear growth (Archard-like), thermal balance (loss heat + radiation + convection).
+          <br><br>
+          ⚠️ Not modeled: detailed tooth micro-geometry, EHL film thickness solver, elastodynamics/FEM, scuffing/pitting fatigue, housing conduction gradients, 3D lubrication flow.
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<script>
+(() => {
+  "use strict";
+
+  // -------------------------
+  // Helpers
+  // -------------------------
+  const TAU = Math.PI * 2;
+  const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
+  const lerp = (a, b, t) => a + (b - a) * t;
+  const smoothstep = (t) => t * t * (3 - 2 * t);
+  const fmt = (x, d=2) => (Number.isFinite(x) ? x.toFixed(d) : "—");
+  const fmtSI = (x) => {
+    if (!Number.isFinite(x)) return "—";
+    const ax = Math.abs(x);
+    if (ax >= 1e6) return (x/1e6).toFixed(2) + "e6";
+    if (ax >= 1e3) return (x/1e3).toFixed(2) + "e3";
+    if (ax >= 1) return x.toFixed(2);
+    if (ax >= 1e-3) return (x*1e3).toFixed(2) + "m";
+    if (ax >= 1e-6) return (x*1e6).toFixed(2) + "µ";
+    return x.toExponential(2);
+  };
+  const rpm = (w) => w * 60 / TAU;
+
+  // Smooth sign to avoid jitter at 0 speed
+  const sgn = (w) => Math.tanh(w / 0.25);
+
+  function hsl(h, s, l){
+    return `hsl(${h} ${s}% ${l}%)`;
+  }
+
+  function tempColorC(Tc){
+    // Map -130..180 C => blue->red
+    const t = clamp((Tc + 130) / (310), 0, 1);
+    const hue = lerp(220, 6, smoothstep(t));
+    const light = lerp(34, 58, smoothstep(t));
+    return hsl(hue, 92, light);
+  }
+
+  function pressureFromLogSlider(v01){
+    // Slider maps [0..1] to [1 Pa .. 101325 Pa] logarithmically
+    const pMin = 1.0;
+    const pMax = 101325.0;
+    const ln = Math.log(pMin) + v01 * (Math.log(pMax) - Math.log(pMin));
+    return Math.exp(ln);
+  }
+  function logSliderFromPressure(p){
+    const pMin = 1.0;
+    const pMax = 101325.0;
+    const t = (Math.log(clamp(p, pMin, pMax)) - Math.log(pMin)) / (Math.log(pMax) - Math.log(pMin));
+    return clamp(t, 0, 1);
+  }
+  function prettyPressure(p){
+    if (p < 2000) return `${Math.round(p)} Pa`;
+    return `${(p/1000).toFixed(1)} kPa`;
+  }
+
+  // -------------------------
+  // Lubricant presets (heuristic)
+  // -------------------------
+  const LUBES = {
+    PFPE: {
+      name: "PFPE (space-grade)",
+      etaRef: 0.085,   // Pa·s @ 40°C-ish
+      beta: 1800,      // viscosity temperature sensitivity
+      muBoundary: 0.11,
+      muMin: 0.032,
+      muVisc: 0.012,
+      H0: 1.2e-8,      // Stribeck transition scale (heuristic)
+      a: 0.80,
+      wearK: 1.8e-8,   // base wear coefficient
+      pCrit: 10,       // PFPE is very vacuum compatible; low pCrit
+      churnK: 3.0e-4
+    },
+    VG68: {
+      name: "Synthetic oil ISO VG 68",
+      etaRef: 0.060,   // Pa·s @ 40°C
+      beta: 2100,
+      muBoundary: 0.095,
+      muMin: 0.025,
+      muVisc: 0.018,
+      H0: 1.0e-8,
+      a: 0.85,
+      wearK: 2.8e-8,
+      pCrit: 700,      // more outgassing risk at Mars pressure (heuristic)
+      churnK: 4.0e-4
+    },
+    MOLY: {
+      name: "Dry film MoS₂",
+      etaRef: 1e-6,
+      beta: 0,
+      muBoundary: 0.080,
+      muMin: 0.060,
+      muVisc: 0.000,
+      H0: 1.0e-12,
+      a: 0.70,
+      wearK: 6.0e-8,
+      pCrit: 0,
+      churnK: 0.0
+    },
+    DRY: {
+      name: "None (dry steel)",
+      etaRef: 1e-6,
+      beta: 0,
+      muBoundary: 0.26,
+      muMin: 0.18,
+      muVisc: 0.000,
+      H0: 1.0e-12,
+      a: 0.70,
+      wearK: 7.0e-7,
+      pCrit: 0,
+      churnK: 0.0
+    }
+  };
+
+  // -------------------------
+  // UI elements
+  // -------------------------
+  const $ = (id) => document.getElementById(id);
+
+  const simCanvas = $("simCanvas");
+  const plotCanvas = $("plotCanvas");
+  const ctx = simCanvas.getContext("2d", { alpha: false });
+  const pctx = plotCanvas.getContext("2d", { alpha: false });
+
+  function resize(){
+    const dpr = Math.max(1, Math.min(2.5, window.devicePixelRatio || 1));
+    const sw = simCanvas.clientWidth;
+    const sh = simCanvas.clientHeight;
+    simCanvas.width = Math.floor(sw * dpr);
+    simCanvas.height = Math.floor(sh * dpr);
+    ctx.setTransform(dpr,0,0,dpr,0,0);
+
+    const pw = plotCanvas.clientWidth;
+    const ph = plotCanvas.clientHeight;
+    plotCanvas.width = Math.floor(pw * dpr);
+    plotCanvas.height = Math.floor(ph * dpr);
+    pctx.setTransform(dpr,0,0,dpr,0,0);
+  }
+  window.addEventListener("resize", resize);
+  resize();
+
+  // -------------------------
+  // Simulation model
+  // -------------------------
+  const SIGMA = 5.670374419e-8; // Stefan–Boltzmann W/m²K⁴
+  const R_AIR = 287.05;         // J/(kg·K)
+  const R_CO2 = 188.92;         // J/(kg·K)
+
+  class GearboxSim{
+    constructor(){
+      this.reset(true);
+    }
+
+    reset(hard=false){
+      // State
+      this.t = 0;
+      this.theta1 = 0;
+      this.theta2 = 0;
+      this.w1 = 0;
+      this.w2 = 0;
+      this.tempK = 273.15 + 15;  // start near room temp (internal)
+      this.wearDepth = 0;        // meters (effective wear depth proxy)
+      this.dustIn = 0;           // 0..1 "ingested dust" proxy
+      this.pidI = 0;
+      this.pidPrevE = 0;
+
+      // For plotting
+      if (hard || !this.hist){
+        this.hist = {
+          max: 900, // ~15s @ 60Hz sample
+          i: 0,
+          filled: false,
+          t: new Float32Array(900),
+          tempC: new Float32Array(900),
+          eff: new Float32Array(900),
+          lossW: new Float32Array(900),
+          wearUm: new Float32Array(900),
+          bklMin: new Float32Array(900),
+          rpm1: new Float32Array(900),
+          rpm2: new Float32Array(900),
+          Tin: new Float32Array(900),
+          Tload: new Float32Array(900),
+          mu: new Float32Array(900),
+        };
+      } else {
+        this.hist.i = 0; this.hist.filled = false;
+      }
+
+      // Computed diagnostics (updated each step)
+      this.diag = {
+        ratio: 3,
+        r1: 0.03,
+        r2: 0.09,
+        contact: true,
+        Fn: 0,
+        Ft: 0,
+        mu: 0.08,
+        backlashRad: 0,
+        lossW: 0,
+        eff: 0,
+        meshHz: 0,
+        Tin: 0,
+        Tload: 0,
+        P_in: 0,
+        P_out: 0,
+        P_mesh: 0,
+        P_bear: 0,
+        P_wind: 0,
+        P_churn: 0,
+        convW: 0,
+        radW: 0,
+      };
+    }
+
+    sample(){
+      const h = this.hist;
+      const i = h.i;
+      h.t[i] = this.t;
+      h.tempC[i] = (this.tempK - 273.15);
+      h.eff[i] = this.diag.eff;
+      h.lossW[i] = this.diag.lossW;
+      h.wearUm[i] = this.wearDepth * 1e6;
+      h.bklMin[i] = this.diag.backlashRad * (60*180/Math.PI); // arc-min
+      h.rpm1[i] = rpm(this.w1);
+      h.rpm2[i] = rpm(this.w2);
+      h.Tin[i] = this.diag.Tin;
+      h.Tload[i] = this.diag.Tload;
+      h.mu[i] = this.diag.mu;
+
+      h.i++;
+      if (h.i >= h.max){
+        h.i = 0;
+        h.filled = true;
+      }
+    }
+
+    step(dt, P){
+      // P = parameters live from UI
+      this.t += dt;
+
+      // Gear geometry
+      const N1 = Math.max(6, P.N1|0);
+      const N2 = Math.max(8, P.N2|0);
+      const ratio = N2 / N1;
+
+      const module_m = P.module_mm * 1e-3;
+      const face_m = P.face_mm * 1e-3;
+      const r1 = 0.5 * module_m * N1;
+      const r2 = 0.5 * module_m * N2;
+
+      // Base backlash (arc-min -> rad)
+      const backlashBaseRad = (P.backlash_arcmin / 60) * (Math.PI/180);
+
+      // Thermal expansion & wear effects on backlash (heuristic)
+      // - Wear increases backlash
+      // - Higher temperature decreases backlash a bit (expansion tightens clearance)
+      const alpha = 12e-6; // steel-ish 1/K (used heuristically)
+      const dT = (this.tempK - (273.15 + 20));
+      const thermalTighten = clamp(alpha * dT * 40, -0.0009, 0.0009); // rad-ish proxy
+      const wearToBacklash = (this.wearDepth / Math.max(1e-5, r1)) * 1.1; // rad proxy
+      let backlashRad = backlashBaseRad + wearToBacklash - thermalTighten;
+      backlashRad = clamp(backlashRad, backlashBaseRad*0.4, backlashBaseRad + 0.02);
+
+      // Mesh stiffness modulation (creates realistic whine/vibration)
+      const J1 = P.J1;
+      const J2 = P.J2;
+      const k0 = P.kmesh_kNm_per_rad * 1000.0; // convert kN·m/rad => N·m/rad
+      const c0 = P.cmesh_Nms_per_rad;
+      const meshHz = Math.abs(this.w1) * N1 / TAU;
+      const kMod = 0.14; // stiffness ripple
+      const k = k0 * (1 + kMod * Math.sin(TAU * meshHz * this.t));
+      const c = c0;
+
+      // Environment
+      const TambK = P.TambC + 273.15;
+      const g = P.g;
+      const Pamb = P.Pamb;
+      const Pint = P.sealed ? P.Pint : Pamb;
+      const wind = P.wind;
+      const dust = P.dust; // 0..1
+
+      // Gas properties for windage/convection scaling
+      const isMarsLikeCO2 = (Pamb < 20000); // heuristic switch
+      const Rgas = isMarsLikeCO2 ? R_CO2 : R_AIR;
+      const rho = Pint / (Rgas * Math.max(120, TambK)); // kg/m³
+
+      // Lubricant properties
+      const L = LUBES[P.lube] || LUBES.PFPE;
+      const Tref = 313.15; // 40°C
+      let eta = L.etaRef;
+      if (L.beta > 0){
+        // simple exponential dependence (Arrhenius-like)
+        eta = L.etaRef * Math.exp(L.beta * (1/Math.max(180, this.tempK) - 1/Tref));
+      }
+      // Clamp viscosity so it doesn’t blow up to infinity at extreme cold
+      eta = clamp(eta, 1e-6, 12.0);
+
+      // "Film formation" degrades in low pressure if lubricant isn't vacuum-friendly;
+      // and also somewhat in low gravity (oil distribution/starvation proxy).
+      const pressureFilmFactor = (L.pCrit <= 0) ? 1.0 : clamp(Math.pow(Pint / (L.pCrit), 0.35), 0.20, 1.0);
+      const gravityFilmFactor = clamp(lerp(0.70, 1.0, clamp(g/9.81, 0, 1)), 0.65, 1.0);
+      const oilFill = clamp(P.oilFill, 0, 1);
+      const fillFactor = (L.churnK > 0) ? clamp(lerp(0.35, 1.0, oilFill), 0.2, 1.0) : 1.0;
+
+      // Input command: either speed PID (cmd = % of 6000 rpm) or torque (cmd in Nm)
+      let Tin = 0;
+      const tMax = P.tMax;
+      if (P.inMode === "speed"){
+        const targetRpm = P.cmd * 60; // 0..6000 rpm (since cmd slider 0..100)
+        const targetW = targetRpm * TAU / 60;
+        const e = targetW - this.w1;
+        // PID tuned for stable "motor-like" feel
+        const Kp = 0.55 * (J1 / 0.018);
+        const Ki = 9.0  * (J1 / 0.018);
+        const Kd = 0.008 * (J1 / 0.018);
+        this.pidI = clamp(this.pidI + e * dt, -80, 80);
+        const dE = (e - this.pidPrevE) / Math.max(1e-6, dt);
+        this.pidPrevE = e;
+        Tin = Kp*e + Ki*this.pidI + Kd*dE;
+        Tin = clamp(Tin, -tMax, tMax);
+
+        // Add motor torque ripple (realistic: cogging / PWM)
+        const ripple = 0.018 * tMax * Math.sin(TAU * 7.0 * this.t) + 0.010 * tMax * Math.sin(TAU * 53.0 * this.t);
+        Tin += ripple;
+      } else {
+        // Constant torque mode: cmd is Nm directly-ish
+        Tin = clamp(P.cmdNm, -tMax, tMax);
+        Tin += 0.012 * tMax * Math.sin(TAU * 11.0 * this.t);
+      }
+
+      // Output load torque: Coulomb + viscous (always opposing motion)
+      const loadT = P.loadT;
+      const loadB = P.loadB;
+      const Tload = -sgn(this.w2) * loadT - loadB * this.w2;
+
+      // Backlash / mesh constraint
+      // Ideal relation: theta2 = -(theta1 / ratio)
+      const e = this.theta2 + (this.theta1 / ratio);
+      const de = this.w2 + (this.w1 / ratio);
+
+      let contact = false;
+      let Tmesh2 = 0;
+
+      if (Math.abs(e) > backlashRad){
+        contact = true;
+        const eEff = e - sgn(e) * backlashRad;
+
+        // Spring-damper mesh torque on gear2
+        Tmesh2 = -k * eEff - c * de;
+
+        // Clip mesh torque to avoid numerical blow-up in extreme settings
+        const clip = 2000;
+        Tmesh2 = clamp(Tmesh2, -clip, clip);
+      } else {
+        contact = false;
+        Tmesh2 = 0;
+      }
+
+      // Torque on pinion from mesh: same sign, scaled by ratio (power-consistent)
+      const Tmesh1 = Tmesh2 / ratio;
+
+      // Compute tooth forces for friction & bearings
+      const phi = 20 * (Math.PI/180); // pressure angle
+      const Ft = contact ? Math.abs(Tmesh1) / Math.max(1e-6, r1) : 0; // tangential
+      const Fn = contact ? Ft / Math.cos(phi) : 0;
+
+      // Stribeck-like friction coefficient μ(H)
+      // Hersey-like number H ~ (eta * v) / (pressure) with geometry proxy
+      const vPitch = Math.abs(this.w1) * r1;
+      const loadPerWidth = Fn / Math.max(1e-6, face_m); // N/m
+      let H = (eta * vPitch) / Math.max(1e-9, loadPerWidth); // proxy
+      H *= pressureFilmFactor * gravityFilmFactor * fillFactor;
+
+      // Dust increases boundary friction and degrades film
+      const dustFactor = 1 + 1.8 * dust + 1.2 * clamp(this.dustIn, 0, 1);
+      const H_eff = H / dustFactor;
+
+      // Wear/roughness feeds back into boundary μ
+      const roughFactor = 1 + clamp((this.wearDepth * 1e6) / 80, 0, 2); // up to ~3x
+
+      let mu = L.muMin
+        + (L.muBoundary * roughFactor * dustFactor - L.muMin) * Math.exp(-Math.pow(H_eff / L.H0, L.a))
+        + L.muVisc * H_eff;
+
+      // Clamp μ to plausible-ish range
+      mu = clamp(mu, 0.02, 0.35);
+
+      // Mesh friction torque on each gear (opposes each gear’s rotation)
+      let Tf_mesh1 = 0, Tf_mesh2 = 0;
+      let P_mesh = 0;
+      if (contact && Fn > 0){
+        // Average sliding fraction (spur gears have sliding except at pitch point)
+        const slideFrac = 0.32; // heuristic
+        const Ff = mu * Fn * slideFrac;
+        Tf_mesh1 = -sgn(this.w1) * Ff * r1;
+        Tf_mesh2 = -sgn(this.w2) * Ff * r2;
+
+        P_mesh = Math.abs(Tf_mesh1 * this.w1) + Math.abs(Tf_mesh2 * this.w2);
+      }
+
+      // Bearing friction (load-dependent + viscous)
+      // Lower gravity reduces weight load -> reduced bearing drag, but mesh loads dominate under high torque.
+      const mShaft1 = 2.2, mShaft2 = 3.0; // kg proxies
+      const W1 = mShaft1 * g;
+      const W2 = mShaft2 * g;
+
+      const Fr = contact ? Fn : 0; // radial load proxy
+      const Fb1 = Math.sqrt(Math.pow(0.55*Fr,2) + Math.pow(W1,2));
+      const Fb2 = Math.sqrt(Math.pow(0.55*Fr,2) + Math.pow(W2,2));
+
+      const rBear = 0.018; // m
+      const fBear = 0.0022; // rolling friction coefficient proxy
+      const bBear = 0.0007; // viscous bearing term
+
+      const Tb1 = -sgn(this.w1) * (fBear * Fb1 * rBear) - bBear * this.w1;
+      const Tb2 = -sgn(this.w2) * (fBear * Fb2 * rBear) - bBear * this.w2;
+
+      const P_bear = Math.abs(Tb1*this.w1) + Math.abs(Tb2*this.w2);
+
+      // Windage (gas drag) ∝ rho * ω²
+      const kWind = 6.0e-6;
+      const Tw1 = -sgn(this.w1) * (kWind * rho * this.w1 * this.w1);
+      const Tw2 = -sgn(this.w2) * (kWind * rho * this.w2 * this.w2);
+      const P_wind = Math.abs(Tw1*this.w1) + Math.abs(Tw2*this.w2);
+
+      // Churning losses (oil) ∝ eta * ω² * fill
+      let Tc1 = 0, Tc2 = 0, P_churn = 0;
+      if (L.churnK > 0 && P.oilFill > 0){
+        const kCh = L.churnK * fillFactor;
+        Tc1 = -sgn(this.w1) * (kCh * eta * this.w1 * this.w1);
+        Tc2 = -sgn(this.w2) * (kCh * eta * this.w2 * this.w2);
+        P_churn = Math.abs(Tc1*this.w1) + Math.abs(Tc2*this.w2);
+      }
+
+      // Total torques
+      const T1 = Tin + Tmesh1 + Tf_mesh1 + Tb1 + Tw1 + Tc1;
+      const T2 = Tmesh2 + Tf_mesh2 + Tb2 + Tw2 + Tc2 + Tload;
+
+      // Integrate (semi-implicit Euler)
+      const dw1 = T1 / Math.max(1e-6, J1);
+      const dw2 = T2 / Math.max(1e-6, J2);
+
+      // Stability clamps (avoid absurd speeds in extreme settings)
+      this.w1 = clamp(this.w1 + dw1*dt, -2400, 2400);
+      this.w2 = clamp(this.w2 + dw2*dt, -2400, 2400);
+
+      this.theta1 += this.w1 * dt;
+      this.theta2 += this.w2 * dt;
+
+      // Thermal model
+      const lossW = P_mesh + P_bear + P_wind + P_churn;
+
+      // Convection coefficient scaling with density and wind
+      // hEarth ~ 15 W/m²K; on Mars density is tiny -> h drops sharply.
+      const rhoEarth = 1.225;
+      const hBase = 15.0;
+      const h = hBase * Math.pow(clamp(rho / rhoEarth, 0, 1), 0.70) * Math.pow((wind + 0.3) / 5.0, 0.45);
+      const area = P.area;
+      const eps = P.eps;
+      const convW = h * area * (this.tempK - TambK);
+      const radW  = eps * SIGMA * area * (Math.pow(this.tempK,4) - Math.pow(TambK,4));
+
+      // Heat capacity ~ mass * cp
+      const mBox = P.thMass; // kg
+      const cp = 520;        // J/kgK (aluminum-ish average; heuristic)
+      let C = mBox * cp;
+
+      // If oil is present, add some thermal mass (heuristic)
+      const oilExtra = 0.7 + 1.6 * oilFill; // kg proxy
+      C += oilExtra * 2000; // oil cp ~ 2000 J/kgK
+
+      // Temperature update
+      const dTdt = (lossW - convW - radW) / Math.max(100, C);
+      this.tempK = clamp(this.tempK + dTdt * dt, 110, 820);
+
+      // Wear model (Archard-like)
+      // wear rate ∝ (Fn * v_slide) / hardness * K
+      const hardness = 2.0e9; // Pa (steel-ish)
+      const contactLen = clamp(0.012 + 0.10 * module_m, 0.008, 0.03); // m proxy
+      const contactArea = Math.max(1e-6, face_m * contactLen);
+
+      const vSlide = vPitch * 0.32;
+      let wearK = L.wearK;
+
+      // Dust greatly accelerates wear; higher μ also accelerates.
+      wearK *= (1 + 6.0*dust + 3.0*this.dustIn);
+      wearK *= (1 + 2.0*Math.pow(mu/0.10, 2));
+
+      // Very low pressure for non-vacuum lube tends to worsen wear (outgassing / starvation proxy)
+      const vacuumPenalty = (L.pCrit > 0) ? (1 + 1.2 * (1 - pressureFilmFactor)) : 1.0;
+      wearK *= vacuumPenalty;
+
+      // Wear depth rate
+      let wearRate = 0;
+      if (contact && Fn > 0 && vSlide > 0.02){
+        const wearVolRate = wearK * (Fn * vSlide) / hardness; // m³/s proxy
+        wearRate = wearVolRate / contactArea; // m/s
+      }
+      this.wearDepth = clamp(this.wearDepth + wearRate * dt, 0, 2.5e-3);
+
+      // Dust ingestion over time (more dust + more wind + more pressure-driven infiltration)
+      const dustIngress = dust * clamp(wind/10, 0, 2) * clamp(Pamb/2000, 0, 1) * 2.2e-5;
+      this.dustIn = clamp(this.dustIn + dustIngress * dt, 0, 1);
+
+      // Efficiency
+      const P_in = Tin * this.w1; // W (can be negative in regen)
+      const P_out = -(Tload * this.w2); // power delivered to load (>=0 when load resists)
+      let eff = 0;
+      if (P_in > 1){
+        eff = clamp(P_out / P_in, 0, 1.2);
+      }
+
+      // Store diagnostics
+      this.diag.ratio = ratio;
+      this.diag.r1 = r1;
+      this.diag.r2 = r2;
+      this.diag.contact = contact;
+      this.diag.backlashRad = backlashRad;
+      this.diag.Ft = Ft;
+      this.diag.Fn = Fn;
+      this.diag.mu = mu;
+      this.diag.lossW = lossW;
+      this.diag.eff = eff;
+      this.diag.meshHz = meshHz;
+      this.diag.Tin = Tin;
+      this.diag.Tload = Tload;
+      this.diag.P_in = P_in;
+      this.diag.P_out = P_out;
+      this.diag.P_mesh = P_mesh;
+      this.diag.P_bear = P_bear;
+      this.diag.P_wind = P_wind;
+      this.diag.P_churn = P_churn;
+      this.diag.convW = convW;
+      this.diag.radW = radW;
+    }
+  }
+
+  const sim = new GearboxSim();
+
+  // -------------------------
+  // Particles for dust (visual)
+  // -------------------------
+  const dustParticles = [];
+  function spawnDust(n, W, H, center1, center2){
+    for (let i=0;i<n;i++){
+      const around = (Math.random() < 0.5) ? center1 : center2;
+      const a = Math.random()*TAU;
+      const rad = lerp(10, 95, Math.random());
+      dustParticles.push({
+        x: around.x + Math.cos(a)*rad,
+        y: around.y + Math.sin(a)*rad,
+        vx: lerp(-8, 8, Math.random()),
+        vy: lerp(-6, 6, Math.random()),
+        life: lerp(0.6, 2.3, Math.random()),
+        size: lerp(0.6, 2.2, Math.random())
+      });
+    }
+    while(dustParticles.length > 900) dustParticles.shift();
+  }
+
+  // -------------------------
+  // Rendering
+  // -------------------------
+  function drawGear(ctx, x, y, r, teeth, ang, bodyColor, ringColor, wearT){
+    const toothH = Math.max(2, r*0.12);
+    const toothD = Math.max(2, r*0.06);
+    const rOut = r + toothH;
+    const rIn = r - toothD;
+
+    // Shadow
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(ang);
+
+    // Gear body gradient
+    const grad = ctx.createRadialGradient(-r*0.2, -r*0.2, r*0.1, 0, 0, rOut*1.15);
+    grad.addColorStop(0, "rgba(255,255,255,0.10)");
+    grad.addColorStop(0.25, "rgba(255,255,255,0.05)");
+    grad.addColorStop(1, "rgba(0,0,0,0.55)");
+
+    // Teeth
+    ctx.beginPath();
+    for (let i=0;i<teeth;i++){
+      const a0 = (i/teeth)*TAU;
+      const a1 = ((i+0.35)/teeth)*TAU;
+      const a2 = ((i+0.65)/teeth)*TAU;
+
+      const c0 = Math.cos(a0), s0 = Math.sin(a0);
+      const c1 = Math.cos(a1), s1 = Math.sin(a1);
+      const c2 = Math.cos(a2), s2 = Math.sin(a2);
+
+      // Root
+      const x0 = c0*rIn, y0 = s0*rIn;
+      const x1 = c1*rOut, y1 = s1*rOut;
+      const x2 = c2*rOut, y2 = s2*rOut;
+
+      if (i===0) ctx.moveTo(x0,y0);
+      ctx.lineTo(x0,y0);
+      ctx.lineTo(x1,y1);
+      ctx.lineTo(x2,y2);
+    }
+    ctx.closePath();
+    ctx.fillStyle = bodyColor;
+    ctx.fill();
+
+    // Subtle wear / dust tint overlay
+    if (wearT > 0){
+      ctx.globalAlpha = clamp(0.08 + 0.22*wearT, 0, 0.35);
+      ctx.fillStyle = "rgba(255, 200, 160, 1)";
+      ctx.fill();
+      ctx.globalAlpha = 1;
+    }
+
+    // Outer ring highlight
+    ctx.beginPath();
+    ctx.arc(0,0,rOut,0,TAU);
+    ctx.strokeStyle = ringColor;
+    ctx.lineWidth = 2;
+    ctx.globalAlpha = 0.7;
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+
+    // Inner body
+    ctx.beginPath();
+    ctx.arc(0,0,r*0.82,0,TAU);
+    ctx.fillStyle = grad;
+    ctx.fill();
+
+    // Bore
+    ctx.beginPath();
+    ctx.arc(0,0,r*0.24,0,TAU);
+    ctx.fillStyle = "rgba(0,0,0,0.52)";
+    ctx.fill();
+    ctx.lineWidth = 1.2;
+    ctx.strokeStyle = "rgba(255,255,255,0.12)";
+    ctx.stroke();
+
+    // Spokes
+    ctx.strokeStyle = "rgba(255,255,255,0.09)";
+    ctx.lineWidth = 2;
+    for (let i=0;i<4;i++){
+      const a = i*TAU/4;
+      ctx.beginPath();
+      ctx.moveTo(Math.cos(a)*r*0.30, Math.sin(a)*r*0.30);
+      ctx.lineTo(Math.cos(a)*r*0.72, Math.sin(a)*r*0.72);
+      ctx.stroke();
+    }
+
+    ctx.restore();
+  }
+
+  function drawBackdrop(ctx, W, H, TambC, Pamb, dust){
+    // Mars-like backdrop
+    ctx.fillStyle = "#06070b";
+    ctx.fillRect(0,0,W,H);
+
+    // Horizon glow
+    const g = ctx.createRadialGradient(W*0.48, H*0.95, 20, W*0.48, H*0.95, H*0.95);
+    g.addColorStop(0, "rgba(255,122,61,0.24)");
+    g.addColorStop(0.33, "rgba(255,122,61,0.08)");
+    g.addColorStop(1, "rgba(0,0,0,0)");
+    ctx.fillStyle = g;
+    ctx.fillRect(0,0,W,H);
+
+    // Stars fade with dust/pressure
+    const starAlpha = clamp(0.45 * (1 - Math.min(1, (Pamb/20000))) * (1 - 0.7*dust), 0, 0.45);
+    ctx.globalAlpha = starAlpha;
+    ctx.fillStyle = "rgba(255,255,255,0.9)";
+    const nStars = 120;
+    for(let i=0;i<nStars;i++){
+      const x = (i*97.3 % 1) * W;
+      const y = (i*53.1 % 1) * H * 0.60;
+      const r = 0.6 + (i*0.17 % 1) * 1.4;
+      ctx.beginPath();
+      ctx.arc(x,y,r,0,TAU);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+
+    // Temperature/pressure overlay mood
+    const cold = clamp((-TambC - 10)/90, 0, 1);
+    ctx.globalAlpha = 0.10 + 0.12*cold;
+    ctx.fillStyle = "rgba(120,180,255,0.35)";
+    ctx.fillRect(0,0,W,H);
+    ctx.globalAlpha = 1;
+  }
+
+  function render(){
+    const W = simCanvas.clientWidth;
+    const H = simCanvas.clientHeight;
+
+    const P = getParams();
+    const TambC = P.TambC;
+    const Pamb = P.Pamb;
+    const dust = P.dust;
+
+    drawBackdrop(ctx, W, H, TambC, Pamb, dust);
+
+    // Compute screen geometry based on gear radii
+    const r1m = sim.diag.r1;
+    const r2m = sim.diag.r2;
+    const sum = (r1m + r2m);
+    const scale = clamp((Math.min(W,H) * 0.33) / Math.max(0.03, sum), 70, 220);
+
+    const r1 = r1m * scale;
+    const r2 = r2m * scale;
+
+    const center1 = { x: W*0.36, y: H*0.56 };
+    const center2 = { x: center1.x + (r1 + r2)*0.98, y: center1.y };
+
+    // Casing / gearbox body
+    ctx.save();
+    const pad = 30;
+    const x0 = center1.x - r1 - pad;
+    const x1 = center2.x + r2 + pad;
+    const y0 = center1.y - Math.max(r1,r2) - pad;
+    const y1 = center1.y + Math.max(r1,r2) + pad;
+    ctx.fillStyle = "rgba(0,0,0,0.35)";
+    ctx.strokeStyle = "rgba(255,255,255,0.10)";
+    ctx.lineWidth = 2;
+    roundRect(ctx, x0, y0, x1-x0, y1-y0, 18);
+    ctx.fill();
+    ctx.stroke();
+
+    // Bolts
+    ctx.fillStyle = "rgba(255,255,255,0.10)";
+    for(const bx of [x0+18, x1-18]){
+      for(const by of [y0+18, y1-18]){
+        ctx.beginPath(); ctx.arc(bx,by,4,0,TAU); ctx.fill();
+      }
+    }
+
+    // Oil fill indicator
+    const fill = clamp(P.oilFill, 0, 1);
+    if (fill > 0){
+      ctx.globalAlpha = 0.18 + 0.10*fill;
+      ctx.fillStyle = "rgba(90,170,255,0.8)";
+      roundRect(ctx, x0+10, lerp(y1-14, y0+10, fill), (x1-x0)-20, y1-(lerp(y1-14, y0+10, fill)), 12);
+      ctx.fill();
+      ctx.globalAlpha = 1;
+    }
+    ctx.restore();
+
+    // Dust particles
+    const dustSpawn = clamp(0.25 + 2.8*dust + 1.5*sim.dustIn, 0, 5);
+    if (Math.random() < dustSpawn*0.25){
+      spawnDust(3 + Math.floor(10*dustSpawn), W, H, center1, center2);
+    }
+    updateDustParticles(P, center1, center2, r1, r2);
+
+    // Temperature-based gear coloring
+    const Tc = sim.tempK - 273.15;
+    const gearColor = tempColorC(Tc);
+    const ring = "rgba(255,255,255,0.18)";
+    const wearT = clamp((sim.wearDepth*1e6) / 300, 0, 1);
+
+    // Draw gears
+    const N1 = P.N1|0, N2 = P.N2|0;
+    drawGear(ctx, center1.x, center1.y, r1*0.92, N1, sim.theta1, gearColor, ring, wearT);
+    drawGear(ctx, center2.x, center2.y, r2*0.92, N2, sim.theta2, gearColor, ring, wearT);
+
+    // Mesh contact visualization
+    ctx.save();
+    const contactX = (center1.x*r2 + center2.x*r1)/(r1+r2);
+    const contactY = center1.y;
+    ctx.globalAlpha = sim.diag.contact ? 0.85 : 0.25;
+    const mu = sim.diag.mu;
+    const Fn = sim.diag.Fn;
+
+    const size = 6 + clamp(Fn/1200, 0, 10);
+    ctx.beginPath();
+    ctx.arc(contactX, contactY, size, 0, TAU);
+    ctx.fillStyle = sim.diag.contact ? "rgba(255,210,140,0.9)" : "rgba(255,255,255,0.25)";
+    ctx.fill();
+
+    // Arrow for normal force magnitude
+    if (sim.diag.contact){
+      const a = -Math.PI/2;
+      const len = clamp(18 + Fn/80, 20, 110);
+      drawArrow(ctx, contactX, contactY, contactX + Math.cos(a)*len, contactY + Math.sin(a)*len,
+                "rgba(255,210,140,0.65)", 2);
+    }
+
+    // Info overlay
+    ctx.globalAlpha = 1;
+    ctx.font = "12.5px " + getComputedStyle(document.documentElement).getPropertyValue('--mono');
+    ctx.fillStyle = "rgba(255,255,255,0.92)";
+    const lines = [
+      `Mesh: ${sim.diag.contact ? "ENGAGED" : "BACKLASH"}   μ=${fmt(mu,3)}   Fn=${Math.round(Fn)} N`,
+      `T=${fmt(Tc,1)}°C   losses=${Math.round(sim.diag.lossW)} W   η=${fmt(sim.diag.eff*100,1)}%`,
+      `Pinion=${Math.round(rpm(sim.w1))} rpm   Output=${Math.round(rpm(sim.w2))} rpm   ratio=${fmt(sim.diag.ratio,3)}`
+    ];
+    const bx = 14, by = 16;
+    ctx.fillStyle = "rgba(0,0,0,0.40)";
+    roundRect(ctx, bx-8, by-10, 520, 66, 12);
+    ctx.fill();
+    ctx.fillStyle = "rgba(255,255,255,0.92)";
+    lines.forEach((s, i)=> ctx.fillText(s, bx, by + i*20));
+
+    ctx.restore();
+  }
+
+  function updateDustParticles(P, center1, center2, r1, r2){
+    const wind = P.wind;
+    const dust = P.dust;
+    const swirl1 = clamp(sim.w1 / 40, -6, 6);
+    const swirl2 = clamp(sim.w2 / 40, -6, 6);
+    const swirlStrength = 0.55 + 0.65*dust + 0.45*sim.dustIn;
+
+    for (let i=dustParticles.length-1;i>=0;i--){
+      const p = dustParticles[i];
+
+      // Wind drift
+      p.vx += (wind*0.06) * (0.7 + 0.6*dust) * 0.016;
+
+      // Swirl around gears
+      const s1 = swirl1 * swirlStrength;
+      const s2 = swirl2 * swirlStrength;
+
+      swirlAround(p, center1, s1, 0.016);
+      swirlAround(p, center2, s2, 0.016);
+
+      // Slight Brownian
+      p.vx += (Math.random()-0.5)*0.6*(0.3 + dust);
+      p.vy += (Math.random()-0.5)*0.6*(0.3 + dust);
+
+      // Damping
+      p.vx *= 0.985;
+      p.vy *= 0.985;
+
+      p.x += p.vx * 0.016;
+      p.y += p.vy * 0.016;
+      p.life -= 0.016;
+
+      if (p.life <= 0 || p.x < -50 || p.y < -50 || p.x > simCanvas.clientWidth+50 || p.y > simCanvas.clientHeight+50){
+        dustParticles.splice(i,1);
+      }
+    }
+
+    // Draw
+    ctx.save();
+    ctx.globalAlpha = clamp(0.10 + 0.30*dust + 0.18*sim.dustIn, 0, 0.55);
+    ctx.fillStyle = "rgba(255,160,110,0.9)";
+    for (const p of dustParticles){
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.size, 0, TAU);
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  function swirlAround(p, c, s, dt){
+    const dx = p.x - c.x;
+    const dy = p.y - c.y;
+    const r = Math.hypot(dx,dy) + 1e-6;
+    const t = clamp(1 - r/260, 0, 1);
+    // tangential acceleration
+    const ax = (-dy / r) * s * t * 35;
+    const ay = ( dx / r) * s * t * 35;
+    p.vx += ax * dt;
+    p.vy += ay * dt;
+  }
+
+  function roundRect(ctx, x, y, w, h, r){
+    r = Math.min(r, w/2, h/2);
+    ctx.beginPath();
+    ctx.moveTo(x+r, y);
+    ctx.arcTo(x+w, y, x+w, y+h, r);
+    ctx.arcTo(x+w, y+h, x, y+h, r);
+    ctx.arcTo(x, y+h, x, y, r);
+    ctx.arcTo(x, y, x+w, y, r);
+    ctx.closePath();
+  }
+
+  function drawArrow(ctx, x1,y1,x2,y2, color, lw=2){
+    const dx = x2-x1, dy=y2-y1;
+    const a = Math.atan2(dy,dx);
+    const len = Math.hypot(dx,dy);
+    ctx.strokeStyle = color;
+    ctx.fillStyle = color;
+    ctx.lineWidth = lw;
+    ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(x2,y2); ctx.stroke();
+    const ah = 8, aw = 5;
+    ctx.beginPath();
+    ctx.moveTo(x2,y2);
+    ctx.lineTo(x2 - Math.cos(a)*ah + Math.cos(a+Math.PI/2)*aw, y2 - Math.sin(a)*ah + Math.sin(a+Math.PI/2)*aw);
+    ctx.lineTo(x2 - Math.cos(a)*ah + Math.cos(a-Math.PI/2)*aw, y2 - Math.sin(a)*ah + Math.sin(a-Math.PI/2)*aw);
+    ctx.closePath();
+    ctx.fill();
+  }
+
+  // -------------------------
+  // Plotting
+  // -------------------------
+  function drawPlot(){
+    const W = plotCanvas.clientWidth;
+    const H = plotCanvas.clientHeight;
+    pctx.fillStyle = "#07080b";
+    pctx.fillRect(0,0,W,H);
+
+    // Grid
+    pctx.strokeStyle = "rgba(255,255,255,0.06)";
+    pctx.lineWidth = 1;
+    for(let i=0;i<=8;i++){
+      const x = (i/8)*W;
+      pctx.beginPath(); pctx.moveTo(x,0); pctx.lineTo(x,H); pctx.stroke();
+    }
+    for(let i=0;i<=4;i++){
+      const y = (i/4)*H;
+      pctx.beginPath(); pctx.moveTo(0,y); pctx.lineTo(W,y); pctx.stroke();
+    }
+
+    const mode = $("plotMode").value;
+    const h = sim.hist;
+    const n = h.filled ? h.max : h.i;
+    if (n < 4) return;
+
+    // Iterate in time order (ring buffer)
+    const idx = (k) => h.filled ? ( (h.i + k) % h.max ) : k;
+
+    let yMin=0, yMax=1, seriesA=null, seriesB=null, labelA="", labelB="";
+    const pad = 18;
+    const mapY = (v) => lerp(H-pad, pad, (v - yMin) / (yMax - yMin + 1e-9));
+
+    if (mode === "temp"){
+      seriesA = h.tempC; labelA = "Temp (°C)";
+      yMin = -120; yMax = 220;
+    } else if (mode === "eff"){
+      seriesA = h.eff; labelA = "Efficiency";
+      yMin = 0; yMax = 1.05;
+    } else if (mode === "loss"){
+      seriesA = h.lossW; labelA = "Loss (W)";
+      yMin = 0; yMax = Math.max(200, maxSeries(h.lossW, n, idx) * 1.15);
+    } else if (mode === "wear"){
+      seriesA = h.wearUm; labelA = "Wear (µm)";
+      seriesB = h.bklMin; labelB = "Backlash (arc‑min)";
+      const wMax = Math.max(10, maxSeries(h.wearUm, n, idx));
+      const bMax = Math.max(0.2, maxSeries(h.bklMin, n, idx));
+      yMin = 0; yMax = Math.max(wMax, bMax) * 1.15;
+      // We'll normalize both into same axis for a compact view:
+      // scale backlash to be comparable with wear.
+    } else if (mode === "speed"){
+      seriesA = h.rpm1; labelA = "Pinion rpm";
+      seriesB = h.rpm2; labelB = "Output rpm";
+      const m = Math.max(500, Math.max(Math.abs(maxAbsSeries(h.rpm1,n,idx)), Math.abs(maxAbsSeries(h.rpm2,n,idx))) );
+      yMin = -m; yMax = m;
+    } else if (mode === "torque"){
+      seriesA = h.Tin; labelA = "Input torque (Nm)";
+      seriesB = h.Tload; labelB = "Load torque (Nm)";
+      const m = Math.max(20, Math.max(Math.abs(maxAbsSeries(h.Tin,n,idx)), Math.abs(maxAbsSeries(h.Tload,n,idx))) );
+      yMin = -m; yMax = m;
+    } else if (mode === "mu"){
+      seriesA = h.mu; labelA = "Friction μ";
+      yMin = 0; yMax = 0.30;
+    }
+
+    // Axes labels
+    pctx.fillStyle = "rgba(255,255,255,0.82)";
+    pctx.font = "12px " + getComputedStyle(document.documentElement).getPropertyValue('--mono');
+    pctx.fillText(labelA, 10, 16);
+    if (labelB) pctx.fillText(labelB, 10, 34);
+
+    // Series A
+    if (seriesA){
+      pctx.strokeStyle = "rgba(255, 210, 140, 0.95)";
+      pctx.lineWidth = 2;
+      pctx.beginPath();
+      for (let k=0;k<n;k++){
+        const i = idx(k);
+        const x = (k/(n-1))*W;
+        let v = seriesA[i];
+        if (mode === "wear") v = seriesA[i]; // wear stays as µm
+        const y = mapY(v);
+        if (k===0) pctx.moveTo(x,y); else pctx.lineTo(x,y);
+      }
+      pctx.stroke();
+    }
+
+    // Series B (if present)
+    if (seriesB){
+      pctx.strokeStyle = "rgba(120, 210, 255, 0.92)";
+      pctx.lineWidth = 2;
+      pctx.beginPath();
+      for (let k=0;k<n;k++){
+        const i = idx(k);
+        const x = (k/(n-1))*W;
+        let v = seriesB[i];
+        if (mode === "wear"){
+          // Scale backlash into same axis range as wear:
+          // 1 arc-min ~ treat as "µm-like" by multiplying; purely for combined visualization.
+          v = seriesB[i] * 80.0;
+        }
+        const y = mapY(v);
+        if (k===0) pctx.moveTo(x,y); else pctx.lineTo(x,y);
+      }
+      pctx.stroke();
+    }
+
+    // Current marker
+    const lastI = idx(n-1);
+    pctx.fillStyle = "rgba(255,255,255,0.88)";
+    pctx.fillText("now", W-36, 16);
+
+    // Little y-range text
+    pctx.fillStyle = "rgba(255,255,255,0.55)";
+    pctx.fillText(`${fmt(yMax, (yMax<10?2:0))}`, W-70, 34);
+    pctx.fillText(`${fmt(yMin, (Math.abs(yMin)<10?2:0))}`, W-70, H-10);
+  }
+
+  function maxSeries(arr, n, idx){
+    let m = -Infinity;
+    for(let k=0;k<n;k++){
+      const v = arr[idx(k)];
+      if (Number.isFinite(v)) m = Math.max(m, v);
+    }
+    return (m === -Infinity) ? 0 : m;
+  }
+  function maxAbsSeries(arr, n, idx){
+    let m = 0;
+    for(let k=0;k<n;k++){
+      const v = arr[idx(k)];
+      if (Number.isFinite(v)) m = Math.max(m, Math.abs(v));
+    }
+    return m;
+  }
+
+  // -------------------------
+  // Readout panels
+  // -------------------------
+  function updateReadout(){
+    const d = sim.diag;
+    const Tc = sim.tempK - 273.15;
+
+    const gearRatio = d.ratio;
+    const meshHz = d.meshHz;
+
+    const effPct = d.eff * 100;
+    const wearUm = sim.wearDepth * 1e6;
+    const bklArcMin = d.backlashRad * (60*180/Math.PI);
+
+    const A =
+`ENV
+  g: <b>${fmt(getParams().g,3)}</b> m/s²
+  P amb: <b>${prettyPressure(getParams().Pamb)}</b>
+  P int: <b>${prettyPressure(getParams().sealed ? getParams().Pint : getParams().Pamb)}</b>
+  T amb: <b>${fmt(getParams().TambC,1)}</b> °C
+
+GEOMETRY
+  N1/N2: <b>${getParams().N1}/${getParams().N2}</b>
+  ratio: <b>${fmt(gearRatio,4)}</b>
+  module: <b>${fmt(getParams().module_mm,1)}</b> mm
+  face: <b>${fmt(getParams().face_mm,0)}</b> mm
+  backlash: <b>${fmt(bklArcMin,2)}</b> arc‑min`;
+
+    const B =
+`DYNAMICS
+  pinion: <b>${Math.round(rpm(sim.w1))}</b> rpm
+  output: <b>${Math.round(rpm(sim.w2))}</b> rpm
+  Tin: <b>${fmt(d.Tin,1)}</b> Nm
+  Tload: <b>${fmt(d.Tload,1)}</b> Nm
+
+TRIBOLOGY
+  μ: <b>${fmt(d.mu,3)}</b>
+  Fn: <b>${Math.round(d.Fn)}</b> N
+  mesh: <b>${d.contact ? "ENGAGED" : "BACKLASH"}</b>
+  mesh tone: <b>${Math.round(meshHz)}</b> Hz
+
+THERMAL + WEAR
+  T box: <b>${fmt(Tc,1)}</b> °C
+  losses: <b>${Math.round(d.lossW)}</b> W
+  eff: <b>${fmt(effPct,1)}</b> %
+  wear: <b>${fmt(wearUm,1)}</b> µm`;
+
+    $("kvA").innerHTML = A;
+    $("kvB").innerHTML = B;
+  }
+
+  // -------------------------
+  // Audio (mesh whine)
+  // -------------------------
+  let audio = null;
+  function ensureAudio(){
+    if (audio) return;
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC) return;
+
+    const ctxA = new AC();
+    const osc = ctxA.createOscillator();
+    const gain = ctxA.createGain();
+    const filt = ctxA.createBiquadFilter();
+
+    osc.type = "sawtooth";
+    filt.type = "bandpass";
+    filt.frequency.value = 900;
+    filt.Q.value = 2.0;
+
+    gain.gain.value = 0.0;
+
+    osc.connect(filt);
+    filt.connect(gain);
+    gain.connect(ctxA.destination);
+
+    osc.start();
+
+    audio = { ctxA, osc, gain, filt, enabled: false };
+  }
+
+  function updateAudio(){
+    if (!$("sound").checked) {
+      if (audio) audio.gain.gain.setTargetAtTime(0.0, audio.ctxA.currentTime, 0.06);
+      return;
+    }
+    ensureAudio();
+    if (!audio) return;
+
+    // Some browsers require interaction to resume
+    if (audio.ctxA.state === "suspended") audio.ctxA.resume().catch(()=>{});
+
+    const meshHz = clamp(sim.diag.meshHz, 40, 2400);
+    const amp = clamp(0.0005 + (sim.diag.Fn/18000) + (sim.diag.mu/0.35)*0.0015, 0.0, 0.015);
+    const whine = meshHz * (1 + 0.03*Math.sin(TAU*2.0*sim.t));
+    audio.osc.frequency.setTargetAtTime(whine, audio.ctxA.currentTime, 0.03);
+    audio.filt.frequency.setTargetAtTime(clamp(whine*1.2, 120, 3200), audio.ctxA.currentTime, 0.05);
+    audio.gain.gain.setTargetAtTime(amp, audio.ctxA.currentTime, 0.05);
+  }
+
+  // -------------------------
+  // Parameters from UI
+  // -------------------------
+  function getParams(){
+    const inMode = $("inMode").value;
+    const cmd = parseFloat($("cmd").value);
+    const N1 = clamp(parseInt($("N1").value||"18",10), 6, 120);
+    const N2 = clamp(parseInt($("N2").value||"54",10), 8, 220);
+
+    const TambC = parseFloat($("Tamb").value);
+    const Pamb = pressureFromLogSlider(parseFloat($("Pamb").value)/1000);
+    const wind = parseFloat($("wind").value);
+    const dust = parseFloat($("dust").value)/100;
+
+    const sealed = $("sealed").checked;
+    const Pint = pressureFromLogSlider(parseFloat($("Pint").value)/1000);
+
+    const module_mm = parseFloat($("module").value);
+    const face_mm = parseFloat($("face").value);
+    const backlash_arcmin = parseFloat($("backlash").value);
+
+    const kmesh_kNm_per_rad = parseFloat($("kmesh").value);
+    const cmesh_Nms_per_rad = parseFloat($("cmesh").value);
+
+    const lube = $("lube").value;
+
+    const tMax = parseFloat($("tmax").value);
+    const loadT = parseFloat($("loadT").value);
+    const loadB = parseFloat($("loadB").value);
+
+    const J1 = parseFloat($("J1").value);
+    const J2 = parseFloat($("J2").value);
+
+    const eps = parseFloat($("eps").value);
+    const thMass = parseFloat($("thMass").value);
+    const area = parseFloat($("area").value);
+
+    const oilFill = parseFloat($("oilFill").value)/100;
+
+    // Torque mode cmd slider reinterpreted
+    const cmdNm = (cmd/100) * tMax;
+
+    const g = parseFloat($("g").value);
+
+    return {
+      inMode,
+      cmd,
+      cmdNm,
+      tMax,
+      loadT,
+      loadB,
+      N1, N2,
+      module_mm,
+      face_mm,
+      backlash_arcmin,
+      kmesh_kNm_per_rad,
+      cmesh_Nms_per_rad,
+      TambC,
+      Pamb,
+      Pint,
+      sealed,
+      wind,
+      dust,
+      g,
+      lube,
+      eps,
+      thMass,
+      area,
+      oilFill,
+      J1,
+      J2
+    };
+  }
+
+  function updateUiValues(){
+    const P = getParams();
+
+    // Time scale slider is log-ish feel
+    const ts = timeScaleFromSlider(parseFloat($("timeScale").value)/1000);
+
+    $("v_timeScale").textContent = `${fmt(ts,2)}×`;
+    $("v_Tamb").textContent = `${fmt(P.TambC,1)} °C`;
+    $("v_Pamb").textContent = prettyPressure(P.Pamb);
+    $("v_Pint").textContent = prettyPressure(P.Pint);
+    $("v_wind").textContent = `${fmt(P.wind,1)} m/s`;
+    $("v_dust").textContent = `${Math.round(P.dust*100)} %`;
+    $("v_g").textContent = `${fmt(P.g,3)} m/s²`;
+
+    $("v_module").textContent = `${fmt(P.module_mm,1)} mm`;
+    $("v_face").textContent = `${fmt(P.face_mm,0)} mm`;
+    $("v_backlash").textContent = `${fmt(P.backlash_arcmin,2)} arc‑min`;
+    $("v_kmesh").textContent = `${fmt(P.kmesh_kNm_per_rad,0)} kN·m/rad`;
+    $("v_cmesh").textContent = `${fmt(P.cmesh_Nms_per_rad,0)} N·m·s/rad`;
+
+    $("v_tmax").textContent = `${fmt(P.tMax,0)} Nm`;
+    $("v_loadT").textContent = `${fmt(P.loadT,0)} Nm`;
+    $("v_loadB").textContent = `${fmt(P.loadB,2)} Nms/rad`;
+
+    $("v_J1").textContent = `${fmt(P.J1,3)} kg·m²`;
+    $("v_J2").textContent = `${fmt(P.J2,3)} kg·m²`;
+
+    $("v_eps").textContent = `${fmt(P.eps,2)}`;
+    $("v_thMass").textContent = `${fmt(P.thMass,1)} kg`;
+    $("v_area").textContent = `${fmt(P.area,2)} m²`;
+    $("v_oilFill").textContent = `${Math.round(P.oilFill*100)} %`;
+
+    // cmd label depends on mode
+    if (P.inMode === "speed"){
+      const targetRpm = P.cmd*60;
+      $("v_cmd").textContent = `${Math.round(targetRpm)} rpm`;
+    } else {
+      $("v_cmd").textContent = `${fmt(P.cmdNm,1)} Nm`;
+    }
+
+    // Sealed -> enable Pint slider
+    $("Pint").disabled = !P.sealed;
+  }
+
+  function timeScaleFromSlider(t01){
+    // Map [0..1] to [0.25x .. 10x] smoothly
+    const a = Math.log(0.25), b = Math.log(10.0);
+    return Math.exp(a + t01*(b-a));
+  }
+
+  // -------------------------
+  // Simulation loop
+  // -------------------------
+  let running = false;
+  let last = performance.now();
+  let acc = 0;
+  let sampleAcc = 0;
+
+  function loop(now){
+    const P = getParams();
+    const dtReal = clamp((now - last)/1000, 0, 0.05);
+    last = now;
+
+    const ts = timeScaleFromSlider(parseFloat($("timeScale").value)/1000);
+    const dt = dtReal * ts;
+
+    // Fixed-step integration for stability
+    const dtFixed = 0.0010; // 1 kHz
+    acc += dt;
+
+    let steps = 0;
+    const maxSteps = 400;
+    while (acc >= dtFixed && steps < maxSteps){
+      sim.step(dtFixed, P);
+      acc -= dtFixed;
+      steps++;
+      sampleAcc += dtFixed;
+      if (sampleAcc >= (1/60)){
+        sim.sample();
+        sampleAcc = 0;
+      }
+    }
+
+    // Render
+    render();
+    drawPlot();
+    updateReadout();
+    updateUiValues();
+    updateAudio();
+
+    if (running) requestAnimationFrame(loop);
+  }
+
+  // -------------------------
+  // Presets
+  // -------------------------
+  function setMarsPreset(){
+    $("Tamb").value = -60;
+    $("Pamb").value = Math.round(logSliderFromPressure(610) * 1000);
+    $("wind").value = 6;
+    $("dust").value = 35;
+    $("g").value = 3.711;
+
+    $("sealed").checked = false;
+    $("Pint").value = Math.round(logSliderFromPressure(101325) * 1000);
+
+    $("lube").value = "PFPE";
+    $("oilFill").value = 55;
+
+    $("inMode").value = "speed";
+    $("cmd").value = 55;     // ~3300 rpm
+    $("tmax").value = 120;
+    $("loadT").value = 85;
+    $("loadB").value = 0.28;
+
+    $("N1").value = 18;
+    $("N2").value = 54;
+    $("module").value = 3.0;
+    $("face").value = 18;
+    $("backlash").value = 0.14;
+
+    $("kmesh").value = 120;
+    $("cmesh").value = 170;
+
+    $("eps").value = 0.82;
+    $("thMass").value = 16;
+    $("area").value = 0.36;
+
+    updateUiValues();
+  }
+
+  function setEarthPreset(){
+    $("Tamb").value = 20;
+    $("Pamb").value = Math.round(logSliderFromPressure(101325) * 1000);
+    $("wind").value = 2;
+    $("dust").value = 5;
+    $("g").value = 9.81;
+
+    $("sealed").checked = true;
+    $("Pint").value = Math.round(logSliderFromPressure(101325) * 1000);
+
+    $("lube").value = "VG68";
+    $("oilFill").value = 65;
+
+    $("inMode").value = "speed";
+    $("cmd").value = 55;
+    $("tmax").value = 120;
+    $("loadT").value = 90;
+    $("loadB").value = 0.30;
+
+    updateUiValues();
+  }
+
+  function setVacPreset(){
+    $("Tamb").value = -40;
+    $("Pamb").value = Math.round(logSliderFromPressure(3) * 1000);
+    $("wind").value = 0.0;
+    $("dust").value = 15;
+    $("g").value = 3.711;
+
+    $("sealed").checked = false;
+    $("lube").value = "MOLY";
+    $("oilFill").value = 0;
+
+    $("inMode").value = "speed";
+    $("cmd").value = 45;
+    $("tmax").value = 90;
+    $("loadT").value = 60;
+    $("loadB").value = 0.16;
+
+    updateUiValues();
+  }
+
+  // -------------------------
+  // UI wiring
+  // -------------------------
+  $("btnStart").addEventListener("click", () => {
+    running = !running;
+    $("btnStart").textContent = running ? "Pause" : "Start";
+    if (running){
+      last = performance.now();
+      requestAnimationFrame(loop);
+    } else {
+      // fade audio
+      if (audio) audio.gain.gain.setTargetAtTime(0.0, audio.ctxA.currentTime, 0.08);
+    }
+  });
+
+  $("btnReset").addEventListener("click", () => {
+    sim.reset(true);
+    render(); drawPlot(); updateReadout();
+  });
+
+  $("btnMars").addEventListener("click", () => { setMarsPreset(); sim.reset(true); });
+  $("btnEarth").addEventListener("click", () => { setEarthPreset(); sim.reset(true); });
+  $("btnVac").addEventListener("click", () => { setVacPreset(); sim.reset(true); });
+
+  // Any change -> update UI values immediately
+  const ids = ["timeScale","plotMode","sound","Tamb","Pamb","wind","dust","g","sealed","Pint","lube","eps","thMass","area","oilFill",
+               "N1","N2","module","face","backlash","kmesh","cmesh","inMode","cmd","tmax","loadT","loadB","J1","J2"];
+  ids.forEach(id=>{
+    const el = $(id);
+    el.addEventListener("input", () => {
+      updateUiValues();
+      // If sound toggled on, initialize in response to user action
+      if (id === "sound" && el.checked) ensureAudio();
+    });
+    el.addEventListener("change", () => updateUiValues());
+  });
+
+  // Start with Mars preset
+  setMarsPreset();
+  updateUiValues();
+  render();
+  drawPlot();
+  updateReadout();
+
+})();
+</script>
+</body>
+</html>
