@@ -3516,6 +3516,193 @@ if (navigator.connection) {
     });
   });
 </script>
+<script>
+/*
+  NPUAccel (drop-in):
+  - Best-effort acceleration for ONNX inference via WebNN (NPU/GPU/CPU), otherwise WASM CPU.
+  - Does NOT alter your site’s existing GPU usage (WebGL/WebGPU/etc).
+  - Auto-fallback on runtime failure via runSafe().
+
+  Usage:
+    const s = await NPUAccel.createSession('/models/model.onnx', { prefer: 'npu' });
+    // Safer: automatically falls back if the accelerated path errors during run
+    const out = await s.runSafe({ input: new s.ort.Tensor('float32', data, shape) });
+    console.log(s.backend, out);
+
+  Notes:
+    - This accelerates ONNX model inference only (not arbitrary JS).
+    - WASM threads require crossOriginIsolated (COOP/COEP). If not, it uses 1 thread.
+*/
+
+(() => {
+  "use strict";
+
+  const ORT_VERSION = "1.23.0"; // choose a known-good version for your deployment
+  const ORT_BASE = `https://cdn.jsdelivr.net/npm/onnxruntime-web@${ORT_VERSION}/dist/`;
+
+  function canUseWasmThreads() {
+    return typeof crossOriginIsolated === "boolean" && crossOriginIsolated === true;
+  }
+  function defaultThreads() {
+    const hc = (navigator && navigator.hardwareConcurrency) ? navigator.hardwareConcurrency : 4;
+    if (!canUseWasmThreads()) return 1;
+    return Math.max(1, Math.min(8, hc - 1));
+  }
+
+  function loadORTOnce() {
+    return new Promise((resolve, reject) => {
+      if (window.ort && window.ort.InferenceSession) return resolve(window.ort);
+
+      const src = `${ORT_BASE}ort.min.js`;
+      const existing = document.querySelector(`script[data-npuaccel-ort="1"][src="${src}"]`);
+      if (existing) {
+        existing.addEventListener("load", () => resolve(window.ort), { once: true });
+        existing.addEventListener("error", () => reject(new Error("Failed to load ONNX Runtime Web.")), { once: true });
+        return;
+      }
+
+      const s = document.createElement("script");
+      s.async = true;
+      s.src = src;
+      s.dataset.npuaccelOrt = "1";
+      s.onload = () => resolve(window.ort);
+      s.onerror = () => reject(new Error("Failed to load ONNX Runtime Web."));
+      document.head.appendChild(s);
+    });
+  }
+
+  async function ensureORTConfigured() {
+    const ort = await loadORTOnce();
+
+    // Don’t stomp user config if already set
+    ort.env.wasm.wasmPaths = ort.env.wasm.wasmPaths || ORT_BASE;
+    if (!ort.env.wasm.numThreads) ort.env.wasm.numThreads = defaultThreads();
+
+    return ort;
+  }
+
+  async function tryCreate(ort, model, options) {
+    return await ort.InferenceSession.create(model, options);
+  }
+
+  async function createWithFallbacks(ort, model, cfg) {
+    const prefer = (cfg.prefer || "npu").toLowerCase(); // "npu" | "gpu" | "cpu"
+    const allowGpuFallback = cfg.allowGpuFallback !== false;
+    const allowWebNNCpuFallback = cfg.allowWebNNCpuFallback !== false;
+
+    // Helper: returns {session, backend, providerOptionsUsed}
+    const attemptList = [];
+
+    if (prefer === "npu") {
+      attemptList.push({
+        backend: "webnn:npu",
+        opts: { executionProviders: [{ name: "webnn", deviceType: "npu", powerPreference: "high-performance" }] }
+      });
+      if (allowGpuFallback) {
+        attemptList.push({
+          backend: "webnn:gpu",
+          opts: { executionProviders: [{ name: "webnn", deviceType: "gpu", powerPreference: "high-performance" }] }
+        });
+      }
+      if (allowWebNNCpuFallback) {
+        attemptList.push({
+          backend: "webnn:cpu",
+          opts: { executionProviders: [{ name: "webnn", deviceType: "cpu" }] }
+        });
+      }
+    } else if (prefer === "gpu") {
+      attemptList.push({
+        backend: "webnn:gpu",
+        opts: { executionProviders: [{ name: "webnn", deviceType: "gpu", powerPreference: "high-performance" }] }
+      });
+      if (allowWebNNCpuFallback) {
+        attemptList.push({
+          backend: "webnn:cpu",
+          opts: { executionProviders: [{ name: "webnn", deviceType: "cpu" }] }
+        });
+      }
+    } else if (prefer === "cpu") {
+      attemptList.push({
+        backend: "webnn:cpu",
+        opts: { executionProviders: [{ name: "webnn", deviceType: "cpu" }] }
+      });
+    }
+
+    // Always-final fallback: WASM CPU (most compatible)
+    attemptList.push({ backend: "wasm:cpu", opts: { executionProviders: ["wasm"] } });
+
+    let lastErr = null;
+    for (const a of attemptList) {
+      try {
+        const session = await tryCreate(ort, model, a.opts);
+        return { session, backend: a.backend, providerOptionsUsed: a.opts };
+      } catch (e) {
+        lastErr = e;
+      }
+    }
+    throw lastErr || new Error("Failed to create inference session.");
+  }
+
+  const NPUAccel = {
+    backend: "uninitialized",
+    lastError: null,
+    ortVersion: ORT_VERSION,
+
+    async createSession(model, cfg = {}) {
+      this.lastError = null;
+
+      const ort = await ensureORTConfigured();
+      let created = await createWithFallbacks(ort, model, cfg);
+
+      this.backend = created.backend;
+
+      // Wrapper object returned to the caller
+      const wrapper = {
+        ort,
+        session: created.session,
+        backend: created.backend,
+
+        // Normal run (may throw if provider fails)
+        run: (feeds, fetches, runOptions) => wrapper.session.run(feeds, fetches, runOptions),
+
+        // Safe run: if a GPU/NPU/WebNN run fails, rebuild on WASM and retry once.
+        async runSafe(feeds, fetches, runOptions) {
+          try {
+            return await wrapper.session.run(feeds, fetches, runOptions);
+          } catch (e) {
+            // If already on WASM, don’t loop forever
+            if (String(wrapper.backend).startsWith("wasm")) throw e;
+
+            // Rebuild session forcing WASM CPU and retry once
+            try {
+              const rebuilt = await tryCreate(ort, model, { executionProviders: ["wasm"] });
+              wrapper.session = rebuilt;
+              wrapper.backend = "wasm:cpu";
+              NPUAccel.backend = "wasm:cpu";
+              NPUAccel.lastError = e;
+              return await wrapper.session.run(feeds, fetches, runOptions);
+            } catch (e2) {
+              // If rebuild also fails, surface the original and the rebuild failure context
+              const err = new Error("Accelerated run failed; WASM fallback also failed.");
+              err.cause = { acceleratedError: e, fallbackError: e2 };
+              throw err;
+            }
+          }
+        }
+      };
+
+      return wrapper;
+    }
+  };
+
+  Object.defineProperty(window, "NPUAccel", {
+    value: NPUAccel,
+    writable: false,
+    configurable: false,
+    enumerable: true
+  });
+})();
+</script>
 
 </body>
 </html>
