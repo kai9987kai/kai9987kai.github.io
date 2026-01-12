@@ -3716,6 +3716,206 @@ if (navigator.connection) {
   }
 })();
 </script>
+<script>
+/*
+  AccelEP: GPU+CPU preferred → NPU+CPU fallback → CPU-only fallback
+  Scope: ONNX model inference in browser via onnxruntime-web.
+  NOTE: This does NOT accelerate arbitrary website code; it accelerates ONNX inference workloads. :contentReference[oaicite:4]{index=4}
+
+  Usage:
+    const sess = await AccelEP.createSession('/models/model.onnx', {
+      powerPreference: 'high-performance', // hint for webgpu/webnn
+      wasmNumThreads: 0,                   // 0=auto; >1 requires crossOriginIsolated true
+      enable: { webgpu:true, webnn:true, webgl:true, wasm:true, npu:true }
+    });
+
+    const ort = sess.ort;
+    const x = new ort.Tensor('float32', inputData, [1,3,224,224]);
+    const out = await sess.runSafe({ input: x });
+    console.log(sess.backend, sess.executionProviders, out);
+
+  Returned object:
+    { ort, session, backend, executionProviders, run(), runSafe() }
+*/
+(() => {
+  "use strict";
+
+  // Latest stable shown on official releases and npm metadata (pin for determinism). :contentReference[oaicite:5]{index=5}
+  const ORT_VERSION_DEFAULT = "1.23.2";
+  const ORT_BASE_DEFAULT = (v) => `https://cdn.jsdelivr.net/npm/onnxruntime-web@${v}/dist/`;
+  const ORT_SCRIPT_DEFAULT = (v) => `${ORT_BASE_DEFAULT(v)}ort.all.min.js`; // includes more EPs in script-tag usage :contentReference[oaicite:6]{index=6}
+
+  const AccelEP = {
+    /**
+     * Create best session using policy:
+     * GPU+CPU: webgpu+wasm → webnn(gpu)+wasm → webgl+wasm
+     * then NPU+CPU: webnn(npu)+wasm
+     * then CPU: wasm
+     */
+    async createSession(model, cfg = {}) {
+      const resolved = normalizeCfg(cfg);
+      const ort = await loadOrt(resolved);
+
+      configureOrtEnv(ort, resolved);
+
+      const candidates = buildCandidates(resolved);
+
+      let lastErr = null;
+      for (const c of candidates) {
+        try {
+          const session = await ort.InferenceSession.create(model, { executionProviders: c.executionProviders });
+          return makeWrapper({ ort, model, session, backend: c.backend, eps: c.executionProviders });
+        } catch (e) {
+          lastErr = e;
+        }
+      }
+      const err = new Error("AccelEP: Failed to create any compatible session configuration.");
+      err.cause = lastErr;
+      throw err;
+    }
+  };
+
+  Object.defineProperty(window, "AccelEP", {
+    value: AccelEP,
+    writable: false,
+    configurable: false,
+    enumerable: true
+  });
+
+  // ---------------- internals ----------------
+
+  function normalizeCfg(cfg) {
+    const ortVersion = cfg.ortVersion || ORT_VERSION_DEFAULT;
+    const ortBase = cfg.ortBase || ORT_BASE_DEFAULT(ortVersion);
+    const ortScript = cfg.ortScript || ORT_SCRIPT_DEFAULT(ortVersion);
+
+    const enable = Object.assign(
+      { webgpu: true, webnn: true, webgl: true, wasm: true, npu: true },
+      cfg.enable || {}
+    );
+
+    return {
+      ortVersion,
+      ortBase,
+      ortScript,
+      enable,
+      powerPreference: cfg.powerPreference || "high-performance",
+      wasmNumThreads: (typeof cfg.wasmNumThreads === "number") ? cfg.wasmNumThreads : undefined,
+      logLevel: cfg.logLevel || undefined // e.g. 'verbose' for debugging
+    };
+  }
+
+  function loadOrt(cfg) {
+    return new Promise((resolve, reject) => {
+      if (window.ort && window.ort.InferenceSession) return resolve(window.ort);
+
+      const existing = document.querySelector(`script[data-accel-ep="1"][src="${cfg.ortScript}"]`);
+      if (existing) {
+        existing.addEventListener("load", () => resolve(window.ort), { once: true });
+        existing.addEventListener("error", () => reject(new Error("AccelEP: Failed to load onnxruntime-web script.")), { once: true });
+        return;
+      }
+
+      const s = document.createElement("script");
+      s.async = true;
+      s.src = cfg.ortScript;
+      s.dataset.accelEp = "1";
+      s.onload = () => resolve(window.ort);
+      s.onerror = () => reject(new Error("AccelEP: Failed to load onnxruntime-web script."));
+      document.head.appendChild(s);
+    });
+  }
+
+  function isCrossOriginIsolated() {
+    return typeof crossOriginIsolated === "boolean" && crossOriginIsolated === true;
+  }
+
+  // Important: ort.env is documented as an object you read and then mutate;
+  // do not assign ort.env = ... :contentReference[oaicite:7]{index=7}
+  function configureOrtEnv(ort, cfg) {
+    const env = ort.env;
+
+    // Ensure ORT can find its WASM assets when loaded from CDN
+    // (Especially relevant for the JSEP wasm used by WebGPU/WebNN.)
+    if (env && env.wasm) {
+      // Only set if not already set by the host page
+      if (!env.wasm.wasmPaths) env.wasm.wasmPaths = cfg.ortBase;
+    }
+
+    if (cfg.logLevel && env) {
+      try { env.logLevel = cfg.logLevel; } catch (_) {}
+    }
+
+    // Threading: if caller specifies >1 threads but crossOriginIsolated is false, clamp to 1.
+    // (WASM threads require cross-origin isolation.)
+    if (typeof cfg.wasmNumThreads === "number" && env && env.wasm) {
+      const desired = cfg.wasmNumThreads;
+      const effective = (!isCrossOriginIsolated() && desired > 1) ? 1 : desired;
+      try { env.wasm.numThreads = effective; } catch (_) {}
+    }
+
+    // WebGPU hint (global)
+    if (env) {
+      try {
+        env.webgpu = env.webgpu || {};
+        if (!env.webgpu.powerPreference) env.webgpu.powerPreference = cfg.powerPreference;
+      } catch (_) {}
+    }
+  }
+
+  function buildCandidates(cfg) {
+    const pp = cfg.powerPreference;
+    const e = cfg.enable;
+
+    const list = [];
+
+    // 1) GPU+CPU combos (requested priority)
+    if (e.webgpu) list.push({ backend: "webgpu+wasm", executionProviders: ["webgpu", "wasm"] });
+    if (e.webnn) list.push({ backend: "webnn(gpu)+wasm", executionProviders: [{ name: "webnn", deviceType: "gpu", powerPreference: pp }, "wasm"] });
+    if (e.webgl) list.push({ backend: "webgl+wasm", executionProviders: ["webgl", "wasm"] });
+
+    // 2) NPU+CPU (only if GPU+CPU all failed)
+    if (e.webnn && e.npu) list.push({ backend: "webnn(npu)+wasm", executionProviders: [{ name: "webnn", deviceType: "npu", powerPreference: pp }, "wasm"] });
+
+    // 3) CPU-only fallback
+    if (e.wasm) list.push({ backend: "wasm", executionProviders: ["wasm"] });
+
+    // Ensure the list never accidentally contains a non-working EP chain without WASM fallback,
+    // and preserve your strict priority order.
+    return list;
+  }
+
+  function makeWrapper({ ort, model, session, backend, eps }) {
+    return {
+      ort,
+      model,
+      session,
+      backend,
+      executionProviders: eps,
+
+      run: (feeds, fetches, runOptions) => session.run(feeds, fetches, runOptions),
+
+      // If the chosen accelerated path fails at runtime (device lost, driver reset, etc.),
+      // rebuild a WASM-only session and retry once.
+      async runSafe(feeds, fetches, runOptions) {
+        try {
+          return await session.run(feeds, fetches, runOptions);
+        } catch (e) {
+          if (backend === "wasm") throw e;
+          const wasmSession = await ort.InferenceSession.create(model, { executionProviders: ["wasm"] });
+          session = wasmSession;
+          backend = "wasm";
+          eps = ["wasm"];
+          this.session = wasmSession;
+          this.backend = "wasm";
+          this.executionProviders = ["wasm"];
+          return await wasmSession.run(feeds, fetches, runOptions);
+        }
+      }
+    };
+  }
+})();
+</script>
 
 </body>
 </html>
