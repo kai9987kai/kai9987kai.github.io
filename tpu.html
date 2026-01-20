@@ -1,0 +1,527 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Best Available: WebGPU → WebNN CPU → WASM (Clean)</title>
+  <style>
+    :root { color-scheme: dark; }
+    body { margin:0; font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; background:#0b0d10; color:#e8eef7; }
+    header { padding:16px 20px; border-bottom:1px solid #1a2230; background:#0c1118; }
+    h1 { margin:0 0 6px 0; font-size:18px; }
+    .sub { opacity:.85; font-size:13px; line-height:1.35; }
+    main { padding:16px 20px; display:grid; gap:14px; grid-template-columns:560px 1fr; align-items:start; }
+    @media (max-width:1150px){ main{ grid-template-columns:1fr; } }
+    .card { border:1px solid #1a2230; border-radius:14px; background:#0c1118; overflow:hidden; }
+    .card h2 { margin:0; padding:12px 14px; font-size:14px; border-bottom:1px solid #1a2230; background:#0b121c; }
+    .card .content { padding:12px 14px; display:grid; gap:10px; }
+    .row { display:grid; grid-template-columns:220px 1fr; gap:10px; align-items:center; }
+    label { font-size:12px; opacity:.9; }
+    select, input[type="number"], input[type="range"], input[type="file"], input[type="text"], button {
+      width:100%; background:#0b0f16; color:#e8eef7; border:1px solid #243149; border-radius:10px;
+      padding:10px; font-size:12px; box-sizing:border-box;
+    }
+    input[type="file"]{ padding:9px 10px; }
+    input[type="range"]{ padding:8px 10px; }
+    button { cursor:pointer; font-weight:650; }
+    button.primary { background:#123155; border-color:#1f4a7c; }
+    button.danger { background:#4a1820; border-color:#7c2431; }
+    button:disabled { opacity:.55; cursor:not-allowed; }
+    .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace; }
+    .kv { display:grid; gap:6px; }
+    .kv .line { display:grid; grid-template-columns:220px 1fr; gap:10px; font-size:12px; }
+    .kv .k { opacity:.8; }
+    .kv .v { overflow-wrap:anywhere; }
+    textarea {
+      width:100%; min-height:680px; resize:vertical; background:#070a0f; color:#d6e6ff;
+      border:1px solid #1a2230; border-radius:12px; padding:12px; font-size:12px; line-height:1.35; box-sizing:border-box;
+    }
+    .warn{ color:#ffdf7e; font-size:12px; line-height:1.35; }
+  </style>
+</head>
+<body>
+<header>
+  <h1>Best Available Acceleration (Clean)</h1>
+  <div class="sub">
+    Chooses: WebGPU (if adapter exists) → WebNN CPU → WASM. WebNN NPU/GPU are skipped on purpose.
+    If you’re inside an iframe and WebGPU says “No available adapters”, run top-level. :contentReference[oaicite:2]{index=2}
+  </div>
+</header>
+
+<main>
+  <section class="card">
+    <h2>Controls</h2>
+    <div class="content">
+      <div class="row">
+        <label>Model</label>
+        <select id="modelSel">
+          <option value="squeezenet" selected>SqueezeNet 1.1 (remote)</option>
+          <option value="mobilenet">MobileNetV2 (remote)</option>
+          <option value="upload">Upload local .onnx</option>
+        </select>
+      </div>
+
+      <div class="row" id="uploadRow" style="display:none;">
+        <label>Local .onnx</label>
+        <input id="fileIn" type="file" accept=".onnx,application/octet-stream" />
+      </div>
+
+      <div class="row">
+        <label>Manual dims (upload)</label>
+        <input id="manualDims" type="text" value="1,3,224,224" />
+      </div>
+
+      <div class="row">
+        <label>Ticks/sec</label>
+        <input id="ticks" type="range" min="1" max="60" value="12" />
+      </div>
+
+      <div class="row">
+        <label>Runs per tick (serial)</label>
+        <input id="runsPerTick" type="number" min="1" max="4096" value="16" />
+      </div>
+
+      <div class="row">
+        <label>WASM threads (0=auto)</label>
+        <input id="threads" type="number" min="0" max="32" value="0" />
+      </div>
+
+      <div class="grid2">
+        <button id="btnInit" class="primary">1) Init + Create Session</button>
+        <button id="btnBench" disabled>2) Bench 30 Runs</button>
+      </div>
+
+      <div class="grid2">
+        <button id="btnStart" class="primary" disabled>3) Start Sustained Load</button>
+        <button id="btnStop" class="danger" disabled>Stop</button>
+      </div>
+
+      <div class="kv">
+        <div class="line"><div class="k">Status</div><div class="v mono" id="status">idle</div></div>
+        <div class="line"><div class="k">Selected backend</div><div class="v mono" id="selBackend">-</div></div>
+        <div class="line"><div class="k">EP chain</div><div class="v mono" id="selEPs">-</div></div>
+        <div class="line"><div class="k">Avg latency</div><div class="v mono" id="lat">-</div></div>
+        <div class="line"><div class="k">Throughput</div><div class="v mono" id="tput">-</div></div>
+      </div>
+
+      <div class="warn" id="warn"></div>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>Log</h2>
+    <div class="content">
+      <textarea id="log" class="mono" readonly spellcheck="false"></textarea>
+    </div>
+  </section>
+</main>
+
+<script>
+(() => {
+  "use strict";
+
+  // ORT pinned
+  const ORT_VERSION = "1.23.2";
+  const ORT_SOURCES = [
+    { name:"jsDelivr", base:`https://cdn.jsdelivr.net/npm/onnxruntime-web@${ORT_VERSION}/dist/`, script:`https://cdn.jsdelivr.net/npm/onnxruntime-web@${ORT_VERSION}/dist/ort.all.min.js` },
+    { name:"unpkg",    base:`https://unpkg.com/onnxruntime-web@${ORT_VERSION}/dist/`,         script:`https://unpkg.com/onnxruntime-web@${ORT_VERSION}/dist/ort.all.min.js` }
+  ];
+
+  const MODEL_URLS = {
+    squeezenet: [
+      "https://huggingface.co/onnxmodelzoo/squeezenet1.1-7/resolve/main/squeezenet1.1-7.onnx",
+      "https://raw.githubusercontent.com/onnx/models/main/validated/vision/classification/squeezenet/model/squeezenet1.1-7.onnx"
+    ],
+    mobilenet: [
+      "https://huggingface.co/onnxmodelzoo/mobilenetv2-10/resolve/main/mobilenetv2-10.onnx",
+      "https://raw.githubusercontent.com/onnx/models/main/validated/vision/classification/mobilenet/model/mobilenetv2-10.onnx"
+    ]
+  };
+
+  // Fixed input (avoid metadata so WebGL is always safe if it ever gets used)
+  const FIXED_INPUT = {
+    squeezenet: { type:"float32", dims:[1,3,224,224] },
+    mobilenet:  { type:"float32", dims:[1,3,224,224] }
+  };
+
+  // UI
+  const $ = (id) => document.getElementById(id);
+  const modelSel = $("modelSel");
+  const uploadRow = $("uploadRow");
+  const fileIn = $("fileIn");
+  const manualDims = $("manualDims");
+  const ticksEl = $("ticks");
+  const runsPerTickEl = $("runsPerTick");
+  const threadsEl = $("threads");
+
+  const btnInit = $("btnInit");
+  const btnBench = $("btnBench");
+  const btnStart = $("btnStart");
+  const btnStop = $("btnStop");
+
+  const statusEl = $("status");
+  const selBackendEl = $("selBackend");
+  const selEPsEl = $("selEPs");
+  const latEl = $("lat");
+  const tputEl = $("tput");
+  const warnEl = $("warn");
+  const logEl = $("log");
+
+  modelSel.addEventListener("change", () => {
+    uploadRow.style.display = (modelSel.value === "upload") ? "grid" : "none";
+  });
+
+  const log = (s="") => { logEl.value += s + "\n"; logEl.scrollTop = logEl.scrollHeight; console.log(s); };
+  const hr = () => log("-".repeat(96));
+  const setStatus = (s) => (statusEl.textContent = s);
+  const setWarn = (s) => (warnEl.textContent = s || "");
+
+  const isCOI = () => (typeof crossOriginIsolated === "boolean" && crossOriginIsolated === true);
+
+  function disableButtons(init, bench, start, stop) {
+    btnInit.disabled = init;
+    btnBench.disabled = bench;
+    btnStart.disabled = start;
+    btnStop.disabled = stop;
+  }
+
+  // State
+  let ort = null, ortBaseUsed = null, ortSrcUsed = null;
+  let modelBytes = null;
+  let session = null;
+  let selected = { backend:"-", eps:[] };
+  let inputName = null;
+  let inputTensor = null;
+
+  // Serial queue to prevent overlapping session.run()
+  let runQueue = Promise.resolve();
+
+  // Runtime loop
+  let running = false;
+  let timer = null;
+
+  async function loadORT() {
+    if (window.ort && window.ort.InferenceSession) { ortSrcUsed = "preloaded"; return window.ort; }
+    for (const src of ORT_SOURCES) {
+      try {
+        await new Promise((resolve, reject) => {
+          const s = document.createElement("script");
+          s.async = true;
+          s.src = src.script;
+          s.onload = resolve;
+          s.onerror = () => reject(new Error(`Failed to load ORT from ${src.name}`));
+          document.head.appendChild(s);
+        });
+        if (window.ort && window.ort.InferenceSession) {
+          ortSrcUsed = src.name;
+          ortBaseUsed = src.base;
+          return window.ort;
+        }
+      } catch (e) {
+        log(`[ORT] ${src.name} failed: ${e.message || String(e)}`);
+      }
+    }
+    throw new Error("Failed to load onnxruntime-web.");
+  }
+
+  function configureEnv(wasmThreads) {
+    const env = ort.env; // getter
+    if (env?.wasm && !env.wasm.wasmPaths && ortBaseUsed) env.wasm.wasmPaths = ortBaseUsed;
+    if (env?.wasm && typeof wasmThreads === "number") {
+      const desired = wasmThreads;
+      const effective = (!isCOI() && desired > 1) ? 1 : desired;
+      env.wasm.numThreads = effective;
+    }
+  }
+
+  async function probeWebGPUAdapter() {
+    if (!navigator.gpu) return { ok:false, reason:"navigator.gpu missing" };
+    try {
+      const adapter = await navigator.gpu.requestAdapter({ powerPreference: "high-performance" });
+      if (!adapter) return { ok:false, reason:"requestAdapter() returned null (No available adapters)" };
+      return { ok:true, reason: adapter.label || "(adapter acquired)" };
+    } catch (e) {
+      return { ok:false, reason: e.message || String(e) };
+    }
+  }
+
+  async function probeWebNNCpu() {
+    if (!navigator.ml || typeof navigator.ml.createContext !== "function") return { ok:false, reason:"navigator.ml.createContext missing" };
+    try {
+      await navigator.ml.createContext({ deviceType: "cpu" });
+      return { ok:true, reason:"" };
+    } catch (e) {
+      return { ok:false, reason: e.message || String(e) };
+    }
+  }
+
+  async function fetchModelWithFallback(urls) {
+    const MIN_BYTES = 256 * 1024;
+    let lastErr = null;
+    for (const url of urls) {
+      try {
+        const t0 = performance.now();
+        const res = await fetch(url, { mode:"cors", cache:"no-store", redirect:"follow", headers:{ "Accept":"application/octet-stream" } });
+        const buf = await res.arrayBuffer();
+        const ms = (performance.now() - t0).toFixed(2);
+        log(`fetch_try: ${url}`);
+        log(`  http: ${res.status} ok=${res.ok} time=${ms}ms bytes=${buf.byteLength}`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        if (buf.byteLength < MIN_BYTES) throw new Error(`Too small (${buf.byteLength})`);
+        return { url, buf };
+      } catch (e) {
+        lastErr = e;
+        log(`  FAIL: ${e.message || String(e)}`);
+      }
+    }
+    throw lastErr || new Error("All model URLs failed.");
+  }
+
+  function parseDims(text) {
+    const parts = String(text||"").split(",").map(s=>s.trim()).filter(Boolean);
+    if (!parts.length) throw new Error("Manual dims empty.");
+    return parts.map(p => {
+      const v = Number(p);
+      if (!Number.isFinite(v) || v <= 0 || (v|0) !== v) throw new Error(`Invalid dim: ${p}`);
+      return v|0;
+    });
+  }
+  function product(dims){ let p=1; for(const d of dims)p*=d; return p; }
+  function buildFloat32(len){
+    const a = new Float32Array(len);
+    let x = 0x12345678 >>> 0;
+    for (let i=0;i<len;i++){ x = (Math.imul(x,1664525)+1013904223)>>>0; a[i]=x/4294967296; }
+    return a;
+  }
+  function buildInput(modelKey){
+    const spec = FIXED_INPUT[modelKey] ? FIXED_INPUT[modelKey] : { type:"float32", dims: parseDims(manualDims.value) };
+    const len = product(spec.dims);
+    const data = buildFloat32(len);
+    inputName = session.inputNames?.[0] || "input";
+    return new ort.Tensor(spec.type, data, spec.dims);
+  }
+
+  async function createSessionBest(modelKey, wasmThreads) {
+    configureEnv(wasmThreads);
+
+    // Decide provider chain honestly:
+    const webgpu = await probeWebGPUAdapter();
+    const webnnCpu = await probeWebNNCpu();
+
+    log("[PROBES]");
+    log(`WebGPU adapter: ${webgpu.ok ? "OK" : "FAIL"} ${webgpu.reason}`);
+    log(`WebNN CPU:      ${webnnCpu.ok ? "OK" : "FAIL"} ${webnnCpu.reason}`);
+    hr();
+
+    const candidates = [];
+    if (webgpu.ok) candidates.push({ backend:"webgpu+wasm", eps:["webgpu","wasm"] });
+    if (webnnCpu.ok) candidates.push({ backend:"webnn(cpu)+wasm", eps:[{ name:"webnn", deviceType:"cpu" },"wasm"] });
+    candidates.push({ backend:"wasm", eps:["wasm"] });
+
+    log("[EP CANDIDATES]");
+    for (const c of candidates) log(`  ${c.backend} eps=${JSON.stringify(c.eps)}`);
+    hr();
+
+    let lastErr = null;
+    for (const c of candidates) {
+      try {
+        const t0 = performance.now();
+        const s = await ort.InferenceSession.create(modelBytes, { executionProviders: c.eps });
+        const ms = (performance.now()-t0).toFixed(2);
+        selected = c;
+        log(`selected_backend: ${c.backend}`);
+        log(`selected_EPs: ${JSON.stringify(c.eps)}`);
+        log(`create: PASS (${ms}ms)`);
+        hr();
+        return s;
+      } catch (e) {
+        lastErr = e;
+        log(`${c.backend}: FAIL (${e.message || String(e)})`);
+      }
+    }
+    throw lastErr || new Error("No viable EP chain.");
+  }
+
+  function updateUI() {
+    selBackendEl.textContent = selected.backend || "-";
+    selEPsEl.textContent = JSON.stringify(selected.eps || []);
+  }
+
+  function enqueue(fn) {
+    runQueue = runQueue.then(fn, fn);
+    return runQueue;
+  }
+
+  async function runSafeSerial(modelKey) {
+    return enqueue(async () => {
+      try {
+        const feeds = {}; feeds[inputName] = inputTensor;
+        return await session.run(feeds);
+      } catch (e) {
+        log(`[RUNTIME] run failed: ${e.message || String(e)}`);
+        if (selected.backend !== "wasm") {
+          log("[RUNTIME] Falling back to wasm-only session and retrying...");
+          session = await ort.InferenceSession.create(modelBytes, { executionProviders:["wasm"] });
+          selected = { backend:"wasm", eps:["wasm"] };
+          inputTensor = buildInput(modelKey);
+          updateUI();
+          const feeds2 = {}; feeds2[inputName] = inputTensor;
+          return await session.run(feeds2);
+        }
+        throw e;
+      }
+    });
+  }
+
+  btnInit.addEventListener("click", async () => {
+    setWarn("");
+    logEl.value = "";
+    setStatus("initializing");
+    disableButtons(true,true,true,true);
+
+    try {
+      log("INIT");
+      log(`time: ${new Date().toISOString()}`);
+      log(`[ENV] secure=${String(isSecureContext)} COI=${String(isCOI())} navigator.gpu=${String(!!navigator.gpu)} navigator.ml=${String(!!navigator.ml)}`);
+      hr();
+
+      ort = await loadORT();
+
+      const modelKey = modelSel.value;
+      const wasmThreads = Number(threadsEl.value || 0);
+
+      if (modelKey === "upload") {
+        const f = fileIn.files?.[0];
+        if (!f) throw new Error("No local .onnx selected.");
+        modelBytes = await f.arrayBuffer();
+        log(`[MODEL] local: ${f.name} bytes=${modelBytes.byteLength}`);
+      } else {
+        const r = await fetchModelWithFallback(MODEL_URLS[modelKey]);
+        modelBytes = r.buf;
+        log(`[MODEL] remote: ${r.url} bytes=${modelBytes.byteLength}`);
+      }
+      hr();
+
+      session = await createSessionBest(modelKey, wasmThreads);
+      inputTensor = buildInput(modelKey);
+
+      runQueue = Promise.resolve(); // reset queue for new session
+      updateUI();
+
+      // Informational note (clean)
+      if (navigator.ml) {
+        setWarn("Note: Your system allows WebNN CPU; WebNN NPU/GPU are unavailable per your createContext probes.");
+      }
+
+      log("[SANITY RUN]");
+      const t0 = performance.now();
+      const out = await runSafeSerial(modelKey);
+      const dt = (performance.now()-t0).toFixed(2);
+      log(`run: OK (${dt}ms) outputs=${Object.keys(out||{}).join(", ") || "(none)"}`);
+      hr();
+
+      setStatus("ready");
+      disableButtons(false,false,false,true);
+      btnBench.disabled = false;
+      btnStart.disabled = false;
+
+    } catch (e) {
+      setStatus("failed");
+      setWarn(e.message || String(e));
+      log(`FATAL: ${e.message || String(e)}`);
+      disableButtons(false,true,true,true);
+    }
+  });
+
+  btnBench.addEventListener("click", async () => {
+    if (!session) return;
+    btnBench.disabled = true;
+    setStatus("benchmarking");
+    try {
+      const modelKey = modelSel.value;
+      const N = 30;
+      log("[BENCH]");
+      log(`iterations: ${N}`);
+      let total = 0;
+      for (let i=0;i<N;i++){
+        const t0 = performance.now();
+        await runSafeSerial(modelKey);
+        total += (performance.now()-t0);
+      }
+      const avg = total/N;
+      latEl.textContent = `${avg.toFixed(2)} ms`;
+      tputEl.textContent = `${(1000/avg).toFixed(1)} runs/sec`;
+      log(`avg_ms: ${avg.toFixed(3)}`);
+      hr();
+      setStatus("ready");
+    } catch (e) {
+      setStatus("failed");
+      setWarn(e.message || String(e));
+      log(`BENCH FAIL: ${e.message || String(e)}`);
+    } finally {
+      btnBench.disabled = false;
+    }
+  });
+
+  btnStart.addEventListener("click", async () => {
+    if (!session || running) return;
+    running = true;
+    setStatus("running");
+    disableButtons(true,true,true,false);
+
+    const modelKey = modelSel.value;
+    let count=0, latSum=0, latCount=0, tStart=performance.now();
+
+    const fail = (e) => {
+      running = false;
+      if (timer) clearTimeout(timer);
+      timer = null;
+      setStatus("failed");
+      setWarn(e.message || String(e));
+      log(`[SUSTAINED] FAIL: ${e.message || String(e)}`);
+      disableButtons(false,false,false,true);
+    };
+
+    const loop = async () => {
+      if (!running) return;
+      const ticks = Math.max(1, Number(ticksEl.value || 12));
+      const rpt = Math.max(1, Math.min(4096, Number(runsPerTickEl.value || 16)));
+      const intervalMs = 1000 / ticks;
+
+      for (let i=0;i<rpt;i++){
+        const t0 = performance.now();
+        await runSafeSerial(modelKey);
+        const dt = performance.now()-t0;
+        latSum += dt; latCount++; count++;
+      }
+
+      const now = performance.now();
+      const elapsed = (now - tStart)/1000;
+      if (elapsed >= 1.0){
+        const avg = latSum / Math.max(1,latCount);
+        latEl.textContent = `${avg.toFixed(2)} ms (rolling)`;
+        tputEl.textContent = `${(count/elapsed).toFixed(1)} runs/sec (rolling)`;
+        count=0; latSum=0; latCount=0; tStart=now;
+      }
+
+      timer = setTimeout(() => loop().catch(fail), intervalMs);
+    };
+
+    log("[SUSTAINED LOAD]");
+    log("Increase Runs per tick to raise load. Calls are serialized to avoid ORT session overlap errors.");
+    hr();
+    loop().catch(fail);
+  });
+
+  btnStop.addEventListener("click", () => {
+    running = false;
+    if (timer) clearTimeout(timer);
+    timer = null;
+    setStatus("stopped");
+    disableButtons(false,false,false,true);
+  });
+})();
+</script>
+</body>
+</html>
