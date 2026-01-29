@@ -1,0 +1,422 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CIFAR-100 ONNX Predictor</title>
+    <!-- ONNX Runtime Web -->
+    <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/ort.min.js"></script>
+    <style>
+        :root {
+            --primary: #8b5cf6;
+            --primary-hover: #7c3aed;
+            --bg: #0f172a;
+            --surface: #1e293b;
+            --text: #f8fafc;
+            --accent: #38bdf8;
+        }
+
+        body {
+            font-family: 'Inter', system-ui, -apple-system, sans-serif;
+            background-color: var(--bg);
+            color: var(--text);
+            margin: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+            padding-bottom: 3rem;
+        }
+
+        header {
+            width: 100%;
+            padding: 2.5rem 1rem;
+            background: var(--surface);
+            text-align: center;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2);
+            margin-bottom: 2rem;
+        }
+
+        h1 {
+            margin: 0;
+            font-size: 2.5rem;
+            background: linear-gradient(135deg, #a78bfa, #38bdf8);
+            -webkit-background-clip: text;
+            background-clip: text;
+            -webkit-text-fill-color: transparent;
+            font-weight: 800;
+        }
+
+        .subtitle {
+            color: #94a3b8;
+            margin-top: 0.5rem;
+            font-size: 1.1rem;
+        }
+
+        .container {
+            display: flex;
+            flex-direction: column;
+            gap: 2rem;
+            max-width: 800px;
+            width: 90%;
+        }
+
+        .card {
+            background: var(--surface);
+            padding: 2rem;
+            border-radius: 1.5rem;
+            border: 1px solid #334155;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            transition: transform 0.2s;
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+        }
+
+        #drop-zone {
+            width: 100%;
+            height: 250px;
+            border: 2px dashed #475569;
+            border-radius: 1rem;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            cursor: pointer;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            background: rgba(30, 41, 59, 0.5);
+            text-align: center;
+        }
+
+        #drop-zone:hover {
+            border-color: var(--primary);
+            background: rgba(139, 92, 246, 0.05);
+            transform: translateY(-2px);
+        }
+
+        #drop-zone p {
+            color: #94a3b8;
+            margin: 1rem 0 0 0;
+        }
+
+        .icon {
+            font-size: 3rem;
+            color: var(--primary);
+        }
+
+        #preview {
+            max-width: 100%;
+            max-height: 300px;
+            margin-bottom: 1.5rem;
+            border-radius: 1rem;
+            display: none;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+        }
+
+        .btn-container {
+            display: flex;
+            gap: 1rem;
+            width: 100%;
+            justify-content: center;
+        }
+
+        button {
+            background: var(--primary);
+            color: white;
+            border: none;
+            padding: 0.875rem 2.5rem;
+            border-radius: 0.75rem;
+            cursor: pointer;
+            font-weight: 700;
+            font-size: 1.1rem;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        button:hover {
+            background: var(--primary-hover);
+            transform: scale(1.02);
+            box-shadow: 0 0 20px rgba(139, 92, 246, 0.4);
+        }
+
+        button:disabled {
+            background: #475569;
+            cursor: not-allowed;
+            transform: none;
+            opacity: 0.7;
+        }
+
+        .status-box {
+            width: 100%;
+            margin-top: 1.5rem;
+            padding: 1.25rem;
+            background: #0f172a;
+            border-radius: 1rem;
+            text-align: center;
+            border: 1px solid #334155;
+        }
+
+        .label {
+            font-size: 0.85rem;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            color: #94a3b8;
+            margin-bottom: 0.5rem;
+            font-weight: 600;
+        }
+
+        .prediction {
+            font-size: 2rem;
+            font-weight: 800;
+            color: var(--accent);
+            margin: 0.5rem 0;
+            text-shadow: 0 0 10px rgba(56, 189, 248, 0.3);
+        }
+
+        .confidence-bar-bg {
+            width: 100%;
+            height: 8px;
+            background: #334155;
+            border-radius: 4px;
+            margin-top: 1rem;
+            overflow: hidden;
+        }
+
+        .confidence-bar-fill {
+            height: 100%;
+            background: var(--accent);
+            width: 0%;
+            transition: width 0.5s ease-out;
+        }
+
+        .loading-spinner {
+            width: 20px;
+            height: 20px;
+            border: 3px solid rgba(255, 255, 255, 0.3);
+            border-top: 3px solid white;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            display: none;
+        }
+
+        @keyframes spin {
+            0% {
+                transform: rotate(0deg);
+            }
+
+            100% {
+                transform: rotate(360deg);
+            }
+        }
+
+        #status-text {
+            font-size: 0.9rem;
+            color: #94a3b8;
+            margin-top: 0.5rem;
+        }
+    </style>
+</head>
+
+<body>
+    <header>
+        <h1>CIFAR-100 Predictor</h1>
+        <p class="subtitle">Broad-spectrum image classification in your browser</p>
+    </header>
+
+    <div class="container">
+        <div class="card">
+            <div id="drop-zone">
+                <div class="icon">🖼️</div>
+                <p>Click or drag an image here to analyze</p>
+                <input type="file" id="file-input" accept="image/*" style="display: none;">
+            </div>
+            <img id="preview" alt="Preview">
+
+            <div class="btn-container">
+                <button id="classify-btn" onclick="predict()">
+                    <div class="loading-spinner" id="btn-spinner"></div>
+                    <span id="btn-text">Analyze Image</span>
+                </button>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="label" id="model-status-label">Model Status</div>
+            <div id="status-text">Initializing ONNX Runtime...</div>
+
+            <div class="status-box">
+                <div class="label">Top Prediction</div>
+                <div class="prediction" id="prediction">-</div>
+                <div id="confidence-text" style="color: #94a3b8; font-size: 1rem;">Upload an image to start</div>
+                <div class="confidence-bar-bg">
+                    <div class="confidence-bar-fill" id="confidence-bar"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Configuration
+        const MODEL_URL = 'https://raw.githubusercontent.com/kai9987kai/CIFAR-100/main/cifar100_model.onnx';
+
+        const CIFAR100_CLASSES = [
+            'apple', 'aquarium_fish', 'baby', 'bear', 'beaver', 'bed', 'bee', 'beetle',
+            'bicycle', 'bottle', 'bowl', 'boy', 'bridge', 'bus', 'butterfly', 'camel',
+            'can', 'castle', 'caterpillar', 'cattle', 'chair', 'chimpanzee', 'clock',
+            'cloud', 'cockroach', 'couch', 'crab', 'crocodile', 'cup', 'dinosaur',
+            'dolphin', 'elephant', 'flatfish', 'forest', 'fox', 'girl', 'hamster',
+            'house', 'kangaroo', 'keyboard', 'lamp', 'lawn_mower', 'leopard', 'lion',
+            'lizard', 'lobster', 'man', 'maple_tree', 'motorcycle', 'mountain', 'mouse',
+            'mushroom', 'oak_tree', 'orange', 'orchid', 'otter', 'palm_tree', 'pear',
+            'pickup_truck', 'pine_tree', 'plain', 'plate', 'poppy', 'porcupine',
+            'possum', 'rabbit', 'raccoon', 'ray', 'road', 'rocket', 'rose',
+            'sea', 'seal', 'shark', 'shrew', 'skunk', 'skyscraper', 'snail', 'snake',
+            'spider', 'squirrel', 'streetcar', 'sunflower', 'sweet_pepper', 'table',
+            'tank', 'telephone', 'television', 'tiger', 'tractor', 'train', 'trout',
+            'tulip', 'turtle', 'wardrobe', 'whale', 'willow_tree', 'wolf', 'woman', 'worm'
+        ];
+
+        let session = null;
+        const dropZone = document.getElementById('drop-zone');
+        const fileInput = document.getElementById('file-input');
+        const preview = document.getElementById('preview');
+        const classifyBtn = document.getElementById('classify-btn');
+        const btnText = document.getElementById('btn-text');
+        const btnSpinner = document.getElementById('btn-spinner');
+        const statusText = document.getElementById('status-text');
+        const predictionEl = document.getElementById('prediction');
+        const confidenceEl = document.getElementById('confidence-text');
+        const confidenceBar = document.getElementById('confidence-bar');
+
+        let currentFile = null;
+
+        // Initialize ONNX Session
+        async function init() {
+            try {
+                statusText.innerText = "Downloading model from GitHub (approx. 45MB)...";
+                classifyBtn.disabled = true;
+
+                // Fetch the model as an ArrayBuffer
+                const res = await fetch(MODEL_URL);
+                if (!res.ok) throw new Error("Failed to download model");
+                const modelBuffer = await res.arrayBuffer();
+
+                statusText.innerText = "Initializing Inference Engine...";
+                session = await ort.InferenceSession.create(modelBuffer, { executionProviders: ['wasm'] });
+
+                statusText.innerText = "System Ready";
+                statusText.style.color = "#10b981";
+                classifyBtn.disabled = false;
+            } catch (e) {
+                statusText.innerText = "Error loading model: " + e.message;
+                statusText.style.color = "#ef4444";
+                console.error(e);
+            }
+        }
+
+        // File handling
+        dropZone.onclick = () => fileInput.click();
+        dropZone.ondragover = (e) => { e.preventDefault(); dropZone.style.borderColor = '#8b5cf6'; };
+        dropZone.ondragleave = () => { dropZone.style.borderColor = '#475569'; };
+        dropZone.ondrop = (e) => {
+            e.preventDefault();
+            dropZone.style.borderColor = '#475569';
+            if (e.dataTransfer.files.length) handleFile(e.dataTransfer.files[0]);
+        };
+
+        fileInput.onchange = (e) => {
+            if (e.target.files.length) handleFile(e.target.files[0]);
+        };
+
+        function handleFile(file) {
+            currentFile = file;
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                preview.src = e.target.result;
+                preview.style.display = 'block';
+                dropZone.style.display = 'none';
+            };
+            reader.readAsDataURL(file);
+
+            // Reset results
+            predictionEl.innerText = "-";
+            confidenceEl.innerText = "Ready to analyze";
+            confidenceBar.style.width = "0%";
+        }
+
+        // Preprocessing
+        async function preprocess(imgElement) {
+            const canvas = document.createElement('canvas');
+            canvas.width = 224;
+            canvas.height = 224;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(imgElement, 0, 0, 224, 224);
+
+            const imageData = ctx.getImageData(0, 0, 224, 224);
+            const { data } = imageData;
+
+            // ImageNet Normalization
+            const mean = [0.485, 0.456, 0.406];
+            const std = [0.229, 0.224, 0.225];
+
+            const floatData = new Float32Array(3 * 224 * 224);
+            for (let i = 0; i < 224 * 224; i++) {
+                floatData[i] = (data[i * 4] / 255 - mean[0]) / std[0]; // R
+                floatData[i + 224 * 224] = (data[i * 4 + 1] / 255 - mean[1]) / std[1]; // G
+                floatData[i + 2 * 224 * 224] = (data[i * 4 + 2] / 255 - mean[2]) / std[2]; // B
+            }
+            return new ort.Tensor('float32', floatData, [1, 3, 224, 224]);
+        }
+
+        // Inference
+        async function predict() {
+            if (!session || !currentFile) return;
+
+            classifyBtn.disabled = true;
+            btnText.innerText = "Analyzing...";
+            btnSpinner.style.display = "block";
+
+            try {
+                const tensorInput = await preprocess(preview);
+                const results = await session.run({ input: tensorInput });
+                const output = results.output.data;
+
+                // Softmax and top-1
+                const exp = output.map(Math.exp);
+                const sum = exp.reduce((a, b) => a + b, 0);
+                const probs = exp.map(x => x / sum);
+
+                let maxIdx = 0;
+                let maxProb = 0;
+                for (let i = 0; i < probs.length; i++) {
+                    if (probs[i] > maxProb) {
+                        maxProb = probs[i];
+                        maxIdx = i;
+                    }
+                }
+
+                const className = CIFAR100_CLASSES[maxIdx].replace(/_/g, ' ');
+                const confidence = maxProb * 100;
+
+                predictionEl.innerText = className.toUpperCase();
+                confidenceEl.innerText = `Confidence: ${confidence.toFixed(1)}%`;
+                confidenceBar.style.width = `${confidence}%`;
+
+            } catch (e) {
+                alert("Prediction Error: " + e.message);
+                console.error(e);
+            } finally {
+                classifyBtn.disabled = false;
+                btnText.innerText = "Analyze Image";
+                btnSpinner.style.display = "none";
+            }
+        }
+
+        init();
+    </script>
+</body>
+
+</html>
