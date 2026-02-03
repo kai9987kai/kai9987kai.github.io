@@ -1,0 +1,1263 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Neuro-Visual Synth Lab (Single File)</title>
+<style>
+  :root{
+    --bg:#07090f;
+    --panel:rgba(20,24,36,.78);
+    --panel2:rgba(20,24,36,.55);
+    --text:#eaf0ff;
+    --muted:#aab3cf;
+    --accent:#8cf5ff;
+    --accent2:#b6ff6a;
+    --danger:#ff6a8c;
+    --border:rgba(140,245,255,.22);
+    --shadow: 0 18px 50px rgba(0,0,0,.55);
+    --radius:18px;
+    --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+    --sans: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji","Segoe UI Emoji";
+  }
+  html,body{
+    height:100%;
+    margin:0;
+    background: radial-gradient(1200px 700px at 20% 10%, rgba(140,245,255,.10), transparent 60%),
+                radial-gradient(900px 600px at 75% 15%, rgba(182,255,106,.08), transparent 60%),
+                radial-gradient(1000px 700px at 55% 85%, rgba(255,106,140,.06), transparent 60%),
+                var(--bg);
+    overflow:hidden;
+    color:var(--text);
+    font-family:var(--sans);
+  }
+  #c{
+    position:fixed;
+    inset:0;
+    width:100vw;
+    height:100vh;
+    display:block;
+    image-rendering: pixelated;
+  }
+  .hud{
+    position:fixed;
+    left:18px;
+    top:18px;
+    width:min(520px, calc(100vw - 36px));
+    background: linear-gradient(180deg, rgba(20,24,36,.86), rgba(20,24,36,.62));
+    border:1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    overflow:hidden;
+  }
+  .hud header{
+    padding:14px 14px 10px;
+    border-bottom:1px solid rgba(255,255,255,.06);
+    display:flex;
+    gap:12px;
+    align-items:flex-start;
+    justify-content:space-between;
+  }
+  .title{
+    display:flex;
+    flex-direction:column;
+    gap:4px;
+  }
+  .title h1{
+    margin:0;
+    font-size:14px;
+    letter-spacing:.12em;
+    text-transform:uppercase;
+    color:rgba(234,240,255,.92);
+  }
+  .title .sub{
+    font-size:12px;
+    color:var(--muted);
+    line-height:1.35;
+  }
+  .pill{
+    font-family:var(--mono);
+    font-size:11px;
+    padding:7px 10px;
+    border-radius:999px;
+    border:1px solid rgba(255,255,255,.10);
+    background:rgba(0,0,0,.18);
+    color:rgba(234,240,255,.85);
+    display:flex;
+    align-items:center;
+    gap:8px;
+    user-select:none;
+    white-space:nowrap;
+  }
+  .dot{
+    width:8px;height:8px;border-radius:50%;
+    background:var(--danger);
+    box-shadow:0 0 18px rgba(255,106,140,.55);
+  }
+  .dot.on{
+    background:var(--accent2);
+    box-shadow:0 0 18px rgba(182,255,106,.55);
+  }
+
+  .tabs{
+    display:flex;
+    gap:8px;
+    padding:10px 14px 0;
+    flex-wrap:wrap;
+  }
+  .tab{
+    flex:1 0 auto;
+    padding:8px 10px;
+    border-radius:12px;
+    border:1px solid rgba(255,255,255,.10);
+    background:rgba(0,0,0,.16);
+    color:rgba(234,240,255,.85);
+    font-size:12px;
+    cursor:pointer;
+    user-select:none;
+    transition: transform .08s ease, border-color .15s ease, background .15s ease;
+  }
+  .tab:hover{ transform: translateY(-1px); border-color: rgba(140,245,255,.30); }
+  .tab.active{
+    background:rgba(140,245,255,.12);
+    border-color: rgba(140,245,255,.38);
+    color:rgba(234,240,255,.95);
+  }
+
+  .panel{
+    padding:12px 14px 14px;
+    display:none;
+  }
+  .panel.active{ display:block; }
+  .grid{
+    display:grid;
+    grid-template-columns: 1fr 1fr;
+    gap:10px;
+  }
+  .full{ grid-column: 1 / -1; }
+
+  .row{
+    padding:10px 10px 9px;
+    border-radius:14px;
+    border:1px solid rgba(255,255,255,.08);
+    background:rgba(0,0,0,.12);
+  }
+  .row label{
+    display:flex;
+    align-items:baseline;
+    justify-content:space-between;
+    gap:10px;
+    font-size:12px;
+    color:rgba(234,240,255,.88);
+    margin-bottom:8px;
+  }
+  .row label span{
+    font-family:var(--mono);
+    font-size:11px;
+    color:rgba(234,240,255,.70);
+  }
+  input[type="range"]{
+    width:100%;
+    accent-color: var(--accent);
+  }
+  select, button{
+    width:100%;
+    border-radius:14px;
+    border:1px solid rgba(255,255,255,.12);
+    background:rgba(0,0,0,.18);
+    color:rgba(234,240,255,.90);
+    padding:10px 10px;
+    font-size:12px;
+    outline:none;
+  }
+  button{
+    cursor:pointer;
+    transition: transform .08s ease, border-color .15s ease, background .15s ease;
+  }
+  button:hover{ transform: translateY(-1px); border-color: rgba(140,245,255,.35); background:rgba(140,245,255,.10); }
+  button.danger:hover{ border-color: rgba(255,106,140,.45); background:rgba(255,106,140,.10); }
+  .mini{
+    font-size:11px;
+    color:var(--muted);
+    line-height:1.45;
+    margin-top:8px;
+  }
+  .challenge{
+    font-family:var(--mono);
+    font-size:11px;
+    white-space:pre-wrap;
+    line-height:1.55;
+    color:rgba(234,240,255,.86);
+  }
+  .kbd{
+    font-family:var(--mono);
+    padding:2px 6px;
+    border-radius:8px;
+    border:1px solid rgba(255,255,255,.12);
+    background:rgba(0,0,0,.22);
+  }
+
+  .footerHint{
+    position:fixed;
+    right:18px;
+    bottom:18px;
+    background:rgba(20,24,36,.50);
+    border:1px solid rgba(255,255,255,.08);
+    border-radius:999px;
+    padding:9px 12px;
+    font-size:11px;
+    color:rgba(234,240,255,.72);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    user-select:none;
+  }
+
+  @media (max-width: 560px){
+    .grid{ grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+
+<div class="hud" id="hud">
+  <header>
+    <div class="title">
+      <h1>Neuro-Visual Synth Lab</h1>
+      <div class="sub">
+        Audio + visuals + random challenges. Press <span class="kbd">Space</span> to toggle audio,
+        <span class="kbd">V</span> to cycle visuals.
+      </div>
+    </div>
+    <div class="pill">
+      <div class="dot" id="audDot"></div>
+      <div id="audState">AUDIO: OFF</div>
+    </div>
+  </header>
+
+  <div class="tabs">
+    <div class="tab active" data-tab="audio">Audio</div>
+    <div class="tab" data-tab="visual">Visual</div>
+    <div class="tab" data-tab="challenge">Challenge</div>
+  </div>
+
+  <div class="panel active" id="panel-audio">
+    <div class="grid">
+      <div class="row full">
+        <button id="btnToggleAudio">Start Audio Engine (requires click)</button>
+        <div class="mini">
+          Keep volume low. If you feel discomfort, stop immediately.
+        </div>
+      </div>
+
+      <div class="row">
+        <label>Master Volume <span id="vVol">0.10</span></label>
+        <input id="vol" type="range" min="0" max="0.6" step="0.001" value="0.10"/>
+      </div>
+
+      <div class="row">
+        <label>Carrier Frequency (Hz) <span id="vCarrier">220</span></label>
+        <input id="carrier" type="range" min="40" max="800" step="1" value="220"/>
+      </div>
+
+      <div class="row">
+        <label>Binaural Beat Δ (Hz) <span id="vBeat">8.0</span></label>
+        <input id="beat" type="range" min="0" max="40" step="0.1" value="8.0"/>
+        <div class="mini">Left = carrier − Δ/2, Right = carrier + Δ/2</div>
+      </div>
+
+      <div class="row">
+        <label>Noise Mix <span id="vNoise">0.20</span></label>
+        <input id="noise" type="range" min="0" max="1" step="0.01" value="0.20"/>
+        <div class="mini">Adds shaped wideband noise for texture.</div>
+      </div>
+
+      <div class="row">
+        <label>Isochronic Pulse (Hz) <span id="vPulse">10.0</span></label>
+        <input id="pulse" type="range" min="0" max="40" step="0.1" value="10.0"/>
+        <div class="mini">0 = off. Uses AM gating (square-ish) over the master.</div>
+      </div>
+
+      <div class="row">
+        <label>Stereo Width <span id="vWidth">1.00</span></label>
+        <input id="width" type="range" min="0" max="1" step="0.01" value="1.00"/>
+        <div class="mini">0 collapses toward mono; 1 is full L/R split.</div>
+      </div>
+
+      <div class="row full">
+        <label style="margin-bottom:8px;">Quick Presets <span style="font-family:var(--mono); font-size:11px; opacity:.85;">(safe-ish starting points)</span></label>
+        <div class="grid">
+          <button id="pFocus">Focus-ish (Δ=12, pulse=0)</button>
+          <button id="pChill">Chill (Δ=6, pulse=8)</button>
+          <button id="pDeep">Deep (Δ=2, pulse=4)</button>
+          <button class="danger" id="pStop">Stop Audio</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel" id="panel-visual">
+    <div class="grid">
+      <div class="row full">
+        <label>Visual Mode <span id="vModeName">Plasma</span></label>
+        <select id="mode">
+          <option value="plasma">Plasma (fast)</option>
+          <option value="boids">Boids (emergent)</option>
+          <option value="rd">Reaction-Diffusion (organic)</option>
+        </select>
+        <div class="mini">Tip: cycle with <span class="kbd">V</span>.</div>
+      </div>
+
+      <div class="row">
+        <label>Visual Speed <span id="vSpeed">1.00</span></label>
+        <input id="speed" type="range" min="0.1" max="3" step="0.01" value="1.00"/>
+      </div>
+
+      <div class="row">
+        <label>Intensity <span id="vIntensity">1.00</span></label>
+        <input id="intensity" type="range" min="0.3" max="2.5" step="0.01" value="1.00"/>
+      </div>
+
+      <div class="row">
+        <label>Boids Count <span id="vBoids">240</span></label>
+        <input id="boidsCount" type="range" min="40" max="800" step="10" value="240"/>
+        <div class="mini">Only affects Boids mode.</div>
+      </div>
+
+      <div class="row">
+        <label>RD Iter/Frame <span id="vRDIters">10</span></label>
+        <input id="rdIters" type="range" min="1" max="35" step="1" value="10"/>
+        <div class="mini">Only affects Reaction-Diffusion.</div>
+      </div>
+
+      <div class="row">
+        <label>RD Feed <span id="vFeed">0.0367</span></label>
+        <input id="feed" type="range" min="0.01" max="0.08" step="0.0001" value="0.0367"/>
+      </div>
+
+      <div class="row">
+        <label>RD Kill <span id="vKill">0.0649</span></label>
+        <input id="kill" type="range" min="0.03" max="0.075" step="0.0001" value="0.0649"/>
+      </div>
+
+      <div class="row full">
+        <button id="btnPulseInk">“Ink Drop” (inject disturbance)</button>
+        <div class="mini">Click canvas to inject too. Try different feed/kill ranges for wildly different patterns.</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel" id="panel-challenge">
+    <div class="grid">
+      <div class="row full">
+        <button id="btnNewChallenge">Generate Random Challenge</button>
+        <div class="mini">These are tuned to your usual vibe: 3D, Unity, web labs, procedural sims.</div>
+      </div>
+      <div class="row full">
+        <label>Challenge Output <span id="vSeed">seed: —</span></label>
+        <div class="challenge" id="challengeOut">Hit “Generate Random Challenge”.</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="footerHint">Canvas: click to inject • Keys: Space=Audio • V=Visual</div>
+
+<script>
+(() => {
+  "use strict";
+
+  // ---------- Utilities ----------
+  const clamp = (x, a, b) => Math.min(b, Math.max(a, x));
+  const lerp  = (a, b, t) => a + (b - a) * t;
+  const rand  = (a=0, b=1) => a + Math.random() * (b - a);
+  const TAU = Math.PI * 2;
+
+  // Deterministic-ish seed for challenges
+  function makeSeed(){
+    const t = performance.now() | 0;
+    const r = (Math.random() * 1e9) | 0;
+    return (t ^ r) >>> 0;
+  }
+  function mulberry32(seed){
+    return function(){
+      let t = seed += 0x6D2B79F5;
+      t = Math.imul(t ^ (t >>> 15), t | 1);
+      t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+
+  // ---------- DOM ----------
+  const c = document.getElementById("c");
+  const ctx2d = c.getContext("2d", { alpha:false, desynchronized:true });
+
+  const audDot = document.getElementById("audDot");
+  const audState = document.getElementById("audState");
+  const btnToggleAudio = document.getElementById("btnToggleAudio");
+
+  const vol = document.getElementById("vol");
+  const carrier = document.getElementById("carrier");
+  const beat = document.getElementById("beat");
+  const noise = document.getElementById("noise");
+  const pulse = document.getElementById("pulse");
+  const width = document.getElementById("width");
+
+  const vVol = document.getElementById("vVol");
+  const vCarrier = document.getElementById("vCarrier");
+  const vBeat = document.getElementById("vBeat");
+  const vNoise = document.getElementById("vNoise");
+  const vPulse = document.getElementById("vPulse");
+  const vWidth = document.getElementById("vWidth");
+
+  const pFocus = document.getElementById("pFocus");
+  const pChill = document.getElementById("pChill");
+  const pDeep = document.getElementById("pDeep");
+  const pStop = document.getElementById("pStop");
+
+  const modeSel = document.getElementById("mode");
+  const vModeName = document.getElementById("vModeName");
+  const speed = document.getElementById("speed");
+  const intensity = document.getElementById("intensity");
+  const boidsCount = document.getElementById("boidsCount");
+  const rdIters = document.getElementById("rdIters");
+  const feed = document.getElementById("feed");
+  const kill = document.getElementById("kill");
+  const btnPulseInk = document.getElementById("btnPulseInk");
+
+  const vSpeed = document.getElementById("vSpeed");
+  const vIntensity = document.getElementById("vIntensity");
+  const vBoids = document.getElementById("vBoids");
+  const vRDIters = document.getElementById("vRDIters");
+  const vFeed = document.getElementById("vFeed");
+  const vKill = document.getElementById("vKill");
+
+  const btnNewChallenge = document.getElementById("btnNewChallenge");
+  const challengeOut = document.getElementById("challengeOut");
+  const vSeed = document.getElementById("vSeed");
+
+  // Tabs
+  document.querySelectorAll(".tab").forEach(tab => {
+    tab.addEventListener("click", () => {
+      document.querySelectorAll(".tab").forEach(t => t.classList.remove("active"));
+      document.querySelectorAll(".panel").forEach(p => p.classList.remove("active"));
+      tab.classList.add("active");
+      document.getElementById("panel-" + tab.dataset.tab).classList.add("active");
+    });
+  });
+
+  // ---------- Canvas Resize ----------
+  let W=0,H=0, DPR=1;
+  function resize(){
+    DPR = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
+    W = Math.floor(window.innerWidth * DPR);
+    H = Math.floor(window.innerHeight * DPR);
+    c.width = W;
+    c.height = H;
+    c.style.width = window.innerWidth + "px";
+    c.style.height = window.innerHeight + "px";
+    ctx2d.imageSmoothingEnabled = false;
+    boidsRebuild(); // ensure boids wrap correctly
+    rdInit();       // restart RD grid for new scale
+  }
+  window.addEventListener("resize", resize);
+
+  // ---------- Audio Engine ----------
+  let audio = {
+    ctx: null,
+    running: false,
+    master: null,
+    limiter: null,
+    merger: null,
+    leftGain: null,
+    rightGain: null,
+    oscL: null,
+    oscR: null,
+    noiseSrc: null,
+    noiseGain: null,
+    noiseFilter: null,
+    pulseOsc: null,
+    pulseGain: null,
+    pulseDepth: null,
+  };
+
+  function setAudioUI(on){
+    audDot.classList.toggle("on", on);
+    audState.textContent = "AUDIO: " + (on ? "ON" : "OFF");
+    btnToggleAudio.textContent = on ? "Stop Audio Engine" : "Start Audio Engine (requires click)";
+  }
+
+  function buildNoiseBuffer(actx){
+    // 2 seconds of noise looping
+    const len = actx.sampleRate * 2;
+    const buf = actx.createBuffer(1, len, actx.sampleRate);
+    const data = buf.getChannelData(0);
+    // Simple Voss-ish colored noise approximation: cumulative + highpass (cheap)
+    let b0=0,b1=0,b2=0,b3=0,b4=0,b5=0,b6=0;
+    for(let i=0;i<len;i++){
+      const white = Math.random()*2-1;
+      b0 = 0.99886*b0 + white*0.0555179;
+      b1 = 0.99332*b1 + white*0.0750759;
+      b2 = 0.96900*b2 + white*0.1538520;
+      b3 = 0.86650*b3 + white*0.3104856;
+      b4 = 0.55000*b4 + white*0.5329522;
+      b5 = -0.7616*b5 - white*0.0168980;
+      const pink = b0+b1+b2+b3+b4+b5+b6 + white*0.5362;
+      b6 = white*0.115926;
+      data[i] = clamp(pink*0.12, -1, 1);
+    }
+    return buf;
+  }
+
+  function audioStart(){
+    if(audio.running) return;
+
+    const actx = audio.ctx || new (window.AudioContext || window.webkitAudioContext)();
+    audio.ctx = actx;
+
+    // Graph:
+    // oscL -> leftGain -> merger(0)
+    // oscR -> rightGain -> merger(1)
+    // noise -> filter -> noiseGain -> master
+    // merger -> master -> limiter -> destination
+    //
+    // Pulse (isochronic): pulseOsc -> pulseGain -> (modulates master.gain)
+
+    const master = actx.createGain();
+    const limiter = actx.createDynamicsCompressor();
+    limiter.threshold.value = -18;
+    limiter.knee.value = 24;
+    limiter.ratio.value = 12;
+    limiter.attack.value = 0.003;
+    limiter.release.value = 0.12;
+
+    const merger = actx.createChannelMerger(2);
+
+    const leftGain = actx.createGain();
+    const rightGain = actx.createGain();
+
+    const oscL = actx.createOscillator();
+    const oscR = actx.createOscillator();
+    oscL.type = "sine";
+    oscR.type = "sine";
+
+    // Noise chain
+    const noiseSrc = actx.createBufferSource();
+    noiseSrc.buffer = buildNoiseBuffer(actx);
+    noiseSrc.loop = true;
+
+    const noiseFilter = actx.createBiquadFilter();
+    noiseFilter.type = "bandpass";
+    noiseFilter.frequency.value = 900;
+    noiseFilter.Q.value = 0.8;
+
+    const noiseGain = actx.createGain();
+    noiseGain.gain.value = 0.0;
+
+    // Pulse (AM gating)
+    const pulseOsc = actx.createOscillator();
+    pulseOsc.type = "square";
+    const pulseGain = actx.createGain(); // scales LFO to depth
+    const pulseDepth = actx.createConstantSource(); // base level
+    pulseDepth.offset.value = 1.0; // baseline multiplier
+
+    // Connect oscillators
+    oscL.connect(leftGain);
+    oscR.connect(rightGain);
+
+    leftGain.connect(merger, 0, 0);
+    rightGain.connect(merger, 0, 1);
+
+    merger.connect(master);
+    noiseSrc.connect(noiseFilter);
+    noiseFilter.connect(noiseGain);
+    noiseGain.connect(master);
+
+    // Pulse: square wave (-1..1) -> gain(depth) -> add to base (constant) -> master.gain
+    pulseOsc.connect(pulseGain);
+    pulseGain.connect(master.gain);
+    pulseDepth.connect(master.gain);
+
+    master.connect(limiter);
+    limiter.connect(actx.destination);
+
+    // Start nodes
+    const now = actx.currentTime;
+    oscL.start(now);
+    oscR.start(now);
+    noiseSrc.start(now);
+    pulseOsc.start(now);
+    pulseDepth.start(now);
+
+    audio.master = master;
+    audio.limiter = limiter;
+    audio.merger = merger;
+    audio.leftGain = leftGain;
+    audio.rightGain = rightGain;
+    audio.oscL = oscL;
+    audio.oscR = oscR;
+    audio.noiseSrc = noiseSrc;
+    audio.noiseGain = noiseGain;
+    audio.noiseFilter = noiseFilter;
+    audio.pulseOsc = pulseOsc;
+    audio.pulseGain = pulseGain;
+    audio.pulseDepth = pulseDepth;
+
+    audio.running = true;
+    setAudioUI(true);
+    applyAudioParams(true);
+
+    // Ensure resumed
+    if(actx.state !== "running"){
+      actx.resume().catch(()=>{});
+    }
+  }
+
+  function audioStop(){
+    if(!audio.running) return;
+    const actx = audio.ctx;
+    const safeStop = (node) => { try{ node && node.stop && node.stop(); }catch(e){} };
+
+    safeStop(audio.oscL);
+    safeStop(audio.oscR);
+    safeStop(audio.noiseSrc);
+    safeStop(audio.pulseOsc);
+    safeStop(audio.pulseDepth);
+
+    // Disconnect
+    [audio.oscL, audio.oscR, audio.noiseSrc, audio.pulseOsc, audio.pulseDepth,
+     audio.leftGain, audio.rightGain, audio.noiseGain, audio.noiseFilter,
+     audio.merger, audio.master, audio.limiter].forEach(n => { try{ n && n.disconnect(); }catch(e){} });
+
+    audio.running = false;
+    setAudioUI(false);
+
+    // Keep context for quick restart (optional), but suspend to save CPU
+    if(actx && actx.state === "running"){
+      actx.suspend().catch(()=>{});
+    }
+  }
+
+  function applyAudioParams(slew=false){
+    // Update UI readouts
+    vVol.textContent = Number(vol.value).toFixed(2);
+    vCarrier.textContent = String((carrier.value|0));
+    vBeat.textContent = Number(beat.value).toFixed(1);
+    vNoise.textContent = Number(noise.value).toFixed(2);
+    vPulse.textContent = Number(pulse.value).toFixed(1);
+    vWidth.textContent = Number(width.value).toFixed(2);
+
+    if(!audio.running) return;
+    const actx = audio.ctx;
+    const now = actx.currentTime;
+    const t = slew ? 0.03 : 0.0;
+
+    const car = Number(carrier.value);
+    const d = Number(beat.value);
+    const w = Number(width.value);
+
+    const fL = Math.max(1, car - d*0.5);
+    const fR = Math.max(1, car + d*0.5);
+
+    audio.oscL.frequency.setTargetAtTime(fL, now, t || 0.01);
+    audio.oscR.frequency.setTargetAtTime(fR, now, t || 0.01);
+
+    // Stereo width affects relative channel gains
+    // width=1 => L=1, R=1 ; width=0 => both at 0.707 to soften & collapse
+    const g = lerp(0.707, 1.0, w);
+    audio.leftGain.gain.setTargetAtTime(g, now, 0.01);
+    audio.rightGain.gain.setTargetAtTime(g, now, 0.01);
+
+    // Master volume
+    // NOTE: master.gain is being modulated by pulseGain + pulseDepth.
+    // We'll set baseline via pulseDepth and mod depth via pulseGain.
+    const baseVol = Number(vol.value);
+    audio.pulseDepth.offset.setTargetAtTime(baseVol, now, 0.01);
+
+    // Noise shaping: bandpass tuned near carrier * 3-ish to add grit but keep it musical
+    const nf = clamp(car * 3.2, 200, 6000);
+    audio.noiseFilter.frequency.setTargetAtTime(nf, now, 0.02);
+    audio.noiseFilter.Q.setTargetAtTime(0.6 + (d/40)*1.8, now, 0.02);
+    audio.noiseGain.gain.setTargetAtTime(baseVol * Number(noise.value) * 0.8, now, 0.02);
+
+    // Pulse: if pulse=0 => depth 0
+    // For square wave: (-1..1). We want gating between ~0 and ~baseVol:
+    // master.gain = baseVol + square * depth
+    // Choose depth = baseVol * 0.45 so it never goes negative.
+    const p = Number(pulse.value);
+    audio.pulseOsc.frequency.setTargetAtTime(Math.max(0.001, p), now, 0.01);
+    const depth = (p <= 0.01) ? 0.0 : baseVol * 0.45;
+    audio.pulseGain.gain.setTargetAtTime(depth, now, 0.02);
+  }
+
+  btnToggleAudio.addEventListener("click", () => {
+    if(!audio.running) audioStart(); else audioStop();
+  });
+
+  [vol, carrier, beat, noise, pulse, width].forEach(el => {
+    el.addEventListener("input", () => applyAudioParams(true));
+  });
+
+  pFocus.addEventListener("click", () => {
+    beat.value = "12.0";
+    pulse.value = "0.0";
+    noise.value = "0.18";
+    carrier.value = "240";
+    vol.value = "0.10";
+    width.value = "1.00";
+    applyAudioParams(true);
+  });
+  pChill.addEventListener("click", () => {
+    beat.value = "6.0";
+    pulse.value = "8.0";
+    noise.value = "0.25";
+    carrier.value = "180";
+    vol.value = "0.09";
+    width.value = "0.90";
+    applyAudioParams(true);
+  });
+  pDeep.addEventListener("click", () => {
+    beat.value = "2.0";
+    pulse.value = "4.0";
+    noise.value = "0.18";
+    carrier.value = "140";
+    vol.value = "0.08";
+    width.value = "0.85";
+    applyAudioParams(true);
+  });
+  pStop.addEventListener("click", () => audioStop());
+
+  // Keyboard shortcuts
+  window.addEventListener("keydown", (e) => {
+    if(e.code === "Space"){
+      e.preventDefault();
+      if(!audio.running) audioStart(); else audioStop();
+    }
+    if(e.key.toLowerCase() === "v"){
+      e.preventDefault();
+      cycleVisualMode();
+    }
+  }, { passive:false });
+
+  // ---------- Visual Engine ----------
+  let visualMode = "plasma";
+  let t0 = performance.now();
+  let mouse = { x:0, y:0, down:false };
+
+  // UI binds
+  function applyVisualUI(){
+    vSpeed.textContent = Number(speed.value).toFixed(2);
+    vIntensity.textContent = Number(intensity.value).toFixed(2);
+    vBoids.textContent = String(boidsCount.value|0);
+    vRDIters.textContent = String(rdIters.value|0);
+    vFeed.textContent = Number(feed.value).toFixed(4);
+    vKill.textContent = Number(kill.value).toFixed(4);
+
+    const name = visualMode === "plasma" ? "Plasma" :
+                 visualMode === "boids"  ? "Boids" :
+                 "Reaction-Diffusion";
+    vModeName.textContent = name;
+  }
+
+  modeSel.addEventListener("change", () => {
+    visualMode = modeSel.value;
+    applyVisualUI();
+  });
+
+  [speed, intensity, boidsCount, rdIters, feed, kill].forEach(el => {
+    el.addEventListener("input", () => {
+      if(el === boidsCount) boidsRebuild();
+      applyVisualUI();
+    });
+  });
+
+  function cycleVisualMode(){
+    const order = ["plasma","boids","rd"];
+    const i = order.indexOf(visualMode);
+    visualMode = order[(i+1)%order.length];
+    modeSel.value = visualMode;
+    applyVisualUI();
+  }
+
+  // ---------- Plasma ----------
+  function plasmaRender(time){
+    const sp = Number(speed.value);
+    const inten = Number(intensity.value);
+    const tt = time * 0.001 * sp;
+
+    // Render at reduced resolution for speed
+    const scale = 2; // bigger => faster; smaller => sharper
+    const rw = Math.max(240, Math.floor(W / (scale*2)));
+    const rh = Math.max(180, Math.floor(H / (scale*2)));
+
+    const img = ctx2d.createImageData(rw, rh);
+    const data = img.data;
+
+    const mx = (mouse.x / Math.max(1, window.innerWidth)) * 2 - 1;
+    const my = (mouse.y / Math.max(1, window.innerHeight)) * 2 - 1;
+
+    let idx = 0;
+    for(let y=0;y<rh;y++){
+      const v = (y / rh) * 2 - 1;
+      for(let x=0;x<rw;x++){
+        const u = (x / rw) * 2 - 1;
+
+        const a = Math.sin((u*3.2 + tt*1.2) + Math.cos(v*2.8 - tt*1.1));
+        const b = Math.sin((v*3.0 - tt*0.9) + Math.cos(u*2.6 + tt*1.4));
+        const d = Math.hypot(u-mx*0.5, v-my*0.5);
+
+        const n = 0.55*a + 0.45*b + 0.6*Math.sin(tt + d*6.0);
+        const k = (n*0.5 + 0.5) * inten;
+
+        // Pseudo “spectral” mapping
+        const r = clamp(255*(0.20 + 0.80*Math.sin((k*2.0 + 0.0)*TAU*0.16)), 0, 255);
+        const g = clamp(255*(0.20 + 0.80*Math.sin((k*2.0 + 0.33)*TAU*0.16)), 0, 255);
+        const bl= clamp(255*(0.20 + 0.80*Math.sin((k*2.0 + 0.66)*TAU*0.16)), 0, 255);
+
+        data[idx++] = r|0;
+        data[idx++] = g|0;
+        data[idx++] = bl|0;
+        data[idx++] = 255;
+      }
+    }
+
+    // Draw scaled up with pixelation
+    ctx2d.putImageData(img, 0, 0);
+    ctx2d.drawImage(c, 0, 0, rw, rh, 0, 0, W, H);
+  }
+
+  // ---------- Boids ----------
+  let boids = [];
+  function boidsRebuild(){
+    const count = boidsCount.value|0;
+    boids = new Array(count);
+    for(let i=0;i<count;i++){
+      boids[i] = {
+        x: rand(0, W), y: rand(0, H),
+        vx: rand(-1,1)*120, vy: rand(-1,1)*120,
+      };
+    }
+  }
+
+  function boidsStep(dt){
+    const sp = Number(speed.value);
+    const inten = Number(intensity.value);
+
+    // Parameters
+    const maxSpeed = 320 * sp;
+    const maxForce = 420 * sp;
+    const neighR = 72 * DPR;
+    const sepR   = 32 * DPR;
+
+    const cohW = 0.55 * inten;
+    const aliW = 0.65 * inten;
+    const sepW = 0.95 * inten;
+    const mouseW= 0.40 * inten;
+
+    // Cheap spatial hash (grid)
+    const cell = neighR;
+    const cols = Math.max(1, Math.floor(W / cell));
+    const rows = Math.max(1, Math.floor(H / cell));
+    const grid = new Array(cols*rows);
+    for(let i=0;i<grid.length;i++) grid[i] = [];
+    for(let i=0;i<boids.length;i++){
+      const b = boids[i];
+      const cx = clamp((b.x / cell) | 0, 0, cols-1);
+      const cy = clamp((b.y / cell) | 0, 0, rows-1);
+      grid[cx + cy*cols].push(i);
+    }
+
+    // Update each boid
+    for(let i=0;i<boids.length;i++){
+      const b = boids[i];
+      const cx = clamp((b.x / cell) | 0, 0, cols-1);
+      const cy = clamp((b.y / cell) | 0, 0, rows-1);
+
+      let count=0;
+      let sx=0, sy=0;
+      let ax=0, ay=0;
+      let cxm=0, cym=0;
+
+      for(let oy=-1; oy<=1; oy++){
+        for(let ox=-1; ox<=1; ox++){
+          const nx = cx + ox, ny = cy + oy;
+          if(nx<0 || ny<0 || nx>=cols || ny>=rows) continue;
+          const bucket = grid[nx + ny*cols];
+          for(let k=0;k<bucket.length;k++){
+            const j = bucket[k];
+            if(j===i) continue;
+            const o = boids[j];
+            const dx = o.x - b.x;
+            const dy = o.y - b.y;
+            const d2 = dx*dx + dy*dy;
+            if(d2 < neighR*neighR){
+              const d = Math.sqrt(d2) + 1e-6;
+              count++;
+              // alignment
+              ax += o.vx; ay += o.vy;
+              // cohesion
+              cxm += o.x; cym += o.y;
+              // separation
+              if(d < sepR){
+                sx -= dx / d;
+                sy -= dy / d;
+              }
+            }
+          }
+        }
+      }
+
+      let fx=0, fy=0;
+
+      if(count>0){
+        // Alignment steer toward avg velocity
+        ax /= count; ay /= count;
+        const al = Math.hypot(ax,ay) + 1e-6;
+        ax = (ax / al) * maxSpeed - b.vx;
+        ay = (ay / al) * maxSpeed - b.vy;
+
+        // Cohesion steer toward center
+        cxm /= count; cym /= count;
+        let cdx = cxm - b.x, cdy = cym - b.y;
+        const cd = Math.hypot(cdx,cdy) + 1e-6;
+        cdx = (cdx / cd) * maxSpeed - b.vx;
+        cdy = (cdy / cd) * maxSpeed - b.vy;
+
+        // Separation
+        const sd = Math.hypot(sx,sy) + 1e-6;
+        sx = (sx / sd) * maxSpeed - b.vx;
+        sy = (sy / sd) * maxSpeed - b.vy;
+
+        fx += ax * aliW + cdx * cohW + sx * sepW;
+        fy += ay * aliW + cdy * cohW + sy * sepW;
+      }
+
+      // Mouse attract/repel
+      const mx = mouse.x * DPR, my = mouse.y * DPR;
+      const mdx = mx - b.x, mdy = my - b.y;
+      const md = Math.hypot(mdx,mdy) + 1e-6;
+      const sign = mouse.down ? -1 : 1; // hold mouse to repel
+      fx += sign * (mdx / md) * maxForce * mouseW * 0.35;
+      fy += sign * (mdy / md) * maxForce * mouseW * 0.35;
+
+      // Limit force
+      const fl = Math.hypot(fx,fy) + 1e-6;
+      const ff = Math.min(fl, maxForce);
+      fx = fx / fl * ff;
+      fy = fy / fl * ff;
+
+      // Integrate
+      b.vx += fx * dt;
+      b.vy += fy * dt;
+
+      // Limit speed
+      const vl = Math.hypot(b.vx,b.vy) + 1e-6;
+      const vv = Math.min(vl, maxSpeed);
+      b.vx = b.vx / vl * vv;
+      b.vy = b.vy / vl * vv;
+
+      b.x += b.vx * dt;
+      b.y += b.vy * dt;
+
+      // Wrap
+      if(b.x < 0) b.x += W;
+      if(b.y < 0) b.y += H;
+      if(b.x >= W) b.x -= W;
+      if(b.y >= H) b.y -= H;
+    }
+  }
+
+  function boidsRender(time){
+    const dt = Math.min(0.033, (time - t0) / 1000);
+    boidsStep(dt);
+
+    // Trails
+    ctx2d.fillStyle = "rgba(6,8,15,0.18)";
+    ctx2d.fillRect(0,0,W,H);
+
+    // Draw boids
+    const inten = Number(intensity.value);
+    const glow = 0.35 + 0.55*clamp(inten/2.5, 0, 1);
+
+    ctx2d.save();
+    ctx2d.globalCompositeOperation = "lighter";
+    for(const b of boids){
+      const spd = Math.hypot(b.vx,b.vy);
+      const s = clamp(1.5 + spd/220, 1.5, 5.5) * DPR;
+
+      // Gradient-ish dot
+      const g = ctx2d.createRadialGradient(b.x,b.y,0,b.x,b.y,12*DPR);
+      g.addColorStop(0, `rgba(140,245,255,${0.22*glow})`);
+      g.addColorStop(0.5, `rgba(182,255,106,${0.12*glow})`);
+      g.addColorStop(1, `rgba(255,106,140,0)`);
+      ctx2d.fillStyle = g;
+      ctx2d.beginPath();
+      ctx2d.arc(b.x,b.y, 10*DPR, 0, TAU);
+      ctx2d.fill();
+
+      // Core
+      ctx2d.fillStyle = `rgba(234,240,255,${0.50*glow})`;
+      ctx2d.beginPath();
+      ctx2d.arc(b.x,b.y, s, 0, TAU);
+      ctx2d.fill();
+    }
+    ctx2d.restore();
+  }
+
+  // ---------- Reaction-Diffusion (Gray-Scott) ----------
+  // Grid is fixed resolution for performance; displayed scaled.
+  let rd = {
+    w: 0, h: 0,
+    A: null, B: null,
+    A2: null, B2: null,
+    img: null,
+    imgData: null,
+    lastInject: 0
+  };
+
+  function rdInit(){
+    // Choose grid size based on screen, capped
+    const base = Math.min(360, Math.floor(Math.min(window.innerWidth, window.innerHeight) * 0.60));
+    const rw = Math.max(180, (base|0));
+    const rh = Math.max(180, (base|0));
+    rd.w = rw;
+    rd.h = rh;
+
+    const n = rw * rh;
+    rd.A = new Float32Array(n);
+    rd.B = new Float32Array(n);
+    rd.A2= new Float32Array(n);
+    rd.B2= new Float32Array(n);
+
+    // Initial conditions: A=1 everywhere, B=0, then seed a blob of B
+    for(let i=0;i<n;i++){ rd.A[i]=1.0; rd.B[i]=0.0; }
+    rdInject(rw*0.5, rh*0.5, 18);
+
+    rd.img = ctx2d.createImageData(rw, rh);
+    rd.imgData = rd.img.data;
+  }
+
+  function rdIdx(x,y){ return x + y*rd.w; }
+
+  function rdInject(x,y,r){
+    const rw=rd.w, rh=rd.h;
+    const rr = r*r;
+    for(let j=Math.max(0,(y-r)|0); j<Math.min(rh,(y+r)|0); j++){
+      for(let i=Math.max(0,(x-r)|0); i<Math.min(rw,(x+r)|0); i++){
+        const dx=i-x, dy=j-y;
+        if(dx*dx+dy*dy <= rr){
+          const k = rdIdx(i,j);
+          rd.B[k] = 1.0;
+          rd.A[k] = 0.0;
+        }
+      }
+    }
+  }
+
+  function rdStep(iters){
+    const rw=rd.w, rh=rd.h;
+    const A=rd.A, B=rd.B, A2=rd.A2, B2=rd.B2;
+
+    const F = Number(feed.value);
+    const K = Number(kill.value);
+    const sp = Number(speed.value);
+
+    // Diffusion rates (scaled by speed)
+    const Da = 1.00 * sp;
+    const Db = 0.50 * sp;
+    const dt = 1.0;
+
+    for(let step=0; step<iters; step++){
+      for(let y=0; y<rh; y++){
+        const ym1 = (y-1+rh)%rh, yp1=(y+1)%rh;
+        for(let x=0; x<rw; x++){
+          const xm1=(x-1+rw)%rw, xp1=(x+1)%rw;
+
+          const i = rdIdx(x,y);
+
+          // 5-point Laplacian-ish with diagonals for smoother patterns
+          const lapA =
+            -1.0*A[i]
+            + 0.20*(A[rdIdx(xm1,y)] + A[rdIdx(xp1,y)] + A[rdIdx(x,ym1)] + A[rdIdx(x,yp1)])
+            + 0.05*(A[rdIdx(xm1,ym1)] + A[rdIdx(xp1,ym1)] + A[rdIdx(xm1,yp1)] + A[rdIdx(xp1,yp1)]);
+
+          const lapB =
+            -1.0*B[i]
+            + 0.20*(B[rdIdx(xm1,y)] + B[rdIdx(xp1,y)] + B[rdIdx(x,ym1)] + B[rdIdx(x,yp1)])
+            + 0.05*(B[rdIdx(xm1,ym1)] + B[rdIdx(xp1,ym1)] + B[rdIdx(xm1,yp1)] + B[rdIdx(xp1,yp1)]);
+
+          const a = A[i], b = B[i];
+          const reaction = a * b * b;
+
+          // Gray-Scott equations
+          let aN = a + (Da*lapA - reaction + F*(1-a)) * dt;
+          let bN = b + (Db*lapB + reaction - (K+F)*b) * dt;
+
+          A2[i] = clamp(aN, 0, 1);
+          B2[i] = clamp(bN, 0, 1);
+        }
+      }
+      // Swap
+      rd.A = rd.A2; rd.B = rd.B2;
+      rd.A2 = A;    rd.B2 = B;
+    }
+  }
+
+  function rdRender(time){
+    const iters = rdIters.value|0;
+    rdStep(iters);
+
+    const rw=rd.w, rh=rd.h;
+    const data = rd.imgData;
+    const B = rd.B;
+    const inten = Number(intensity.value);
+
+    // Map B concentration to color
+    let p=0;
+    for(let i=0;i<rw*rh;i++){
+      const b = B[i];
+      // contrast curve
+      const v = clamp(Math.pow(b * 1.35, 0.65) * inten, 0, 1);
+
+      // spectral-ish palette
+      const r = clamp(255*(0.08 + 0.92*v), 0, 255);
+      const g = clamp(255*(0.12 + 0.75*(1-Math.abs(v-0.5)*1.8)), 0, 255);
+      const bl= clamp(255*(0.18 + 0.90*(1-v)), 0, 255);
+
+      data[p++] = r|0;
+      data[p++] = g|0;
+      data[p++] = bl|0;
+      data[p++] = 255;
+    }
+
+    // Draw scaled
+    ctx2d.putImageData(rd.img, 0, 0);
+    ctx2d.drawImage(c, 0, 0, rw, rh, 0, 0, W, H);
+  }
+
+  function injectAtCanvas(px, py){
+    if(!rd.w) return;
+    const rw=rd.w, rh=rd.h;
+    const x = clamp((px / window.innerWidth) * rw, 0, rw-1);
+    const y = clamp((py / window.innerHeight) * rh, 0, rh-1);
+    rdInject(x, y, 14);
+  }
+
+  btnPulseInk.addEventListener("click", () => {
+    injectAtCanvas(window.innerWidth*0.5, window.innerHeight*0.5);
+  });
+
+  // Mouse
+  window.addEventListener("pointerdown", (e) => {
+    mouse.down = true;
+    mouse.x = e.clientX;
+    mouse.y = e.clientY;
+    if(visualMode === "rd") injectAtCanvas(e.clientX, e.clientY);
+  });
+  window.addEventListener("pointerup", () => { mouse.down = false; });
+  window.addEventListener("pointermove", (e) => {
+    mouse.x = e.clientX;
+    mouse.y = e.clientY;
+    if(mouse.down && visualMode === "rd") injectAtCanvas(e.clientX, e.clientY);
+  });
+
+  // ---------- Challenge Generator ----------
+  const challengePool = [
+`3D (Maya/Blender) micro-challenge:
+- Model a “student room prop” in 20 minutes: desk lamp / mug / power strip.
+- Enforce: ≤2k tris lowpoly + separate highpoly with 1 subdivision.
+- Bake: normal + AO. Deliver 3 renders: clay, wireframe, textured.`,
+
+`Unity audio micro-challenge:
+- Record 30 seconds of “real” ambience (room tone, street, kettle, keyboard).
+- Chop into 6 one-shots + 2 loops.
+- Add reverb zones + distance rolloff curves.
+- A/B test: dry vs wet mix (write down what changes in perception).`,
+
+`Web dev micro-challenge (single file):
+- Build a typography control panel:
+  variable font axes + tracking + line height + optical size.
+- Add preset save/load to localStorage.
+- Add export to PNG using canvas.`,
+
+`Procedural sim micro-challenge:
+- Implement 2D boids with:
+  separation/alignment/cohesion + spatial hash.
+- Add one predator + one food attractor.
+- Add a graph overlay of avg speed + agent count.`,
+
+`AI/ML thinking micro-challenge:
+- Write down 3 heuristics you’d use to “predict” good mesh reduction params
+  from: face count, edge/face ratio, UV seams count, hard edges.
+- Turn it into a simple scoring function (no ML libs).`,
+
+`3D printing micro-challenge:
+- Design a 30–60 min print: cable clip, desk hook, SD card holder.
+- Constraints: no supports, 0.2mm layer, 0.4 nozzle.
+- Add fillets/chamfers where stress concentrates (justify).`,
+
+`Creative prompt micro-challenge:
+- Concept art: “nature reclaiming a server farm under Bournemouth skies”.
+- Deliver 3 thumbnails: calm / ominous / utopian.
+- Pick one and push values + focal depth.`,
+
+`Systems micro-challenge:
+- Write a tiny benchmark in Python: numpy vs pure Python for a particle update.
+- Measure: ms/frame for N = 1e3, 1e4, 1e5.
+- Decide where you’d use Numba or multiprocessing (and why).`
+  ];
+
+  function newChallenge(){
+    const seed = makeSeed();
+    const rng = mulberry32(seed);
+    const i = Math.floor(rng() * challengePool.length);
+    const twist = [
+      "Hard constraint: do it with a 25-minute timer.",
+      "Hard constraint: no tutorials, only your own notes.",
+      "Hard constraint: make a minimal version first, then one enhancement.",
+      "Hard constraint: document decisions in 6 bullet points.",
+      "Hard constraint: add one accessibility improvement (UI/UX).",
+      "Hard constraint: add one performance optimization and measure it."
+    ][Math.floor(rng()*6)];
+
+    vSeed.textContent = "seed: " + seed;
+    challengeOut.textContent = challengePool[i] + "\n\nTwist:\n- " + twist;
+  }
+  btnNewChallenge.addEventListener("click", newChallenge);
+
+  // ---------- Main Loop ----------
+  function frame(time){
+    const dt = (time - t0);
+    t0 = time;
+
+    // Subtle background clear for non-trail modes
+    if(visualMode !== "boids"){
+      ctx2d.fillStyle = "rgba(6,8,15,1)";
+      ctx2d.fillRect(0,0,W,H);
+    }
+
+    if(visualMode === "plasma") plasmaRender(time);
+    else if(visualMode === "boids") boidsRender(time);
+    else rdRender(time);
+
+    requestAnimationFrame(frame);
+  }
+
+  // ---------- Init ----------
+  function init(){
+    resize();
+    applyAudioParams(false);
+    applyVisualUI();
+    boidsRebuild();
+    rdInit();
+    setAudioUI(false);
+    requestAnimationFrame(frame);
+  }
+  init();
+
+})();
+</script>
+</body>
+</html>
