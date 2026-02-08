@@ -1,0 +1,1464 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Arm Nerve Simulation</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            background: #0a0a1a;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            color: #e0e0e0;
+            overflow-x: hidden;
+        }
+        h1 {
+            margin: 15px 0 5px;
+            font-size: 1.4em;
+            color: #66ccff;
+            text-shadow: 0 0 10px rgba(102,204,255,0.3);
+        }
+        .container {
+            display: flex;
+            gap: 15px;
+            padding: 10px;
+            max-width: 1400px;
+            width: 100%;
+        }
+        canvas {
+            border: 1px solid #1a3355;
+            border-radius: 12px;
+            background: #0d1520;
+            cursor: crosshair;
+        }
+        .panel {
+            background: #0d1a2a;
+            border: 1px solid #1a3355;
+            border-radius: 12px;
+            padding: 15px;
+            min-width: 280px;
+            max-height: 780px;
+            overflow-y: auto;
+        }
+        .panel h2 {
+            font-size: 1em;
+            color: #88bbdd;
+            margin-bottom: 10px;
+            border-bottom: 1px solid #1a3355;
+            padding-bottom: 5px;
+        }
+        .panel h3 {
+            font-size: 0.85em;
+            color: #77aacc;
+            margin: 10px 0 5px;
+        }
+        .info-box {
+            background: #0a1420;
+            border: 1px solid #15304a;
+            border-radius: 8px;
+            padding: 10px;
+            margin-bottom: 10px;
+            font-size: 0.8em;
+            line-height: 1.5;
+        }
+        .nerve-label {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin: 4px 0;
+            padding: 5px 8px;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: background 0.2s;
+            font-size: 0.82em;
+        }
+        .nerve-label:hover {
+            background: rgba(255,255,255,0.05);
+        }
+        .nerve-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            flex-shrink: 0;
+        }
+        .controls {
+            margin: 10px 0;
+        }
+        .controls label {
+            display: block;
+            font-size: 0.8em;
+            margin: 6px 0 2px;
+            color: #99bbcc;
+        }
+        .controls input[type="range"] {
+            width: 100%;
+            accent-color: #4499cc;
+        }
+        .controls select, .controls button {
+            width: 100%;
+            padding: 6px 10px;
+            background: #152535;
+            border: 1px solid #2a4a6a;
+            color: #cde;
+            border-radius: 6px;
+            font-size: 0.8em;
+            cursor: pointer;
+            margin-top: 4px;
+        }
+        .controls button:hover {
+            background: #1a3550;
+        }
+        .controls button.active {
+            background: #1a4a6a;
+            border-color: #44aadd;
+        }
+        .signal-info {
+            background: #0a1822;
+            border: 1px solid #15304a;
+            border-radius: 8px;
+            padding: 8px;
+            margin-top: 8px;
+            font-size: 0.75em;
+        }
+        .signal-info .val {
+            color: #66ccff;
+            font-weight: bold;
+        }
+        .btn-row {
+            display: flex;
+            gap: 5px;
+            margin-top: 5px;
+        }
+        .btn-row button {
+            flex: 1;
+        }
+        .legend-section {
+            margin-top: 8px;
+        }
+        .dermatome-info {
+            font-size: 0.75em;
+            color: #8899aa;
+            margin-top: 5px;
+        }
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: #0a1420; }
+        ::-webkit-scrollbar-thumb { background: #2a4a6a; border-radius: 3px; }
+    </style>
+</head>
+<body>
+    <h1>🧠 Arm Nervous System Simulation</h1>
+    <div class="container">
+        <div class="panel" id="leftPanel">
+            <h2>🔬 Nerve Anatomy</h2>
+            <div class="info-box" id="hoverInfo">
+                Click on any nerve or point on the arm to explore. Hover over structures for details.
+            </div>
+            
+            <h3>Major Nerves</h3>
+            <div id="nerveLegend"></div>
+            
+            <h3>Brachial Plexus Roots</h3>
+            <div class="info-box">
+                <strong>C5-T1</strong> spinal nerve roots form the brachial plexus, which gives rise to all major arm nerves.
+            </div>
+            <div id="plexusInfo"></div>
+            
+            <h3>Dermatomes</h3>
+            <div class="dermatome-info" id="dermatomeInfo">
+                Dermatomes show areas of skin supplied by specific spinal nerve roots.
+            </div>
+        </div>
+        
+        <canvas id="canvas" width="750" height="780"></canvas>
+        
+        <div class="panel" id="rightPanel">
+            <h2>⚡ Signal Simulation</h2>
+            
+            <div class="controls">
+                <label>Stimulation Mode:</label>
+                <select id="stimMode">
+                    <option value="click">Click to Stimulate</option>
+                    <option value="reflex">Reflex Arc</option>
+                    <option value="voluntary">Voluntary Movement</option>
+                    <option value="pain">Pain Response</option>
+                </select>
+                
+                <label>Signal Speed: <span id="speedVal">50</span> m/s</label>
+                <input type="range" id="signalSpeed" min="5" max="120" value="50">
+                
+                <label>Signal Intensity:</label>
+                <input type="range" id="signalIntensity" min="1" max="100" value="70">
+                
+                <label>View Mode:</label>
+                <div class="btn-row">
+                    <button id="btnAnatomical" class="active" onclick="setView('anatomical')">Anatomical</button>
+                    <button id="btnDermatome" onclick="setView('dermatome')">Dermatomes</button>
+                </div>
+                <div class="btn-row">
+                    <button id="btnMyotome" onclick="setView('myotome')">Myotomes</button>
+                    <button id="btnCross" onclick="setView('cross')">Cross-Section</button>
+                </div>
+                
+                <label>Display Options:</label>
+                <div class="btn-row">
+                    <button id="btnToggleMuscle" onclick="toggleLayer('muscle')">Muscles</button>
+                    <button id="btnToggleBone" onclick="toggleLayer('bone')">Bones</button>
+                </div>
+                <div class="btn-row">
+                    <button id="btnToggleVeins" onclick="toggleLayer('veins')">Vessels</button>
+                    <button id="btnToggleLabels" class="active" onclick="toggleLayer('labels')">Labels</button>
+                </div>
+                
+                <label>Simulation:</label>
+                <button onclick="triggerFullSignal()">⚡ Send Full Signal (Brain→Fingers)</button>
+                <button onclick="triggerSensory()">👆 Sensory Signal (Finger→Brain)</button>
+                <button onclick="triggerReflex()">🔄 Reflex Arc</button>
+                <button onclick="resetSignals()">🔄 Reset All Signals</button>
+            </div>
+            
+            <div class="signal-info" id="signalInfo">
+                <strong>Signal Status:</strong> Idle<br>
+                <span class="val">Ready for stimulation</span>
+            </div>
+            
+            <h3>Physiology Data</h3>
+            <div class="info-box" id="physData">
+                <strong>Nerve Fiber Types:</strong><br>
+                • Aα: 80-120 m/s (proprioception)<br>
+                • Aβ: 33-75 m/s (touch, pressure)<br>
+                • Aδ: 5-30 m/s (pain, temperature)<br>
+                • C: 0.5-2 m/s (slow pain, itch)<br><br>
+                <strong>Action Potential:</strong> ~100mV<br>
+                <strong>Refractory Period:</strong> 1-2ms
+            </div>
+            
+            <h3>Clinical Notes</h3>
+            <div class="info-box" id="clinicalInfo">
+                Click on a nerve to see clinical relevance, common injuries, and symptoms.
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        
+        let viewMode = 'anatomical';
+        let layers = { muscle: false, bone: true, veins: false, labels: true };
+        let hoveredNerve = null;
+        let selectedNerve = null;
+        let signals = [];
+        let time = 0;
+        let mousePos = { x: 0, y: 0 };
+        
+        // Nerve definitions with realistic paths
+        const nerves = {
+            musculocutaneous: {
+                name: "Musculocutaneous Nerve",
+                color: "#ff6644",
+                roots: "C5, C6, C7",
+                cord: "Lateral cord",
+                motor: "Biceps brachii, Brachialis, Coracobrachialis",
+                sensory: "Lateral forearm (as lateral cutaneous nerve of forearm)",
+                clinical: "Injury causes weakness in elbow flexion and forearm supination. Loss of biceps reflex (C5-C6).",
+                path: [],
+                branches: [],
+                fiberTypes: "Mixed (motor + sensory)",
+                velocity: "50-70 m/s"
+            },
+            median: {
+                name: "Median Nerve",
+                color: "#ffcc00",
+                roots: "C5, C6, C7, C8, T1",
+                cord: "Lateral & Medial cords",
+                motor: "Forearm pronators, wrist flexors, thenar muscles, lateral 2 lumbricals",
+                sensory: "Lateral 3½ fingers (palmar), fingertips dorsal",
+                clinical: "Carpal tunnel syndrome (most common). 'Hand of benediction' if injured at elbow. Ape hand deformity with thenar wasting.",
+                path: [],
+                branches: [],
+                fiberTypes: "Mixed (motor + sensory)",
+                velocity: "50-65 m/s"
+            },
+            ulnar: {
+                name: "Ulnar Nerve",
+                color: "#44ddff",
+                roots: "C8, T1",
+                cord: "Medial cord",
+                motor: "Hypothenar muscles, interossei, medial 2 lumbricals, adductor pollicis",
+                sensory: "Medial 1½ fingers, medial hand",
+                clinical: "Most commonly injured nerve. Cubital tunnel syndrome at elbow. 'Claw hand' deformity. Froment's sign positive.",
+                path: [],
+                branches: [],
+                fiberTypes: "Mixed (motor + sensory)",
+                velocity: "45-65 m/s"
+            },
+            radial: {
+                name: "Radial Nerve",
+                color: "#44ff88",
+                roots: "C5, C6, C7, C8, T1",
+                cord: "Posterior cord",
+                motor: "Triceps, wrist extensors, finger extensors, supinator",
+                sensory: "Posterior arm, forearm, dorsal hand (lateral 3½ fingers)",
+                clinical: "Saturday night palsy / spiral groove fracture. Wrist drop is classic sign. Posterior interosseous syndrome.",
+                path: [],
+                branches: [],
+                fiberTypes: "Mixed (motor + sensory)",
+                velocity: "50-70 m/s"
+            },
+            axillary: {
+                name: "Axillary Nerve",
+                color: "#ff44cc",
+                roots: "C5, C6",
+                cord: "Posterior cord",
+                motor: "Deltoid, Teres minor",
+                sensory: "Regimental badge area (lateral shoulder)",
+                clinical: "Injured in shoulder dislocation or surgical neck fracture of humerus. Loss of shoulder abduction (15-90°).",
+                path: [],
+                branches: [],
+                fiberTypes: "Mixed (motor + sensory)",
+                velocity: "50-70 m/s"
+            },
+            medialCutaneous: {
+                name: "Medial Cutaneous Nerves",
+                color: "#bb88ff",
+                roots: "C8, T1 (arm), T1 (forearm)",
+                cord: "Medial cord",
+                motor: "None (purely sensory)",
+                sensory: "Medial arm and medial forearm skin",
+                clinical: "Damage causes numbness along medial arm/forearm. Often affected in medial cord lesions.",
+                path: [],
+                branches: [],
+                fiberTypes: "Sensory only (Aβ, Aδ, C fibers)",
+                velocity: "1-75 m/s"
+            }
+        };
+        
+        // Build realistic nerve paths
+        function buildNervePaths() {
+            const cx = 375; // center x of arm
+            
+            // Brachial plexus origin points (neck/shoulder region)
+            const plexusTop = 45;
+            const shoulderY = 120;
+            
+            // Musculocutaneous nerve - lateral, through biceps
+            nerves.musculocutaneous.path = [
+                {x: cx-30, y: plexusTop}, {x: cx-50, y: 70}, {x: cx-65, y: shoulderY},
+                {x: cx-55, y: 160}, {x: cx-45, y: 200}, {x: cx-35, y: 240},
+                {x: cx-28, y: 280}, {x: cx-30, y: 320}, {x: cx-35, y: 360},
+                {x: cx-42, y: 400}, {x: cx-50, y: 430}, {x: cx-55, y: 460}
+            ];
+            nerves.musculocutaneous.branches = [
+                [{x: cx-35, y: 240}, {x: cx-60, y: 230}, {x: cx-75, y: 225}],
+                [{x: cx-35, y: 240}, {x: cx-20, y: 260}, {x: cx-15, y: 280}],
+                [{x: cx-50, y: 430}, {x: cx-65, y: 450}, {x: cx-80, y: 470}, {x: cx-90, y: 500}]
+            ];
+            
+            // Median nerve - runs medial in arm, center of forearm
+            nerves.median.path = [
+                {x: cx-25, y: plexusTop}, {x: cx-35, y: 70}, {x: cx-40, y: shoulderY},
+                {x: cx-20, y: 160}, {x: cx-5, y: 200}, {x: cx+5, y: 250},
+                {x: cx+8, y: 300}, {x: cx+5, y: 340}, {x: cx, y: 380},
+                {x: cx-8, y: 420}, {x: cx-15, y: 455}, {x: cx-18, y: 480},
+                {x: cx-20, y: 510}, {x: cx-18, y: 540}, {x: cx-15, y: 570},
+                {x: cx-12, y: 600}, {x: cx-10, y: 625}, {x: cx-8, y: 650},
+                {x: cx-10, y: 670}, {x: cx-15, y: 690}
+            ];
+            nerves.median.branches = [
+                // Anterior interosseous
+                [{x: cx-15, y: 455}, {x: cx+5, y: 470}, {x: cx+10, y: 500}, {x: cx+8, y: 540}],
+                // Palmar cutaneous
+                [{x: cx-10, y: 625}, {x: cx-25, y: 640}, {x: cx-35, y: 660}],
+                // Digital branches
+                [{x: cx-15, y: 690}, {x: cx-30, y: 710}, {x: cx-45, y: 730}, {x: cx-55, y: 750}],
+                [{x: cx-15, y: 690}, {x: cx-15, y: 710}, {x: cx-20, y: 735}, {x: cx-25, y: 755}],
+                [{x: cx-15, y: 690}, {x: cx-5, y: 710}, {x: cx, y: 735}, {x: cx+5, y: 755}],
+                // Recurrent motor branch (thenar)
+                [{x: cx-15, y: 690}, {x: cx-40, y: 685}, {x: cx-55, y: 695}, {x: cx-65, y: 710}]
+            ];
+            
+            // Ulnar nerve - behind medial epicondyle
+            nerves.ulnar.path = [
+                {x: cx+10, y: plexusTop}, {x: cx+5, y: 70}, {x: cx-10, y: shoulderY},
+                {x: cx+10, y: 160}, {x: cx+20, y: 200}, {x: cx+30, y: 250},
+                {x: cx+35, y: 300}, {x: cx+40, y: 340}, {x: cx+42, y: 370},
+                {x: cx+40, y: 400}, {x: cx+35, y: 420},
+                // Behind medial epicondyle (cubital tunnel)
+                {x: cx+38, y: 440}, {x: cx+35, y: 455},
+                {x: cx+30, y: 475}, {x: cx+25, y: 500}, {x: cx+22, y: 530},
+                {x: cx+20, y: 560}, {x: cx+18, y: 590}, {x: cx+15, y: 620},
+                {x: cx+12, y: 650}, {x: cx+10, y: 670}, {x: cx+8, y: 690}
+            ];
+            nerves.ulnar.branches = [
+                // Dorsal cutaneous branch
+                [{x: cx+20, y: 560}, {x: cx+35, y: 580}, {x: cx+45, y: 610}, {x: cx+50, y: 640}],
+                // Deep motor branch
+                [{x: cx+8, y: 690}, {x: cx-5, y: 700}, {x: cx-20, y: 695}, {x: cx-35, y: 700}],
+                // Digital branches
+                [{x: cx+8, y: 690}, {x: cx+15, y: 710}, {x: cx+25, y: 735}, {x: cx+35, y: 755}],
+                [{x: cx+8, y: 690}, {x: cx+30, y: 710}, {x: cx+45, y: 730}, {x: cx+55, y: 750}],
+                // Hypothenar branches
+                [{x: cx+8, y: 690}, {x: cx+25, y: 695}, {x: cx+40, y: 700}]
+            ];
+            
+            // Radial nerve - wraps around humerus posteriorly
+            nerves.radial.path = [
+                {x: cx+15, y: plexusTop}, {x: cx+20, y: 70}, {x: cx+10, y: shoulderY},
+                {x: cx+30, y: 155}, {x: cx+50, y: 190},
+                // Spiral groove
+                {x: cx+60, y: 220}, {x: cx+55, y: 260}, {x: cx+40, y: 300},
+                {x: cx+25, y: 330}, {x: cx+10, y: 360},
+                // Lateral side of elbow
+                {x: cx-10, y: 400}, {x: cx-25, y: 430},
+                {x: cx-30, y: 455}, {x: cx-35, y: 480}
+            ];
+            nerves.radial.branches = [
+                // Posterior interosseous nerve (deep branch)
+                [{x: cx-25, y: 430}, {x: cx-15, y: 450}, {x: cx-5, y: 480},
+                 {x: cx, y: 510}, {x: cx+5, y: 550}, {x: cx+3, y: 580}],
+                // Superficial branch
+                [{x: cx-25, y: 430}, {x: cx-40, y: 460}, {x: cx-50, y: 500},
+                 {x: cx-55, y: 540}, {x: cx-50, y: 580}, {x: cx-45, y: 620},
+                 {x: cx-40, y: 650}, {x: cx-38, y: 680}],
+                // Triceps branches
+                [{x: cx+50, y: 190}, {x: cx+65, y: 210}, {x: cx+75, y: 240}],
+                [{x: cx+55, y: 260}, {x: cx+70, y: 270}, {x: cx+80, y: 285}],
+                // Digital dorsal branches
+                [{x: cx-38, y: 680}, {x: cx-50, y: 700}, {x: cx-60, y: 720}],
+                [{x: cx-38, y: 680}, {x: cx-35, y: 700}, {x: cx-30, y: 720}]
+            ];
+            
+            // Axillary nerve - wraps around surgical neck of humerus
+            nerves.axillary.path = [
+                {x: cx+15, y: plexusTop+20}, {x: cx+25, y: 85}, {x: cx+45, y: 110},
+                {x: cx+70, y: 125}, {x: cx+85, y: 140}, {x: cx+90, y: 160},
+                {x: cx+80, y: 180}
+            ];
+            nerves.axillary.branches = [
+                [{x: cx+85, y: 140}, {x: cx+100, y: 130}, {x: cx+110, y: 120}],
+                [{x: cx+90, y: 160}, {x: cx+105, y: 165}, {x: cx+115, y: 155}],
+                [{x: cx+80, y: 180}, {x: cx+95, y: 185}, {x: cx+105, y: 180}]
+            ];
+            
+            // Medial cutaneous nerves
+            nerves.medialCutaneous.path = [
+                {x: cx+8, y: plexusTop+10}, {x: cx+15, y: 80}, {x: cx+25, y: shoulderY},
+                {x: cx+35, y: 170}, {x: cx+40, y: 220}
+            ];
+            nerves.medialCutaneous.branches = [
+                [{x: cx+35, y: 170}, {x: cx+55, y: 180}, {x: cx+70, y: 195}, {x: cx+80, y: 220}],
+                [{x: cx+40, y: 220}, {x: cx+55, y: 250}, {x: cx+65, y: 290}, {x: cx+70, y: 330}],
+                [{x: cx+40, y: 220}, {x: cx+50, y: 260}, {x: cx+55, y: 310}, {x: cx+60, y: 360}, {x: cx+58, y: 400}]
+            ];
+        }
+        
+        // Arm outline
+        function drawArmOutline() {
+            ctx.save();
+            
+            const cx = 375;
+            
+            // Skin color gradient
+            const skinGrad = ctx.createLinearGradient(cx-100, 0, cx+100, 0);
+            skinGrad.addColorStop(0, 'rgba(50,35,30,0.4)');
+            skinGrad.addColorStop(0.3, 'rgba(70,50,40,0.3)');
+            skinGrad.addColorStop(0.5, 'rgba(80,60,48,0.25)');
+            skinGrad.addColorStop(0.7, 'rgba(70,50,40,0.3)');
+            skinGrad.addColorStop(1, 'rgba(50,35,30,0.4)');
+            
+            // Shoulder region
+            ctx.beginPath();
+            ctx.moveTo(cx-100, 50);
+            ctx.quadraticCurveTo(cx-120, 80, cx-110, 120);
+            ctx.quadraticCurveTo(cx-105, 145, cx-95, 160);
+            // Upper arm
+            ctx.lineTo(cx-85, 200);
+            ctx.lineTo(cx-80, 300);
+            ctx.lineTo(cx-78, 380);
+            // Elbow
+            ctx.quadraticCurveTo(cx-82, 420, cx-85, 440);
+            ctx.quadraticCurveTo(cx-88, 450, cx-82, 460);
+            // Forearm
+            ctx.lineTo(cx-75, 500);
+            ctx.lineTo(cx-68, 560);
+            ctx.lineTo(cx-62, 620);
+            // Wrist
+            ctx.quadraticCurveTo(cx-58, 650, cx-55, 670);
+            // Hand
+            ctx.quadraticCurveTo(cx-60, 685, cx-70, 700);
+            ctx.quadraticCurveTo(cx-80, 710, cx-85, 730);
+            // Fingers (thumb side)
+            ctx.quadraticCurveTo(cx-88, 745, cx-85, 760);
+            ctx.lineTo(cx-70, 770);
+            ctx.lineTo(cx-55, 768);
+            ctx.lineTo(cx-40, 770);
+            ctx.lineTo(cx-25, 768);
+            ctx.lineTo(cx-10, 770);
+            ctx.lineTo(cx+5, 768);
+            ctx.lineTo(cx+20, 770);
+            ctx.lineTo(cx+35, 768);
+            ctx.lineTo(cx+50, 770);
+            ctx.lineTo(cx+65, 760);
+            ctx.quadraticCurveTo(cx+70, 740, cx+65, 700);
+            ctx.quadraticCurveTo(cx+60, 685, cx+55, 670);
+            // Wrist (other side)
+            ctx.quadraticCurveTo(cx+58, 650, cx+62, 620);
+            ctx.lineTo(cx+68, 560);
+            ctx.lineTo(cx+75, 500);
+            // Forearm
+            ctx.lineTo(cx+82, 460);
+            ctx.quadraticCurveTo(cx+88, 450, cx+85, 440);
+            ctx.quadraticCurveTo(cx+82, 420, cx+80, 400);
+            // Upper arm
+            ctx.lineTo(cx+80, 300);
+            ctx.lineTo(cx+85, 200);
+            ctx.quadraticCurveTo(cx+100, 160, cx+110, 120);
+            ctx.quadraticCurveTo(cx+120, 80, cx+100, 50);
+            ctx.closePath();
+            
+            ctx.fillStyle = skinGrad;
+            ctx.fill();
+            ctx.strokeStyle = 'rgba(100,80,65,0.5)';
+            ctx.lineWidth = 1.5;
+            ctx.stroke();
+            
+            ctx.restore();
+        }
+        
+        function drawBones() {
+            if (!layers.bone) return;
+            ctx.save();
+            const cx = 375;
+            
+            ctx.strokeStyle = 'rgba(200,190,170,0.2)';
+            ctx.lineWidth = 18;
+            ctx.lineCap = 'round';
+            
+            // Humerus
+            ctx.beginPath();
+            ctx.moveTo(cx, 100);
+            ctx.lineTo(cx, 430);
+            ctx.stroke();
+            
+            // Radius
+            ctx.lineWidth = 10;
+            ctx.beginPath();
+            ctx.moveTo(cx-15, 440);
+            ctx.quadraticCurveTo(cx-25, 550, cx-30, 660);
+            ctx.stroke();
+            
+            // Ulna
+            ctx.beginPath();
+            ctx.moveTo(cx+15, 440);
+            ctx.quadraticCurveTo(cx+20, 550, cx+20, 660);
+            ctx.stroke();
+            
+            // Metacarpals
+            ctx.lineWidth = 5;
+            for (let i = -2; i <= 2; i++) {
+                ctx.beginPath();
+                ctx.moveTo(cx + i*15, 670);
+                ctx.lineTo(cx + i*18, 720);
+                ctx.stroke();
+            }
+            
+            // Phalanges
+            ctx.lineWidth = 3;
+            for (let i = -2; i <= 2; i++) {
+                ctx.beginPath();
+                ctx.moveTo(cx + i*18, 720);
+                ctx.lineTo(cx + i*20, 745);
+                ctx.lineTo(cx + i*21, 762);
+                ctx.stroke();
+            }
+            
+            // Joint markers
+            ctx.fillStyle = 'rgba(200,190,170,0.15)';
+            // Shoulder
+            ctx.beginPath();
+            ctx.arc(cx, 110, 20, 0, Math.PI*2);
+            ctx.fill();
+            // Elbow
+            ctx.beginPath();
+            ctx.arc(cx, 435, 18, 0, Math.PI*2);
+            ctx.fill();
+            // Wrist
+            ctx.beginPath();
+            ctx.ellipse(cx, 665, 25, 12, 0, 0, Math.PI*2);
+            ctx.fill();
+            
+            ctx.restore();
+        }
+        
+        function drawMuscles() {
+            if (!layers.muscle) return;
+            ctx.save();
+            const cx = 375;
+            
+            ctx.globalAlpha = 0.15;
+            
+            // Deltoid
+            ctx.fillStyle = '#cc4444';
+            ctx.beginPath();
+            ctx.ellipse(cx, 150, 60, 40, 0, 0, Math.PI*2);
+            ctx.fill();
+            
+            // Biceps
+            ctx.fillStyle = '#cc5555';
+            ctx.beginPath();
+            ctx.ellipse(cx-20, 280, 30, 70, 0.1, 0, Math.PI*2);
+            ctx.fill();
+            
+            // Triceps
+            ctx.fillStyle = '#aa4444';
+            ctx.beginPath();
+            ctx.ellipse(cx+25, 290, 28, 65, -0.1, 0, Math.PI*2);
+            ctx.fill();
+            
+            // Forearm flexors
+            ctx.fillStyle = '#bb5555';
+            ctx.beginPath();
+            ctx.ellipse(cx-10, 510, 28, 55, 0.05, 0, Math.PI*2);
+            ctx.fill();
+            
+            // Forearm extensors
+            ctx.fillStyle = '#aa4444';
+            ctx.beginPath();
+            ctx.ellipse(cx+15, 510, 25, 50, -0.05, 0, Math.PI*2);
+            ctx.fill();
+            
+            // Thenar eminence
+            ctx.fillStyle = '#cc6666';
+            ctx.beginPath();
+            ctx.ellipse(cx-40, 700, 18, 15, 0.3, 0, Math.PI*2);
+            ctx.fill();
+            
+            // Hypothenar eminence
+            ctx.fillStyle = '#cc6666';
+            ctx.beginPath();
+            ctx.ellipse(cx+35, 700, 15, 14, -0.3, 0, Math.PI*2);
+            ctx.fill();
+            
+            ctx.restore();
+        }
+        
+        function drawVessels() {
+            if (!layers.veins) return;
+            ctx.save();
+            const cx = 375;
+            
+            // Brachial artery
+            ctx.strokeStyle = 'rgba(200,40,40,0.35)';
+            ctx.lineWidth = 4;
+            ctx.setLineDash([]);
+            ctx.beginPath();
+            ctx.moveTo(cx-5, 120);
+            ctx.quadraticCurveTo(cx+5, 280, cx, 430);
+            ctx.stroke();
+            
+            // Radial artery
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            ctx.moveTo(cx, 430);
+            ctx.quadraticCurveTo(cx-20, 540, cx-30, 660);
+            ctx.stroke();
+            
+            // Ulnar artery
+            ctx.beginPath();
+            ctx.moveTo(cx, 430);
+            ctx.quadraticCurveTo(cx+15, 540, cx+15, 660);
+            ctx.stroke();
+            
+            // Veins (blue, slightly transparent)
+            ctx.strokeStyle = 'rgba(40,60,180,0.25)';
+            ctx.lineWidth = 3;
+            // Basilic vein
+            ctx.beginPath();
+            ctx.moveTo(cx+40, 160);
+            ctx.quadraticCurveTo(cx+45, 300, cx+40, 440);
+            ctx.stroke();
+            
+            // Cephalic vein
+            ctx.beginPath();
+            ctx.moveTo(cx-45, 160);
+            ctx.quadraticCurveTo(cx-50, 300, cx-45, 440);
+            ctx.stroke();
+            
+            ctx.restore();
+        }
+        
+        function drawNerve(nerve, key) {
+            ctx.save();
+            const isSelected = selectedNerve === key;
+            const isHovered = hoveredNerve === key;
+            const path = nerve.path;
+            
+            if (path.length < 2) { ctx.restore(); return; }
+            
+            // Glow effect
+            if (isSelected || isHovered) {
+                ctx.shadowColor = nerve.color;
+                ctx.shadowBlur = isSelected ? 20 : 12;
+            }
+            
+            // Draw main nerve trunk
+            const alpha = isSelected ? 1 : (isHovered ? 0.9 : 0.7);
+            ctx.strokeStyle = nerve.color + (alpha < 1 ? Math.floor(alpha*255).toString(16).padStart(2,'0') : '');
+            ctx.lineWidth = isSelected ? 4 : (isHovered ? 3.5 : 2.5);
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+            
+            // Smooth curve through points
+            ctx.beginPath();
+            ctx.moveTo(path[0].x, path[0].y);
+            for (let i = 1; i < path.length - 1; i++) {
+                const xc = (path[i].x + path[i+1].x) / 2;
+                const yc = (path[i].y + path[i+1].y) / 2;
+                ctx.quadraticCurveTo(path[i].x, path[i].y, xc, yc);
+            }
+            ctx.lineTo(path[path.length-1].x, path[path.length-1].y);
+            ctx.stroke();
+            
+            // Draw branches
+            ctx.lineWidth = isSelected ? 2 : 1.5;
+            ctx.globalAlpha = isSelected ? 0.8 : 0.5;
+            ctx.setLineDash([3, 3]);
+            
+            for (const branch of nerve.branches) {
+                if (branch.length < 2) continue;
+                ctx.beginPath();
+                ctx.moveTo(branch[0].x, branch[0].y);
+                for (let i = 1; i < branch.length - 1; i++) {
+                    const xc = (branch[i].x + branch[i+1].x) / 2;
+                    const yc = (branch[i].y + branch[i+1].y) / 2;
+                    ctx.quadraticCurveTo(branch[i].x, branch[i].y, xc, yc);
+                }
+                ctx.lineTo(branch[branch.length-1].x, branch[branch.length-1].y);
+                ctx.stroke();
+            }
+            
+            ctx.setLineDash([]);
+            ctx.globalAlpha = 1;
+            ctx.shadowBlur = 0;
+            ctx.restore();
+        }
+        
+        function drawBrachialPlexus() {
+            ctx.save();
+            const cx = 375;
+            const topY = 25;
+            
+            // Roots C5-T1
+            const roots = [
+                {label: 'C5', x: cx-80, y: topY, color: '#ff6644'},
+                {label: 'C6', x: cx-45, y: topY-5, color: '#ffaa33'},
+                {label: 'C7', x: cx-10, y: topY-8, color: '#ffcc00'},
+                {label: 'C8', x: cx+25, y: topY-5, color: '#44ddff'},
+                {label: 'T1', x: cx+60, y: topY, color: '#bb88ff'}
+            ];
+            
+            // Draw root lines converging
+            ctx.lineWidth = 2;
+            roots.forEach((root, i) => {
+                ctx.strokeStyle = root.color + '88';
+                ctx.beginPath();
+                ctx.moveTo(root.x, root.y);
+                ctx.quadraticCurveTo(root.x + (cx - root.x)*0.5, root.y + 20, cx + (i-2)*15, 55);
+                ctx.stroke();
+                
+                if (layers.labels) {
+                    ctx.fillStyle = root.color;
+                    ctx.font = 'bold 10px monospace';
+                    ctx.fillText(root.label, root.x - 10, root.y - 5);
+                }
+            });
+            
+            // Trunks indication
+            if (layers.labels) {
+                ctx.fillStyle = 'rgba(150,180,200,0.4)';
+                ctx.font = '9px sans-serif';
+                ctx.fillText('Superior trunk', cx-90, 65);
+                ctx.fillText('Middle trunk', cx-15, 58);
+                ctx.fillText('Inferior trunk', cx+40, 65);
+            }
+            
+            ctx.restore();
+        }
+        
+        function drawLabels() {
+            if (!layers.labels) return;
+            ctx.save();
+            const cx = 375;
+            
+            ctx.font = '10px sans-serif';
+            
+            const labels = [
+                {text: 'Shoulder', x: cx+95, y: 130, color: '#889'},
+                {text: 'Elbow', x: cx+75, y: 440, color: '#889'},
+                {text: 'Wrist', x: cx+55, y: 660, color: '#889'},
+                {text: 'Hand', x: cx+50, y: 700, color: '#889'},
+            ];
+            
+            labels.forEach(l => {
+                ctx.fillStyle = l.color;
+                ctx.fillText(l.text, l.x, l.y);
+            });
+            
+            // Nerve labels along path
+            for (const [key, nerve] of Object.entries(nerves)) {
+                if (selectedNerve && selectedNerve !== key) continue;
+                const path = nerve.path;
+                if (path.length < 3) continue;
+                
+                const labelIdx = Math.floor(path.length * 0.4);
+                const pt = path[labelIdx];
+                
+                ctx.fillStyle = nerve.color;
+                ctx.font = 'bold 9px sans-serif';
+                ctx.globalAlpha = selectedNerve === key ? 1 : 0.7;
+                
+                const shortName = nerve.name.replace(' Nerve', '').replace('Nerves', 'N.');
+                const offset = key === 'radial' || key === 'axillary' ? 15 : -15;
+                ctx.fillText(shortName, pt.x + offset, pt.y);
+            }
+            
+            ctx.globalAlpha = 1;
+            ctx.restore();
+        }
+        
+        function drawDermatomes() {
+            if (viewMode !== 'dermatome') return;
+            ctx.save();
+            const cx = 375;
+            
+            const dermatomes = [
+                {root: 'C5', y1: 100, y2: 200, color: 'rgba(255,100,50,0.12)', side: 'lateral'},
+                {root: 'C6', y1: 180, y2: 450, color: 'rgba(255,170,50,0.12)', side: 'lateral'},
+                {root: 'C7', y1: 300, y2: 500, color: 'rgba(255,200,0,0.12)', side: 'center'},
+                {root: 'C8', y1: 400, y2: 680, color: 'rgba(68,220,255,0.12)', side: 'medial'},
+                {root: 'T1', y1: 150, y2: 350, color: 'rgba(187,136,255,0.12)', side: 'medial'},
+                {root: 'T2', y1: 100, y2: 250, color: 'rgba(255,100,200,0.10)', side: 'medialUpper'},
+            ];
+            
+            dermatomes.forEach(d => {
+                ctx.fillStyle = d.color;
+                const w = 40;
+                let xOff = 0;
+                if (d.side === 'lateral') xOff = -35;
+                if (d.side === 'medial') xOff = 30;
+                if (d.side === 'medialUpper') xOff = 45;
+                
+                ctx.beginPath();
+                ctx.ellipse(cx + xOff, (d.y1+d.y2)/2, w, (d.y2-d.y1)/2, 0, 0, Math.PI*2);
+                ctx.fill();
+                
+                if (layers.labels) {
+                    ctx.fillStyle = d.color.replace('0.1', '0.8');
+                    ctx.font = 'bold 11px monospace';
+                    ctx.fillText(d.root, cx + xOff - 8, (d.y1+d.y2)/2);
+                }
+            });
+            
+            ctx.restore();
+        }
+        
+        function drawMyotomes() {
+            if (viewMode !== 'myotome') return;
+            ctx.save();
+            const cx = 375;
+            
+            const myotomes = [
+                {label: 'C5: Deltoid\n(Shoulder abd.)', x: cx, y: 150, r: 45, color: 'rgba(255,100,50,0.2)'},
+                {label: 'C5-6: Biceps\n(Elbow flex.)', x: cx-20, y: 280, r: 35, color: 'rgba(255,150,50,0.2)'},
+                {label: 'C7: Triceps\n(Elbow ext.)', x: cx+25, y: 290, r: 30, color: 'rgba(255,200,0,0.2)'},
+                {label: 'C6-7: Wrist ext.', x: cx-15, y: 500, r: 25, color: 'rgba(100,255,100,0.2)'},
+                {label: 'C8: Finger flex.', x: cx, y: 560, r: 22, color: 'rgba(68,220,255,0.2)'},
+                {label: 'T1: Intrinsics', x: cx, y: 710, r: 30, color: 'rgba(187,136,255,0.2)'},
+            ];
+            
+            myotomes.forEach(m => {
+                ctx.fillStyle = m.color;
+                ctx.beginPath();
+                ctx.arc(m.x, m.y, m.r, 0, Math.PI*2);
+                ctx.fill();
+                ctx.strokeStyle = m.color.replace('0.2', '0.5');
+                ctx.lineWidth = 1;
+                ctx.stroke();
+                
+                if (layers.labels) {
+                    ctx.fillStyle = '#ddd';
+                    ctx.font = '9px sans-serif';
+                    const lines = m.label.split('\n');
+                    lines.forEach((line, i) => {
+                        ctx.fillText(line, m.x - ctx.measureText(line).width/2, m.y + i*12 - 5);
+                    });
+                }
+            });
+            
+            ctx.restore();
+        }
+        
+        function drawCrossSection() {
+            if (viewMode !== 'cross') return;
+            ctx.save();
+            
+            const cx = 375, cy = 400;
+            const r = 120;
+            
+            // Background
+            ctx.fillStyle = '#0d1520';
+            ctx.fillRect(cx-200, cy-200, 400, 400);
+            
+            // Skin outline
+            ctx.strokeStyle = 'rgba(180,140,100,0.5)';
+            ctx.lineWidth = 8;
+            ctx.beginPath();
+            ctx.arc(cx, cy, r, 0, Math.PI*2);
+            ctx.stroke();
+            
+            // Subcutaneous layer
+            ctx.strokeStyle = 'rgba(200,160,100,0.2)';
+            ctx.lineWidth = 12;
+            ctx.beginPath();
+            ctx.arc(cx, cy, r-10, 0, Math.PI*2);
+            ctx.stroke();
+            
+            // Bone cross sections
+            ctx.fillStyle = 'rgba(220,210,180,0.25)';
+            // Humerus / radius / ulna depending on level
+            ctx.beginPath();
+            ctx.arc(cx-20, cy, 18, 0, Math.PI*2);
+            ctx.fill();
+            ctx.strokeStyle = 'rgba(220,210,180,0.4)';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+            
+            ctx.beginPath();
+            ctx.arc(cx+25, cy+5, 14, 0, Math.PI*2);
+            ctx.fill();
+            ctx.stroke();
+            
+            // Muscles (compartments)
+            ctx.fillStyle = 'rgba(180,60,60,0.15)';
+            // Anterior compartment
+            ctx.beginPath();
+            ctx.ellipse(cx-10, cy-50, 60, 35, 0, 0, Math.PI*2);
+            ctx.fill();
+            // Posterior compartment
+            ctx.beginPath();
+            ctx.ellipse(cx+5, cy+55, 55, 30, 0, 0, Math.PI*2);
+            ctx.fill();
+            
+            // Nerves in cross-section
+            const crossNerves = [
+                {name: 'Median N.', x: cx-5, y: cy-25, color: '#ffcc00'},
+                {name: 'Ulnar N.', x: cx+45, y: cy+15, color: '#44ddff'},
+                {name: 'Radial N.', x: cx+10, y: cy+45, color: '#44ff88'},
+                {name: 'Musculocut. N.', x: cx-50, y: cy-30, color: '#ff6644'},
+                {name: 'Brachial A.', x: cx-15, y: cy-15, color: '#cc3333'},
+            ];
+            
+            crossNerves.forEach(n => {
+                // Nerve fascicles
+                ctx.fillStyle = n.color;
+                ctx.shadowColor = n.color;
+                ctx.shadowBlur = 8;
+                ctx.beginPath();
+                ctx.arc(n.x, n.y, 6, 0, Math.PI*2);
+                ctx.fill();
+                
+                // Epineurium
+                ctx.strokeStyle = n.color + '88';
+                ctx.lineWidth = 1.5;
+                ctx.stroke();
+                
+                // Inner fascicles
+                ctx.shadowBlur = 0;
+                ctx.fillStyle = n.color + 'aa';
+                for (let i = 0; i < 3; i++) {
+                    const angle = (i / 3) * Math.PI * 2;
+                    ctx.beginPath();
+                    ctx.arc(n.x + Math.cos(angle)*2.5, n.y + Math.sin(angle)*2.5, 1.5, 0, Math.PI*2);
+                    ctx.fill();
+                }
+                
+                if (layers.labels) {
+                    ctx.fillStyle = n.color;
+                    ctx.font = '9px sans-serif';
+                    ctx.fillText(n.name, n.x + 10, n.y + 3);
+                }
+            });
+            
+            // Vessels
+            ctx.shadowBlur = 0;
+            ctx.fillStyle = 'rgba(200,40,40,0.6)';
+            ctx.beginPath();
+            ctx.arc(cx-15, cy-15, 5, 0, Math.PI*2);
+            ctx.fill();
+            
+            // Veins
+            ctx.fillStyle = 'rgba(40,60,180,0.4)';
+            ctx.beginPath();
+            ctx.arc(cx-25, cy-18, 3, 0, Math.PI*2);
+            ctx.fill();
+            ctx.beginPath();
+            ctx.arc(cx-8, cy-20, 3, 0, Math.PI*2);
+            ctx.fill();
+            
+            // Label
+            ctx.fillStyle = '#88aacc';
+            ctx.font = 'bold 12px sans-serif';
+            ctx.fillText('Cross-Section at Mid-Arm', cx-80, cy-170);
+            
+            // Orientation markers
+            ctx.fillStyle = '#667';
+            ctx.font = '10px sans-serif';
+            ctx.fillText('Anterior', cx-20, cy-r-15);
+            ctx.fillText('Posterior', cx-20, cy+r+25);
+            ctx.fillText('Lateral', cx-r-40, cy+4);
+            ctx.fillText('Medial', cx+r+10, cy+4);
+            
+            ctx.restore();
+        }
+        
+        // Signal animation
+        class Signal {
+            constructor(path, color, speed, reverse = false, type = 'motor') {
+                this.path = reverse ? [...path].reverse() : path;
+                this.color = color;
+                this.speed = speed;
+                this.progress = 0;
+                this.type = type;
+                this.alive = true;
+                this.trail = [];
+                this.totalLength = this.calcLength();
+            }
+            
+            calcLength() {
+                let len = 0;
+                for (let i = 1; i < this.path.length; i++) {
+                    const dx = this.path[i].x - this.path[i-1].x;
+                    const dy = this.path[i].y - this.path[i-1].y;
+                    len += Math.sqrt(dx*dx + dy*dy);
+                }
+                return len;
+            }
+            
+            getPoint(t) {
+                t = Math.max(0, Math.min(1, t));
+                const targetDist = t * this.totalLength;
+                let accumulated = 0;
+                
+                for (let i = 1; i < this.path.length; i++) {
+                    const dx = this.path[i].x - this.path[i-1].x;
+                    const dy = this.path[i].y - this.path[i-1].y;
+                    const segLen = Math.sqrt(dx*dx + dy*dy);
+                    
+                    if (accumulated + segLen >= targetDist) {
+                        const frac = (targetDist - accumulated) / segLen;
+                        return {
+                            x: this.path[i-1].x + dx * frac,
+                            y: this.path[i-1].y + dy * frac
+                        };
+                    }
+                    accumulated += segLen;
+                }
+                return this.path[this.path.length - 1];
+            }
+            
+            update(dt) {
+                this.progress += (this.speed * 0.0008) * dt;
+                
+                const pos = this.getPoint(this.progress);
+                this.trail.push({...pos, age: 0});
+                
+                // Update trail
+                this.trail = this.trail.filter(t => {
+                    t.age += dt;
+                    return t.age < 500;
+                });
+                
+                if (this.progress > 1.2) {
+                    this.alive = false;
+                }
+            }
+            
+            draw(ctx) {
+                // Trail
+                this.trail.forEach(t => {
+                    const alpha = 1 - t.age / 500;
+                    const r = 2 + (1 - alpha) * 1;
+                    ctx.fillStyle = this.color + Math.floor(alpha * 180).toString(16).padStart(2, '0');
+                    ctx.beginPath();
+                    ctx.arc(t.x, t.y, r, 0, Math.PI*2);
+                    ctx.fill();
+                });
+                
+                // Main signal point
+                if (this.progress >= 0 && this.progress <= 1) {
+                    const pos = this.getPoint(this.progress);
+                    
+                    // Outer glow
+                    ctx.shadowColor = this.color;
+                    ctx.shadowBlur = 15;
+                    ctx.fillStyle = this.color;
+                    ctx.beginPath();
+                    ctx.arc(pos.x, pos.y, 5, 0, Math.PI*2);
+                    ctx.fill();
+                    
+                    // Inner bright point
+                    ctx.shadowBlur = 0;
+                    ctx.fillStyle = '#ffffff';
+                    ctx.beginPath();
+                    ctx.arc(pos.x, pos.y, 2, 0, Math.PI*2);
+                    ctx.fill();
+                    
+                    // Action potential spike visualization
+                    if (this.type === 'motor' || this.type === 'sensory') {
+                        const spikeWidth = 30;
+                        ctx.strokeStyle = this.color + '66';
+                        ctx.lineWidth = 1;
+                        ctx.beginPath();
+                        for (let i = -spikeWidth; i <= spikeWidth; i++) {
+                            const t2 = this.progress + (i / this.totalLength) * 0.3;
+                            const pt = this.getPoint(t2);
+                            const spike = Math.exp(-i*i/50) * Math.sin(i * 0.8) * 8;
+                            // perpendicular direction
+                            const t3 = this.progress + ((i+1) / this.totalLength) * 0.3;
+                            const pt2 = this.getPoint(t3);
+                            const dx = pt2.x - pt.x;
+                            const dy = pt2.y - pt.y;
+                            const len = Math.sqrt(dx*dx + dy*dy) || 1;
+                            const nx = -dy/len;
+                            const ny = dx/len;
+                            
+                            if (i === -spikeWidth) {
+                                ctx.moveTo(pt.x + nx*spike, pt.y + ny*spike);
+                            } else {
+                                ctx.lineTo(pt.x + nx*spike, pt.y + ny*spike);
+                            }
+                        }
+                        ctx.stroke();
+                    }
+                }
+            }
+        }
+        
+        function triggerFullSignal() {
+            const speed = parseInt(document.getElementById('signalSpeed').value);
+            for (const [key, nerve] of Object.entries(nerves)) {
+                signals.push(new Signal(nerve.path, nerve.color, speed, false, 'motor'));
+                // Stagger branch signals
+                setTimeout(() => {
+                    nerve.branches.forEach(branch => {
+                        signals.push(new Signal(branch, nerve.color, speed * 0.7, false, 'motor'));
+                    });
+                }, 800);
+            }
+            updateSignalInfo('Motor signal: Brain → Peripheral nerves', speed);
+        }
+        
+        function triggerSensory() {
+            const speed = parseInt(document.getElementById('signalSpeed').value);
+            // Sensory from fingertips back to brain
+            signals.push(new Signal(nerves.median.path, '#ffcc00', speed, true, 'sensory'));
+            signals.push(new Signal(nerves.ulnar.path, '#44ddff', speed * 0.9, true, 'sensory'));
+            setTimeout(() => {
+                nerves.median.branches.forEach(branch => {
+                    signals.push(new Signal(branch, '#ffcc00', speed * 0.6, true, 'sensory'));
+                });
+            }, 200);
+            updateSignalInfo('Sensory signal: Fingertips → Brain', speed);
+        }
+        
+        function triggerReflex() {
+            const speed = parseInt(document.getElementById('signalSpeed').value);
+            // Sensory up
+            const sensory = new Signal(nerves.median.path, '#ff8844', speed, true, 'sensory');
+            signals.push(sensory);
+            // Motor back down after delay
+            setTimeout(() => {
+                signals.push(new Signal(nerves.musculocutaneous.path, '#44ff88', speed, false, 'motor'));
+                nerves.musculocutaneous.branches.forEach(branch => {
+                    signals.push(new Signal(branch, '#44ff88', speed * 0.7, false, 'motor'));
+                });
+            }, 1500);
+            updateSignalInfo('Reflex arc: Sensory → Spinal cord → Motor response', speed);
+        }
+        
+        function resetSignals() {
+            signals = [];
+            updateSignalInfo('Reset - Ready', 0);
+        }
+        
+        function updateSignalInfo(text, speed) {
+            document.getElementById('signalInfo').innerHTML = 
+                `<strong>Signal Status:</strong> Active<br>` +
+                `<span class="val">${text}</span><br>` +
+                `Speed: ${speed} m/s | Conduction time: ~${(800/speed).toFixed(0)}ms`;
+        }
+        
+        // Interaction
+        function distToPath(px, py, path) {
+            let minDist = Infinity;
+            for (const pt of path) {
+                const d = Math.sqrt((px-pt.x)**2 + (py-pt.y)**2);
+                if (d < minDist) minDist = d;
+            }
+            return minDist;
+        }
+        
+        function findNerveAt(x, y) {
+            let closest = null;
+            let closestDist = 25;
+            
+            for (const [key, nerve] of Object.entries(nerves)) {
+                const d = distToPath(x, y, nerve.path);
+                if (d < closestDist) {
+                    closestDist = d;
+                    closest = key;
+                }
+                // Check branches too
+                for (const branch of nerve.branches) {
+                    const db = distToPath(x, y, branch);
+                    if (db < closestDist) {
+                        closestDist = db;
+                        closest = key;
+                    }
+                }
+            }
+            return closest;
+        }
+        
+        canvas.addEventListener('mousemove', (e) => {
+            const rect = canvas.getBoundingClientRect();
+            mousePos.x = (e.clientX - rect.left) * (canvas.width / rect.width);
+            mousePos.y = (e.clientY - rect.top) * (canvas.height / rect.height);
+            
+            hoveredNerve = findNerveAt(mousePos.x, mousePos.y);
+            
+            if (hoveredNerve) {
+                const nerve = nerves[hoveredNerve];
+                document.getElementById('hoverInfo').innerHTML = 
+                    `<strong style="color:${nerve.color}">${nerve.name}</strong><br>` +
+                    `Roots: ${nerve.roots}<br>` +
+                    `Cord: ${nerve.cord}`;
+            }
+        });
+        
+        canvas.addEventListener('click', (e) => {
+            const rect = canvas.getBoundingClientRect();
+            const x = (e.clientX - rect.left) * (canvas.width / rect.width);
+            const y = (e.clientY - rect.top) * (canvas.height / rect.height);
+            
+            const clicked = findNerveAt(x, y);
+            selectedNerve = clicked;
+            
+            if (clicked) {
+                const nerve = nerves[clicked];
+                const speed = parseInt(document.getElementById('signalSpeed').value);
+                
+                // Send signal along clicked nerve
+                signals.push(new Signal(nerve.path, nerve.color, speed, false, 'motor'));
+                nerve.branches.forEach(branch => {
+                    setTimeout(() => {
+                        signals.push(new Signal(branch, nerve.color, speed*0.7, false, 'motor'));
+                    }, 400);
+                });
+                
+                // Update panels
+                document.getElementById('hoverInfo').innerHTML = 
+                    `<strong style="color:${nerve.color}">${nerve.name}</strong><br>` +
+                    `<strong>Roots:</strong> ${nerve.roots}<br>` +
+                    `<strong>Cord:</strong> ${nerve.cord}<br>` +
+                    `<strong>Motor:</strong> ${nerve.motor}<br>` +
+                    `<strong>Sensory:</strong> ${nerve.sensory}<br>` +
+                    `<strong>Fibers:</strong> ${nerve.fiberTypes}<br>` +
+                    `<strong>Velocity:</strong> ${nerve.velocity}`;
+                
+                document.getElementById('clinicalInfo').innerHTML = 
+                    `<strong style="color:${nerve.color}">${nerve.name}</strong><br><br>${nerve.clinical}`;
+                
+                updateSignalInfo(`Stimulating: ${nerve.name}`, speed);
+            } else {
+                selectedNerve = null;
+            }
+        });
+        
+        // Node pulsation along nerves (nodes of Ranvier effect)
+        function drawNodes() {
+            for (const [key, nerve] of Object.entries(nerves)) {
+                const path = nerve.path;
+                ctx.fillStyle = nerve.color + '33';
+                
+                for (let i = 0; i < path.length; i++) {
+                    const pulse = Math.sin(time * 0.003 + i * 1.5) * 0.5 + 0.5;
+                    const r = 2 + pulse * 1.5;
+                    ctx.beginPath();
+                    ctx.arc(path[i].x, path[i].y, r, 0, Math.PI*2);
+                    ctx.fill();
+                }
+            }
+        }
+        
+        // Background neural activity
+        function drawBackgroundActivity() {
+            ctx.save();
+            for (let i = 0; i < 30; i++) {
+                const x = 200 + Math.sin(time * 0.001 + i * 0.7) * 150 + Math.cos(time * 0.0005 + i) * 50;
+                const y = 100 + (i * 25) % 650;
+                const alpha = (Math.sin(time * 0.005 + i * 2) * 0.5 + 0.5) * 0.05;
+                ctx.fillStyle = `rgba(100,180,255,${alpha})`;
+                ctx.beginPath();
+                ctx.arc(x, y, 1.5, 0, Math.PI*2);
+                ctx.fill();
+            }
+            ctx.restore();
+        }
+        
+        // View mode & layer controls
+        function setView(mode) {
+            viewMode = mode;
+            document.querySelectorAll('.btn-row button').forEach(b => b.classList.remove('active'));
+            document.getElementById('btn' + mode.charAt(0).toUpperCase() + mode.slice(1))?.classList.add('active');
+        }
+        
+        function toggleLayer(layer) {
+            layers[layer] = !layers[layer];
+            const btn = document.getElementById('btnToggle' + layer.charAt(0).toUpperCase() + layer.slice(1));
+            if (btn) btn.classList.toggle('active', layers[layer]);
+        }
+        
+        // Build legend
+        function buildLegend() {
+            let html = '';
+            for (const [key, nerve] of Object.entries(nerves)) {
+                html += `<div class="nerve-label" onclick="selectNerve('${key}')">
+                    <div class="nerve-dot" style="background:${nerve.color}; box-shadow: 0 0 6px ${nerve.color}"></div>
+                    <span>${nerve.name}<br><small style="color:#889">${nerve.roots}</small></span>
+                </div>`;
+            }
+            document.getElementById('nerveLegend').innerHTML = html;
+        }
+        
+        function selectNerve(key) {
+            selectedNerve = selectedNerve === key ? null : key;
+            if (selectedNerve) {
+                const nerve = nerves[selectedNerve];
+                document.getElementById('hoverInfo').innerHTML = 
+                    `<strong style="color:${nerve.color}">${nerve.name}</strong><br>` +
+                    `<strong>Roots:</strong> ${nerve.roots}<br>` +
+                    `<strong>Cord:</strong> ${nerve.cord}<br>` +
+                    `<strong>Motor:</strong> ${nerve.motor}<br>` +
+                    `<strong>Sensory:</strong> ${nerve.sensory}<br>` +
+                    `<strong>Fibers:</strong> ${nerve.fiberTypes}<br>` +
+                    `<strong>Velocity:</strong> ${nerve.velocity}`;
+                document.getElementById('clinicalInfo').innerHTML = 
+                    `<strong style="color:${nerve.color}">${nerve.name}</strong><br><br>${nerve.clinical}`;
+            }
+        }
+        window.selectNerve = selectNerve;
+        window.setView = setView;
+        window.toggleLayer = toggleLayer;
+        window.triggerFullSignal = triggerFullSignal;
+        window.triggerSensory = triggerSensory;
+        window.triggerReflex = triggerReflex;
+        window.resetSignals = resetSignals;
+        
+        // Speed slider
+        document.getElementById('signalSpeed').addEventListener('input', (e) => {
+            document.getElementById('speedVal').textContent = e.target.value;
+        });
+        
+        // Main render loop
+        let lastTime = performance.now();
+        
+        function render(timestamp) {
+            const dt = timestamp - lastTime;
+            lastTime = timestamp;
+            time = timestamp;
+            
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            // Background
+            const bgGrad = ctx.createRadialGradient(375, 400, 50, 375, 400, 500);
+            bgGrad.addColorStop(0, '#0f1825');
+            bgGrad.addColorStop(1, '#0a0a15');
+            ctx.fillStyle = bgGrad;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            drawBackgroundActivity();
+            
+            if (viewMode === 'cross') {
+                drawCrossSection();
+            } else {
+                drawArmOutline();
+                drawBones();
+                drawMuscles();
+                drawVessels();
+                drawDermatomes();
+                drawMyotomes();
+                drawBrachialPlexus();
+                
+                // Draw all nerves
+                for (const [key, nerve] of Object.entries(nerves)) {
+                    if (selectedNerve && selectedNerve !== key) {
+                        ctx.globalAlpha = 0.25;
+                    }
+                    drawNerve(nerve, key);
+                    ctx.globalAlpha = 1;
+                }
+                
+                drawNodes();
+                drawLabels();
+            }
+            
+            // Update and draw signals
+            signals = signals.filter(s => s.alive);
+            signals.forEach(s => {
+                s.update(dt);
+                s.draw(ctx);
+            });
+            
+            // Cursor indicator
+            if (hoveredNerve && viewMode !== 'cross') {
+                ctx.fillStyle = 'rgba(255,255,255,0.1)';
+                ctx.beginPath();
+                ctx.arc(mousePos.x, mousePos.y, 15, 0, Math.PI*2);
+                ctx.fill();
+            }
+            
+            // Title overlay
+            ctx.fillStyle = 'rgba(100,150,200,0.3)';
+            ctx.font = '10px sans-serif';
+            ctx.fillText('Click on nerves to stimulate | Scroll panel for details', 180, canvas.height - 10);
+            
+            requestAnimationFrame(render);
+        }
+        
+        // Initialize
+        buildNervePaths();
+        buildLegend();
+        
+        // Plexus info
+        document.getElementById('plexusInfo').innerHTML = `
+            <div class="info-box">
+                <strong>Trunks:</strong> Superior (C5-6), Middle (C7), Inferior (C8-T1)<br>
+                <strong>Divisions:</strong> Each trunk → anterior + posterior<br>
+                <strong>Cords:</strong> Lateral, Posterior, Medial<br>
+                <strong>Named by relation to axillary artery</strong>
+            </div>
+        `;
+        
+        requestAnimationFrame(render);
+    </script>
+</body>
+</html>
