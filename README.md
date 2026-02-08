@@ -16,8 +16,7 @@ This repository contains my personal website hosted on GitHub Pages. It’s a mi
 Primary (custom domain):
 - https://www.kai9987kai.co.uk/
 
-Also used/linked:
-- https://kai9987kai.pw/
+
 
 The default GitHub Pages domain may redirect to the custom domain (depending on current DNS / Pages settings).
 
