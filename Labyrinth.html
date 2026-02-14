@@ -1,435 +1,2399 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Cognitive Labyrinth</title>
   <style>
-    body { 
-      font-family: Arial, sans-serif; 
-      display: flex; 
-      flex-direction: column; 
-      align-items: center; 
-      margin: 0; 
-      padding: 0; 
-      background-color: #f5f5f5; 
+    :root{
+      --bg: #0b1020;
+      --bg2:#0e1633;
+      --panel: rgba(255,255,255,0.06);
+      --panel2: rgba(255,255,255,0.09);
+      --stroke: rgba(255,255,255,0.12);
+      --stroke2: rgba(255,255,255,0.18);
+      --text: rgba(255,255,255,0.92);
+      --muted: rgba(255,255,255,0.72);
+      --muted2: rgba(255,255,255,0.58);
+      --good: #4CAF50;
+      --bad: #ff5c7a;
+      --accent: #9b5cff;
+      --accent2:#39d0ff;
+      --warn:#ffcc66;
+      --shadow: 0 18px 50px rgba(0,0,0,0.35);
+      --radius: 18px;
+      --radius2: 12px;
+      --gap: 14px;
+      --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      --sans: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+      --cellGap: 2px;
+      --wall: rgba(255,255,255,0.06);
+      --path: rgba(255,255,255,0.14);
+      --fog: rgba(0,0,0,0.55);
+      --current: #38ff8b;
+      --currentStroke: rgba(0,0,0,0.4);
+      --node: #a855f7;
+      --end:#ff6f61;
+      --visited: rgba(57,208,255,0.16);
+      --hint: rgba(255,204,102,0.55);
+      --solution: rgba(56,255,139,0.22);
+      --scaleDesktop: 0.55;
     }
-    /* Scale the entire page to 55% only on screens wider than 600px (desktop) */
-    @media screen and (min-width: 601px) {
-      body {
-        transform: scale(0.55);
+
+    [data-theme="light"]{
+      --bg:#f5f7ff;
+      --bg2:#eef2ff;
+      --panel: rgba(0,0,0,0.035);
+      --panel2: rgba(0,0,0,0.06);
+      --stroke: rgba(0,0,0,0.1);
+      --stroke2: rgba(0,0,0,0.14);
+      --text: rgba(0,0,0,0.88);
+      --muted: rgba(0,0,0,0.68);
+      --muted2: rgba(0,0,0,0.55);
+      --wall: rgba(0,0,0,0.10);
+      --path: rgba(0,0,0,0.04);
+      --fog: rgba(255,255,255,0.72);
+      --shadow: 0 18px 50px rgba(0,0,0,0.10);
+      --currentStroke: rgba(0,0,0,0.12);
+      --visited: rgba(57,208,255,0.14);
+      --solution: rgba(56,255,139,0.16);
+    }
+
+    *{ box-sizing:border-box; }
+    html, body { height:100%; }
+    body{
+      margin:0;
+      font-family: var(--sans);
+      color: var(--text);
+      background:
+        radial-gradient(1000px 600px at 15% 10%, rgba(155,92,255,0.25), transparent 55%),
+        radial-gradient(900px 600px at 85% 20%, rgba(57,208,255,0.25), transparent 60%),
+        radial-gradient(900px 700px at 45% 90%, rgba(56,255,139,0.14), transparent 60%),
+        linear-gradient(180deg, var(--bg), var(--bg2));
+      overflow-x:hidden;
+    }
+
+    /* keep your current desktop scaling behavior, but make it configurable via CSS variable */
+    @media screen and (min-width: 601px){
+      body{
+        transform: scale(var(--scaleDesktop));
         transform-origin: top left;
       }
     }
-    h1, p { 
-      text-align: center; 
-      margin: 0.5rem; 
+    @media screen and (max-width:600px){
+      body{ transform: scale(1); }
     }
-    #maze { 
-      display: grid; 
-      grid-template-columns: repeat(20, 1fr); /* Desktop default: 20x20 cells */
-      gap: 2px; 
-      width: 90vw; 
-      max-width: 90vw; 
-      margin-top: 10px; 
-      border: 2px solid #333; 
-      background-color: #333; 
-      position: relative;
+
+    a{ color:inherit; }
+    .app{
+      width:min(1200px, 96vw);
+      margin: 18px auto 28px;
+      display:flex;
+      flex-direction: column;
+      gap: var(--gap);
     }
-    .cell { 
-      /* The padding-top ensures the height is proportional to width, keeping cells square */
-      width: 100%; 
-      padding-top: 100%; 
-      position: relative; 
-      background-color: #eee; 
-      box-sizing: border-box; 
+
+    header{
+      display:flex;
+      gap: var(--gap);
+      flex-wrap: wrap;
+      align-items: flex-start;
+      justify-content: space-between;
+      padding: 16px 16px;
+      border: 1px solid var(--stroke);
+      background: linear-gradient(180deg, var(--panel), transparent);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(10px);
     }
-    .cell.current { 
-      background-color: #4CAF50; 
-      border: 2px solid #388E3C; 
+
+    .titleBlock{
+      min-width: 260px;
+      flex: 1 1 340px;
+      display:flex;
+      flex-direction: column;
+      gap: 8px;
     }
-    .cell.path {
-      background-color: #eee; 
+    h1{
+      margin:0;
+      letter-spacing:0.2px;
+      font-size: clamp(20px, 3.2vw, 34px);
+      line-height:1.08;
     }
-    .node { 
-      background-color: #8e44ad; 
-      color: white; 
-      display: flex; 
-      align-items: center; 
-      justify-content: center; 
-      font-weight: bold; 
+    .subtitle{
+      margin:0;
+      color: var(--muted);
+      font-size: 14.5px;
+      line-height:1.35;
     }
-    .end { 
-      background-color: #ff6f61; 
-      color: white; 
-      font-weight: bold; 
-      text-align: center; 
-      display: flex; 
-      align-items: center; 
-      justify-content: center; 
+
+    .pillRow{
+      display:flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 4px;
     }
-    .wall { 
-      background-color: #333; 
+    .pill{
+      padding: 6px 10px;
+      border: 1px solid var(--stroke);
+      border-radius: 999px;
+      background: rgba(255,255,255,0.05);
+      font-size: 12.5px;
+      color: var(--muted);
+      display:flex;
+      gap: 8px;
+      align-items: center;
     }
-    #prompt { 
-      margin-top: 20px; 
-      padding: 10px; 
-      border: 1px solid #333; 
-      width: 90vw; 
-      max-width: 400px; 
-      background-color: #ffffff; 
-      border-radius: 8px; 
+    .dot{
+      width:8px;height:8px;border-radius: 999px;
+      background: var(--accent2);
+      box-shadow: 0 0 0 3px rgba(57,208,255,0.12);
     }
-    #prompt p { 
-      margin: 5px 0; 
+    .dot.warn{ background: var(--warn); box-shadow: 0 0 0 3px rgba(255,204,102,0.18); }
+    .dot.good{ background: var(--good); box-shadow: 0 0 0 3px rgba(76,175,80,0.18); }
+    .dot.bad{ background: var(--bad); box-shadow: 0 0 0 3px rgba(255,92,122,0.18); }
+
+    .topControls{
+      flex: 1 1 420px;
+      display:flex;
+      flex-direction: column;
+      gap: 10px;
+      align-items: stretch;
+      min-width: 320px;
     }
-    textarea, button, #apiKey { 
-      width: 100%; 
-      margin-top: 10px; 
-      padding: 10px; 
-      border-radius: 4px; 
-      border: 1px solid #888; 
-      font-size: 1rem; 
-      box-sizing: border-box; 
+
+    .controlGrid{
+      display:grid;
+      grid-template-columns: 1.25fr 0.75fr 0.8fr 0.8fr;
+      gap: 10px;
     }
-    #controls { 
-      display: flex; 
-      justify-content: space-around; 
-      width: 90vw; 
-      max-width: 400px; 
-      margin-top: 10px; 
+    .controlGrid2{
+      display:grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 10px;
     }
-    .control-btn { 
-      background-color: #3f51b5; 
-      color: white; 
-      padding: 15px; 
-      border: none; 
-      border-radius: 8px; 
-      font-size: 1.2rem; 
-      flex: 1; 
-      margin: 0 5px; 
+    .controlGrid3{
+      display:grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+
+    label{
+      display:block;
+      font-size: 12px;
+      color: var(--muted2);
+      margin-bottom: 6px;
+    }
+
+    input, select, textarea, button{
+      font: inherit;
+      color: var(--text);
+    }
+    input, select, textarea{
+      width:100%;
+      padding: 10px 12px;
+      background: rgba(0,0,0,0.15);
+      border: 1px solid var(--stroke);
+      border-radius: 12px;
+      outline: none;
+      transition: border-color 120ms ease, background 120ms ease, transform 120ms ease;
+    }
+    [data-theme="light"] input,
+    [data-theme="light"] select,
+    [data-theme="light"] textarea{
+      background: rgba(255,255,255,0.78);
+    }
+    input:focus, select:focus, textarea:focus{
+      border-color: rgba(155,92,255,0.55);
+      box-shadow: 0 0 0 4px rgba(155,92,255,0.16);
+    }
+    textarea{
+      min-height: 86px;
+      resize: vertical;
+      line-height: 1.35;
+    }
+
+    .btn{
+      padding: 11px 12px;
+      border: 1px solid var(--stroke2);
+      border-radius: 12px;
+      background: linear-gradient(180deg, rgba(155,92,255,0.25), rgba(155,92,255,0.08));
       cursor: pointer;
+      transition: transform 110ms ease, filter 110ms ease, border-color 110ms ease;
+      display:flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      user-select: none;
     }
-    #winMessage {
-      margin-top: 10px;
-      padding: 10px;
-      border: 1px solid #4CAF50;
-      background-color: #C8E6C9;
-      width: 90vw;
-      max-width: 400px;
-      border-radius: 8px;
+    .btn:hover{ filter: brightness(1.05); }
+    .btn:active{ transform: translateY(1px) scale(0.99); }
+    .btn.secondary{
+      background: rgba(255,255,255,0.06);
+      border-color: var(--stroke);
+    }
+    .btn.danger{
+      background: linear-gradient(180deg, rgba(255,92,122,0.22), rgba(255,92,122,0.08));
+    }
+    .btn.good{
+      background: linear-gradient(180deg, rgba(56,255,139,0.22), rgba(56,255,139,0.06));
+    }
+    .btn.small{ padding: 9px 10px; border-radius: 12px; font-size: 13px; }
+    .btnIcon{
+      width: 18px;
+      height: 18px;
+      display:inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-family: var(--mono);
+      font-weight: 700;
+      opacity: 0.85;
+    }
+
+    .main{
+      display:grid;
+      grid-template-columns: 1.2fr 0.8fr;
+      gap: var(--gap);
+      align-items: start;
+    }
+    @media (max-width: 980px){
+      .main{ grid-template-columns: 1fr; }
+    }
+
+    .card{
+      border: 1px solid var(--stroke);
+      border-radius: var(--radius);
+      background: linear-gradient(180deg, var(--panel), rgba(255,255,255,0.02));
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(10px);
+      overflow:hidden;
+    }
+    .cardHeader{
+      padding: 14px 14px 12px;
+      border-bottom: 1px solid var(--stroke);
+      display:flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .cardHeader h2{
+      margin:0;
+      font-size: 15px;
+      letter-spacing: 0.2px;
+    }
+    .metaLine{
+      font-size: 12.5px;
+      color: var(--muted);
+      display:flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+    .kv{
+      padding: 4px 8px;
+      border: 1px solid var(--stroke);
+      border-radius: 999px;
+      background: rgba(255,255,255,0.05);
+    }
+
+    #mazeWrap{ padding: 12px; }
+    #maze{
+      display:grid;
+      gap: var(--cellGap);
+      border: 1px solid rgba(255,255,255,0.18);
+      background: rgba(0,0,0,0.22);
+      border-radius: 16px;
+      overflow:hidden;
+      position: relative;
+      touch-action: none; /* helps avoid scroll interference */
+      user-select: none;
+      box-shadow: inset 0 0 0 1px rgba(0,0,0,0.25);
+    }
+    [data-theme="light"] #maze{
+      background: rgba(255,255,255,0.65);
+    }
+
+    .cell{
+      width: 100%;
+      position: relative;
+      background: var(--path);
+      border-radius: 4px;
+      border: 1px solid rgba(255,255,255,0.02);
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 0.4px;
+      color: rgba(255,255,255,0.85);
+      text-transform: uppercase;
+      overflow:hidden;
+    }
+    @supports (aspect-ratio: 1 / 1){
+      .cell{ aspect-ratio: 1 / 1; }
+    }
+    @supports not (aspect-ratio: 1 / 1){
+      .cell{ height: 0; padding-bottom: 100%; }
+      .cell > .label{ position:absolute; inset:0; display:flex; align-items:center; justify-content:center; }
+    }
+
+    .cell.wall{ background: var(--wall); }
+    .cell.end{ background: var(--end); color: white; }
+    .cell.node{ background: var(--node); color: white; }
+    .cell.current{
+      background: var(--current);
+      color: rgba(0,0,0,0.78);
+      border: 2px solid var(--currentStroke);
+      box-shadow: inset 0 0 0 1px rgba(255,255,255,0.28), 0 0 0 3px rgba(56,255,139,0.12);
+      transform: scale(1.02);
+      z-index: 2;
+    }
+    .cell.visited{
+      box-shadow: inset 0 0 0 999px var(--visited);
+    }
+    .cell.nodeDone{
+      background: linear-gradient(180deg, rgba(56,255,139,0.22), rgba(56,255,139,0.06));
+      color: rgba(255,255,255,0.92);
+    }
+    .cell.hint{
+      box-shadow: inset 0 0 0 999px var(--hint);
+    }
+    .cell.solution{
+      box-shadow: inset 0 0 0 999px var(--solution);
+    }
+
+    .cell.hidden{
+      filter: blur(1.2px);
+      background: var(--fog) !important;
+      border-color: rgba(255,255,255,0.04);
+      color: transparent;
+    }
+    .cell.hidden::after{
+      content:"";
+      position:absolute;
+      inset:0;
+      background:
+        radial-gradient(10px 10px at 30% 40%, rgba(255,255,255,0.06), transparent 60%),
+        radial-gradient(14px 14px at 70% 55%, rgba(255,255,255,0.05), transparent 60%);
+      opacity: 0.8;
+    }
+
+    .side{
+      display:flex;
+      flex-direction: column;
+      gap: var(--gap);
+    }
+
+    #promptCard .body{
+      padding: 12px 12px 14px;
+      display:flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    #promptText{
+      margin:0;
+      padding: 10px 12px;
+      border: 1px solid var(--stroke);
+      background: rgba(255,255,255,0.05);
+      border-radius: 14px;
+      color: var(--text);
+      line-height: 1.35;
+      font-size: 13.5px;
+      min-height: 50px;
+    }
+
+    .row{
+      display:flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+    .row > *{ flex: 1 1 auto; }
+
+    .note{
+      font-size: 12.5px;
+      color: var(--muted);
+      line-height:1.35;
+      padding: 10px 12px;
+      border-radius: 14px;
+      border: 1px dashed var(--stroke);
+      background: rgba(255,255,255,0.04);
+    }
+
+    #controlsCard .body{
+      padding: 12px;
+      display:flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    #controls{
+      display:grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 10px;
+    }
+    .control-btn{
+      background: linear-gradient(180deg, rgba(57,208,255,0.22), rgba(57,208,255,0.06));
+      color: var(--text);
+      padding: 14px 10px;
+      border: 1px solid var(--stroke);
+      border-radius: 16px;
+      font-size: 18px;
+      cursor:pointer;
+      transition: transform 110ms ease, filter 110ms ease;
+      user-select: none;
+    }
+    .control-btn:hover{ filter: brightness(1.05); }
+    .control-btn:active{ transform: translateY(1px) scale(0.99); }
+
+    #winMessage{
+      margin: 0 12px 14px;
+      padding: 10px 12px;
+      border: 1px solid rgba(56,255,139,0.35);
+      background: rgba(56,255,139,0.12);
+      border-radius: 14px;
       text-align: center;
-      display: none;
+      display:none;
+      color: var(--text);
+      line-height:1.35;
     }
-    @media screen and (max-width: 600px) {
-      /* Adjust the layout and maze size for smaller screens */
-      #maze {
-        grid-template-columns: repeat(10, 1fr);
-      }
-      /* Do not scale on mobile devices */
-      body {
-        transform: scale(1);
-      }
+
+    #journalCard .body{
+      padding: 12px;
+      display:flex;
+      flex-direction: column;
+      gap: 10px;
+      max-height: 360px;
+      overflow:auto;
+    }
+    .entry{
+      padding: 10px 12px;
+      border: 1px solid var(--stroke);
+      border-radius: 14px;
+      background: rgba(255,255,255,0.04);
+      display:flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .entryTop{
+      display:flex;
+      gap: 10px;
+      justify-content: space-between;
+      align-items: baseline;
+      flex-wrap: wrap;
+      color: var(--muted);
+      font-size: 12px;
+      font-family: var(--mono);
+    }
+    .entryPrompt{
+      font-size: 12.5px;
+      color: var(--muted);
+      line-height:1.35;
+    }
+    .entryUser{
+      font-size: 13.2px;
+      line-height: 1.4;
+      color: var(--text);
+      white-space: pre-wrap;
+    }
+    .entryAI{
+      font-size: 13.2px;
+      line-height: 1.4;
+      color: rgba(255,255,255,0.92);
+      white-space: pre-wrap;
+      padding-top: 8px;
+      border-top: 1px solid var(--stroke);
+    }
+    [data-theme="light"] .entryAI{
+      color: rgba(0,0,0,0.88);
+    }
+
+    details{
+      border: 1px solid var(--stroke);
+      border-radius: var(--radius);
+      background: rgba(255,255,255,0.03);
+      overflow:hidden;
+    }
+    summary{
+      cursor:pointer;
+      padding: 12px 14px;
+      font-weight: 700;
+      color: var(--text);
+      display:flex;
+      align-items:center;
+      justify-content: space-between;
+      gap: 10px;
+      user-select:none;
+    }
+    details[open] summary{
+      border-bottom: 1px solid var(--stroke);
+      background: rgba(255,255,255,0.04);
+    }
+    .detailsBody{
+      padding: 12px 14px 14px;
+      display:flex;
+      flex-direction: column;
+      gap: 10px;
+      color: var(--muted);
+      font-size: 12.8px;
+      line-height: 1.35;
+    }
+    .codeBox{
+      width:100%;
+      min-height: 220px;
+      font-family: var(--mono);
+      font-size: 12px;
+      line-height: 1.35;
+      padding: 10px 12px;
+      border-radius: 14px;
+      border: 1px solid var(--stroke);
+      background: rgba(0,0,0,0.22);
+      color: rgba(255,255,255,0.88);
+      overflow:auto;
+      white-space: pre;
+    }
+    [data-theme="light"] .codeBox{
+      background: rgba(255,255,255,0.85);
+      color: rgba(0,0,0,0.88);
+    }
+
+    .srOnly{
+      position:absolute;
+      width:1px;height:1px;
+      padding:0;margin:-1px;
+      overflow:hidden;
+      clip:rect(0,0,0,0);
+      white-space:nowrap;
+      border:0;
     }
   </style>
 </head>
 <body>
-  <h1>Cognitive Labyrinth</h1>
-  <p>Navigate the maze and engage with reflective prompts at each node. Find the end to complete the journey.</p>
-  <input id="apiKey" type="password" placeholder="Enter your OpenAI API Key" />
-  <div id="maze"></div>
-  <div id="prompt">
-    <p id="promptText">Start your journey by moving through the maze.</p>
-    <textarea id="response" placeholder="Your reflection here..."></textarea>
-    <button onclick="submitResponse()">Submit</button>
+  <div class="app" id="app" data-theme="dark">
+    <header>
+      <div class="titleBlock">
+        <h1>Cognitive Labyrinth</h1>
+        <p class="subtitle">Navigate a procedural maze, trigger reflective nodes, and build a journal. Includes seeded mazes, hints/solver, fog-of-war, analytics, autosave, and an offline “Local Coach” plus OpenAI Responses (proxy recommended).</p>
+        <div class="pillRow">
+          <div class="pill"><span class="dot"></span><span id="pillMode">Mode: Local Coach</span></div>
+          <div class="pill"><span class="dot good"></span><span id="pillSolvable">Solvable: Yes</span></div>
+          <div class="pill"><span class="dot warn"></span><span id="pillFog">Fog: Off</span></div>
+          <div class="pill"><span class="dot"></span><span id="pillSeed">Seed: —</span></div>
+        </div>
+      </div>
+
+      <div class="topControls">
+        <div class="controlGrid">
+          <div>
+            <label for="seedInput">Seed (shareable)</label>
+            <input id="seedInput" type="text" placeholder="e.g. kai9987kai-2026" />
+          </div>
+          <div>
+            <label for="sizeSelect">Maze</label>
+            <select id="sizeSelect">
+              <option value="10">10×10 (mobile)</option>
+              <option value="14">14×14</option>
+              <option value="20" selected>20×20 (desktop)</option>
+              <option value="26">26×26</option>
+              <option value="32">32×32</option>
+            </select>
+          </div>
+          <div>
+            <label for="nodesSelect">Nodes</label>
+            <select id="nodesSelect">
+              <option value="3">3</option>
+              <option value="5" selected>5</option>
+              <option value="7">7</option>
+              <option value="10">10</option>
+            </select>
+          </div>
+          <div>
+            <label for="themeSelect">Theme</label>
+            <select id="themeSelect">
+              <option value="dark" selected>Dark</option>
+              <option value="light">Light</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="controlGrid2">
+          <button class="btn" id="btnNewMaze" type="button"><span class="btnIcon">⟲</span>New Maze</button>
+          <button class="btn secondary" id="btnReset" type="button"><span class="btnIcon">↺</span>Reset</button>
+          <button class="btn secondary" id="btnAutosave" type="button"><span class="btnIcon">⎙</span>Autosave: On</button>
+        </div>
+
+        <div class="controlGrid3">
+          <button class="btn secondary" id="btnFog" type="button"><span class="btnIcon">☁</span>Fog: Off</button>
+          <button class="btn secondary" id="btnSound" type="button"><span class="btnIcon">♪</span>Sound: On</button>
+        </div>
+      </div>
+    </header>
+
+    <div class="main">
+      <div class="card" id="mazeCard">
+        <div class="cardHeader">
+          <h2>Maze</h2>
+          <div class="metaLine">
+            <span class="kv" id="statSteps">Steps: 0</span>
+            <span class="kv" id="statTime">Time: 00:00</span>
+            <span class="kv" id="statNodes">Nodes: 0/0</span>
+            <span class="kv" id="statHints">Hints: 0</span>
+          </div>
+        </div>
+        <div id="mazeWrap">
+          <div id="maze" aria-label="Cognitive Labyrinth Maze" role="application"></div>
+        </div>
+        <div id="winMessage" role="status" aria-live="polite"></div>
+      </div>
+
+      <div class="side">
+        <div class="card" id="promptCard">
+          <div class="cardHeader">
+            <h2>Reflection Node</h2>
+            <div class="metaLine">
+              <span class="kv" id="posLabel">Pos: (0,0)</span>
+              <span class="kv" id="difficultyLabel">Loops: 0%</span>
+            </div>
+          </div>
+          <div class="body">
+            <!-- Kept: API key input (now within settings), prompt text, textarea, submit -->
+            <p id="promptText">Start your journey by moving through the maze.</p>
+
+            <div class="row">
+              <div>
+                <label for="response">Your reflection</label>
+                <textarea id="response" placeholder="Write your reflection here..."></textarea>
+              </div>
+            </div>
+
+            <div class="controlGrid3">
+              <button class="btn good" id="btnSubmit" type="button"><span class="btnIcon">✓</span>Submit</button>
+              <button class="btn secondary" id="btnHint" type="button"><span class="btnIcon">?</span>Hint</button>
+            </div>
+
+            <div class="controlGrid3">
+              <button class="btn secondary" id="btnSolve" type="button"><span class="btnIcon">⌁</span>Show Solution</button>
+              <button class="btn secondary" id="btnExport" type="button"><span class="btnIcon">⇩</span>Export</button>
+            </div>
+
+            <div class="note" id="statusNote">
+              Local Coach is enabled by default (no API needed). For OpenAI, use Proxy mode in Settings to avoid CORS + keep your key safe.
+            </div>
+
+            <details id="settings">
+              <summary>
+                <span>Settings (LLM, difficulty, scale)</span>
+                <span style="opacity:.7;font-family:var(--mono);font-size:12px;">▼</span>
+              </summary>
+              <div class="detailsBody">
+                <div class="controlGrid">
+                  <div>
+                    <label for="llmMode">Coach mode</label>
+                    <select id="llmMode">
+                      <option value="local" selected>Local Coach (offline)</option>
+                      <option value="proxy">OpenAI via Proxy (recommended)</option>
+                      <option value="direct">OpenAI Direct (unsafe + may CORS fail)</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label for="modelSelect">Model</label>
+                    <select id="modelSelect">
+                      <option value="gpt-4.1-mini" selected>gpt-4.1-mini</option>
+                      <option value="gpt-4.1">gpt-4.1</option>
+                      <option value="gpt-4o-mini">gpt-4o-mini</option>
+                      <option value="gpt-5-mini">gpt-5-mini</option>
+                      <option value="gpt-5">gpt-5</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label for="tempInput">Temperature</label>
+                    <input id="tempInput" type="number" min="0" max="2" step="0.05" value="0.7" />
+                  </div>
+                  <div>
+                    <label for="maxOutInput">Max output tokens</label>
+                    <input id="maxOutInput" type="number" min="32" max="2048" step="1" value="220" />
+                  </div>
+                </div>
+
+                <div class="controlGrid2">
+                  <div>
+                    <label for="proxyUrl">Proxy URL (for proxy mode)</label>
+                    <input id="proxyUrl" type="text" placeholder="https://your-domain.com/openai" />
+                  </div>
+                  <div>
+                    <label for="proxyBearer">Proxy Bearer (optional)</label>
+                    <input id="proxyBearer" type="password" placeholder="Optional token for your proxy" />
+                  </div>
+                  <div>
+                    <label for="apiKey">OpenAI API Key (direct mode only)</label>
+                    <input id="apiKey" type="password" placeholder="sk-..." />
+                  </div>
+                </div>
+
+                <div class="controlGrid2">
+                  <div>
+                    <label for="loopsInput">Loopiness (0–60%)</label>
+                    <input id="loopsInput" type="number" min="0" max="60" step="5" value="0" />
+                  </div>
+                  <div>
+                    <label for="visionInput">Fog vision radius (1–4)</label>
+                    <input id="visionInput" type="number" min="1" max="4" step="1" value="2" />
+                  </div>
+                  <button class="btn secondary" id="btnApplySettings" type="button"><span class="btnIcon">⎘</span>Apply</button>
+                </div>
+
+                <div class="controlGrid3">
+                  <button class="btn secondary" id="btnScaleDown" type="button"><span class="btnIcon">−</span>Desktop Scale</button>
+                  <button class="btn secondary" id="btnScaleUp" type="button"><span class="btnIcon">+</span>Desktop Scale</button>
+                </div>
+
+                <details>
+                  <summary><span>Optional: Minimal Proxy (copy/paste)</span><span style="opacity:.7;font-family:var(--mono);font-size:12px;">▼</span></summary>
+                  <div class="detailsBody">
+                    <div>Cloudflare Worker (single file). Sets CORS for your site and keeps your OpenAI key on the server. Put your OpenAI key in the Worker secret <span style="font-family:var(--mono)">OPENAI_API_KEY</span>.</div>
+                    <div class="codeBox" id="proxyWorkerCode"></div>
+                    <div>Node.js (Express) minimal proxy. Put your OpenAI key in <span style="font-family:var(--mono)">OPENAI_API_KEY</span> env var.</div>
+                    <div class="codeBox" id="proxyNodeCode"></div>
+                  </div>
+                </details>
+              </div>
+            </details>
+          </div>
+        </div>
+
+        <div class="card" id="controlsCard">
+          <div class="cardHeader">
+            <h2>Move</h2>
+            <div class="metaLine">
+              <span class="kv">Swipe / Arrow keys / Buttons</span>
+            </div>
+          </div>
+          <div class="body">
+            <div id="controls" aria-label="Movement controls">
+              <button class="control-btn" id="btnUp" type="button" aria-label="Move up">↑</button>
+              <button class="control-btn" id="btnLeft" type="button" aria-label="Move left">←</button>
+              <button class="control-btn" id="btnDown" type="button" aria-label="Move down">↓</button>
+              <button class="control-btn" id="btnRight" type="button" aria-label="Move right">→</button>
+            </div>
+            <div class="controlGrid2">
+              <button class="btn secondary" id="btnUndo" type="button"><span class="btnIcon">↶</span>Undo</button>
+              <button class="btn danger" id="btnClear" type="button"><span class="btnIcon">✕</span>Clear Save</button>
+              <label class="srOnly" for="importFile">Import JSON</label>
+              <input id="importFile" type="file" accept="application/json" />
+            </div>
+          </div>
+        </div>
+
+        <div class="card" id="journalCard">
+          <div class="cardHeader">
+            <h2>Journal</h2>
+            <div class="metaLine">
+              <span class="kv" id="journalCount">Entries: 0</span>
+            </div>
+          </div>
+          <div class="body" id="journal"></div>
+        </div>
+      </div>
+    </div>
   </div>
-  <div id="controls">
-    <button class="control-btn" onclick="move('up')">↑</button>
-    <button class="control-btn" onclick="move('left')">←</button>
-    <button class="control-btn" onclick="move('down')">↓</button>
-    <button class="control-btn" onclick="move('right')">→</button>
-  </div>
-  <div id="winMessage">Congratulations! You've reached the end of the Cognitive Labyrinth.</div>
+
   <script>
-    const mazeContainer = document.getElementById("maze");
-    const promptText = document.getElementById("promptText");
-    let playerPosition = { x: 0, y: 0 };
-    
-    // Determine device type and set appropriate maze size
+    /**********************************************************************
+     * Cognitive Labyrinth — Advanced Single-File Edition (2026)
+     * Keeps all features from your original and adds:
+     * - Seeded maze generation + share link
+     * - Guaranteed solvable end (connectivity fix)
+     * - Fog-of-war (toggle + vision radius)
+     * - Hints + full solver path overlay
+     * - Loopiness control (adds extra connections)
+     * - Local Coach mode (offline) + OpenAI Responses API (proxy recommended)
+     * - Journal history, autosave, export/import JSON
+     * - Undo, stats, time tracking, mobile haptics, sound feedback
+     **********************************************************************/
+
+    // ---------- DOM ----------
+    const appEl = document.getElementById("app");
+    const mazeEl = document.getElementById("maze");
+    const promptTextEl = document.getElementById("promptText");
+    const responseEl = document.getElementById("response");
+    const winMessageEl = document.getElementById("winMessage");
+
+    const seedInputEl = document.getElementById("seedInput");
+    const sizeSelectEl = document.getElementById("sizeSelect");
+    const nodesSelectEl = document.getElementById("nodesSelect");
+    const themeSelectEl = document.getElementById("themeSelect");
+
+    const statStepsEl = document.getElementById("statSteps");
+    const statTimeEl = document.getElementById("statTime");
+    const statNodesEl = document.getElementById("statNodes");
+    const statHintsEl = document.getElementById("statHints");
+
+    const posLabelEl = document.getElementById("posLabel");
+    const difficultyLabelEl = document.getElementById("difficultyLabel");
+
+    const btnNewMaze = document.getElementById("btnNewMaze");
+    const btnReset = document.getElementById("btnReset");
+    const btnAutosave = document.getElementById("btnAutosave");
+    const btnFog = document.getElementById("btnFog");
+    const btnSound = document.getElementById("btnSound");
+
+    const btnSubmit = document.getElementById("btnSubmit");
+    const btnHint = document.getElementById("btnHint");
+    const btnSolve = document.getElementById("btnSolve");
+    const btnExport = document.getElementById("btnExport");
+
+    const btnUp = document.getElementById("btnUp");
+    const btnDown = document.getElementById("btnDown");
+    const btnLeft = document.getElementById("btnLeft");
+    const btnRight = document.getElementById("btnRight");
+    const btnUndo = document.getElementById("btnUndo");
+    const btnClear = document.getElementById("btnClear");
+    const importFileEl = document.getElementById("importFile");
+
+    const statusNoteEl = document.getElementById("statusNote");
+
+    const llmModeEl = document.getElementById("llmMode");
+    const modelSelectEl = document.getElementById("modelSelect");
+    const tempInputEl = document.getElementById("tempInput");
+    const maxOutInputEl = document.getElementById("maxOutInput");
+    const proxyUrlEl = document.getElementById("proxyUrl");
+    const proxyBearerEl = document.getElementById("proxyBearer");
+    const apiKeyEl = document.getElementById("apiKey");
+    const loopsInputEl = document.getElementById("loopsInput");
+    const visionInputEl = document.getElementById("visionInput");
+    const btnApplySettings = document.getElementById("btnApplySettings");
+    const btnScaleDown = document.getElementById("btnScaleDown");
+    const btnScaleUp = document.getElementById("btnScaleUp");
+
+    const pillModeEl = document.getElementById("pillMode");
+    const pillSolvableEl = document.getElementById("pillSolvable");
+    const pillFogEl = document.getElementById("pillFog");
+    const pillSeedEl = document.getElementById("pillSeed");
+
+    const journalEl = document.getElementById("journal");
+    const journalCountEl = document.getElementById("journalCount");
+
+    const proxyWorkerCodeEl = document.getElementById("proxyWorkerCode");
+    const proxyNodeCodeEl = document.getElementById("proxyNodeCode");
+
+    // ---------- Helpers ----------
+    const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+    const nowISO = () => new Date().toISOString();
+
+    function fmtTime(ms){
+      const s = Math.floor(ms / 1000);
+      const mm = String(Math.floor(s / 60)).padStart(2, "0");
+      const ss = String(s % 60).padStart(2, "0");
+      return `${mm}:${ss}`;
+    }
+
+    function vibrate(pattern){
+      if (navigator.vibrate) {
+        try { navigator.vibrate(pattern); } catch(_) {}
+      }
+    }
+
+    // ---------- Deterministic PRNG (seeded) ----------
+    function xmur3(str){
+      let h = 1779033703 ^ str.length;
+      for (let i = 0; i < str.length; i++){
+        h = Math.imul(h ^ str.charCodeAt(i), 3432918353);
+        h = (h << 13) | (h >>> 19);
+      }
+      return function(){
+        h = Math.imul(h ^ (h >>> 16), 2246822507);
+        h = Math.imul(h ^ (h >>> 13), 3266489909);
+        h ^= h >>> 16;
+        return h >>> 0;
+      };
+    }
+    function mulberry32(a){
+      return function(){
+        let t = a += 0x6D2B79F5;
+        t = Math.imul(t ^ (t >>> 15), t | 1);
+        t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+        return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+      };
+    }
+
+    // ---------- Sound (Web Audio) ----------
+    let audioCtx = null;
+    let soundOn = true;
+
+    function ensureAudio(){
+      if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      if (audioCtx.state === "suspended") audioCtx.resume().catch(()=>{});
+    }
+    function beep(freq, dur=0.06, type="sine", gain=0.06){
+      if (!soundOn) return;
+      ensureAudio();
+      const t0 = audioCtx.currentTime;
+      const o = audioCtx.createOscillator();
+      const g = audioCtx.createGain();
+      o.type = type;
+      o.frequency.setValueAtTime(freq, t0);
+      g.gain.setValueAtTime(0.0001, t0);
+      g.gain.exponentialRampToValueAtTime(gain, t0 + 0.01);
+      g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+      o.connect(g).connect(audioCtx.destination);
+      o.start(t0);
+      o.stop(t0 + dur + 0.01);
+    }
+
+    // ---------- Core State ----------
+    const STORAGE_KEY = "cognitive_labyrinth_v2026";
+    const URL_PARAMS = new URLSearchParams(location.search);
+
     const isMobile = window.innerWidth <= 600;
-    const mazeSize = isMobile ? 10 : 20;  // 10x10 on mobile, 20x20 on desktop
-    let maze = Array.from({ length: mazeSize }, () => Array(mazeSize).fill("wall"));
 
-    // Generate a perfect maze using DFS algorithm
-    function generateMaze() {
-      const stack = [];
-      let currentCell = { x: 0, y: 0 };
-      maze[0][0] = "path";
-      stack.push(currentCell);
+    const state = {
+      size: isMobile ? 10 : 20,
+      seed: "",
+      prng: Math.random,
+      nodesWanted: isMobile ? 3 : 5,
+      loopsPercent: 0, // extra connections
+      maze: [],
+      cellEls: [],
+      player: { x: 0, y: 0 },
+      lastPositions: [],
+      steps: 0,
+      startTime: 0,
+      timerId: null,
+      visited: new Set(),
+      seen: new Set(),
+      nodeCells: new Set(),
+      nodeDone: new Set(),
+      end: { x: 0, y: 0 },
+      win: false,
+      hintCount: 0,
+      hintPath: [],
+      showSolution: false,
+      solutionPath: [],
+      fog: false,
+      visionRadius: 2,
+      autosave: true,
+      theme: "dark",
+      llm: {
+        mode: "local", // local | proxy | direct
+        model: "gpt-4.1-mini",
+        temperature: 0.7,
+        maxOutputTokens: 220,
+        proxyUrl: "",
+        proxyBearer: "",
+        apiKey: "",
+        prevResponseId: null
+      },
+      journal: []
+    };
 
-      while (stack.length) {
-        const { x, y } = currentCell;
-        const neighbors = getUnvisitedNeighbors(x, y);
-
-        if (neighbors.length > 0) {
-          stack.push(currentCell);
-          // Choose a random neighbor
-          const { nx, ny } = neighbors[Math.floor(Math.random() * neighbors.length)];
-          carvePath(x, y, nx, ny);
-          currentCell = { x: nx, y: ny };
-        } else {
-          currentCell = stack.pop();
-        }
-      }
-
-      // Mark end cell
-      maze[mazeSize - 1][mazeSize - 1] = "end";
-
-      // **Minimal Fix**: Ensure the end cell is accessible by making sure one of its neighbors is a path
-      if (maze[mazeSize - 2] && maze[mazeSize - 2][mazeSize - 1] === "wall" && 
-          maze[mazeSize - 1][mazeSize - 2] === "wall") {
-        // If both the cell above and the cell to the left are walls, make the cell above a path
-        maze[mazeSize - 2][mazeSize - 1] = "path";
-      }
-
-      // Mark random path cells as nodes (fewer nodes on smaller mazes)
-      const nodeCount = isMobile ? 3 : 5;
-      for (let i = 0; i < nodeCount; i++) {
-        let nodeX, nodeY;
-        do {
-          nodeX = Math.floor(Math.random() * mazeSize);
-          nodeY = Math.floor(Math.random() * mazeSize);
-        } while (
-          maze[nodeY][nodeX] !== "path" ||
-          (nodeX === 0 && nodeY === 0) ||
-          (nodeX === mazeSize - 1 && nodeY === mazeSize - 1)
-        );
-        maze[nodeY][nodeX] = "node";
-      }
+    // ---------- Prompts (expanded) ----------
+    function getRandomPrompt(prng){
+      const prompts = [
+        "What aspect of your studies are you focusing on right now, and what’s the next concrete milestone?",
+        "Reflect on a recent project challenge—what was the bottleneck: planning, tooling, skill gap, or motivation?",
+        "In game design, what mechanic are you most excited to prototype next, and why is it compelling?",
+        "What are you curious about in creative technology today (AI, audio, rendering, simulation, interaction)?",
+        "What’s one skill in 3D modeling you want to level up in the next 2 weeks, and what’s the practice plan?",
+        "If you could delete one recurring friction from your workflow (exports, naming, UVs, lighting, versioning), which is it?",
+        "What’s one small system you can build to reduce anxiety/stress around deadlines (checklists, timers, templates)?",
+        "What would a ‘good day’ look like for you—measurable outputs, not vibes?",
+        "What is one experiment you can run this week to improve focus/consistency without increasing risk?",
+        "If you had to teach someone your current project in 10 minutes, what would the outline be?",
+        "Which part of your pipeline is ‘fragile’ right now? How can you add one layer of robustness?",
+        "What’s the smallest publishable artifact you can ship today (gif, screenshot set, short demo, README improvement)?"
+      ];
+      return prompts[Math.floor(prng() * prompts.length)];
     }
 
-    function getUnvisitedNeighbors(x, y) {
-      const neighbors = [];
-      if (y - 2 >= 0 && maze[y - 2][x] === "wall") neighbors.push({ nx: x, ny: y - 2 });
-      if (y + 2 < mazeSize && maze[y + 2][x] === "wall") neighbors.push({ nx: x, ny: y + 2 });
-      if (x - 2 >= 0 && maze[y][x - 2] === "wall") neighbors.push({ nx: x - 2, ny: y });
-      if (x + 2 < mazeSize && maze[y][x + 2] === "wall") neighbors.push({ nx: x + 2, ny: y });
-      return neighbors;
+    // ---------- Maze Generation (DFS step-2 + connectivity guarantee + loops) ----------
+    function makeEmptyMaze(size){
+      return Array.from({ length: size }, () => Array(size).fill("wall"));
     }
 
-    function carvePath(x, y, nx, ny) {
-      // Mark the path between the current cell and the chosen cell
-      if (x === nx) {
-        // Vertical movement
+    function neighborsStep2(x, y, size, maze){
+      const out = [];
+      if (y - 2 >= 0 && maze[y - 2][x] === "wall") out.push({ nx: x, ny: y - 2 });
+      if (y + 2 < size && maze[y + 2][x] === "wall") out.push({ nx: x, ny: y + 2 });
+      if (x - 2 >= 0 && maze[y][x - 2] === "wall") out.push({ nx: x - 2, ny: y });
+      if (x + 2 < size && maze[y][x + 2] === "wall") out.push({ nx: x + 2, ny: y });
+      return out;
+    }
+
+    function carveBetween(x, y, nx, ny, maze){
+      if (x === nx){
         maze[(y + ny) / 2][x] = "path";
-      } else if (y === ny) {
-        // Horizontal movement
+      } else if (y === ny){
         maze[y][(x + nx) / 2] = "path";
       }
       maze[ny][nx] = "path";
     }
 
-    function renderMaze() {
-      mazeContainer.innerHTML = '';
-      maze.forEach((row, y) => {
-        row.forEach((cell, x) => {
+    function bfsReachable(maze, size, start, passableFn){
+      const q = [];
+      const seen = new Set();
+      const key = (x,y)=>`${x},${y}`;
+      q.push(start);
+      seen.add(key(start.x, start.y));
+      while(q.length){
+        const {x,y} = q.shift();
+        const nbrs = [
+          {x:x+1,y},{x:x-1,y},{x,y:y+1},{x,y:y-1}
+        ];
+        for(const n of nbrs){
+          if(n.x<0||n.y<0||n.x>=size||n.y>=size) continue;
+          if(!passableFn(n.x,n.y)) continue;
+          const k = key(n.x,n.y);
+          if(seen.has(k)) continue;
+          seen.add(k);
+          q.push(n);
+        }
+      }
+      return seen;
+    }
+
+    function drillManhattan(maze, from, to, size){
+      let x = from.x, y = from.y;
+      const sx = (to.x >= x) ? 1 : -1;
+      const sy = (to.y >= y) ? 1 : -1;
+
+      while(x !== to.x){
+        x += sx;
+        if (x<0||x>=size) break;
+        if (maze[y][x] === "wall") maze[y][x] = "path";
+      }
+      while(y !== to.y){
+        y += sy;
+        if (y<0||y>=size) break;
+        if (maze[y][x] === "wall") maze[y][x] = "path";
+      }
+    }
+
+    function addLoops(maze, size, prng, percent){
+      const p = clamp(percent, 0, 60) / 100;
+      if (p <= 0) return;
+
+      const candidates = [];
+      for(let y=1;y<size-1;y++){
+        for(let x=1;x<size-1;x++){
+          if(maze[y][x] !== "wall") continue;
+          const up = maze[y-1][x] !== "wall";
+          const down = maze[y+1][x] !== "wall";
+          const left = maze[y][x-1] !== "wall";
+          const right = maze[y][x+1] !== "wall";
+
+          // carve only if it connects two regions cleanly (opposites or a corner)
+          const opposites = (up && down) || (left && right);
+          const corner = (up && right) || (up && left) || (down && right) || (down && left);
+          if (opposites || corner) candidates.push({x,y});
+        }
+      }
+
+      // shuffle candidates
+      for(let i=candidates.length-1;i>0;i--){
+        const j = Math.floor(prng()* (i+1));
+        [candidates[i], candidates[j]] = [candidates[j], candidates[i]];
+      }
+
+      const carveCount = Math.floor(candidates.length * p);
+      for(let i=0;i<carveCount;i++){
+        const c = candidates[i];
+        maze[c.y][c.x] = "path";
+      }
+    }
+
+    function placeNodes(maze, size, prng, count, start, end){
+      const nodes = new Set();
+      const pathCells = [];
+      for(let y=0;y<size;y++){
+        for(let x=0;x<size;x++){
+          const c = maze[y][x];
+          if(c === "path"){
+            if(x===start.x && y===start.y) continue;
+            if(x===end.x && y===end.y) continue;
+            pathCells.push({x,y});
+          }
+        }
+      }
+
+      // shuffle pathCells
+      for(let i=pathCells.length-1;i>0;i--){
+        const j = Math.floor(prng()* (i+1));
+        [pathCells[i], pathCells[j]] = [pathCells[j], pathCells[i]];
+      }
+
+      const picked = Math.min(count, pathCells.length);
+      for(let i=0;i<picked;i++){
+        const {x,y} = pathCells[i];
+        maze[y][x] = "node";
+        nodes.add(`${x},${y}`);
+      }
+      return nodes;
+    }
+
+    function generateMaze(){
+      const size = state.size;
+      const maze = makeEmptyMaze(size);
+      const stack = [];
+      let current = { x: 0, y: 0 };
+
+      maze[0][0] = "path";
+      stack.push(current);
+
+      while(stack.length){
+        const {x,y} = current;
+        const nbrs = neighborsStep2(x,y,size,maze);
+        if(nbrs.length){
+          stack.push(current);
+          const pick = nbrs[Math.floor(state.prng() * nbrs.length)];
+          carveBetween(x,y,pick.nx,pick.ny,maze);
+          current = { x: pick.nx, y: pick.ny };
+        }else{
+          current = stack.pop();
+        }
+      }
+
+      // choose end at bottom-right (keep your original)
+      const end = { x: size - 1, y: size - 1 };
+      maze[end.y][end.x] = "end";
+
+      // ensure solvable: BFS and drill path from nearest reachable cell to end if needed
+      const passable = (x,y)=> maze[y][x] !== "wall";
+      const reachable = bfsReachable(maze, size, {x:0,y:0}, passable);
+      const endKey = `${end.x},${end.y}`;
+      let solvable = reachable.has(endKey);
+
+      if(!solvable){
+        // pick nearest reachable to end
+        let best = null;
+        let bestD = Infinity;
+        reachable.forEach(k=>{
+          const [rx,ry] = k.split(",").map(Number);
+          const d = Math.abs(end.x-rx) + Math.abs(end.y-ry);
+          if(d < bestD){
+            bestD = d;
+            best = {x:rx,y:ry};
+          }
+        });
+        if(best){
+          drillManhattan(maze, best, end, size);
+          maze[end.y][end.x] = "end";
+          solvable = true;
+        }
+      }
+
+      // add optional loops (extra connections)
+      addLoops(maze, size, state.prng, state.loopsPercent);
+
+      // place nodes
+      const nodes = placeNodes(maze, size, state.prng, state.nodesWanted, {x:0,y:0}, end);
+
+      state.maze = maze;
+      state.end = end;
+      state.nodeCells = nodes;
+
+      // update solvable indicator
+      pillSolvableEl.textContent = `Solvable: ${solvable ? "Yes" : "Unknown"}`;
+      pillSolvableEl.parentElement.querySelector(".dot").className = "dot " + (solvable ? "good" : "bad");
+    }
+
+    // ---------- Rendering ----------
+    function setMazeColumns(){
+      mazeEl.style.gridTemplateColumns = `repeat(${state.size}, 1fr)`;
+    }
+
+    function renderMaze(){
+      setMazeColumns();
+      mazeEl.innerHTML = "";
+      state.cellEls = Array.from({length: state.size}, ()=>Array(state.size));
+
+      for(let y=0;y<state.size;y++){
+        for(let x=0;x<state.size;x++){
           const cellDiv = document.createElement("div");
-          cellDiv.classList.add("cell");
+          cellDiv.className = "cell";
           cellDiv.dataset.x = x;
           cellDiv.dataset.y = y;
 
-          if (cell === "wall") {
-            cellDiv.classList.add("wall");
-          } else if (cell === "end") {
+          const type = state.maze[y][x];
+          if(type === "wall") cellDiv.classList.add("wall");
+          else if(type === "end"){
             cellDiv.classList.add("end");
             cellDiv.textContent = "END";
-          } else if (cell === "node") {
+          }
+          else if(type === "node"){
             cellDiv.classList.add("node");
             cellDiv.textContent = "NODE";
-          } else {
-            cellDiv.classList.add("path");
           }
+          // else path
 
-          mazeContainer.appendChild(cellDiv);
-        });
-      });
-      // Mark the player's starting position
-      mazeContainer.querySelector(`.cell[data-x="0"][data-y="0"]`).classList.add("current");
+          state.cellEls[y][x] = cellDiv;
+          mazeEl.appendChild(cellDiv);
+        }
+      }
+
+      // reset overlays
+      state.hintPath = [];
+      state.solutionPath = [];
+      state.showSolution = false;
+
+      // mark player start
+      markCurrentCell(true);
+      updateVisibility(true);
     }
 
-    generateMaze();
-    renderMaze();
+    function clearCellOverlays(){
+      for(let y=0;y<state.size;y++){
+        for(let x=0;x<state.size;x++){
+          const el = state.cellEls[y][x];
+          el.classList.remove("hint","solution");
+        }
+      }
+    }
 
-    // Movement handling for up, down, left, right 
-    function move(direction) {
-      const { x, y } = playerPosition;
-      let newX = x, newY = y;
-      if (direction === "up" && y > 0) newY--;
-      if (direction === "down" && y < mazeSize - 1) newY++;
-      if (direction === "left" && x > 0) newX--;
-      if (direction === "right" && x < mazeSize - 1) newX++;
+    function markCurrentCell(isInitial=false){
+      // remove current from all? (fast enough at these sizes)
+      for(let y=0;y<state.size;y++){
+        for(let x=0;x<state.size;x++){
+          state.cellEls[y][x].classList.remove("current");
+        }
+      }
+      const {x,y} = state.player;
+      const el = state.cellEls[y][x];
+      el.classList.add("current");
 
-      if (maze[newY][newX] === "wall") {
-        promptText.textContent = "You hit a wall! Reflect and try another direction.";
+      const k = `${x},${y}`;
+      state.visited.add(k);
+      el.classList.add("visited");
+
+      if (state.nodeDone.has(k)) el.classList.add("nodeDone");
+      posLabelEl.textContent = `Pos: (${x},${y})`;
+
+      if(isInitial){
+        promptTextEl.textContent = "Start your journey by moving through the maze.";
+      }
+    }
+
+    function updateVisibility(force=false){
+      if(!state.fog){
+        for(let y=0;y<state.size;y++){
+          for(let x=0;x<state.size;x++){
+            state.cellEls[y][x].classList.remove("hidden");
+          }
+        }
+        pillFogEl.textContent = "Fog: Off";
+        pillFogEl.parentElement.querySelector(".dot").className = "dot warn";
         return;
       }
 
-      const currentCellDiv = mazeContainer.querySelector(`.cell[data-x="${x}"][data-y="${y}"]`);
-      currentCellDiv.classList.remove("current");
+      const radius = clamp(state.visionRadius, 1, 4);
+      const {x:cx,y:cy} = state.player;
 
-      playerPosition = { x: newX, y: newY };
-      const nextCellDiv = mazeContainer.querySelector(`.cell[data-x="${newX}"][data-y="${newY}"]`);
-      nextCellDiv.classList.add("current");
+      // mark seen within radius (diamond)
+      for(let dy=-radius; dy<=radius; dy++){
+        for(let dx=-radius; dx<=radius; dx++){
+          const nx = cx + dx;
+          const ny = cy + dy;
+          if(nx<0||ny<0||nx>=state.size||ny>=state.size) continue;
+          if(Math.abs(dx)+Math.abs(dy) <= radius){
+            state.seen.add(`${nx},${ny}`);
+          }
+        }
+      }
+      // always see visited
+      state.visited.forEach(k=>state.seen.add(k));
 
-      if (newX === mazeSize - 1 && newY === mazeSize - 1) {
-        // Player reached the end
-        promptText.textContent = "Congratulations! You've reached the end of the Cognitive Labyrinth.";
-        document.getElementById("winMessage").style.display = "block";
-      } else if (maze[newY][newX] === "node") {
-        // Display random reflection prompt
-        promptText.textContent = getRandomPrompt();
+      for(let y=0;y<state.size;y++){
+        for(let x=0;x<state.size;x++){
+          const el = state.cellEls[y][x];
+          const k = `${x},${y}`;
+          if(state.seen.has(k)) el.classList.remove("hidden");
+          else el.classList.add("hidden");
+        }
+      }
+
+      pillFogEl.textContent = "Fog: On";
+      pillFogEl.parentElement.querySelector(".dot").className = "dot good";
+    }
+
+    // ---------- Solver / Hint ----------
+    function bfsPath(start, goal){
+      const size = state.size;
+      const maze = state.maze;
+      const passable = (x,y)=> maze[y][x] !== "wall";
+      const q = [];
+      const seen = new Set();
+      const parent = new Map();
+      const key = (x,y)=>`${x},${y}`;
+      const sk = key(start.x,start.y);
+      q.push(start);
+      seen.add(sk);
+      parent.set(sk, null);
+
+      while(q.length){
+        const cur = q.shift();
+        if(cur.x===goal.x && cur.y===goal.y) break;
+
+        const nbrs = [
+          {x:cur.x+1,y:cur.y},{x:cur.x-1,y:cur.y},
+          {x:cur.x,y:cur.y+1},{x:cur.x,y:cur.y-1}
+        ];
+        for(const n of nbrs){
+          if(n.x<0||n.y<0||n.x>=size||n.y>=size) continue;
+          if(!passable(n.x,n.y)) continue;
+          const nk = key(n.x,n.y);
+          if(seen.has(nk)) continue;
+          seen.add(nk);
+          parent.set(nk, key(cur.x,cur.y));
+          q.push(n);
+        }
+      }
+
+      const gk = key(goal.x,goal.y);
+      if(!parent.has(gk)) return [];
+
+      // reconstruct
+      const path = [];
+      let curK = gk;
+      while(curK){
+        const [x,y] = curK.split(",").map(Number);
+        path.push({x,y});
+        curK = parent.get(curK);
+      }
+      path.reverse();
+      return path;
+    }
+
+    function showHint(){
+      clearCellOverlays();
+      const path = bfsPath(state.player, state.end);
+      if(path.length < 2){
+        promptTextEl.textContent = "No hint available (already at end or unsolved state).";
+        beep(220, 0.08, "square", 0.07);
+        return;
+      }
+      state.hintCount++;
+      statHintsEl.textContent = `Hints: ${state.hintCount}`;
+
+      const next = path[1];
+      state.cellEls[next.y][next.x].classList.add("hint");
+      state.hintPath = path;
+
+      const dx = next.x - state.player.x;
+      const dy = next.y - state.player.y;
+      const dir = dx === 1 ? "right" : dx === -1 ? "left" : dy === 1 ? "down" : "up";
+      promptTextEl.textContent = `Hint: next step is ${dir.toUpperCase()} toward the end.`;
+      beep(520, 0.05, "triangle", 0.06);
+      vibrate([20]);
+    }
+
+    function toggleSolution(){
+      state.showSolution = !state.showSolution;
+      clearCellOverlays();
+      if(!state.showSolution){
+        btnSolve.textContent = "Show Solution";
+        return;
+      }
+      const path = bfsPath(state.player, state.end);
+      state.solutionPath = path;
+      for(const p of path){
+        state.cellEls[p.y][p.x].classList.add("solution");
+      }
+      btnSolve.textContent = "Hide Solution";
+      promptTextEl.textContent = "Solution overlay enabled (from your current position).";
+      beep(660, 0.06, "sine", 0.06);
+    }
+
+    // ---------- Gameplay ----------
+    function canMoveTo(nx, ny){
+      if(nx<0||ny<0||nx>=state.size||ny>=state.size) return false;
+      return state.maze[ny][nx] !== "wall";
+    }
+
+    function cellType(x,y){
+      return state.maze[y][x];
+    }
+
+    function setWin(){
+      state.win = true;
+      const elapsed = performance.now() - state.startTime;
+      winMessageEl.style.display = "block";
+      winMessageEl.textContent =
+        `Congratulations! You reached the end. Steps: ${state.steps}. Time: ${fmtTime(elapsed)}. Nodes completed: ${state.nodeDone.size}/${state.nodeCells.size}. Export your session anytime.`;
+      promptTextEl.textContent = "Congratulations! You've reached the end of the Cognitive Labyrinth.";
+      beep(880, 0.10, "triangle", 0.08);
+      beep(660, 0.10, "triangle", 0.08);
+      beep(990, 0.12, "triangle", 0.08);
+      vibrate([30, 50, 30]);
+    }
+
+    function updateStats(){
+      statStepsEl.textContent = `Steps: ${state.steps}`;
+      statNodesEl.textContent = `Nodes: ${state.nodeDone.size}/${state.nodeCells.size}`;
+    }
+
+    function startTimer(){
+      if(state.timerId) clearInterval(state.timerId);
+      state.startTime = performance.now();
+      state.timerId = setInterval(()=>{
+        const elapsed = performance.now() - state.startTime;
+        statTimeEl.textContent = `Time: ${fmtTime(elapsed)}`;
+      }, 250);
+    }
+
+    function resetRun(keepMaze=true){
+      state.player = {x:0,y:0};
+      state.lastPositions = [];
+      state.steps = 0;
+      state.visited = new Set();
+      state.seen = new Set();
+      state.nodeDone = new Set();
+      state.win = false;
+      state.hintCount = 0;
+      state.hintPath = [];
+      state.solutionPath = [];
+      state.showSolution = false;
+      winMessageEl.style.display = "none";
+      winMessageEl.textContent = "";
+
+      if(!keepMaze){
+        generateMaze();
+        renderMaze();
+      }else{
+        renderMaze();
+      }
+
+      updateStats();
+      statHintsEl.textContent = "Hints: 0";
+      startTimer();
+      maybeSave();
+    }
+
+    // Keep your original global move(direction) signature
+    function move(direction){
+      if(state.win){
+        promptTextEl.textContent = "You already finished. Press New Maze to start a new run, or Reset to replay this maze.";
+        beep(180,0.08,"square",0.06);
+        return;
+      }
+
+      const {x,y} = state.player;
+      let nx=x, ny=y;
+
+      if(direction==="up") ny--;
+      if(direction==="down") ny++;
+      if(direction==="left") nx--;
+      if(direction==="right") nx++;
+
+      if(!canMoveTo(nx,ny)){
+        promptTextEl.textContent = "You hit a wall! Reflect and try another direction.";
+        beep(130,0.08,"square",0.07);
+        vibrate([10]);
+        return;
+      }
+
+      // movement okay
+      state.lastPositions.push({x,y});
+      if(state.lastPositions.length > 250) state.lastPositions.shift();
+
+      state.player = {x:nx,y:ny};
+      state.steps++;
+      updateStats();
+
+      markCurrentCell();
+      updateVisibility();
+
+      const t = cellType(nx,ny);
+
+      if(nx === state.end.x && ny === state.end.y){
+        setWin();
+      } else if(t === "node"){
+        const k = `${nx},${ny}`;
+        if(!state.nodeDone.has(k)){
+          promptTextEl.textContent = getRandomPrompt(state.prng);
+          beep(540,0.06,"sine",0.06);
+          vibrate([15]);
+        } else {
+          promptTextEl.textContent = "Node revisited: you’ve already reflected here. Keep exploring (or export your journal).";
+          beep(420,0.05,"sine",0.05);
+        }
       } else {
-        promptText.textContent = "Keep exploring the maze...";
+        promptTextEl.textContent = "Keep exploring the maze...";
+        beep(260,0.03,"sine",0.03);
       }
+
+      // clear stale hint if any
+      clearCellOverlays();
+      if(state.showSolution) toggleSolution(); // re-apply from new position (toggleSolution flips, so do manual)
+      if(state.showSolution){
+        state.showSolution = false;
+        toggleSolution();
+      }
+
+      maybeSave();
     }
 
-    // Random prompt generator
-    function getRandomPrompt() {
-      const prompts = [
-        "What aspect of your studies are you focusing on now?",
-        "Reflect on a recent project challenge you've faced.",
-        "Think about an idea you encountered in game design.",
-        "What are you curious about in creative technology?",
-        "What are your goals in 3D modeling or design?"
+    function undo(){
+      if(state.lastPositions.length === 0){
+        promptTextEl.textContent = "Nothing to undo yet.";
+        beep(150,0.06,"square",0.05);
+        return;
+      }
+      const prev = state.lastPositions.pop();
+      state.player = {x:prev.x,y:prev.y};
+      state.steps = Math.max(0, state.steps - 1);
+      updateStats();
+      markCurrentCell();
+      updateVisibility();
+      promptTextEl.textContent = "Undo: moved back one step.";
+      beep(220,0.05,"triangle",0.05);
+      maybeSave();
+    }
+
+    // ---------- Local Coach (offline) ----------
+    function localCoachResponse(prompt, reflection, context){
+      const words = reflection.trim().split(/\s+/).filter(Boolean);
+      const wc = words.length;
+
+      // simple heuristics: detect uncertainty/planning/blocked
+      const lower = reflection.toLowerCase();
+      const signals = {
+        blocked: /(stuck|blocked|can't|cannot|hard|difficult|overwhelmed|confused|lost)/.test(lower),
+        planning: /(plan|next|tomorrow|week|milestone|schedule|deadline|todo|task)/.test(lower),
+        learning: /(learn|study|practice|improve|skill|tutorial|course|lecture)/.test(lower),
+        building: /(build|make|prototype|implement|code|model|render|animate|simulate)/.test(lower),
+        emotions: /(anxious|stress|stressed|worried|afraid|tired|burnout|panic)/.test(lower)
+      };
+
+      const insight =
+        signals.blocked ? "It sounds like friction is showing up as a concrete blocker—good signal to isolate the smallest failing step." :
+        signals.planning ? "You’re thinking in milestones, which is the right abstraction—now tighten it into one measurable next action." :
+        signals.building ? "You’re in ‘maker mode’. The fastest progress usually comes from an ultra-small vertical slice you can finish today." :
+        signals.learning ? "This reads like deliberate practice—if you define the exact micro-skill, your feedback loop gets much faster." :
+        "There’s a real thread here—turn it into a single hypothesis you can test in the next 30 minutes.";
+
+      const question =
+        signals.blocked ? "What is the *very first* step where things go wrong (tool, file, concept, or decision)?" :
+        signals.planning ? "What is the smallest deliverable that would make today a win (one file, one screenshot, one commit)?" :
+        signals.emotions ? "What is one controllable variable you can change in your setup (timebox, environment, checklist) right now?" :
+        "If you had to reduce this to one sentence, what would it be?";
+
+      const action =
+        wc < 10 ? "Action: write 3 bullet points: (1) what you’re doing, (2) what blocks you, (3) what you’ll try next—then take 10 minutes on the first try." :
+        signals.blocked ? "Action: timebox 12 minutes to reproduce the problem, and log 3 observations (what you expected vs what happened)." :
+        signals.planning ? "Action: pick 1 milestone and break it into 3 tasks; do the first task for 15 minutes immediately." :
+        "Action: set a 20-minute timer and produce a tiny artifact (note, sketch, commit, screenshot).";
+
+      const contextLine = `Context: steps=${context.steps}, nodesDone=${context.nodesDone}/${context.nodesTotal}.`;
+
+      return [
+        "Local Coach:",
+        `• Insight: ${insight}`,
+        `• Question: ${question}`,
+        `• ${action}`,
+        `• ${contextLine}`
+      ].join("\n");
+    }
+
+    // ---------- OpenAI Responses API (proxy/direct) ----------
+    function extractOutputText(respJson){
+      // Responses API returns an array in output; we gather any output_text blocks.
+      if(!respJson || !Array.isArray(respJson.output)) return "";
+      const parts = [];
+      for(const item of respJson.output){
+        if(item && item.type === "message" && Array.isArray(item.content)){
+          for(const c of item.content){
+            if(c && c.type === "output_text" && typeof c.text === "string") parts.push(c.text);
+          }
+        }
+      }
+      return parts.join("\n").trim();
+    }
+
+    async function callOpenAIResponses(userText){
+      const mode = state.llm.mode;
+      const model = state.llm.model;
+      const temperature = clamp(Number(state.llm.temperature) || 0.7, 0, 2);
+      const max_output_tokens = clamp(Number(state.llm.maxOutputTokens) || 220, 32, 4096);
+
+      const instructions =
+        "You are a concise, practical reflective coach. Respond in this exact format:\n" +
+        "1) One-sentence insight.\n" +
+        "2) One probing question.\n" +
+        "3) One concrete next action (timeboxed).\n" +
+        "Keep it supportive, non-judgmental, and under 130 words.";
+
+      const input = [
+        {
+          role: "user",
+          content:
+            "Reflection prompt:\n" + promptTextEl.textContent + "\n\n" +
+            "User reflection:\n" + userText + "\n\n" +
+            `Game context: steps=${state.steps}, position=(${state.player.x},${state.player.y}), nodesDone=${state.nodeDone.size}/${state.nodeCells.size}.\n` +
+            "Return the coaching response now."
+        }
       ];
-      return prompts[Math.floor(Math.random() * prompts.length)];
+
+      const body = {
+        model,
+        instructions,
+        input,
+        temperature,
+        max_output_tokens
+      };
+
+      // keep conversation continuity if we have a previous_response_id
+      if(state.llm.prevResponseId) body.previous_response_id = state.llm.prevResponseId;
+
+      let url = "https://api.openai.com/v1/responses";
+      let headers = { "Content-Type": "application/json" };
+
+      if(mode === "direct"){
+        const apiKey = (apiKeyEl.value || "").trim();
+        if(!apiKey) throw new Error("Missing API key for direct mode.");
+        headers.Authorization = `Bearer ${apiKey}`;
+      } else if(mode === "proxy"){
+        const proxyUrl = (proxyUrlEl.value || "").trim();
+        if(!proxyUrl) throw new Error("Missing Proxy URL for proxy mode.");
+        url = proxyUrl;
+        const proxyBearer = (proxyBearerEl.value || "").trim();
+        if(proxyBearer) headers.Authorization = `Bearer ${proxyBearer}`;
+      } else {
+        throw new Error("OpenAI call attempted while not in proxy/direct mode.");
+      }
+
+      const res = await fetch(url, {
+        method: "POST",
+        headers,
+        body: JSON.stringify(body)
+      });
+
+      const text = await res.text();
+      let data = null;
+      try { data = JSON.parse(text); } catch(e){
+        throw new Error("Non-JSON response from endpoint.");
+      }
+
+      if(!res.ok){
+        const msg = (data && data.error && data.error.message) ? data.error.message : `HTTP ${res.status}`;
+        throw new Error(msg);
+      }
+
+      // store prevResponseId for continuity
+      if(data && typeof data.id === "string") state.llm.prevResponseId = data.id;
+
+      const outText = extractOutputText(data);
+      return outText || "(No text output returned.)";
     }
 
-    // Use OpenAI GPT-3.5 Turbo API for flexible response
-    async function submitResponse() {
-      const response = document.getElementById("response").value;
-      const apiKey = document.getElementById("apiKey").value.trim();
+    // ---------- Journal / Export / Import ----------
+    function addJournalEntry(entry){
+      state.journal.unshift(entry);
+      if(state.journal.length > 200) state.journal.length = 200;
+      renderJournal();
+    }
 
-      if (!apiKey) {
-        promptText.textContent = "Please enter your API key.";
+    function renderJournal(){
+      journalEl.innerHTML = "";
+      journalCountEl.textContent = `Entries: ${state.journal.length}`;
+      for(const e of state.journal){
+        const div = document.createElement("div");
+        div.className = "entry";
+
+        const top = document.createElement("div");
+        top.className = "entryTop";
+        top.textContent = `${e.time}  |  pos=(${e.pos.x},${e.pos.y})  |  seed=${e.seed}`;
+
+        const p = document.createElement("div");
+        p.className = "entryPrompt";
+        p.textContent = e.prompt;
+
+        const u = document.createElement("div");
+        u.className = "entryUser";
+        u.textContent = e.user;
+
+        div.appendChild(top);
+        div.appendChild(p);
+        div.appendChild(u);
+
+        if(e.ai){
+          const a = document.createElement("div");
+          a.className = "entryAI";
+          a.textContent = e.ai;
+          div.appendChild(a);
+        }
+
+        journalEl.appendChild(div);
+      }
+    }
+
+    function downloadJson(filename, obj){
+      const blob = new Blob([JSON.stringify(obj, null, 2)], {type:"application/json"});
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(()=>URL.revokeObjectURL(url), 500);
+    }
+
+    function exportAll(){
+      const payload = {
+        version: "2026.02.14",
+        exported_at: nowISO(),
+        state: {
+          size: state.size,
+          seed: state.seed,
+          nodesWanted: state.nodesWanted,
+          loopsPercent: state.loopsPercent,
+          fog: state.fog,
+          visionRadius: state.visionRadius,
+          theme: state.theme
+        },
+        run: {
+          player: state.player,
+          steps: state.steps,
+          visited: Array.from(state.visited),
+          nodeDone: Array.from(state.nodeDone),
+          hintCount: state.hintCount,
+          win: state.win
+        },
+        maze: state.maze,
+        journal: state.journal
+      };
+      downloadJson(`cognitive_labyrinth_${state.seed || "session"}_${Date.now()}.json`, payload);
+      promptTextEl.textContent = "Exported your full session (maze + run + journal).";
+      beep(620,0.05,"triangle",0.06);
+    }
+
+    function importAll(file){
+      const reader = new FileReader();
+      reader.onload = () => {
+        try{
+          const data = JSON.parse(String(reader.result || "{}"));
+          if(!data || !data.maze || !Array.isArray(data.maze)) throw new Error("Invalid file format.");
+          // restore minimal state
+          state.size = data.state?.size ?? state.size;
+          state.seed = data.state?.seed ?? state.seed;
+          state.nodesWanted = data.state?.nodesWanted ?? state.nodesWanted;
+          state.loopsPercent = data.state?.loopsPercent ?? state.loopsPercent;
+          state.fog = !!data.state?.fog;
+          state.visionRadius = data.state?.visionRadius ?? state.visionRadius;
+          state.theme = data.state?.theme ?? state.theme;
+
+          state.maze = data.maze;
+          state.player = data.run?.player ?? {x:0,y:0};
+          state.steps = data.run?.steps ?? 0;
+          state.visited = new Set(data.run?.visited ?? []);
+          state.nodeDone = new Set(data.run?.nodeDone ?? []);
+          state.hintCount = data.run?.hintCount ?? 0;
+          state.win = !!data.run?.win;
+
+          state.end = { x: state.size - 1, y: state.size - 1 };
+          state.nodeCells = new Set();
+          for(let y=0;y<state.size;y++){
+            for(let x=0;x<state.size;x++){
+              if(state.maze[y][x] === "node") state.nodeCells.add(`${x},${y}`);
+            }
+          }
+
+          // UI sync
+          seedInputEl.value = state.seed;
+          sizeSelectEl.value = String(state.size);
+          nodesSelectEl.value = String(state.nodesWanted);
+          loopsInputEl.value = String(state.loopsPercent);
+          visionInputEl.value = String(state.visionRadius);
+          themeSelectEl.value = state.theme;
+          setTheme(state.theme);
+
+          renderMaze();
+          updateStats();
+          statHintsEl.textContent = `Hints: ${state.hintCount}`;
+
+          state.journal = Array.isArray(data.journal) ? data.journal : [];
+          renderJournal();
+
+          if(state.win) setWin();
+
+          promptTextEl.textContent = "Imported session successfully.";
+          beep(740,0.06,"triangle",0.06);
+          maybeSave(true);
+        }catch(e){
+          promptTextEl.textContent = `Import failed: ${e.message}`;
+          beep(150,0.08,"square",0.07);
+        }
+      };
+      reader.readAsText(file);
+    }
+
+    // ---------- Autosave ----------
+    function maybeSave(force=false){
+      if(!state.autosave && !force) return;
+
+      // Do not store OpenAI API key by default (security); store proxy URL ok.
+      const saveObj = {
+        size: state.size,
+        seed: state.seed,
+        nodesWanted: state.nodesWanted,
+        loopsPercent: state.loopsPercent,
+        maze: state.maze,
+        player: state.player,
+        steps: state.steps,
+        visited: Array.from(state.visited),
+        nodeDone: Array.from(state.nodeDone),
+        hintCount: state.hintCount,
+        win: state.win,
+        fog: state.fog,
+        visionRadius: state.visionRadius,
+        theme: state.theme,
+        journal: state.journal,
+        llm: {
+          mode: state.llm.mode,
+          model: state.llm.model,
+          temperature: state.llm.temperature,
+          maxOutputTokens: state.llm.maxOutputTokens,
+          proxyUrl: state.llm.proxyUrl,
+          // do not persist proxy bearer or apiKey
+          prevResponseId: state.llm.prevResponseId
+        },
+        saved_at: nowISO()
+      };
+      try{
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(saveObj));
+      }catch(_){}
+    }
+
+    function loadSave(){
+      try{
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if(!raw) return false;
+        const data = JSON.parse(raw);
+
+        if(!data || !data.maze || !Array.isArray(data.maze)) return false;
+
+        state.size = Number(data.size) || state.size;
+        state.seed = String(data.seed || "");
+        state.nodesWanted = Number(data.nodesWanted) || state.nodesWanted;
+        state.loopsPercent = Number(data.loopsPercent) || 0;
+        state.maze = data.maze;
+        state.player = data.player || {x:0,y:0};
+        state.steps = Number(data.steps) || 0;
+        state.visited = new Set(data.visited || []);
+        state.nodeDone = new Set(data.nodeDone || []);
+        state.hintCount = Number(data.hintCount) || 0;
+        state.win = !!data.win;
+        state.fog = !!data.fog;
+        state.visionRadius = Number(data.visionRadius) || 2;
+        state.theme = String(data.theme || "dark");
+        state.journal = Array.isArray(data.journal) ? data.journal : [];
+        if(data.llm){
+          state.llm.mode = String(data.llm.mode || "local");
+          state.llm.model = String(data.llm.model || "gpt-4.1-mini");
+          state.llm.temperature = Number(data.llm.temperature ?? 0.7);
+          state.llm.maxOutputTokens = Number(data.llm.maxOutputTokens ?? 220);
+          state.llm.proxyUrl = String(data.llm.proxyUrl || "");
+          state.llm.prevResponseId = data.llm.prevResponseId || null;
+        }
+
+        state.end = { x: state.size - 1, y: state.size - 1 };
+
+        state.nodeCells = new Set();
+        for(let y=0;y<state.size;y++){
+          for(let x=0;x<state.size;x++){
+            if(state.maze[y][x] === "node") state.nodeCells.add(`${x},${y}`);
+          }
+        }
+
+        return true;
+      }catch(_){
+        return false;
+      }
+    }
+
+    function clearSave(){
+      try{ localStorage.removeItem(STORAGE_KEY); }catch(_){}
+      promptTextEl.textContent = "Cleared autosave. Your current run is still active until you refresh.";
+      beep(160,0.08,"square",0.07);
+    }
+
+    // ---------- Settings / Theme / Scale ----------
+    function setTheme(theme){
+      state.theme = theme === "light" ? "light" : "dark";
+      appEl.setAttribute("data-theme", state.theme);
+    }
+
+    function setModeLabel(){
+      const m = state.llm.mode;
+      const label = m === "local" ? "Mode: Local Coach" : (m === "proxy" ? "Mode: OpenAI Proxy" : "Mode: OpenAI Direct");
+      pillModeEl.textContent = label;
+      const dot = pillModeEl.parentElement.querySelector(".dot");
+      dot.className = "dot " + (m === "local" ? "" : (m === "proxy" ? "good" : "warn"));
+    }
+
+    function setSeedLabel(){
+      pillSeedEl.textContent = `Seed: ${state.seed || "—"}`;
+    }
+
+    function applySettingsFromUI(){
+      state.llm.mode = llmModeEl.value;
+      state.llm.model = modelSelectEl.value;
+      state.llm.temperature = clamp(Number(tempInputEl.value) || 0.7, 0, 2);
+      state.llm.maxOutputTokens = clamp(Number(maxOutInputEl.value) || 220, 32, 4096);
+      state.llm.proxyUrl = (proxyUrlEl.value || "").trim();
+      state.llm.proxyBearer = (proxyBearerEl.value || "").trim();
+      state.llm.apiKey = (apiKeyEl.value || "").trim();
+      state.loopsPercent = clamp(Number(loopsInputEl.value) || 0, 0, 60);
+      state.visionRadius = clamp(Number(visionInputEl.value) || 2, 1, 4);
+
+      difficultyLabelEl.textContent = `Loops: ${state.loopsPercent}%`;
+      setModeLabel();
+
+      const modeExplain =
+        state.llm.mode === "local" ? "Local Coach is active. No API or internet required." :
+        state.llm.mode === "proxy" ? "Proxy mode active. Your browser talks to your proxy; your proxy talks to OpenAI." :
+        "Direct mode active. This is unsafe for deployed sites and may fail due to CORS.";
+      statusNoteEl.textContent = modeExplain;
+
+      maybeSave(true);
+    }
+
+    function adjustScale(delta){
+      // modifies CSS variable --scaleDesktop on :root via inline style
+      const root = document.documentElement;
+      const cur = parseFloat(getComputedStyle(root).getPropertyValue("--scaleDesktop")) || 0.55;
+      const next = clamp(cur + delta, 0.35, 0.95);
+      root.style.setProperty("--scaleDesktop", String(next.toFixed(2)));
+      promptTextEl.textContent = `Desktop scale set to ${(next*100).toFixed(0)}%.`;
+      beep(420,0.04,"sine",0.04);
+    }
+
+    // ---------- Seed / Share link ----------
+    function setSeed(seed){
+      state.seed = (seed || "").trim();
+      if(!state.seed){
+        // generate a nice default seed
+        state.seed = `seed-${Math.floor(Math.random()*1e9)}`;
+      }
+      const h = xmur3(state.seed);
+      state.prng = mulberry32(h());
+      setSeedLabel();
+
+      // update URL without reload
+      const p = new URLSearchParams(location.search);
+      p.set("seed", state.seed);
+      p.set("size", String(state.size));
+      p.set("nodes", String(state.nodesWanted));
+      p.set("loops", String(state.loopsPercent));
+      p.set("theme", state.theme);
+      history.replaceState(null, "", `${location.pathname}?${p.toString()}`);
+    }
+
+    // ---------- Submit reflection (kept global submitResponse() name) ----------
+    async function submitResponse(){
+      const userText = (responseEl.value || "").trim();
+      if(!userText){
+        promptTextEl.textContent = "Please write a reflection before submitting.";
+        beep(150,0.08,"square",0.07);
         return;
       }
 
-      if (!response) {
-        promptText.textContent = "Please write a reflection before submitting.";
-        return;
+      const curPos = {x: state.player.x, y: state.player.y};
+      const k = `${curPos.x},${curPos.y}`;
+      const onNode = cellType(curPos.x, curPos.y) === "node";
+
+      // record node completion if on a node
+      if(onNode){
+        state.nodeDone.add(k);
+        const el = state.cellEls[curPos.y][curPos.x];
+        el.classList.add("nodeDone");
+        updateStats();
       }
 
-      try {
-        const res = await fetch('https://api.openai.com/v1/chat/completions', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${apiKey}`
-          },
-          body: JSON.stringify({
-            model: "gpt-3.5-turbo",
-            messages: [{ role: "user", content: response }],
-            max_tokens: 150
-          })
+      // disable button while processing
+      btnSubmit.disabled = true;
+      btnSubmit.style.opacity = "0.7";
+      btnSubmit.textContent = "Submitting...";
+
+      let aiText = "";
+
+      try{
+        if(state.llm.mode === "local"){
+          aiText = localCoachResponse(promptTextEl.textContent, userText, {
+            steps: state.steps,
+            nodesDone: state.nodeDone.size,
+            nodesTotal: state.nodeCells.size
+          });
+          promptTextEl.textContent = aiText;
+          beep(600,0.06,"triangle",0.06);
+        }else{
+          promptTextEl.textContent = "Contacting coach (OpenAI)…";
+          aiText = await callOpenAIResponses(userText);
+          promptTextEl.textContent = aiText;
+          beep(680,0.06,"triangle",0.06);
+        }
+
+        addJournalEntry({
+          time: nowISO(),
+          seed: state.seed,
+          pos: curPos,
+          prompt: promptTextEl.textContent.includes("Reflection prompt:") ? "Node" : (onNode ? "Node prompt" : "Free reflection"),
+          user: userText,
+          ai: aiText
         });
-        const data = await res.json();
-        if (data.error) {
-          promptText.textContent = `Error: ${data.error.message}`;
-        } else {
-          promptText.textContent = data.choices[0].message.content.trim();
-        }
-      } catch (error) {
-        promptText.textContent = "Error: Could not generate a response.";
+
+      }catch(err){
+        const msg = (err && err.message) ? err.message : String(err);
+        promptTextEl.textContent =
+          `Coach error: ${msg}\n` +
+          (state.llm.mode === "direct"
+            ? "Direct mode is commonly blocked by CORS and is unsafe on deployed sites. Use Proxy mode."
+            : "If using Proxy mode, ensure your proxy URL is correct and returns a Responses API-compatible payload.");
+        beep(140,0.09,"square",0.07);
+      }finally{
+        responseEl.value = "";
+        btnSubmit.disabled = false;
+        btnSubmit.style.opacity = "1";
+        btnSubmit.textContent = "Submit";
+        maybeSave();
       }
-      document.getElementById("response").value = "";
     }
 
-    // Add mobile swipe gesture support
-    let startX, startY, endX, endY;
+    // Expose globals for compatibility with your existing inline patterns
+    window.move = move;
+    window.submitResponse = submitResponse;
 
-    function handleTouchStart(event) {
-      if (event.target.closest('#maze')) {
-        // If touch event starts inside the maze container, prevent default scroll
-        event.preventDefault();
+    // ---------- Wire UI ----------
+    btnUp.addEventListener("click", ()=>move("up"));
+    btnDown.addEventListener("click", ()=>move("down"));
+    btnLeft.addEventListener("click", ()=>move("left"));
+    btnRight.addEventListener("click", ()=>move("right"));
+
+    btnNewMaze.addEventListener("click", ()=>{
+      // new maze keeps seed unless user changes it
+      if(!seedInputEl.value.trim()){
+        seedInputEl.value = `kai-${Math.floor(Math.random()*1e9)}`;
       }
-      startX = event.touches[0].clientX;
-      startY = event.touches[0].clientY;
-    }
+      setSeed(seedInputEl.value);
+      generateMaze();
+      resetRun(true);
+      promptTextEl.textContent = "New maze generated. Explore and find nodes.";
+      beep(720,0.06,"triangle",0.06);
+      vibrate([20]);
+    });
 
-    function handleTouchMove(event) {
-      if (event.target.closest('#maze')) {
-        // If the finger moves inside the maze container, prevent default scrolling
-        event.preventDefault();
+    btnReset.addEventListener("click", ()=>{
+      resetRun(true);
+      promptTextEl.textContent = "Run reset to start (same maze).";
+      beep(420,0.05,"triangle",0.05);
+    });
+
+    btnAutosave.addEventListener("click", ()=>{
+      state.autosave = !state.autosave;
+      btnAutosave.textContent = state.autosave ? "Autosave: On" : "Autosave: Off";
+      beep(320,0.04,"sine",0.04);
+      if(state.autosave) maybeSave(true);
+    });
+
+    btnFog.addEventListener("click", ()=>{
+      state.fog = !state.fog;
+      btnFog.textContent = state.fog ? "Fog: On" : "Fog: Off";
+      updateVisibility(true);
+      maybeSave();
+      beep(state.fog ? 520 : 260,0.05,"sine",0.05);
+    });
+
+    btnSound.addEventListener("click", ()=>{
+      soundOn = !soundOn;
+      btnSound.textContent = soundOn ? "Sound: On" : "Sound: Off";
+      if(soundOn) beep(520,0.05,"triangle",0.05);
+      maybeSave();
+    });
+
+    btnHint.addEventListener("click", showHint);
+    btnSolve.addEventListener("click", toggleSolution);
+    btnExport.addEventListener("click", exportAll);
+    btnUndo.addEventListener("click", undo);
+    btnClear.addEventListener("click", clearSave);
+    btnSubmit.addEventListener("click", submitResponse);
+
+    importFileEl.addEventListener("change", (e)=>{
+      const file = e.target.files && e.target.files[0];
+      if(file) importAll(file);
+      importFileEl.value = "";
+    });
+
+    btnApplySettings.addEventListener("click", ()=>{
+      applySettingsFromUI();
+      // applying loops affects maze topology -> rebuild maze deterministically from seed
+      setSeed(seedInputEl.value || state.seed);
+      generateMaze();
+      resetRun(true);
+      promptTextEl.textContent = "Settings applied and maze regenerated.";
+      beep(760,0.06,"triangle",0.06);
+    });
+
+    btnScaleDown.addEventListener("click", ()=>adjustScale(-0.05));
+    btnScaleUp.addEventListener("click", ()=>adjustScale(+0.05));
+
+    themeSelectEl.addEventListener("change", ()=>{
+      setTheme(themeSelectEl.value);
+      setSeed(state.seed);
+      maybeSave(true);
+    });
+
+    sizeSelectEl.addEventListener("change", ()=>{
+      state.size = Number(sizeSelectEl.value) || state.size;
+      setSeed(seedInputEl.value || state.seed);
+      generateMaze();
+      resetRun(true);
+      maybeSave(true);
+      beep(520,0.05,"triangle",0.05);
+    });
+
+    nodesSelectEl.addEventListener("change", ()=>{
+      state.nodesWanted = Number(nodesSelectEl.value) || state.nodesWanted;
+      setSeed(seedInputEl.value || state.seed);
+      generateMaze();
+      resetRun(true);
+      maybeSave(true);
+      beep(520,0.05,"triangle",0.05);
+    });
+
+    // ---------- Touch / Swipe (kept + improved) ----------
+    let startX=null, startY=null, endX=null, endY=null;
+
+    function handleTouchStart(ev){
+      if(ev.target.closest("#maze")){
+        ev.preventDefault();
       }
-      endX = event.touches[0].clientX;
-      endY = event.touches[0].clientY;
+      const t = ev.touches[0];
+      startX = t.clientX;
+      startY = t.clientY;
+      endX = startX;
+      endY = startY;
     }
+    function handleTouchMove(ev){
+      if(ev.target.closest("#maze")){
+        ev.preventDefault();
+      }
+      const t = ev.touches[0];
+      endX = t.clientX;
+      endY = t.clientY;
+    }
+    function handleTouchEnd(ev){
+      if(startX==null||startY==null||endX==null||endY==null) return;
+      const dx = endX - startX;
+      const dy = endY - startY;
+      const ax = Math.abs(dx);
+      const ay = Math.abs(dy);
 
-    function handleTouchEnd(event) {
-      if (!startX || !startY || !endX || !endY) {
+      // require minimum swipe distance
+      const min = 18;
+      if(ax < min && ay < min){
+        startX=startY=endX=endY=null;
         return;
       }
-      
-      // If the user started the swipe in the maze container, interpret as game movement
-      if (event.target.closest('#maze')) {
-        event.preventDefault();
-        const deltaX = endX - startX;
-        const deltaY = endY - startY;
 
-        if (Math.abs(deltaX) > Math.abs(deltaY)) {
-          // Horizontal swipe
-          if (deltaX > 0) {
-            move('right');
-          } else {
-            move('left');
-          }
-        } else {
-          // Vertical swipe
-          if (deltaY > 0) {
-            move('down');
-          } else {
-            move('up');
-          }
+      if(ev.target.closest("#maze")){
+        ev.preventDefault();
+        if(ax > ay){
+          move(dx > 0 ? "right" : "left");
+        }else{
+          move(dy > 0 ? "down" : "up");
         }
       }
-
-      // Reset the values
-      startX = null;
-      startY = null;
-      endX = null;
-      endY = null;
+      startX=startY=endX=endY=null;
     }
 
-    document.addEventListener('touchstart', handleTouchStart, { passive: false });
-    document.addEventListener('touchmove', handleTouchMove, { passive: false });
-    document.addEventListener('touchend', handleTouchEnd, { passive: false });
+    document.addEventListener("touchstart", handleTouchStart, {passive:false});
+    document.addEventListener("touchmove", handleTouchMove, {passive:false});
+    document.addEventListener("touchend", handleTouchEnd, {passive:false});
 
-    // Add arrow key support for movement
-    document.addEventListener('keydown', handleKeyDown);
-    function handleKeyDown(event) {
-      switch (event.key) {
-        case 'ArrowUp':
-          move('up');
-          event.preventDefault();
-          break;
-        case 'ArrowDown':
-          move('down');
-          event.preventDefault();
-          break;
-        case 'ArrowLeft':
-          move('left');
-          event.preventDefault();
-          break;
-        case 'ArrowRight':
-          move('right');
-          event.preventDefault();
-          break;
-        default:
-          // If the key pressed is not an arrow key, do nothing
+    // ---------- Keyboard (kept) ----------
+    document.addEventListener("keydown", (ev)=>{
+      switch(ev.key){
+        case "ArrowUp": ev.preventDefault(); move("up"); break;
+        case "ArrowDown": ev.preventDefault(); move("down"); break;
+        case "ArrowLeft": ev.preventDefault(); move("left"); break;
+        case "ArrowRight": ev.preventDefault(); move("right"); break;
+        case "h":
+        case "H":
+          showHint(); break;
+        case "u":
+        case "U":
+          undo(); break;
+        case "Enter":
+          if(ev.ctrlKey || ev.metaKey) submitResponse();
           break;
       }
+    });
+
+    // ---------- Proxy snippets (real code, not placeholders) ----------
+    proxyWorkerCodeEl.textContent =
+`// Cloudflare Worker (server-side proxy for OpenAI Responses API)
+// 1) wrangler init
+// 2) wrangler secret put OPENAI_API_KEY
+// 3) deploy, then set Proxy URL in the app to your worker URL
+export default {
+  async fetch(request, env) {
+    const origin = request.headers.get("Origin") || "*";
+    // Basic CORS: allow your site (tighten this in production)
+    const cors = {
+      "Access-Control-Allow-Origin": origin,
+      "Access-Control-Allow-Methods": "POST, OPTIONS",
+      "Access-Control-Allow-Headers": "Content-Type, Authorization",
+      "Access-Control-Max-Age": "86400"
+    };
+
+    if (request.method === "OPTIONS") {
+      return new Response(null, { headers: cors });
     }
+
+    if (request.method !== "POST") {
+      return new Response("Method Not Allowed", { status: 405, headers: cors });
+    }
+
+    const bodyText = await request.text();
+    let body;
+    try { body = JSON.parse(bodyText); } catch {
+      return new Response(JSON.stringify({ error: { message: "Invalid JSON" } }), {
+        status: 400, headers: { ...cors, "Content-Type":"application/json" }
+      });
+    }
+
+    const r = await fetch("https://api.openai.com/v1/responses", {
+      method: "POST",
+      headers: {
+        "Content-Type":"application/json",
+        "Authorization": \`Bearer \${env.OPENAI_API_KEY}\`
+      },
+      body: JSON.stringify(body)
+    });
+
+    const out = await r.text();
+    return new Response(out, {
+      status: r.status,
+      headers: { ...cors, "Content-Type":"application/json" }
+    });
+  }
+};`;
+
+    proxyNodeCodeEl.textContent =
+`// Node.js + Express proxy (server-side). Keeps key off the browser.
+// npm i express
+// set OPENAI_API_KEY in your environment
+import express from "express";
+
+const app = express();
+app.use(express.json({ limit: "2mb" }));
+
+app.use((req,res,next)=>{
+  res.setHeader("Access-Control-Allow-Origin", req.headers.origin || "*");
+  res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
+  if(req.method === "OPTIONS") return res.sendStatus(204);
+  next();
+});
+
+app.post("/openai", async (req,res)=>{
+  try{
+    const r = await fetch("https://api.openai.com/v1/responses", {
+      method: "POST",
+      headers: {
+        "Content-Type":"application/json",
+        "Authorization": \`Bearer \${process.env.OPENAI_API_KEY}\`
+      },
+      body: JSON.stringify(req.body)
+    });
+    const text = await r.text();
+    res.status(r.status).type("application/json").send(text);
+  }catch(e){
+    res.status(500).json({ error: { message: String(e?.message || e) } });
+  }
+});
+
+app.listen(8787, ()=>console.log("Proxy listening on http://localhost:8787/openai"));`;
+
+    // ---------- Init ----------
+    function init(){
+      // 1) URL params
+      const seedParam = URL_PARAMS.get("seed") || "";
+      const sizeParam = URL_PARAMS.get("size");
+      const nodesParam = URL_PARAMS.get("nodes");
+      const loopsParam = URL_PARAMS.get("loops");
+      const themeParam = URL_PARAMS.get("theme");
+
+      if(themeParam) setTheme(themeParam);
+      themeSelectEl.value = state.theme;
+
+      if(sizeParam){
+        const s = clamp(Number(sizeParam) || state.size, 10, 32);
+        state.size = s;
+      }else{
+        state.size = isMobile ? 10 : 20;
+      }
+      sizeSelectEl.value = String(state.size);
+
+      if(nodesParam){
+        state.nodesWanted = clamp(Number(nodesParam) || state.nodesWanted, 1, 12);
+      }else{
+        state.nodesWanted = isMobile ? 3 : 5;
+      }
+      nodesSelectEl.value = String(state.nodesWanted);
+
+      if(loopsParam){
+        state.loopsPercent = clamp(Number(loopsParam) || 0, 0, 60);
+      }
+      loopsInputEl.value = String(state.loopsPercent);
+      difficultyLabelEl.textContent = `Loops: ${state.loopsPercent}%`;
+
+      // 2) load autosave (preferred), otherwise generate from params/default
+      const loaded = loadSave();
+
+      if(loaded){
+        seedInputEl.value = state.seed;
+        sizeSelectEl.value = String(state.size);
+        nodesSelectEl.value = String(state.nodesWanted);
+        loopsInputEl.value = String(state.loopsPercent);
+        visionInputEl.value = String(state.visionRadius);
+        llmModeEl.value = state.llm.mode;
+        modelSelectEl.value = state.llm.model;
+        tempInputEl.value = String(state.llm.temperature);
+        maxOutInputEl.value = String(state.llm.maxOutputTokens);
+        proxyUrlEl.value = state.llm.proxyUrl || "";
+        setTheme(state.theme);
+        setSeed(state.seed || seedParam || `kai-${Math.floor(Math.random()*1e9)}`);
+        applySettingsFromUI();
+
+        renderMaze();
+        updateStats();
+        statHintsEl.textContent = `Hints: ${state.hintCount}`;
+        renderJournal();
+        startTimer();
+
+        if(state.win) setWin();
+        promptTextEl.textContent = "Loaded your autosaved session. Continue exploring (or press New Maze).";
+      }else{
+        seedInputEl.value = seedParam || `kai-${Math.floor(Math.random()*1e9)}`;
+        setSeed(seedInputEl.value);
+        applySettingsFromUI();
+        generateMaze();
+        resetRun(true);
+        renderJournal();
+        promptTextEl.textContent = "New session ready. Move through the maze and reflect at nodes.";
+      }
+
+      // sync toggles
+      btnAutosave.textContent = state.autosave ? "Autosave: On" : "Autosave: Off";
+      btnFog.textContent = state.fog ? "Fog: On" : "Fog: Off";
+      updateVisibility(true);
+
+      setModeLabel();
+      setSeedLabel();
+      statHintsEl.textContent = `Hints: ${state.hintCount}`;
+    }
+
+    init();
   </script>
 </body>
 </html>
