@@ -1,0 +1,1240 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        #writer-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(10, 15, 20, 0.85);
+            backdrop-filter: blur(10px);
+            z-index: 1000;
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 40px;
+        }
+
+        #writer-overlay.active {
+            display: flex;
+        }
+
+        #writer-input {
+            width: 800px;
+            max-width: 100%;
+            height: 80vh;
+            background: transparent;
+            border: none;
+            color: #e0e0e0;
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 1.2rem;
+            line-height: 1.6;
+            resize: none;
+            outline: none;
+        }
+
+        .writer-controls {
+            display: flex;
+            gap: 20px;
+            align-items: center;
+            margin-bottom: 20px;
+            color: #64ffda;
+            font-family: 'Courier New', monospace;
+            width: 800px;
+            max-width: 100%;
+            justify-content: space-between;
+        }
+
+        #btn-writer-exit {
+            background: transparent;
+            border: 1px solid #64ffda;
+            color: #64ffda;
+            padding: 5px 15px;
+            cursor: pointer;
+            font-family: inherit;
+        }
+
+        #btn-writer-exit:hover {
+            background: rgba(100, 255, 218, 0.1);
+        }
+
+        /* Lens FX */
+        body.fx-vhs {
+            filter: contrast(1.2) brightness(1.1) sepia(0.3);
+            text-shadow: 2px 0 rgba(255, 0, 0, 0.5), -2px 0 rgba(0, 0, 255, 0.5);
+        }
+
+        body.fx-vhs canvas {
+            /* Chromatic Abberation logic on canvas? CSS filter drop-shadow can fake it */
+            filter: drop-shadow(2px 0 rgba(255, 0, 0, 0.5)) drop-shadow(-2px 0 rgba(0, 0, 255, 0.5));
+        }
+
+        body.fx-cinema {
+            filter: contrast(1.1) sepia(0.2) saturate(0.8);
+        }
+
+        body.fx-dream {
+            filter: blur(1px) contrast(0.9) brightness(1.2) saturate(1.2);
+        }
+
+        /* Ensure UI stays sharp in Dream mode? No, dream is global. */
+
+        /* Adjust writer overlay z-index to be above even the lens canvas?
+           Lens canvas is 500. Writer is 1000. So scanlines are BELOW writer?
+           Actually scanlines should be ON TOP of everything.
+           Update Lens canvas z-index to 2000 in JS.
+           Wait, if I filter BODY, UI is filtered too. Correct.
+        */
+        /* Preset Grid */
+        .preset-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+            gap: 10px;
+            padding: 10px;
+        }
+
+        .preset-card {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 6px;
+            padding: 15px 10px;
+            text-align: center;
+            font-size: 0.8rem;
+            cursor: pointer;
+            transition: all 0.2s;
+            user-select: none;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 50px;
+        }
+
+        .preset-card:hover {
+            background: rgba(100, 255, 218, 0.2);
+            border-color: rgba(100, 255, 218, 0.5);
+            transform: translateY(-2px);
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
+        }
+
+        .preset-card.add-card {
+            border: 1px dashed rgba(255, 255, 255, 0.2);
+            color: #aaa;
+        }
+
+        .preset-card.add-card:hover {
+            color: #fff;
+            border-color: #fff;
+        }
+
+        /* Adjustment for Lens Z-Index */
+        /* ... */
+    </style>
+    <title>Petrichor Lab v3 – Bio-Atmospheric Synth</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;700&family=Inter:wght@300;400;600&display=swap"
+        rel="stylesheet">
+    <link rel="icon" href="data:;base64,iVBORw0KGgo=">
+</head>
+
+<body>
+    <div id="app">
+        <header class="hud-header">
+            <div class="brand">
+                <h1>PETRICHOR <span class="accent">LAB v3</span></h1>
+                <div class="subtitle">BIO-ATMOSPHERIC SYNTHESIS ENGINE</div>
+            </div>
+            <div class="master-controls">
+                <button id="btn-zenith" class="zenith-btn">ZENITH</button>
+                <button id="btn-power" class="power-btn">INITIALIZE</button>
+                <div class="status-indicator">
+                    <div id="celestial-status" class="status-indicator"></div>
+                    <span class="status-dot"></span>
+                    <span class="status-text">SYSTEM OFFLINE</span>
+                </div>
+            </div>
+        </header>
+
+        <main class="dashboard-grid">
+            <!-- Left Column: Controls -->
+            <section class="control-column">
+
+                <!-- Environment Module -->
+                <div class="module glass-panel">
+                    <div class="module-header">
+                        <h2>ENVIRONMENT</h2>
+                        <div class="module-id">MOD-01</div>
+                    </div>
+                    <div class="control-group">
+                        <label>Location</label>
+                        <div class="toggle-group biome-toggle">
+                            <button class="toggle-btn active" id="btn-forest" data-biome="forest">FOREST</button>
+                            <button class="toggle-btn" id="btn-ocean" data-biome="ocean">OCEAN</button>
+                            <button class="toggle-btn" id="btn-city" data-biome="city">CITY</button>
+                        </div>
+                    </div>
+                    <div class="control-group">
+                        <label>Season</label>
+                        <div class="toggle-group season-toggle">
+                            <button class="toggle-btn active" id="btn-summer">SUMMER</button>
+                            <button class="toggle-btn" id="btn-winter">WINTER</button>
+                        </div>
+                    </div>
+                    <div class="control-group">
+                        <label>Cosmos</label>
+                        <div class="toggle-group">
+                            <button class="toggle-btn" id="btn-aurora">AURORA</button>
+                            <button class="glass-btn small" id="btn-meteor"
+                                style="margin-left: 5px; width: 30px;">★</button>
+                        </div>
+                    </div>
+                    <div class="control-group">
+                        <label>Precipitation <span class="value-readout" id="val-rain">0.50</span></label>
+                        <input type="range" id="param-rain" min="0" max="1" step="0.01" value="0.5">
+                    </div>
+                    <div class="control-group">
+                        <label>Drop Weight <span class="value-readout" id="val-drops">0.40</span></label>
+                        <input type="range" id="param-drops" min="0" max="1" step="0.01" value="0.4">
+                    </div>
+                    <div class="control-group">
+                        <label>Surface Material</label>
+                        <select id="param-surface">
+                            <option value="concrete">Concrete</option>
+                            <option value="soil">Wet Soil</option>
+                            <option value="metal">Corrugated Metal</option>
+                            <option value="leaves">Dense Foliage</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Wind & Atmosphere Module (New) -->
+                <div class="module glass-panel">
+                    <div class="module-header">
+                        <h2>ATMOSPHERE</h2>
+                        <div class="module-id">MOD-02</div>
+                    </div>
+                    <div class="control-group">
+                        <label>Wind Speed <span class="value-readout" id="val-wind">0.00</span></label>
+                        <input type="range" id="param-wind" min="0" max="1" step="0.01" value="0">
+                    </div>
+                    <div class="control-group">
+                        <label>Thunder Probability <span class="value-readout" id="val-thunder">0.00</span></label>
+                        <input type="range" id="param-thunder" min="0" max="1" step="0.01" value="0">
+                    </div>
+                    <div class="control-group">
+                        <label>Urban Hum <span class="value-readout" id="val-traffic">0.00</span></label>
+                        <input type="range" id="param-traffic" min="0" max="1" step="0.01" value="0.2">
+                    </div>
+                </div>
+
+
+                <!-- Celestial Module (New) -->
+                <div class="module glass-panel">
+                    <div class="module-header">
+                        <h2>CELESTIAL</h2>
+                        <div class="module-id">MOD-09</div>
+                    </div>
+                    <div class="control-group">
+                        <label>Chime Density <span class="value-readout" id="val-chimes">0.50</span></label>
+                        <input type="range" id="param-chimes" min="0" max="1" step="0.01" value="0.5">
+                    </div>
+                    <div class="control-group">
+                        <label>Aurora Glow <span class="value-readout" id="val-auroraGlow">0.50</span></label>
+                        <input type="range" id="param-auroraGlow" min="0" max="1" step="0.01" value="0.5">
+                    </div>
+                    <div class="control-group">
+                        <label>Aurora Speed <span class="value-readout" id="val-auroraSpeed">1.00</span></label>
+                        <input type="range" id="param-auroraSpeed" min="0.1" max="3" step="0.01" value="1">
+                    </div>
+                </div>
+
+                <!-- Atmosphere Module (New) -->
+                <div class="module glass-panel">
+                    <div class="module-header">
+                        <h2>ATMOSPHERE</h2>
+                        <div class="module-id">MOD-41</div>
+                    </div>
+                    <div class="control-group">
+                        <label>Barometric Pressure <span class="value-readout" id="val-pressure">0.50</span></label>
+                        <input type="range" id="param-pressure" min="0" max="1" step="0.01" value="0.5">
+                    </div>
+                    <div class="control-group">
+                        <label>Auto-Weather</label>
+                        <div class="toggle-group">
+                            <button class="toggle-btn" id="btn-auto-weather">DISABLED</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Geology Module (New) -->
+                <div class="module glass-panel">
+                    <div class="module-header">
+                        <h2>GEOLOGY</h2>
+                        <div class="module-id">MOD-43</div>
+                    </div>
+                    <div class="control-group">
+                        <label>Seismic Activity <span class="value-readout" id="val-seismic">0.00</span></label>
+                        <input type="range" id="param-seismic" min="0" max="1" step="0.01" value="0">
+                    </div>
+                </div>
+
+                <!-- Bioluminescence Module (New) -->
+                <div class="module glass-panel" id="mod-biolume">
+                    <div class="module-header">
+                        <h2>BIOLUME</h2>
+                        <div class="module-id">MOD-44</div>
+                    </div>
+                    <div class="control-group">
+                        <label>Glow Intensity <span class="value-readout" id="val-biolumeIntensity">0.50</span></label>
+                        <input type="range" id="param-biolumeIntensity" min="0" max="1" step="0.01" value="0.5">
+                    </div>
+                    <div class="control-group">
+                        <label>Pulse Rate <span class="value-readout" id="val-biolumePulse">1.00</span></label>
+                        <input type="range" id="param-biolumePulse" min="0.1" max="2" step="0.01" value="1">
+                    </div>
+                </div>
+
+                <!-- Volcano Module (New) -->
+                <div class="module glass-panel">
+                    <div class="module-header">
+                        <h2>VOLCANO</h2>
+                        <div class="module-id">MOD-45</div>
+                    </div>
+                    <div class="control-group">
+                        <label>Vent Intensity <span class="value-readout" id="val-volcano">0.00</span></label>
+                        <input type="range" id="param-volcano" min="0" max="1" step="0.01" value="0">
+                    </div>
+                </div>
+    <!-- Solar Module (New) -->
+    <div class="module glass-panel">
+        <div class="module-header">
+            <h2>SOLAR STORM</h2>
+            <div class="module-id">MOD-46</div>
+        </div>
+        <div class="control-group">
+            <label>Solar Intensity <span class="value-readout" id="val-solar">0.00</span></label>
+            <input type="range" id="param-solar" min="0" max="1" step="0.01" value="0">
+        </div>
+        <div class="control-group">
+            <label>Flare Frequency <span class="value-readout" id="val-flare">0.10</span></label>
+            <input type="range" id="param-flare" min="0" max="1" step="0.01" value="0.10">
+        </div>
+    </div>
+
+    <!-- Geomagnetism Module (New) -->
+    <div class="module glass-panel">
+        <div class="module-header">
+            <h2>GEOMAGNETISM</h2>
+            <div class="module-id">MOD-48</div>
+        </div>
+        <div class="control-group">
+            <label>Magnetic Flux <span class="value-readout" id="val-flux">0.00</span></label>
+            <input type="range" id="param-flux" min="0" max="1" step="0.01" value="0">
+        </div>
+        <div class="control-group">
+            <label>Field Stability</label>
+            <div class="toggle-group">
+                <button class="toggle-btn" id="btn-flux-toggle">OFF</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Tectonics Module (New) -->
+    <div class="module glass-panel">
+        <div class="module-header">
+            <h2>TECTONICS</h2>
+            <div class="module-id">MOD-49</div>
+        </div>
+        <div class="control-group">
+            <label>Crustal Stress <span class="value-readout" id="val-tectonicStress">0.00</span></label>
+            <input type="range" id="param-tectonicStress" min="0" max="1" step="0.01" value="0">
+        </div>
+        <div class="control-group">
+            <label>Growth Potency <span class="value-readout" id="val-tectonicGrowth">0.10</span></label>
+            <input type="range" id="param-tectonicGrowth" min="0" max="1" step="0.01" value="0.10">
+        </div>
+    </div>
+
+    <div class="module glass-panel">
+        <div class="module-header">
+            <h2>THE GREENHOUSE</h2>
+            <div class="module-id">MOD-37</div>
+        </div>
+        <div class="control-group">
+            <label>Creature Density <span class="value-readout" id="val-life">0.50</span></label>
+            <input type="range" id="param-life" min="0" max="1" step="0.01" value="0.5">
+        </div>
+        <div class="control-group">
+            <label>Growth Potency <span class="value-readout" id="val-growth">1.0x</span></label>
+            <input type="range" id="param-growth" min="0.1" max="3" step="0.1" value="1">
+        </div>
+        <div class="control-group">
+            <label>Bee Activity <span class="value-readout" id="val-bees">0.5x</span></label>
+            <input type="range" id="param-bees" min="0" max="1" step="0.1" value="0.5">
+        </div>
+        <div class="control-group">
+            <label>Garden Seeds</label>
+            <div class="toggle-group seed-toggle">
+                <button class="toggle-btn active" id="btn-seed-fern" data-seed="fern">FERN</button>
+                <button class="toggle-btn" id="btn-seed-flower" data-seed="flower">FLOWER</button>
+                <button class="toggle-btn" id="btn-seed-reed" data-seed="reed">REED</button>
+                <button class="toggle-btn" id="btn-seed-luminescent" data-seed="luminescent">LUMEN</button>
+                <button class="toggle-btn" id="btn-seed-shadow" data-seed="shadow">SHADOW</button>
+                <button class="toggle-btn" id="btn-seed-fungi" data-seed="fungi">FUNGI</button>
+                <button class="toggle-btn" id="btn-seed-mycelium" data-seed="mycelium">MYCEL</button>
+                <button class="toggle-btn" id="btn-seed-tree" data-seed="tree">TREE</button>
+            </div>
+        </div>
+        <div class="control-group">
+            <button class="glass-btn small" id="btn-clear-garden" style="width: 100%;">CLEAR GARDEN</button>
+        </div>
+    </div>
+
+    <!-- Wellness Module (New) -->
+    <div class="module glass-panel">
+        <div class="module-header">
+            <h2>WELLNESS</h2>
+            <div class="module-id">MOD-07</div>
+        </div>
+        <div class="control-group">
+            <label>Breath Guide</label>
+            <div class="toggle-group">
+                <button class="toggle-btn" id="btn-respire" data-param="respire">OFF</button>
+            </div>
+        </div>
+        <div class="control-group">
+            <label>Hearth</label>
+            <div class="toggle-group">
+                <button class="toggle-btn" id="btn-hearth">OFF</button>
+            </div>
+        </div>
+        <div class="control-group">
+            <label>Writer Mode</label>
+            <div class="toggle-group">
+                <button class="toggle-btn" id="btn-writer">ENTER</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Ensemble Module -->
+    <div class="module glass-panel">
+        <div class="module-header">
+            <h2>ENSEMBLE</h2>
+            <div class="module-id">MOD-11</div>
+        </div>
+        <div class="control-group">
+            <label>Piano</label>
+            <input type="range" id="vol-piano" min="0" max="1" step="0.01" value="0">
+        </div>
+        <div class="control-group">
+            <label>Strings</label>
+            <input type="range" id="vol-strings" min="0" max="1" step="0.01" value="0">
+        </div>
+    </div>
+
+    <!-- Fractal Echo Module (Phase 51) -->
+    <div class="module glass-panel">
+        <div class="module-header">
+            <h2>FRACTAL ECHO</h2>
+            <div class="module-id">MOD-51</div>
+        </div>
+        <div class="control-group">
+            <label>Recursion <span class="value-readout" id="val-recursion">0.10</span></label>
+            <input type="range" id="param-recursion" min="0" max="1" step="0.01" value="0.1">
+        </div>
+        <div class="control-group">
+            <label>Symmetry <span class="value-readout" id="val-symmetry">0.50</span></label>
+            <input type="range" id="param-symmetry" min="0" max="1" step="0.01" value="0.5">
+        </div>
+        <div class="control-group">
+            <label>Divergence <span class="value-readout" id="val-divergence">0.10</span></label>
+            <input type="range" id="param-divergence" min="0" max="1" step="0.01" value="0.1">
+        </div>
+    </div>
+
+    <!-- Quantum Mirage Module (Phase 50) -->
+    <div class="module glass-panel">
+        <div class="module-header">
+            <h2>QUANTUM MIRAGE</h2>
+            <div class="module-id">MOD-50</div>
+        </div>
+        <div class="control-group">
+            <label>Entropy <span class="value-readout" id="val-entropy">0.50</span></label>
+            <input type="range" id="param-entropy" min="0" max="1" step="0.01" value="0.5">
+        </div>
+        <div class="control-group">
+            <label>Displacement <span class="value-readout" id="val-displacement">0.30</span></label>
+            <input type="range" id="param-displacement" min="0" max="1" step="0.01" value="0.3">
+        </div>
+        <div class="control-group">
+            <label>Quantum Flux <span class="value-readout" id="val-quantumFlux">0.10</span></label>
+            <input type="range" id="param-quantumFlux" min="0" max="1" step="0.01" value="0.1">
+        </div>
+    </div>
+
+    <!-- Lens Module -->
+    <div class="module glass-panel">
+        <div class="module-header">
+            <h2>LENS</h2>
+            <div class="module-id">MOD-12</div>
+        </div>
+        <div class="control-group">
+            <div class="toggle-group" style="justify-content: space-between; width: 100%;">
+                <button class="toggle-btn" id="btn-vhs" style="flex: 1; margin: 0 2px;">VHS</button>
+                <button class="toggle-btn" id="btn-cinema" style="flex: 1; margin: 0 2px;">CINE</button>
+                <button class="toggle-btn" id="btn-dream" style="flex: 1; margin: 0 2px;">DREAM</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Voyage Module -->
+    <div class="module glass-panel">
+        <div class="module-header">
+            <h2>VOYAGE</h2>
+            <div class="module-id">MOD-17</div>
+        </div>
+        <div class="control-group">
+            <label>Velocity <span class="value-readout" id="val-speed">0.00</span></label>
+            <input type="range" id="param-speed" min="0" max="1" step="0.01" value="0">
+        </div>
+    </div>
+
+    <!-- Echo Module -->
+    <div class="module glass-panel">
+        <div class="module-header">
+            <h2>ECHO</h2>
+            <div class="module-id">MOD-18</div>
+        </div>
+        <div class="control-group">
+            <label>Input</label>
+            <button class="toggle-btn" id="btn-mic" style="width: 100%;">ACTIVATE SENSOR</button>
+        </div>
+        <div class="control-group">
+            <label>Cave Verb</label>
+            <input type="range" id="param-micReverb" min="0" max="1" step="0.01" value="0.5">
+        </div>
+        <div class="control-group">
+            <label>Signal Delay</label>
+            <input type="range" id="param-micDelay" min="0" max="1" step="0.01" value="0.3">
+        </div>
+    </div>
+
+    <!-- Prism Module -->
+    <div class="module glass-panel">
+        <div class="module-header">
+            <h2>PRISM</h2>
+            <div class="module-id">MOD-19</div>
+        </div>
+        <div class="control-group">
+            <label>Color Grade</label>
+            <select id="param-grade">
+                <option value="standard">Standard</option>
+                <option value="cyberpunk">Cyberpunk</option>
+                <option value="noir">Noir</option>
+                <option value="sepia">Sepia</option>
+                <option value="blueprint">Blueprint</option>
+            </select>
+        </div>
+        <div class="control-group">
+            <label>Intensity <span class="value-readout" id="val-prism">0%</span></label>
+            <input type="range" id="param-prism" min="0" max="1" step="0.01" value="0">
+        </div>
+    </div>
+
+    <!-- Loom Module -->
+    <div class="module glass-panel">
+        <div class="module-header">
+            <h2>LOOM</h2>
+            <div class="module-id">MOD-20</div>
+        </div>
+        <div class="loom-container">
+            <div class="loom-grid" id="loom-grid">
+                <!-- JS generates cols -->
+            </div>
+            <div class="loom-controls">
+                <button class="toggle-btn" id="btn-sequencer">START SEQUENCE</button>
+                <input type="range" id="param-bpm" min="60" max="180" value="120" style="width: 100px;">
+                <span class="value-readout" id="val-bpm" style="font-size: 0.7rem;">120 BPM</span>
+                <button class="toggle-btn" id="btn-clear-loom" style="width: auto;">CLR</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Laboratory Module -->
+    <div class="module glass-panel">
+        <div class="module-header">
+            <h2>LABORATORY</h2>
+            <div class="module-id">MOD-25</div>
+        </div>
+        <div class="control-group">
+            <label>Engine</label>
+            <div class="toggle-group">
+                <button class="toggle-btn active" id="btn-engine-piano">PIANO</button>
+                <button class="toggle-btn" id="btn-engine-synth">SYNTH</button>
+            </div>
+        </div>
+        <div class="control-group">
+            <label>Cutoff <span class="value-readout" id="val-cutoff">50%</span></label>
+            <input type="range" id="param-cutoff" min="0" max="1" step="0.01" value="0.5">
+        </div>
+        <div class="control-group">
+            <label>Resonance <span class="value-readout" id="val-resonance">20%</span></label>
+            <input type="range" id="param-resonance" min="0" max="1" step="0.01" value="0.2">
+        </div>
+        <div class="control-group">
+            <label>Waveform <span class="value-readout" id="val-waveform">Saw</span></label>
+            <input type="range" id="param-waveform" min="0" max="1" step="0.01" value="0">
+        </div>
+        <div class="control-group">
+            <label>Detune <span class="value-readout" id="val-detune">10%</span></label>
+            <input type="range" id="param-detune" min="0" max="1" step="0.01" value="0.1">
+        </div>
+    </div>
+
+    <!-- Alchemist Module -->
+    <div class="module glass-panel">
+        <div class="module-header">
+            <h2>ALCHEMIST</h2>
+            <div class="module-id">MOD-26</div>
+        </div>
+        <div class="control-group">
+            <label>Cloud Density <span class="value-readout" id="val-g-density">50%</span></label>
+            <input type="range" id="param-g-density" min="0" max="1" step="0.01" value="0.5">
+        </div>
+        <div class="control-group">
+            <label>Grain Size <span class="value-readout" id="val-g-size">20%</span></label>
+            <input type="range" id="param-g-size" min="0" max="1" step="0.01" value="0.2">
+        </div>
+        <div class="control-group">
+            <label>Mix <span class="value-readout" id="val-g-mix">0%</span></label>
+            <input type="range" id="param-g-mix" min="0" max="1" step="0.01" value="0">
+        </div>
+        <div class="control-group">
+            <button class="toggle-btn" id="btn-transmute">TRANSMUTE</button>
+        </div>
+    </div>
+
+    <!-- Observatory Module -->
+    <div class="module glass-panel">
+        <div class="module-header">
+            <h2>OBSERVATORY</h2>
+            <div class="module-id">MOD-27</div>
+        </div>
+        <div class="orrery-display"
+            style="height: 150px; background: #0b0d12; border-radius: 4px; border: 1px solid #333; margin-bottom: 1rem; display: flex; align-items: center; justify-content: center;">
+            <canvas id="orrery-viz" style="width: 100%; height: 100%;"></canvas>
+        </div>
+        <div class="control-group">
+            <label>Mercury</label>
+            <select id="route-mercury">
+                <option value="none">Unassigned</option>
+                <option value="cutoff">Synth Cutoff</option>
+                <option value="density">Cloud Density</option>
+                <option value="wind">Wind Speed</option>
+                <option value="resonance">Resonance</option>
+                <option value="hiss">Tape Hiss</option>
+            </select>
+        </div>
+        <div class="control-group">
+            <label>Venus</label>
+            <select id="route-venus">
+                <option value="none">Unassigned</option>
+                <option value="cutoff">Synth Cutoff</option>
+                <option value="density">Cloud Density</option>
+                <option value="wind">Wind Speed</option>
+                <option value="resonance">Resonance</option>
+                <option value="hiss">Tape Hiss</option>
+            </select>
+        </div>
+        <div class="control-group">
+            <label>Mars</label>
+            <select id="route-mars">
+                <option value="none">Unassigned</option>
+                <option value="cutoff">Synth Cutoff</option>
+                <option value="density">Cloud Density</option>
+                <option value="wind">Wind Speed</option>
+                <option value="resonance">Resonance</option>
+                <option value="hiss">Tape Hiss</option>
+            </select>
+        </div>
+    </div>
+
+    <!-- Architecture Module -->
+    <div class="module glass-panel">
+        <div class="module-header">
+            <h2>ARCHITECTURE</h2>
+            <div class="module-id">MOD-28</div>
+        </div>
+        <div class="structure-display"
+            style="height: 120px; background: #0b0d12; border-radius: 4px; border: 1px solid #333; margin-bottom: 1rem; display: flex; align-items: center; justify-content: center; position: relative; overflow: hidden;">
+            <canvas id="structure-viz" style="width: 100%; height: 100%;"></canvas>
+        </div>
+        <div class="control-group">
+            <label>Material <span class="value-readout" id="val-struct-material">Metal</span></label>
+            <input type="range" id="param-struct-material" min="0" max="1" step="0.01" value="0.5">
+        </div>
+        <div class="control-group">
+            <label>Tension <span class="value-readout" id="val-struct-tension">50%</span></label>
+            <input type="range" id="param-struct-tension" min="0" max="1" step="0.01" value="0.5">
+        </div>
+        <div class="control-group">
+            <button class="toggle-btn" id="btn-struct-strike"
+                style="width: 100%; margin-top: 0.5rem; letter-spacing: 2px;">STRIKE</button>
+        </div>
+    </div>
+
+    <!-- Reactor Module -->
+    <div class="module glass-panel">
+        <div class="module-header">
+            <h2>REACTOR</h2>
+            <div class="module-id">MOD-29</div>
+        </div>
+        <div class="plasma-display"
+            style="height: 100px; background: #05070a; border-radius: 4px; border: 1px solid #1a1a1a; margin-bottom: 1rem; position: relative;">
+            <canvas id="plasma-viz" style="width: 100%; height: 100%;"></canvas>
+        </div>
+        <div class="control-group">
+            <label>Drive <span class="value-readout" id="val-reactor-drive">10%</span></label>
+            <input type="range" id="param-reactor-drive" min="0" max="1" step="0.01" value="0.1">
+        </div>
+        <div class="control-group">
+            <label>Crush <span class="value-readout" id="val-reactor-crush">0%</span></label>
+            <input type="range" id="param-reactor-crush" min="0" max="1" step="0.01" value="0">
+        </div>
+        <div class="control-group">
+            <label>Meltdown <span class="value-readout" id="val-reactor-meltdown">0%</span></label>
+            <input type="range" id="param-reactor-meltdown" min="0" max="1" step="0.01" value="0">
+        </div>
+    </div>
+
+    <!-- Broadcast Module -->
+    <div class="module glass-panel">
+        <div class="module-header">
+            <h2>BROADCAST</h2>
+            <div class="module-id">MOD-21</div>
+        </div>
+        <div class="tuner-display"
+            style="position: relative; height: 60px; background: #050505; margin-bottom: 1rem; border-radius: 4px; border: 1px solid #333; overflow: hidden;">
+            <canvas id="tuner-viz" style="width: 100%; height: 100%;"></canvas>
+            <div class="tuner-needle" id="tuner-needle"
+                style="position: absolute; top: 0; left: 0%; width: 2px; height: 100%; background: #ff4444; box-shadow: 0 0 5px #ff4444; pointer-events: none;">
+            </div>
+            <div
+                style="position: absolute; bottom: 2px; width: 100%; display: flex; justify-content: space-between; padding: 0 5px; font-size: 0.5rem; color: #555;">
+                <span>88</span><span>92</span><span>96</span><span>100</span><span>104</span><span>108</span>
+            </div>
+        </div>
+        <div class="control-group">
+            <label>Frequency <span class="value-readout" id="val-tuning">88.0 MHz</span></label>
+            <input type="range" id="radio-tuner" min="88" max="108" step="0.1" value="88">
+        </div>
+        <div class="control-group">
+            <button class="toggle-btn" id="btn-radio">POWER</button>
+        </div>
+    </div>
+
+    <!-- Singularity Module -->
+    <div class="module glass-panel">
+        <div class="module-header">
+            <h2>SINGULARITY</h2>
+            <div class="module-id">MOD-30</div>
+        </div>
+        <div class="void-display"
+            style="height: 140px; background: #000; border-radius: 4px; margin-bottom: 1rem; position: relative; overflow: hidden; border: 1px solid #111;">
+            <canvas id="singularity-viz" style="width: 100%; height: 100%;"></canvas>
+            <button class="toggle-btn" id="btn-sing-freeze"
+                style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); border-radius: 50%; width: 60px; height: 60px; background: rgba(0, 50, 100, 0.4); border-color: #0077ff; box-shadow: 0 0 20px rgba(0, 119, 255, 0.3);">FREEZE</button>
+        </div>
+        <div style="display: flex; gap: 1rem;">
+            <div class="control-group" style="flex: 1;">
+                <label>Void <span class="value-readout" id="val-sing-void">50%</span></label>
+                <input type="range" id="param-sing-void" min="0" max="1" step="0.01" value="0.5"
+                    style="writing-mode: bt-lr; height: 80px;">
+            </div>
+            <div class="control-group" style="flex: 1;">
+                <label>Shimmer <span class="value-readout" id="val-sing-shimmer">10%</span></label>
+                <input type="range" id="param-sing-shimmer" min="0" max="1" step="0.01" value="0.1"
+                    style="writing-mode: bt-lr; height: 80px;">
+            </div>
+        </div>
+    </div>
+
+    <!-- Archive Module -->
+    <div class="module glass-panel">
+        <div class="module-header">
+            <h2>THE ARCHIVE</h2>
+            <div class="module-id">MOD-34</div>
+        </div>
+        <div class="control-group">
+            <label>Mood</label>
+            <select id="select-mood"
+                style="width: 100%; background: #000; color: #00f2ff; border: 1px solid #222; height: 35px; border-radius: 4px; font-family: 'Outfit', sans-serif; cursor: pointer;">
+                <option value="Default">DEFAULT</option>
+                <option value="Deep Space">DEEP SPACE</option>
+                <option value="Urban Rain">URBAN RAIN</option>
+                <option value="Ethereal Drone">ETHEREAL DRONE</option>
+                <option value="Radio Static">RADIO STATIC</option>
+            </select>
+        </div>
+        <div style="display: flex; gap: 1rem; margin-top: 1.5rem;">
+            <button class="action-btn" id="btn-oracle"
+                style="flex: 2; height: 50px; background: rgba(0, 242, 255, 0.1); border: 1px solid #00f2ff; color: #00f2ff; font-weight: bold; font-size: 0.9rem; letter-spacing: 2px; box-shadow: 0 0 15px rgba(0, 242, 255, 0.2);">THE
+                ORACLE</button>
+            <button class="action-btn" id="btn-snapshot"
+                style="flex: 1; height: 50px; font-size: 0.7rem;">SNAPSHOT</button>
+        </div>
+        <div id="archive-terminal"
+            style="margin-top: 1rem; padding: 0.5rem; background: rgba(0,0,0,0.5); border-radius: 4px; border: 1px solid #111; font-family: 'JetBrains Mono', monospace; font-size: 0.6rem; color: #444; height: 40px; overflow: hidden; display: flex; align-items: center;">
+            &gt; ARCHIVE READY_
+        </div>
+    </div>
+
+    <!-- Pulsar Module -->
+    <div class="module glass-panel">
+        <div class="module-header">
+            <h2>THE PULSAR</h2>
+            <div class="module-id">MOD-33</div>
+        </div>
+        <div class="pulsar-display"
+            style="height: 100px; background: #000; border: 1px solid #111; border-radius: 4px; margin-bottom: 1rem; position: relative; overflow: hidden; display: flex; align-items: flex-end; gap: 2px; padding: 5px;">
+            <canvas id="pulsar-viz" style="width: 100%; height: 100%;"></canvas>
+        </div>
+        <div class="control-group">
+            <label>Rate <span class="value-readout" id="val-pulsar-rate">1/4</span></label>
+            <select id="param-pulsar-rate"
+                style="width: 100%; background: #111; color: #00f2ff; border: 1px solid #333; height: 30px;">
+                <option value="0.25">1/1 (Whole)</option>
+                <option value="0.5">1/2 (Half)</option>
+                <option value="1" selected>1/4 (Quarter)</option>
+                <option value="2">1/8 (Eighth)</option>
+                <option value="4">1/16 (Sixteenth)</option>
+            </select>
+        </div>
+        <div class="control-group" style="margin-top: 10px;">
+            <label>Depth <span class="value-readout" id="val-pulsar-depth">0%</span></label>
+            <input type="range" id="param-pulsar-depth" min="0" max="1" step="0.01" value="0">
+        </div>
+        <div class="control-group" style="margin-top: 10px;">
+            <label>Shape</label>
+            <div class="toggle-group">
+                <button class="toggle-btn active" id="btn-pulsar-sq">SQ</button>
+                <button class="toggle-btn" id="btn-pulsar-tri">TRI</button>
+                <button class="toggle-btn" id="btn-pulsar-saw">SAW</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Monolith Module -->
+    <div class="module glass-panel">
+        <div class="module-header">
+            <h2>THE MONOLITH</h2>
+            <div class="module-id">MOD-32</div>
+        </div>
+        <div class="monolith-display"
+            style="height: 180px; background: #000; border: 1px solid #111; border-radius: 4px; margin-bottom: 1rem; position: relative; overflow: hidden;">
+            <canvas id="monolith-viz" style="width: 100%; height: 100%;"></canvas>
+        </div>
+        <div class="control-group">
+            <label>Macro Intensity <span class="value-readout" id="val-macro">0%</span></label>
+            <input type="range" id="param-macro" min="0" max="1" step="0.01" value="0"
+                style="width: 100%; height: 40px; border-radius: 20px;">
+        </div>
+        <div class="toggle-group" style="margin-top: 1rem; display: flex; gap: 0.5rem;">
+            <button class="toggle-btn active" id="btn-macro-nature" style="flex: 1; font-size: 0.6rem;">NATURE</button>
+            <button class="toggle-btn active" id="btn-macro-synth" style="flex: 1; font-size: 0.6rem;">SYNTH</button>
+            <button class="toggle-btn active" id="btn-macro-void" style="flex: 1; font-size: 0.6rem;">VOID</button>
+        </div>
+    </div>
+
+    <!-- Cartographer Module -->
+    <div class="module glass-panel">
+        <div class="module-header">
+            <h2>CARTOGRAPHER</h2>
+            <div class="module-id">MOD-31</div>
+        </div>
+        <div class="map-container"
+            style="height: 200px; background: #0b0d12; border: 1px solid #1a1a1a; border-radius: 4px; position: relative; overflow: hidden; cursor: crosshair;">
+            <canvas id="cartographer-map" style="width: 100%; height: 100%;"></canvas>
+        </div>
+        <div class="control-legend"
+            style="margin-top: 1rem; font-size: 0.7rem; color: #666; display: flex; justify-content: space-around;">
+            <span>● Nature</span>
+            <span>● Wind</span>
+            <span>● Synth</span>
+            <span>● Cloud</span>
+        </div>
+    </div>
+
+    <!-- Cassette Module -->
+    <div class="module glass-panel">
+        <div class="module-header">
+            <h2>CASSETTE</h2>
+            <div class="module-id">MOD-24</div>
+        </div>
+        <div class="tape-display"
+            style="position: relative; height: 80px; background: #222; margin-bottom: 1rem; border-radius: 4px; border: 1px solid #444; overflow: hidden; display: flex; align-items: center; justify-content: center;">
+            <canvas id="tape-viz" style="width: 100%; height: 100%;"></canvas>
+        </div>
+        <div class="control-group">
+            <label>Transport</label>
+            <div class="toggle-group">
+                <button class="toggle-btn active" id="btn-tape-play">PLAY</button>
+                <button class="toggle-btn" id="btn-tape-stop">STOP</button>
+            </div>
+        </div>
+        <div class="control-group">
+            <label>Hiss <span class="value-readout" id="val-hiss">0.00</span></label>
+            <input type="range" id="param-hiss" min="0" max="1" step="0.01" value="0">
+        </div>
+        <div class="control-group">
+            <label>Crackle <span class="value-readout" id="val-crackle">0.00</span></label>
+            <input type="range" id="param-crackle" min="0" max="1" step="0.01" value="0">
+        </div>
+        <div class="control-group">
+            <label>Wobble <span class="value-readout" id="val-wobble">0.00</span></label>
+            <input type="range" id="param-wobble" min="0" max="1" step="0.01" value="0">
+        </div>
+    </div>
+
+    <!-- Optics Module -->
+    <div class="module glass-panel">
+        <div class="module-header">
+            <h2>OPTICS</h2>
+            <div class="module-id">MOD-22</div>
+        </div>
+        <div class="control-group">
+            <label>Kaleidoscope</label>
+            <div class="toggle-group">
+                <button class="toggle-btn" id="btn-kaleidoscope">ACTIVE</button>
+            </div>
+        </div>
+        <div class="control-group">
+            <label>Symmetry <span class="value-readout" id="val-symmetry">6</span></label>
+            <input type="range" id="param-symmetry" min="3" max="12" step="1" value="6">
+        </div>
+    </div>
+
+    <!-- Monitor Module -->
+    <div class="module glass-panel">
+        <div class="module-header">
+            <h2>MONITOR</h2>
+            <div class="module-id">MOD-14</div>
+        </div>
+        <div class="control-group">
+            <label>Spectrum</label>
+            <canvas id="viz-spectrum"
+                style="width: 100%; height: 60px; background: rgba(0,0,0,0.3); border-radius: 4px;"></canvas>
+        </div>
+        <div class="control-group">
+            <label>Scope</label>
+            <canvas id="viz-scope"
+                style="width: 100%; height: 60px; background: rgba(0,0,0,0.3); border-radius: 4px;"></canvas>
+        </div>
+    </div>
+
+    <!-- Memory Banks (New) -->
+    <div class="module glass-panel">
+        <div class="module-header">
+            <h2>PRESETS</h2>
+            <div class="module-id">MEM-01</div>
+        </div>
+        <div class="preset-grid" id="preset-grid">
+            <!-- slots generated by js -->
+        </div>
+    </div>
+
+    <!-- Focus Timer (New) -->
+    <div class="module glass-panel">
+        <div class="module-header">
+            <h2>FOCUS</h2>
+            <div class="module-id">MOD-10</div>
+        </div>
+        <div class="control-group active-center">
+            <div id="focus-display" class="digital-display large">25:00</div>
+            <div class="focus-controls">
+                <button class="glass-btn" id="btn-focus-start">START</button>
+                <button class="glass-btn" id="btn-focus-stop">STOP</button>
+            </div>
+            <div id="focus-status" class="status-text">IDLE</div>
+        </div>
+    </div>
+
+    <!-- Chronos Module (New) -->
+    <div class="module glass-panel">
+        <div class="module-header">
+            <h2>CHRONOS</h2>
+            <div class="module-id">MOD-04</div>
+        </div>
+        <div class="control-group">
+            <label>Time of Day <span class="value-readout" id="val-time">12:00</span></label>
+            <input type="range" id="param-time" min="0" max="24" step="0.1" value="12">
+        </div>
+        <div class="control-group">
+            <label>Biome Activity <span class="value-readout" id="val-biome">0.00</span></label>
+            <input type="range" id="param-biome" min="0" max="1" step="0.01" value="0">
+        </div>
+    </div>
+
+    <!-- Lo-Fi Module (New) -->
+    <div class="module glass-panel">
+        <div class="module-header">
+            <h2>VINTAGE LAB</h2>
+            <div class="module-id">MOD-05</div>
+        </div>
+        <div class="control-group">
+            <label>Vinyl degradation <span class="value-readout" id="val-lofi">0.00</span></label>
+            <input type="range" id="param-lofi" min="0" max="1" step="0.01" value="0">
+        </div>
+    </div>
+
+    <!-- Aether Module (New) -->
+    <div class="module glass-panel">
+        <div class="module-header">
+            <h2>AETHER</h2>
+            <div class="module-id">MOD-06</div>
+        </div>
+        <div class="control-group">
+            <label>Harmony <span class="value-readout" id="val-harmony">0.00</span></label>
+            <input type="range" id="param-harmony" min="0" max="1" step="0.01" value="0">
+        </div>
+        <div class="control-group">
+            <label>Space <span class="value-readout" id="val-space">0.50</span></label>
+            <input type="range" id="param-space" min="0" max="1" step="0.01" value="0.5">
+        </div>
+    </div>
+
+    <!-- Ethereal Module (New) -->
+    <div class="module glass-panel">
+        <div class="module-header">
+            <h2>ETHEREAL</h2>
+            <div class="module-id">MOD-36</div>
+        </div>
+        <div class="control-group">
+            <label>Vox Intensity <span class="value-readout" id="val-vox">0.00</span></label>
+            <input type="range" id="param-vox" min="0" max="1" step="0.01" value="0">
+        </div>
+        <div class="control-group">
+            <label>Vocal Texture</label>
+            <select id="param-vowel">
+                <option value="a">A (Open)</option>
+                <option value="e">E (Bright)</option>
+                <option value="i">I (Thin)</option>
+                <option value="o" selected>O (Warm)</option>
+                <option value="u">U (Deep)</option>
+            </select>
+        </div>
+    </div>
+
+    <!-- Neural Entrainment (New) -->
+    <div class="module glass-panel">
+        <div class="module-header">
+            <h2>NEURAL LINK</h2>
+            <div class="module-id">MOD-03</div>
+        </div>
+        <div class="control-group">
+            <label>Binaural Mix <span class="value-readout" id="val-binaural">0.00</span></label>
+            <input type="range" id="param-binaural" min="0" max="1" step="0.01" value="0">
+        </div>
+        <div class="row-controls">
+            <button class="toggle-btn active" data-wave="alpha">ALPHA</button>
+            <button class="toggle-btn" data-wave="theta">THETA</button>
+            <button class="toggle-btn" data-wave="delta">DELTA</button>
+        </div>
+    </div>
+
+    <!-- Quantum Mirage (Phase 50) -->
+    <div class="module glass-panel">
+        <div class="module-header">
+            <h2>QUANTUM MIRAGE</h2>
+            <div class="module-id">MOD-50</div>
+        </div>
+        <div class="control-group">
+            <label>Entropy <span class="value-readout" id="val-entropy">0.00</span></label>
+            <input type="range" id="param-entropy" min="0" max="1" step="0.01" value="0">
+        </div>
+        <div class="control-group">
+            <label>Displacement <span class="value-readout" id="val-displacement">0.00</span></label>
+            <input type="range" id="param-displacement" min="0" max="1" step="0.01" value="0">
+        </div>
+        <div class="control-group">
+            <label>Quantum Flux <span class="value-readout" id="val-quantumFlux">0.00</span></label>
+            <input type="range" id="param-quantumFlux" min="0" max="1" step="0.01" value="0">
+        </div>
+    </div>
+
+    <!-- Fractal Echo (Phase 51) -->
+    <div class="module glass-panel">
+        <div class="module-header">
+            <h2>FRACTAL ECHO</h2>
+            <div class="module-id">MOD-51</div>
+        </div>
+        <div class="control-group">
+            <label>Recursion <span class="value-readout" id="val-recursion">0.00</span></label>
+            <input type="range" id="param-recursion" min="0" max="1" step="0.01" value="0">
+        </div>
+        <div class="control-group">
+            <label>Symmetry <span class="value-readout" id="val-symmetry2">0.00</span></label>
+            <input type="range" id="param-symmetry2" min="0" max="1" step="0.01" value="0.5">
+        </div>
+        <div class="control-group">
+            <label>Divergence <span class="value-readout" id="val-divergence">0.00</span></label>
+            <input type="range" id="param-divergence" min="0" max="1" step="0.01" value="0">
+        </div>
+    </div>
+
+    <!-- Tidal Rhythm -->
+    <div class="module glass-panel">
+        <div class="module-header">
+            <h2>TIDAL RHYTHM</h2>
+            <div class="module-id">MOD-60</div>
+        </div>
+        <div class="tidal-display"
+            style="height: 80px; background: #000a14; border: 1px solid #002244; border-radius: 4px; margin-bottom: 1rem; position: relative; overflow: hidden;">
+            <canvas id="tidal-viz" style="width: 100%; height: 100%;"></canvas>
+        </div>
+        <div class="control-group">
+            <label>Tidal Pulse <span class="value-readout" id="val-tidal">0.00</span></label>
+            <input type="range" id="param-tidal" min="0" max="1" step="0.01" value="0">
+        </div>
+    </div>
+
+    <!-- Void Whisper -->
+    <div class="module glass-panel">
+        <div class="module-header">
+            <h2>VOID WHISPER</h2>
+            <div class="module-id">MOD-61</div>
+        </div>
+        <div class="control-group">
+            <label>Whisper Depth <span class="value-readout" id="val-voidWhisper">0.00</span></label>
+            <input type="range" id="param-voidWhisper" min="0" max="1" step="0.01" value="0">
+        </div>
+    </div>
+
+    <!-- Nebula Cloud -->
+    <div class="module glass-panel">
+        <div class="module-header">
+            <h2>NEBULA CLOUD</h2>
+            <div class="module-id">MOD-62</div>
+        </div>
+        <div class="control-group">
+            <label>Nebula Mix <span class="value-readout" id="val-nebula">0.00</span></label>
+            <input type="range" id="param-nebula" min="0" max="1" step="0.01" value="0">
+        </div>
+        <div class="control-group">
+            <label>Density <span class="value-readout" id="val-nebulaDensity">0.50</span></label>
+            <input type="range" id="param-nebulaDensity" min="0" max="1" step="0.01" value="0.5">
+        </div>
+        <div class="control-group">
+            <label>Shimmer <span class="value-readout" id="val-nebulaShimmer">0.50</span></label>
+            <input type="range" id="param-nebulaShimmer" min="0" max="1" step="0.01" value="0.5">
+        </div>
+    </div>
+
+    <!-- Shepard Engine -->
+    <div class="module glass-panel">
+        <div class="module-header">
+            <h2>SHEPARD ENGINE</h2>
+            <div class="module-id">MOD-63</div>
+        </div>
+        <div class="control-group">
+            <label>Intensity <span class="value-readout" id="val-shepard">0.00</span></label>
+            <input type="range" id="param-shepard" min="0" max="1" step="0.01" value="0">
+        </div>
+        <div class="control-group">
+            <label>Speed <span class="value-readout" id="val-shepardSpeed">0.50</span></label>
+            <input type="range" id="param-shepardSpeed" min="0" max="1" step="0.01" value="0.5">
+        </div>
+        <div class="control-group btn-group">
+            <button class="toggle-btn active" id="btn-shepard-rise">↑ RISE</button>
+            <button class="toggle-btn" id="btn-shepard-fall">↓ FALL</button>
+        </div>
+    </div>
+
+    </section>
+
+    <!-- Right Column: Visuals & Master -->
+    <section class="visual-column">
+
+        <!-- Main Visualizer -->
+        <div class="viz-container glass-panel">
+            <canvas id="main-canvas"></canvas>
+            <div class="overlay-ui">
+                <div class="viz-label">OPTICAL SENSOR ARRAY</div>
+            </div>
+        </div>
+
+        <!-- Spectrum & Geosmin -->
+        <div class="secondary-viz-grid">
+            <div class="module glass-panel spectrum-panel">
+                <div class="module-header mini">
+                    <h3>SPECTRUM</h3>
+                </div>
+                <canvas id="spectrum-canvas"></canvas>
+            </div>
+            <div class="module glass-panel geosmin-panel">
+                <div class="module-header mini">
+                    <h3>GEOSMIN LEVELS</h3>
+                </div>
+                <canvas id="geo-canvas"></canvas>
+            </div>
+        </div>
+
+        <!-- Global Controls -->
+        <div class="module glass-panel global-controls">
+            <div class="control-group">
+                <label>Reverb Space</label>
+                <select id="param-reverb">
+                    <option value="none">Direct (Dry)</option>
+                    <option value="alley">Narrow Alley</option>
+                    <option value="street" selected>Open Street</option>
+                    <option value="field">Open Field</option>
+                    <option value="hall">Concrete Hall</option>
+                </select>
+            </div>
+
+            <div class="control-group" style="margin-top: 1rem;">
+                <button id="btn-record" class="action-btn">● RECORD AUDIO</button>
+            </div>
+
+            <div class="control-group">
+                <button id="btn-force-reset" class="action-btn"
+                    style="background: #444; font-size: 0.7rem; padding: 0.5rem;">↻ RESET AUDIO ENGINE</button>
+            </div>
+            <div class="control-group">
+                <label>Master Gain <span class="value-readout" id="val-master">0.70</span></label>
+                <input type="range" id="param-master" min="0" max="1" step="0.01" value="0.7">
+            </div>
+            <div class="recorder-controls">
+                <button id="rec-btn" class="action-btn">● REC</button>
+            </div>
+        </div>
+    </section>
+    </main>
+    </div>
+
+    <button id="btn-exit-zenith">EXIT_ZENITH</button>
+
+    <!-- Writer Overlay -->
+    <div id="writer-overlay">
+        <div class="writer-controls">
+            <span>WRITER_MODE // TYPE_TO_GENERATE</span>
+            <button id="btn-writer-exit">EXIT_SESSION</button>
+        </div>
+        <textarea id="writer-input" placeholder="Start typing..."></textarea>
+    </div>
+
+    <!-- Prism Overlay -->
+    <div id="prism-fullscreen"></div>
+
+    <script type="module" src="js/main.js?v=3"></script>
+</body>
+
+</html>
