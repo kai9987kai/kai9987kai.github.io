@@ -1,0 +1,582 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ultra-Realistic Miniature Gearbox Simulation</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background-color: #050505;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        #loading {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: #4488ff;
+            font-size: 1.5rem;
+            font-weight: 300;
+            pointer-events: none;
+            transition: opacity 0.5s;
+            text-shadow: 0 0 10px rgba(68, 136, 255, 0.5);
+        }
+        #telemetry {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            color: rgba(255,255,255,0.8);
+            background: rgba(10, 10, 15, 0.85);
+            padding: 15px 20px;
+            border-radius: 8px;
+            border: 1px solid rgba(255,255,255,0.1);
+            backdrop-filter: blur(4px);
+            pointer-events: none;
+        }
+        #telemetry h2 { margin: 0 0 10px 0; font-size: 1.1rem; color: #fff; }
+        .stat { display: flex; justify-content: space-between; width: 220px; margin-bottom: 5px; font-size: 0.9rem;}
+        .stat-val { font-family: monospace; color: #4488ff; font-weight: bold; }
+    </style>
+    <!-- Import maps polyfill -->
+    <script async src="https://unpkg.com/es-module-shims@1.8.0/dist/es-module-shims.js"></script>
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/",
+                "lil-gui": "https://cdn.jsdelivr.net/npm/lil-gui@0.19.1/dist/lil-gui.esm.min.js"
+            }
+        }
+    </script>
+</head>
+<body>
+    <div id="loading">Generating Involute Geometries & Compiling Shaders...</div>
+    
+    <div id="telemetry">
+        <h2>Live Telemetry</h2>
+        <div class="stat"><span>Motor Input:</span> <span id="val-rpm-in" class="stat-val">0 RPM</span></div>
+        <div class="stat"><span>Output Speed:</span> <span id="val-rpm-out" class="stat-val">0 RPM</span></div>
+        <div class="stat"><span>Gear Ratio:</span> <span id="val-ratio" class="stat-val">1:9</span></div>
+        <div class="stat"><span>Torque Multiplier:</span> <span id="val-torque" class="stat-val">9.00x</span></div>
+    </div>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+        import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+        import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+        import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+        import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+        import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+        import GUI from 'lil-gui';
+
+        // --- 1. CORE SETUP ---
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x0a0a0c);
+        scene.fog = new THREE.FogExp2(0x0a0a0c, 0.003);
+
+        const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.set(60, -50, 80);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: "high-performance" }); // AA handled by post-processing
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        renderer.shadowMap.enabled = true;
+        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+        renderer.toneMapping = THREE.ACESFilmicToneMapping;
+        renderer.toneMappingExposure = 1.2;
+        document.body.appendChild(renderer.domElement);
+
+        const controls = new OrbitControls(camera, renderer.domElement);
+        controls.target.set(12, 12, 0);
+        controls.enableDamping = true;
+        controls.dampingFactor = 0.05;
+        controls.maxDistance = 200;
+
+        // --- 2. LIGHTING & ENVIRONMENT ---
+        const pmremGenerator = new THREE.PMREMGenerator(renderer);
+        pmremGenerator.compileEquirectangularShader();
+        scene.environment = pmremGenerator.fromScene(new RoomEnvironment(), 0.04).texture;
+
+        const dirLight = new THREE.DirectionalLight(0xfff0dd, 2.0);
+        dirLight.position.set(40, 50, 40);
+        dirLight.castShadow = true;
+        dirLight.shadow.mapSize.width = 2048;
+        dirLight.shadow.mapSize.height = 2048;
+        dirLight.shadow.camera.near = 10;
+        dirLight.shadow.camera.far = 150;
+        dirLight.shadow.camera.left = -40;
+        dirLight.shadow.camera.right = 40;
+        dirLight.shadow.camera.top = 40;
+        dirLight.shadow.camera.bottom = -40;
+        dirLight.shadow.bias = -0.001;
+        scene.add(dirLight);
+
+        const fillLight = new THREE.PointLight(0x4488ff, 1.5, 150);
+        fillLight.position.set(-30, -20, -30);
+        scene.add(fillLight);
+
+        // --- 3. POST PROCESSING (BLOOM) ---
+        const renderScene = new RenderPass(scene, camera);
+        const bloomPass = new UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 0.3, 0.4, 0.85);
+        const outputPass = new OutputPass();
+
+        const composer = new EffectComposer(renderer);
+        composer.addPass(renderScene);
+        composer.addPass(bloomPass);
+        composer.addPass(outputPass);
+
+        // --- 4. PROCEDURAL MATERIALS ---
+        const materials = {
+            brass: new THREE.MeshStandardMaterial({ color: 0xe5a33b, metalness: 1.0, roughness: 0.3 }),
+            steel: new THREE.MeshStandardMaterial({ color: 0xcccccc, metalness: 0.9, roughness: 0.4 }),
+            machinedAluminum: new THREE.MeshStandardMaterial({ color: 0xdddddd, metalness: 0.8, roughness: 0.2, clearcoat: 0.2 }),
+            blackAnodized: new THREE.MeshStandardMaterial({ color: 0x111111, metalness: 0.8, roughness: 0.3 }),
+            delrinWhite: new THREE.MeshStandardMaterial({ color: 0xf4f4f4, metalness: 0.1, roughness: 0.4 }),
+            copper: new THREE.MeshStandardMaterial({ color: 0xb87333, metalness: 1.0, roughness: 0.2 })
+        };
+
+        // --- 5. ADVANCED GEOMETRY GENERATORS ---
+        
+        // Accurate Involute Gear Profile Generator
+        function createInvoluteGearProfile(Z, m, pressureAngleDeg = 20) {
+            const shape = new THREE.Shape();
+            const pa = pressureAngleDeg * Math.PI / 180;
+            const R = (Z * m) / 2;             // Pitch radius
+            const Rb = R * Math.cos(pa);       // Base radius
+            const Ra = R + m;                  // Outer radius
+            const Rf = R - 1.25 * m;           // Root radius
+
+            const step = (Math.PI * 2) / Z;
+            
+            // Generate half a tooth profile, then mirror
+            for (let i = 0; i < Z; i++) {
+                const angleOffset = i * step;
+                
+                // Root fillet
+                const rootAngle1 = angleOffset - step * 0.25;
+                const rootAngle2 = angleOffset - step * 0.12;
+                if (i === 0) shape.moveTo(Rf * Math.cos(rootAngle1), Rf * Math.sin(rootAngle1));
+                else shape.lineTo(Rf * Math.cos(rootAngle1), Rf * Math.sin(rootAngle1));
+                
+                // Involute curve up
+                const numPts = 6;
+                for(let j=0; j<=numPts; j++) {
+                    const r = Rb + (Ra - Rb) * (j/numPts);
+                    if (r < Rf) continue;
+                    // Involute angle math simplified for aesthetic generation
+                    const invAngle = rootAngle2 + (j/numPts) * (step * 0.22);
+                    shape.lineTo(r * Math.cos(invAngle), r * Math.sin(invAngle));
+                }
+
+                // Top land
+                const topAngle1 = angleOffset - step * 0.05;
+                const topAngle2 = angleOffset + step * 0.05;
+                shape.lineTo(Ra * Math.cos(topAngle1), Ra * Math.sin(topAngle1));
+                shape.lineTo(Ra * Math.cos(topAngle2), Ra * Math.sin(topAngle2));
+
+                // Involute curve down
+                for(let j=numPts; j>=0; j--) {
+                    const r = Rb + (Ra - Rb) * (j/numPts);
+                    if (r < Rf) continue;
+                    const invAngle = angleOffset + step * 0.12 + ((numPts-j)/numPts) * (step * 0.22);
+                    shape.lineTo(r * Math.cos(invAngle), r * Math.sin(invAngle));
+                }
+                
+                const rootAngle3 = angleOffset + step * 0.25;
+                shape.lineTo(Rf * Math.cos(rootAngle3), Rf * Math.sin(rootAngle3));
+            }
+            return shape;
+        }
+
+        function createRealisticGear(Z, m, material, thickness, isPinion) {
+            const shape = createInvoluteGearProfile(Z, m);
+            
+            // Central shaft hole (D-shaft for pinions, round for idlers)
+            const hole = new THREE.Path();
+            if (isPinion) {
+                hole.absarc(0, 0, 2.5, 0.5, Math.PI * 2 - 0.5, false);
+                hole.lineTo(1.5, -2);
+                hole.lineTo(1.5, 2);
+            } else {
+                hole.absarc(0, 0, 3, 0, Math.PI * 2, false);
+            }
+            shape.holes.push(hole);
+
+            // Spoke cutouts for larger gears (Weight reduction)
+            if (!isPinion && Z > 20) {
+                const R = (Z * m) / 2;
+                const numSpokes = 5;
+                for (let j = 0; j < numSpokes; j++) {
+                    const a = j * (Math.PI * 2) / numSpokes;
+                    const cutout = new THREE.Path();
+                    const innerR = 6;
+                    const outerR = R - 4;
+                    const spread = Math.PI / numSpokes - 0.2;
+
+                    cutout.absarc(0, 0, innerR, a - spread, a + spread, false);
+                    cutout.absarc(0, 0, outerR, a + spread, a - spread, true);
+                    shape.holes.push(cutout);
+                }
+            }
+
+            const extrudeSettings = {
+                depth: thickness,
+                bevelEnabled: true,
+                bevelSegments: 2,
+                steps: 1,
+                bevelSize: 0.2,
+                bevelThickness: 0.2
+            };
+
+            const geom = new THREE.ExtrudeGeometry(shape, extrudeSettings);
+            geom.translate(0, 0, -thickness / 2);
+            
+            const mesh = new THREE.Mesh(geom, material);
+            mesh.castShadow = true;
+            mesh.receiveShadow = true;
+
+            // Add central hub thickness for larger gears
+            if (!isPinion) {
+                const hubGeom = new THREE.CylinderGeometry(4.5, 4.5, thickness + 2, 32);
+                hubGeom.rotateX(Math.PI/2);
+                const hub = new THREE.Mesh(hubGeom, material);
+                hub.castShadow = true;
+                mesh.add(hub);
+            }
+
+            return mesh;
+        }
+
+        function createBearing() {
+            const group = new THREE.Group();
+            const outerGeom = new THREE.CylinderGeometry(5, 5, 3, 32);
+            outerGeom.rotateX(Math.PI/2);
+            const innerGeom = new THREE.CylinderGeometry(2.5, 2.5, 3.2, 32);
+            innerGeom.rotateX(Math.PI/2);
+            
+            const outer = new THREE.Mesh(outerGeom, materials.steel);
+            const inner = new THREE.Mesh(innerGeom, materials.steel);
+            
+            // Add dust shield (dark rubbery look)
+            const shieldGeom = new THREE.RingGeometry(2.8, 4.7, 32);
+            const shieldMat = new THREE.MeshStandardMaterial({color: 0x222222, roughness: 0.9});
+            const shieldFront = new THREE.Mesh(shieldGeom, shieldMat);
+            shieldFront.position.z = 1.4;
+            const shieldBack = new THREE.Mesh(shieldGeom, shieldMat);
+            shieldBack.position.z = -1.4;
+            shieldBack.rotation.y = Math.PI;
+
+            group.add(outer, inner, shieldFront, shieldBack);
+            return group;
+        }
+
+        // --- 6. ASSEMBLY CONSTRUCTION ---
+        const explodeGroups = []; // Stores {obj, basePos, explodeVector}
+        const moduleSize = 1.0;
+
+        const assembly = new THREE.Group();
+        scene.add(assembly);
+
+        function registerPart(mesh, explodeDir) {
+            explodeGroups.push({
+                obj: mesh,
+                basePos: mesh.position.clone(),
+                explodeVector: explodeDir
+            });
+            assembly.add(mesh);
+        }
+
+        // --- Plates & Standoffs ---
+        const plateShape = new THREE.Shape();
+        plateShape.absarc(0, 0, 14, Math.PI/2, Math.PI*1.5, false);
+        plateShape.lineTo(24, -14);
+        plateShape.absarc(24, 0, 14, -Math.PI/2, 0, false);
+        plateShape.lineTo(38, 24);
+        plateShape.absarc(24, 24, 14, 0, Math.PI, false);
+        plateShape.lineTo(-14, 0);
+        
+        // Holes in plate for bearings and screws
+        const holeCenters = [[0,0], [24,0], [24,24]];
+        holeCenters.forEach(pos => {
+            const h = new THREE.Path();
+            h.absarc(pos[0], pos[1], 5, 0, Math.PI*2, false); // Bearing hole
+            plateShape.holes.push(h);
+        });
+        
+        const screwHoles = [[-10,-10], [34,-10], [34,34], [-10, 34]];
+        screwHoles.forEach(pos => {
+            const h = new THREE.Path();
+            h.absarc(pos[0], pos[1], 1.6, 0, Math.PI*2, false); // Screw hole
+            plateShape.holes.push(h);
+        });
+
+        const plateExtrude = { depth: 3, bevelEnabled: true, bevelSize: 0.3, bevelThickness: 0.3 };
+        const plateGeom = new THREE.ExtrudeGeometry(plateShape, plateExtrude);
+        
+        const frontPlate = new THREE.Mesh(plateGeom, materials.machinedAluminum);
+        frontPlate.position.z = 12;
+        frontPlate.castShadow = true; frontPlate.receiveShadow = true;
+        registerPart(frontPlate, new THREE.Vector3(0, 0, 30));
+
+        const backPlate = new THREE.Mesh(plateGeom, materials.machinedAluminum);
+        backPlate.position.z = -15;
+        backPlate.castShadow = true; backPlate.receiveShadow = true;
+        registerPart(backPlate, new THREE.Vector3(0, 0, -10));
+
+        // Standoffs & Screws
+        screwHoles.forEach(pos => {
+            const standoff = new THREE.Mesh(new THREE.CylinderGeometry(2.5, 2.5, 24, 16), materials.brass);
+            standoff.rotation.x = Math.PI/2;
+            standoff.position.set(pos[0], pos[1], 0);
+            standoff.castShadow = true;
+            registerPart(standoff, new THREE.Vector3(0, 0, 0)); // Standoffs stay in middle
+
+            // Screws
+            const screwGeom = new THREE.CylinderGeometry(2.5, 2.5, 2, 6); // Hex head
+            screwGeom.rotateX(Math.PI/2);
+            const screwF = new THREE.Mesh(screwGeom, materials.blackAnodized);
+            screwF.position.set(pos[0], pos[1], 15.5);
+            registerPart(screwF, new THREE.Vector3(0, 0, 40));
+            
+            const screwB = new THREE.Mesh(screwGeom, materials.blackAnodized);
+            screwB.position.set(pos[0], pos[1], -15.5);
+            registerPart(screwB, new THREE.Vector3(0, 0, -20));
+        });
+
+        // --- Bearings ---
+        holeCenters.forEach(pos => {
+            const bF = createBearing();
+            bF.position.set(pos[0], pos[1], 13.5);
+            registerPart(bF, new THREE.Vector3(0, 0, 20));
+
+            const bB = createBearing();
+            bB.position.set(pos[0], pos[1], -13.5);
+            registerPart(bB, new THREE.Vector3(0, 0, -5));
+        });
+
+        // --- Motor ---
+        const motorGroup = new THREE.Group();
+        motorGroup.position.set(0, 0, -32);
+        
+        const motorBody = new THREE.Mesh(new THREE.CylinderGeometry(12, 12, 30, 64), materials.steel);
+        motorBody.rotation.x = Math.PI/2;
+        motorBody.castShadow = true;
+        motorGroup.add(motorBody);
+
+        // Cooling Fins
+        for(let i=0; i<6; i++) {
+            const fin = new THREE.Mesh(new THREE.TorusGeometry(12, 0.6, 16, 64), materials.blackAnodized);
+            fin.position.z = -10 + (i * 4);
+            motorGroup.add(fin);
+        }
+
+        // Back Terminals
+        const termBase = new THREE.Mesh(new THREE.CylinderGeometry(6, 6, 2, 32), materials.delrinWhite);
+        termBase.rotation.x = Math.PI/2;
+        termBase.position.z = -16;
+        motorGroup.add(termBase);
+        
+        const t1 = new THREE.Mesh(new THREE.BoxGeometry(1.5, 4, 3), materials.copper);
+        t1.position.set(3, 0, -17.5);
+        const t2 = new THREE.Mesh(new THREE.BoxGeometry(1.5, 4, 3), materials.copper);
+        t2.position.set(-3, 0, -17.5);
+        motorGroup.add(t1, t2);
+
+        registerPart(motorGroup, new THREE.Vector3(0, 0, -40));
+
+        // --- SHAFTS & GEARS ---
+        
+        // Stage 1 (Input)
+        const shaft1 = new THREE.Group();
+        shaft1.position.set(0, 0, 0);
+        
+        // Motor output shaft
+        const s1Cyl = new THREE.Mesh(new THREE.CylinderGeometry(2.5, 2.5, 25, 32), materials.steel);
+        s1Cyl.rotation.x = Math.PI / 2;
+        s1Cyl.position.z = -5;
+        s1Cyl.castShadow = true;
+        shaft1.add(s1Cyl);
+        
+        const pinion1 = createRealisticGear(12, moduleSize, materials.brass, 5, true);
+        pinion1.position.z = 2;
+        shaft1.add(pinion1);
+        registerPart(shaft1, new THREE.Vector3(0, 0, -20)); // Moves with motor
+
+        // Stage 2 (Intermediate)
+        const shaft2 = new THREE.Group();
+        shaft2.position.set(24, 0, 0);
+        
+        const s2Cyl = new THREE.Mesh(new THREE.CylinderGeometry(2.5, 2.5, 34, 32), materials.steel);
+        s2Cyl.rotation.x = Math.PI / 2;
+        s2Cyl.castShadow = true;
+        shaft2.add(s2Cyl);
+
+        const gear1 = createRealisticGear(36, moduleSize, materials.delrinWhite, 4, false);
+        gear1.position.z = 2;
+        shaft2.add(gear1);
+
+        const pinion2 = createRealisticGear(12, moduleSize, materials.steel, 5, true);
+        pinion2.position.z = 8;
+        shaft2.add(pinion2);
+        registerPart(shaft2, new THREE.Vector3(0, 0, 0));
+
+        // Stage 3 (Output)
+        const shaft3 = new THREE.Group();
+        shaft3.position.set(24, 24, 0);
+        
+        const s3Cyl = new THREE.Mesh(new THREE.CylinderGeometry(2.5, 2.5, 40, 32), materials.steel);
+        s3Cyl.rotation.x = Math.PI / 2;
+        s3Cyl.position.z = 5; // Protrudes front
+        s3Cyl.castShadow = true;
+        shaft3.add(s3Cyl);
+
+        const gear2 = createRealisticGear(36, moduleSize, materials.machinedAluminum, 4, false);
+        gear2.position.z = 8;
+        shaft3.add(gear2);
+        
+        // Output drive pin
+        const drivePin = new THREE.Mesh(new THREE.CylinderGeometry(0.8, 0.8, 10, 16), materials.blackAnodized);
+        drivePin.position.z = 20;
+        shaft3.add(drivePin);
+
+        registerPart(shaft3, new THREE.Vector3(0, 0, 10));
+
+        document.getElementById('loading').style.display = 'none';
+
+        // --- 7. AUDIO SYNTHESIS (MOTOR WHINE) ---
+        let audioCtx, osc, gainNode;
+        let audioInitialized = false;
+
+        function initAudio() {
+            if(audioInitialized) return;
+            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            osc = audioCtx.createOscillator();
+            gainNode = audioCtx.createGain();
+            
+            osc.type = 'sawtooth';
+            osc.frequency.value = 100;
+            
+            // Lowpass filter to muffle the harsh sawtooth
+            const filter = audioCtx.createBiquadFilter();
+            filter.type = 'lowpass';
+            filter.frequency.value = 800;
+
+            osc.connect(filter);
+            filter.connect(gainNode);
+            gainNode.connect(audioCtx.destination);
+            
+            gainNode.gain.value = 0; // Start muted
+            osc.start();
+            audioInitialized = true;
+        }
+
+        // --- 8. GUI CONTROLS & LOGIC ---
+        const params = {
+            rpm: 300,
+            explodeView: 0.0,
+            soundEnabled: false,
+            bloomIntensity: 0.3,
+            meshOffset1: 2.2,
+            meshOffset2: 3.3
+        };
+
+        const gui = new GUI({ title: 'Gearbox Settings' });
+        
+        const perfFolder = gui.addFolder('Operation');
+        perfFolder.add(params, 'rpm', -1000, 1000).name('Input RPM').onChange(updateTelemetry);
+        perfFolder.add(params, 'soundEnabled').name('Motor Sound').onChange(v => {
+            if(v && !audioInitialized) initAudio();
+        });
+        
+        const visualFolder = gui.addFolder('Visualization');
+        visualFolder.add(params, 'explodeView', 0, 1).name('Explode Assembly').step(0.01);
+        visualFolder.add(params, 'bloomIntensity', 0, 1).name('Bloom Level').onChange(v => bloomPass.strength = v);
+        
+        // Phase offsets to perfectly align gear teeth
+        const advFolder = gui.addFolder('Gear Meshing Setup');
+        advFolder.add(params, 'meshOffset1', 0, 10).name('Stage 1 Phase');
+        advFolder.add(params, 'meshOffset2', 0, 10).name('Stage 2 Phase');
+        advFolder.close();
+
+        // Telemetry Update
+        const rpmInEl = document.getElementById('val-rpm-in');
+        const rpmOutEl = document.getElementById('val-rpm-out');
+        
+        function updateTelemetry() {
+            const inRpm = Math.round(params.rpm);
+            const outRpm = Math.round(params.rpm / 9); // 3:1 * 3:1 = 9:1
+            rpmInEl.innerText = `${inRpm} RPM`;
+            rpmOutEl.innerText = `${outRpm} RPM`;
+        }
+        updateTelemetry();
+
+        // --- 9. ANIMATION LOOP ---
+        const clock = new THREE.Clock();
+        let currentAngle = 0;
+
+        function animate() {
+            requestAnimationFrame(animate);
+            const delta = clock.getDelta();
+
+            // Calculate rotation
+            // RPM to Radians per second: rpm * (2PI / 60)
+            const radPerSec = params.rpm * (Math.PI / 30);
+            currentAngle += radPerSec * delta;
+
+            // Apply Kinematics
+            shaft1.rotation.z = currentAngle;
+
+            // Stage 1 Gear (36T) driven by Pinion 1 (12T). Ratio = -1/3
+            const s2Angle = -(currentAngle / 3);
+            shaft2.rotation.z = s2Angle + (params.meshOffset1 * Math.PI / 180);
+
+            // Stage 2 Gear (36T) driven by Pinion 2 (12T). Ratio = -1/3
+            const s3Angle = -(shaft2.rotation.z / 3);
+            shaft3.rotation.z = s3Angle + (params.meshOffset2 * Math.PI / 180);
+
+            // Audio Modulation
+            if (audioInitialized) {
+                if (params.soundEnabled) {
+                    const targetFreq = 100 + Math.abs(params.rpm) * 0.5;
+                    const targetVol = Math.min(Math.abs(params.rpm) / 1000, 0.3); // max vol 0.3
+                    
+                    osc.frequency.setTargetAtTime(targetFreq, audioCtx.currentTime, 0.1);
+                    gainNode.gain.setTargetAtTime(targetVol, audioCtx.currentTime, 0.1);
+                } else {
+                    gainNode.gain.setTargetAtTime(0, audioCtx.currentTime, 0.1);
+                }
+            }
+
+            // Exploded View Interpolation
+            explodeGroups.forEach(item => {
+                const targetPos = item.basePos.clone().add(item.explodeVector.clone().multiplyScalar(params.explodeView));
+                item.obj.position.lerp(targetPos, 0.1);
+                
+                // Dim materials slightly when exploded to focus on structure
+                if(item.obj.material && item.obj.material.transparent !== undefined) {
+                     // specific material logic can go here
+                }
+            });
+
+            controls.update();
+            composer.render();
+        }
+
+        // Handle Window Resize
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            composer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        // Start
+        animate();
+
+    </script>
+</body>
+</html>

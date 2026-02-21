@@ -1,0 +1,472 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Asynchronous Dual-Clutch Transmission</title>
+    <style>
+        :root {
+            --bg: rgba(8, 10, 15, 0.85);
+            --odd-color: #ff5500; /* Orange for Odd Gears */
+            --even-color: #00d2ff; /* Cyan for Even Gears */
+            --text-main: #e2e8f0;
+        }
+        
+        body { margin: 0; overflow: hidden; background-color: #020203; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; color: var(--text-main); }
+        #canvas-container { width: 100vw; height: 100vh; position: absolute; top: 0; left: 0; z-index: 1; }
+        
+        /* High-tech Glassmorphism UI */
+        .panel {
+            position: absolute;
+            background: var(--bg);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 6px;
+            padding: 20px;
+            z-index: 10;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.8);
+            pointer-events: none;
+        }
+        
+        #header-panel { top: 20px; left: 20px; width: 380px; border-top: 3px solid #fff; }
+        #telemetry-panel { bottom: 20px; left: 20px; width: 380px; }
+        #clutch-panel { top: 20px; right: 20px; width: 320px; }
+        
+        h1 { margin: 0 0 5px 0; font-size: 1.2rem; text-transform: uppercase; letter-spacing: 2px; }
+        h2 { margin: 0 0 15px 0; font-size: 0.8rem; font-weight: 400; color: #8892b0; text-transform: uppercase; letter-spacing: 1px; }
+        p { margin: 0 0 10px 0; font-size: 0.85rem; color: #a8b2d1; line-height: 1.5; }
+
+        .highlight-odd { color: var(--odd-color); font-weight: bold; text-shadow: 0 0 8px var(--odd-color); }
+        .highlight-even { color: var(--even-color); font-weight: bold; text-shadow: 0 0 8px var(--even-color); }
+
+        /* Telemetry Grid */
+        .data-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-top: 15px; }
+        .data-box { background: rgba(0,0,0,0.6); padding: 12px; border-radius: 4px; }
+        .data-label { font-size: 0.7rem; color: #8892b0; text-transform: uppercase; margin-bottom: 5px; display: block; }
+        .data-value { font-size: 1.4rem; font-weight: bold; font-variant-numeric: tabular-nums; }
+        
+        /* Clutch Crossover Visualizer */
+        .clutch-container { margin-top: 15px; }
+        .clutch-bar-bg { width: 100%; height: 12px; background: #222; border-radius: 6px; margin-bottom: 10px; position: relative; overflow: hidden; }
+        .clutch-bar-fill { height: 100%; transition: width 0.1s; }
+        #bar-odd { background: var(--odd-color); width: 100%; box-shadow: 0 0 10px var(--odd-color); }
+        #bar-even { background: var(--even-color); width: 0%; box-shadow: 0 0 10px var(--even-color); }
+
+        .gear-indicator { text-align: center; font-size: 3rem; font-weight: bold; margin: 10px 0; border: 2px solid #fff; border-radius: 8px; background: #000; }
+
+        .lil-gui { z-index: 20 !important; position: absolute !important; bottom: 20px !important; right: 20px !important; top: auto !important; left: auto !important; }
+    </style>
+    
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+            }
+        }
+    </script>
+</head>
+<body>
+    <div id="canvas-container"></div>
+    
+    <div id="header-panel" class="panel">
+        <h1>Asynchronous Dual-Clutch</h1>
+        <h2>DCT Transmission Simulator</h2>
+        <p>A DCT uses two separate power shafts. While driving in an <span class="highlight-odd">Odd Gear</span>, the computer <b>asynchronously pre-selects</b> the next <span class="highlight-even">Even Gear</span> on the disconnected shaft. Shifting is just a rapid clutch crossover.</p>
+    </div>
+
+    <div id="clutch-panel" class="panel">
+        <div class="data-label">Active Power Flow</div>
+        <div class="gear-indicator" id="ui-gear">1</div>
+        
+        <div class="clutch-container">
+            <div class="data-label">Clutch A (Solid Inner Shaft - Odd)</div>
+            <div class="clutch-bar-bg"><div class="clutch-bar-fill" id="bar-odd"></div></div>
+            
+            <div class="data-label" style="margin-top: 15px;">Clutch B (Hollow Outer Shaft - Even)</div>
+            <div class="clutch-bar-bg"><div class="clutch-bar-fill" id="bar-even"></div></div>
+        </div>
+        <p id="ui-status" style="margin-top: 15px; text-align: center; font-weight: bold; color: #fff;">STATE: DRIVING</p>
+    </div>
+
+    <div id="telemetry-panel" class="panel">
+        <div class="data-grid">
+            <div class="data-box" style="border-left: 3px solid #fff;">
+                <span class="data-label">Engine Flywheel RPM</span>
+                <span class="data-value" id="val-rpm-in">1500</span>
+            </div>
+            <div class="data-box" style="border-left: 3px solid #00ff66;">
+                <span class="data-label">Output Shaft RPM</span>
+                <span class="data-value" id="val-rpm-out" style="color:#00ff66;">0</span>
+            </div>
+            <div class="data-box" style="border-left: 3px solid var(--odd-color);">
+                <span class="data-label">Odd Pre-Selector</span>
+                <span class="data-value" id="val-pre-odd" style="color:var(--odd-color);">Gear 1</span>
+            </div>
+            <div class="data-box" style="border-left: 3px solid var(--even-color);">
+                <span class="data-label">Even Pre-Selector</span>
+                <span class="data-value" id="val-pre-even" style="color:var(--even-color);">Gear 2</span>
+            </div>
+        </div>
+    </div>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+        import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+        import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+        import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+        import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+        import GUI from 'https://unpkg.com/lil-gui@0.19.1/dist/lil-gui.esm.min.js';
+
+        // --- 1. Scene & Renderer Setup ---
+        const container = document.getElementById('canvas-container');
+        const scene = new THREE.Scene();
+        scene.fog = new THREE.FogExp2(0x020203, 0.02);
+
+        const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.set(12, 10, 15);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: false });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(window.devicePixelRatio);
+        renderer.toneMapping = THREE.ACESFilmicToneMapping;
+        container.appendChild(renderer.domElement);
+
+        // Bloom for Glowing Power Flow
+        const renderScene = new RenderPass(scene, camera);
+        const bloomPass = new UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 2.0, 0.4, 0.85);
+        const composer = new EffectComposer(renderer);
+        composer.addPass(renderScene);
+        composer.addPass(bloomPass);
+
+        const controls = new OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        controls.target.set(0, -2, -5);
+
+        // Lighting
+        const pmremGenerator = new THREE.PMREMGenerator(renderer);
+        scene.environment = pmremGenerator.fromScene(new RoomEnvironment(), 0.04).texture;
+        
+        const mainLight = new THREE.SpotLight(0xffffff, 100);
+        mainLight.position.set(10, 15, 10);
+        scene.add(mainLight);
+
+        // --- 2. Dynamic Materials (Power Flow Bloom) ---
+        const colorOdd = 0xff5500;
+        const colorEven = 0x00d2ff;
+
+        function createFlowMaterial(baseColor, glowColor) {
+            return new THREE.MeshStandardMaterial({
+                color: baseColor,
+                emissive: glowColor,
+                emissiveIntensity: 0.0, // Dynamic based on load
+                metalness: 0.9,
+                roughness: 0.2
+            });
+        }
+
+        const matFlywheel = new THREE.MeshStandardMaterial({ color: 0x555555, metalness: 0.8 });
+        
+        // Odd Materials (Shaft A)
+        const matOddShaft = createFlowMaterial(0x333333, colorOdd);
+        const matOddGear1 = createFlowMaterial(0x333333, colorOdd);
+        const matOddGear3 = createFlowMaterial(0x333333, colorOdd);
+        
+        // Even Materials (Shaft B)
+        const matEvenShaft = createFlowMaterial(0x333333, colorEven);
+        const matEvenGear2 = createFlowMaterial(0x333333, colorEven);
+        const matEvenGear4 = createFlowMaterial(0x333333, colorEven);
+
+        // --- 3. Procedural Geometry Generation ---
+        function createSpurGear(radius, teeth, depth) {
+            const shape = new THREE.Shape();
+            const step = (Math.PI * 2) / teeth;
+            const inner = radius - 0.3;
+            for (let i = 0; i < teeth; i++) {
+                const a = i * step;
+                shape.lineTo(inner * Math.cos(a - step*0.25), inner * Math.sin(a - step*0.25));
+                shape.lineTo(radius * Math.cos(a - step*0.1), radius * Math.sin(a - step*0.1));
+                shape.lineTo(radius * Math.cos(a + step*0.1), radius * Math.sin(a + step*0.1));
+                shape.lineTo(inner * Math.cos(a + step*0.25), inner * Math.sin(a + step*0.25));
+            }
+            shape.closePath();
+            
+            // Center hole
+            const hole = new THREE.Path();
+            hole.absarc(0, 0, radius * 0.4, 0, Math.PI * 2, false);
+            shape.holes.push(hole);
+
+            const geom = new THREE.ExtrudeGeometry(shape, { depth, bevelEnabled: true, bevelSize: 0.05, bevelThickness: 0.05 });
+            geom.center();
+            return geom;
+        }
+
+        // --- 4. Assembly of the DCT Gearbox ---
+        
+        // A. Engine & Flywheel
+        const flywheel = new THREE.Mesh(new THREE.CylinderGeometry(3.5, 3.5, 0.5, 64), matFlywheel);
+        flywheel.rotation.x = Math.PI / 2;
+        flywheel.position.set(0, 0, 1.5);
+        scene.add(flywheel);
+
+        // B. Clutches
+        const clutchOddDisk = new THREE.Mesh(new THREE.CylinderGeometry(2.0, 2.0, 0.4, 32), matOddShaft);
+        clutchOddDisk.rotation.x = Math.PI / 2;
+        clutchOddDisk.position.set(0, 0, 0.5); // Moves to 1.0 to engage
+        scene.add(clutchOddDisk);
+
+        const clutchEvenRing = new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3([new THREE.Vector3(0,0,0), new THREE.Vector3(0,0,-0.4)]), 20, 3.0, 32, false), matEvenShaft);
+        clutchEvenRing.position.set(0, 0, 0.5); // Moves to 1.0 to engage
+        scene.add(clutchEvenRing);
+
+        // C. Input Shafts (Concentric)
+        // Inner Solid Shaft (Odd)
+        const innerShaft = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.5, 12, 32), matOddShaft);
+        innerShaft.rotation.x = Math.PI / 2;
+        innerShaft.position.set(0, 0, -5.5);
+        scene.add(innerShaft);
+
+        // Outer Hollow Shaft (Even)
+        const outerShaft = new THREE.Mesh(new THREE.CylinderGeometry(0.8, 0.8, 6, 32), matEvenShaft);
+        outerShaft.rotation.x = Math.PI / 2;
+        outerShaft.position.set(0, 0, -2.5);
+        scene.add(outerShaft);
+
+        // D. Input Gears
+        const gearsIn = [];
+        
+        // Gear 1 (Odd) - Highest ratio
+        const g1In = new THREE.Mesh(createSpurGear(1.2, 12, 1.0), matOddGear1);
+        g1In.position.set(0, 0, -8);
+        scene.add(g1In);
+        gearsIn.push({ mesh: g1In, r: 1.2, ratioTarget: 2.8, type: 'odd', gear: 1 });
+
+        // Gear 2 (Even)
+        const g2In = new THREE.Mesh(createSpurGear(1.6, 16, 1.0), matEvenGear2);
+        g2In.position.set(0, 0, -2);
+        scene.add(g2In);
+        gearsIn.push({ mesh: g2In, r: 1.6, ratioTarget: 2.4, type: 'even', gear: 2 });
+
+        // Gear 3 (Odd)
+        const g3In = new THREE.Mesh(createSpurGear(2.0, 20, 1.0), matOddGear3);
+        g3In.position.set(0, 0, -10);
+        scene.add(g3In);
+        gearsIn.push({ mesh: g3In, r: 2.0, ratioTarget: 2.0, type: 'odd', gear: 3 });
+
+        // Gear 4 (Even)
+        const g4In = new THREE.Mesh(createSpurGear(2.4, 24, 1.0), matEvenGear4);
+        g4In.position.set(0, 0, -4);
+        scene.add(g4In);
+        gearsIn.push({ mesh: g4In, r: 2.4, ratioTarget: 1.6, type: 'even', gear: 4 });
+
+
+        // E. Output Shaft & Gears
+        const outputY = -4.0; // Shaft distance
+        const matOutput = new THREE.MeshStandardMaterial({ color: 0x666666, metalness: 0.8 });
+        
+        const outputShaft = new THREE.Mesh(new THREE.CylinderGeometry(0.8, 0.8, 14, 32), matOutput);
+        outputShaft.rotation.x = Math.PI / 2;
+        outputShaft.position.set(0, outputY, -6);
+        scene.add(outputShaft);
+
+        const gearsOut = [];
+        gearsIn.forEach((gIn, idx) => {
+            const outRadius = 4.0 - gIn.r; // Must equal shaft distance
+            const teeth = outRadius * 10;
+            const matOut = gIn.type === 'odd' ? createFlowMaterial(0x444444, colorOdd) : createFlowMaterial(0x444444, colorEven);
+            
+            const gOut = new THREE.Mesh(createSpurGear(outRadius, teeth, 1.0), matOut);
+            gOut.position.set(0, outputY, gIn.mesh.position.z);
+            
+            // Offset rotation to mesh correctly
+            gOut.rotation.z = Math.PI / teeth;
+            scene.add(gOut);
+            
+            gearsOut.push({ mesh: gOut, mat: matOut, ratio: gIn.r / outRadius, parent: gIn });
+        });
+
+        // F. Asynchronous Pre-Selector Collars (Dog Clutches)
+        // These slide along the output shaft to lock the gears synchronously BEFORE power is applied.
+        const collarMatOdd = new THREE.MeshStandardMaterial({ color: colorOdd, emissive: colorOdd, emissiveIntensity: 0.5 });
+        const collarMatEven = new THREE.MeshStandardMaterial({ color: colorEven, emissive: colorEven, emissiveIntensity: 0.5 });
+
+        const collarOdd = new THREE.Mesh(new THREE.TorusGeometry(1.2, 0.2, 16, 32), collarMatOdd);
+        collarOdd.position.set(0, outputY, -8); // Starts at Gear 1
+        scene.add(collarOdd);
+
+        const collarEven = new THREE.Mesh(new THREE.TorusGeometry(1.2, 0.2, 16, 32), collarMatEven);
+        collarEven.position.set(0, outputY, -2); // Starts at Gear 2
+        scene.add(collarEven);
+
+
+        // --- 5. Asynchronous Logic & Simulation ---
+        const state = {
+            targetGear: 1,
+            engineRPM: 1500,
+            
+            // Crossover Clutches
+            clutchOdd: 1.0,  // 1 = Engaged, 0 = Open
+            clutchEven: 0.0,
+            
+            // Asynchronous Pre-selection State
+            preSelectOdd: 1, // Which gear the Odd synchronizer is currently locked to (1 or 3)
+            preSelectEven: 2, // Which gear the Even synchronizer is currently locked to (2 or 4)
+            
+            shiftInProgress: false
+        };
+
+        const gui = new GUI({ title: 'Gearbox Controls' });
+        gui.add(state, 'engineRPM', 800, 4000).name('Engine RPM');
+        gui.add({ shiftUp: () => initiateShift(state.targetGear + 1) }, 'shiftUp').name('Shift UP (Asynchronous)');
+        gui.add({ shiftDown: () => initiateShift(state.targetGear - 1) }, 'shiftDown').name('Shift DOWN (Asynchronous)');
+
+        function initiateShift(newGear) {
+            if (newGear < 1 || newGear > 4 || state.shiftInProgress) return;
+            state.targetGear = newGear;
+            state.shiftInProgress = true;
+            document.getElementById('ui-status').innerText = "STATE: CROSSOVER SHIFTING...";
+            document.getElementById('ui-status').style.color = "#ffcc00";
+        }
+
+        // DOM Elements
+        const dom = {
+            rpmOut: document.getElementById('val-rpm-out'),
+            barOdd: document.getElementById('bar-odd'),
+            barEven: document.getElementById('bar-even'),
+            uiGear: document.getElementById('ui-gear'),
+            preOdd: document.getElementById('val-pre-odd'),
+            preEven: document.getElementById('val-pre-even'),
+            status: document.getElementById('ui-status')
+        };
+
+        const clock = new THREE.Clock();
+
+        function animate() {
+            requestAnimationFrame(animate);
+            const delta = clock.getDelta();
+
+            // 1. Asynchronous Shift Logic (Cross-fading Clutches)
+            let oddTarget = (state.targetGear === 1 || state.targetGear === 3) ? 1.0 : 0.0;
+            let evenTarget = (state.targetGear === 2 || state.targetGear === 4) ? 1.0 : 0.0;
+
+            // Smooth crossfade simulation
+            state.clutchOdd += (oddTarget - state.clutchOdd) * delta * 4.0;
+            state.clutchEven += (evenTarget - state.clutchEven) * delta * 4.0;
+
+            if (state.shiftInProgress && Math.abs(state.clutchOdd - oddTarget) < 0.01 && Math.abs(state.clutchEven - evenTarget) < 0.01) {
+                state.shiftInProgress = false;
+                dom.status.innerText = "STATE: DRIVING";
+                dom.status.style.color = "#fff";
+                dom.uiGear.innerText = state.targetGear;
+            }
+
+            // 2. Asynchronous Pre-Selection (The magic of DCT)
+            // If a clutch is fully open (< 5% engagement), it asynchronously moves its synchronizer to the NEXT expected gear.
+            if (state.clutchOdd < 0.05) {
+                if (state.targetGear === 2) state.preSelectOdd = 3; // Pre-select 3rd
+                if (state.targetGear === 4) state.preSelectOdd = 3; // Prep for downshift
+            }
+            if (state.clutchEven < 0.05) {
+                if (state.targetGear === 1) state.preSelectEven = 2; // Pre-select 2nd
+                if (state.targetGear === 3) state.preSelectEven = 4; // Pre-select 4th
+            }
+
+            // Update UI Pre-selector Text
+            dom.preOdd.innerText = `Gear ${state.preSelectOdd}`;
+            dom.preEven.innerText = `Gear ${state.preSelectEven}`;
+
+            // Move Physical Synchronizer Collars smoothly to their pre-selected gears
+            const oddZ = state.preSelectOdd === 1 ? -8 : -10;
+            const evenZ = state.preSelectEven === 2 ? -2 : -4;
+            collarOdd.position.z += (oddZ - collarOdd.position.z) * delta * 10.0;
+            collarEven.position.z += (evenZ - collarEven.position.z) * delta * 10.0;
+
+            // Physical Clutch Movement (Engaging the flywheel)
+            clutchOddDisk.position.z = 0.5 + (state.clutchOdd * 0.5);
+            clutchEvenRing.position.z = 0.5 + (state.clutchEven * 0.5);
+
+            // 3. Rotational Physics
+            const engineSpeed = (state.engineRPM * Math.PI) / 30; // Rad/s
+            
+            flywheel.rotation.z -= engineSpeed * delta;
+            
+            // Input shafts rotate based on clutch engagement (Slipping)
+            const speedOdd = engineSpeed * state.clutchOdd;
+            const speedEven = engineSpeed * state.clutchEven;
+
+            clutchOddDisk.rotation.z -= speedOdd * delta;
+            innerShaft.rotation.z -= speedOdd * delta;
+            
+            clutchEvenRing.rotation.z -= speedEven * delta;
+            outerShaft.rotation.z -= speedEven * delta;
+
+            // Rotate Input Gears
+            gearsIn[0].mesh.rotation.z -= speedOdd * delta; // G1
+            gearsIn[2].mesh.rotation.z -= speedOdd * delta; // G3
+            gearsIn[1].mesh.rotation.z -= speedEven * delta; // G2
+            gearsIn[3].mesh.rotation.z -= speedEven * delta; // G4
+
+            // Calculate Output Shaft Speed
+            let outputRPM = 0;
+            if (state.targetGear === 1) outputRPM = state.engineRPM * gearsOut[0].ratio;
+            if (state.targetGear === 2) outputRPM = state.engineRPM * gearsOut[1].ratio;
+            if (state.targetGear === 3) outputRPM = state.engineRPM * gearsOut[2].ratio;
+            if (state.targetGear === 4) outputRPM = state.engineRPM * gearsOut[3].ratio;
+            
+            dom.rpmOut.innerText = outputRPM.toFixed(0);
+            
+            const outRadSpeed = (outputRPM * Math.PI) / 30;
+            outputShaft.rotation.z += outRadSpeed * delta;
+
+            // Rotate Output Gears (They mesh with input gears)
+            gearsOut[0].mesh.rotation.z += speedOdd * gearsOut[0].ratio * delta;
+            gearsOut[2].mesh.rotation.z += speedOdd * gearsOut[2].ratio * delta;
+            gearsOut[1].mesh.rotation.z += speedEven * gearsOut[1].ratio * delta;
+            gearsOut[3].mesh.rotation.z += speedEven * gearsOut[3].ratio * delta;
+
+
+            // 4. Power Flow Visualization (Bloom / Glow Intensities)
+            // Emissive intensity directly maps to Load/Torque Transfer through that specific pathway
+            
+            // Shafts glow based on clutch pressure
+            matOddShaft.emissiveIntensity = state.clutchOdd * 2.0;
+            matEvenShaft.emissiveIntensity = state.clutchEven * 2.0;
+
+            // Input Gears glow if shaft is active
+            matOddGear1.emissiveIntensity = state.clutchOdd * 2.0;
+            matOddGear3.emissiveIntensity = state.clutchOdd * 2.0;
+            matEvenGear2.emissiveIntensity = state.clutchEven * 2.0;
+            matEvenGear4.emissiveIntensity = state.clutchEven * 2.0;
+
+            // Output Gears ONLY glow if they are actively Locked by the pre-selector AND receiving power
+            gearsOut[0].mat.emissiveIntensity = state.clutchOdd * (state.preSelectOdd === 1 ? 2.5 : 0);
+            gearsOut[2].mat.emissiveIntensity = state.clutchOdd * (state.preSelectOdd === 3 ? 2.5 : 0);
+            gearsOut[1].mat.emissiveIntensity = state.clutchEven * (state.preSelectEven === 2 ? 2.5 : 0);
+            gearsOut[3].mat.emissiveIntensity = state.clutchEven * (state.preSelectEven === 4 ? 2.5 : 0);
+
+            // Update UI Bars
+            dom.barOdd.style.width = `${state.clutchOdd * 100}%`;
+            dom.barEven.style.width = `${state.clutchEven * 100}%`;
+
+            controls.update();
+            composer.render(); // Use Bloom composer
+        }
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            composer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        // Add visual grid floor
+        const grid = new THREE.GridHelper(40, 40, 0x444444, 0x111111);
+        grid.position.y = -7;
+        scene.add(grid);
+
+        animate();
+    </script>
+</body>
+</html>

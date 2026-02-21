@@ -1,0 +1,507 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Industrial Worm Drive & Conveyor Simulator</title>
+    <style>
+        :root {
+            --bg-dark: rgba(15, 15, 18, 0.9);
+            --theme-color: #ffaa00; /* Industrial Caterpillar Yellow/Orange */
+            --theme-glow: rgba(255, 170, 0, 0.5);
+            --text-main: #f0f4f8;
+            --danger: #ff3333;
+            --success: #00ff66;
+        }
+        
+        body { margin: 0; overflow: hidden; background-color: #050505; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; color: var(--text-main); }
+        #canvas-container { width: 100vw; height: 100vh; position: absolute; top: 0; left: 0; z-index: 1; }
+        
+        .panel {
+            position: absolute;
+            background: var(--bg-dark);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-top: 3px solid var(--theme-color);
+            border-radius: 4px;
+            padding: 20px;
+            z-index: 10;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.8);
+            pointer-events: none;
+        }
+        
+        #header-panel { top: 20px; left: 20px; width: 340px; }
+        #telemetry-panel { top: 20px; right: 20px; width: 320px; }
+        #legend-panel { bottom: 20px; right: 20px; width: 320px; display: none; }
+        
+        h1 { margin: 0 0 5px 0; font-size: 1.2rem; text-transform: uppercase; letter-spacing: 1px; color: var(--theme-color); text-shadow: 0 0 10px var(--theme-glow); }
+        h2 { margin: 0 0 15px 0; font-size: 0.8rem; font-weight: 400; color: #aaa; text-transform: uppercase; letter-spacing: 2px; }
+        p { margin: 0 0 10px 0; font-size: 0.85rem; color: #ccc; line-height: 1.4; }
+
+        .data-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 15px; }
+        .data-box { background: rgba(0,0,0,0.5); padding: 12px; border-radius: 4px; border-left: 2px solid var(--theme-color); position: relative; }
+        .data-label { font-size: 0.7rem; color: #aaa; text-transform: uppercase; margin-bottom: 5px; display: block; }
+        .data-value { font-size: 1.3rem; font-weight: bold; font-variant-numeric: tabular-nums; color: #fff; }
+        .data-unit { font-size: 0.75rem; color: #888; margin-left: 4px; }
+
+        .status-indicator { display: flex; align-items: center; gap: 10px; font-size: 0.85rem; font-weight: bold; margin-top: 20px; padding-top: 15px; border-top: 1px solid rgba(255,255,255,0.1); text-transform: uppercase; }
+        .status-dot { width: 12px; height: 12px; border-radius: 50%; background: var(--success); box-shadow: 0 0 10px var(--success); }
+
+        .legend-title { font-size: 0.8rem; font-weight: bold; margin-bottom: 10px; text-transform: uppercase; }
+        .gradient-bar { width: 100%; height: 12px; background: linear-gradient(to right, #222, #0044ff, #00ff00, #ffff00, #ff8800, #ff0000, #ffffff); border-radius: 2px; margin-bottom: 5px; }
+        .labels { display: flex; justify-content: space-between; font-size: 0.7rem; color: #aaa; }
+
+        .lil-gui { z-index: 20 !important; position: absolute !important; bottom: 20px !important; left: 20px !important; top: auto !important; right: auto !important; }
+    </style>
+    
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/",
+                "lil-gui": "https://unpkg.com/lil-gui@0.19.1/dist/lil-gui.esm.min.js"
+            }
+        }
+    </script>
+</head>
+<body>
+    <div id="canvas-container"></div>
+    
+    <div id="header-panel" class="panel">
+        <h1>WORM DRIVE SYSTEM</h1>
+        <h2>Heavy Ore Conveyor (40:1 Ratio)</h2>
+        <p>Worm gears provide massive torque multiplication and self-locking capabilities, but generate immense sliding friction and heat at the contact point.</p>
+    </div>
+
+    <div id="telemetry-panel" class="panel">
+        <div class="data-grid">
+            <div class="data-box">
+                <span class="data-label">Belt Payload</span>
+                <span class="data-value" id="val-load">0</span><span class="data-unit">kg/s</span>
+            </div>
+            <div class="data-box">
+                <span class="data-label">Mech Efficiency</span>
+                <span class="data-value" id="val-eff">0</span><span class="data-unit">%</span>
+            </div>
+            <div class="data-box">
+                <span class="data-label">Motor Input</span>
+                <span class="data-value" id="val-rpm-in">0</span><span class="data-unit">RPM</span>
+            </div>
+            <div class="data-box">
+                <span class="data-label">Gearbox Output</span>
+                <span class="data-value" id="val-rpm-out">0</span><span class="data-unit">RPM</span>
+            </div>
+            <div class="data-box" style="grid-column: span 2;">
+                <span class="data-label">Contact Friction Temp</span>
+                <span class="data-value" id="val-temp" style="color:var(--success);">0</span><span class="data-unit">°C</span>
+            </div>
+        </div>
+        <div class="status-indicator">
+            <div class="status-dot" id="safety-dot"></div>
+            <span id="safety-text">Lubrication Nominal</span>
+        </div>
+    </div>
+
+    <div id="legend-panel" class="panel">
+        <div class="legend-title">Thermodynamic Stress / Friction Bloom</div>
+        <div class="gradient-bar"></div>
+        <div class="labels">
+            <span>Ambient</span>
+            <span>Operating (80°C)</span>
+            <span>Critical (250°C+)</span>
+        </div>
+    </div>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+        import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+        import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+        import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+        import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+        import GUI from 'lil-gui';
+
+        // --- 1. Scene & Setup ---
+        const container = document.getElementById('canvas-container');
+        const scene = new THREE.Scene();
+        scene.fog = new THREE.FogExp2(0x050505, 0.02);
+
+        const camera = new THREE.PerspectiveCamera(40, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.set(-15, 12, 20);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: "high-performance" });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(window.devicePixelRatio);
+        renderer.shadowMap.enabled = true;
+        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+        container.appendChild(renderer.domElement);
+
+        // Bloom Post-Processing for Heat mapping
+        const renderScene = new RenderPass(scene, camera);
+        const bloomPass = new UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 1.2, 0.5, 0.85);
+        bloomPass.threshold = 1.0; 
+        bloomPass.strength = 1.5;
+        const composer = new EffectComposer(renderer);
+        composer.addPass(renderScene);
+        composer.addPass(bloomPass);
+
+        const controls = new OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        controls.target.set(0, 0, 0);
+
+        // Lighting
+        const pmremGenerator = new THREE.PMREMGenerator(renderer);
+        scene.environment = pmremGenerator.fromScene(new RoomEnvironment(), 0.04).texture;
+        
+        const spotLight = new THREE.SpotLight(0xffffff, 200);
+        spotLight.position.set(10, 20, 10);
+        spotLight.angle = Math.PI / 4;
+        spotLight.castShadow = true;
+        spotLight.shadow.bias = -0.001;
+        scene.add(spotLight);
+
+        const rimLight = new THREE.DirectionalLight(0xffaa00, 1.0);
+        rimLight.position.set(-10, 5, -10);
+        scene.add(rimLight);
+
+        // --- 2. Custom Shader (FEA / Thermodynamic Friction) ---
+        const customMaterials = [];
+        const contactPoint = new THREE.Vector3(0, -1.8, 0); // Where worm meets wheel
+
+        function createHeatMaterial(centerPos, baseColor, isWorm = false) {
+            const material = new THREE.MeshStandardMaterial({ color: baseColor, metalness: 0.8, roughness: 0.3 });
+
+            material.onBeforeCompile = function(shader) {
+                shader.uniforms.uFriction = { value: 0.0 };
+                shader.uniforms.uContact = { value: contactPoint };
+                shader.uniforms.uMode = { value: 0.0 };
+
+                shader.vertexShader = shader.vertexShader.replace(
+                    '#include <common>',
+                    `#include <common>
+                    uniform float uFriction;
+                    uniform vec3 uContact;
+                    varying float vHeat;`
+                );
+
+                shader.vertexShader = shader.vertexShader.replace(
+                    '#include <begin_vertex>',
+                    `#include <begin_vertex>
+                    vec4 worldPos = modelMatrix * vec4(position, 1.0);
+                    
+                    // Distance to the meshing contact point
+                    float dContact = distance(worldPos.xyz, uContact);
+
+                    // Heat localizes intensely at the contact point due to sliding friction
+                    float heat = smoothstep(3.0, 0.0, dContact) * uFriction;
+                    
+                    vHeat = heat;
+                    `
+                );
+
+                shader.fragmentShader = shader.fragmentShader.replace(
+                    '#include <common>',
+                    `#include <common>
+                    uniform float uMode;
+                    varying float vHeat;
+
+                    vec3 getHeatColor(float t) {
+                        t = clamp(t, 0.0, 1.5);
+                        vec3 color;
+                        if (t < 0.2) color = mix(vec3(0.2), vec3(0,0,1), t/0.2);
+                        else if (t < 0.5) color = mix(vec3(0,0,1), vec3(0,1,0), (t-0.2)/0.3);
+                        else if (t < 0.8) color = mix(vec3(0,1,0), vec3(1,1,0), (t-0.5)/0.3);
+                        else if (t < 1.0) color = mix(vec3(1,1,0), vec3(1,0.3,0), (t-0.8)/0.2);
+                        else color = mix(vec3(1,0.3,0), vec3(3.0, 1.0, 1.0), (t-1.0)/0.5); // Over 1.0 triggers bloom
+                        return color;
+                    }`
+                );
+
+                shader.fragmentShader = shader.fragmentShader.replace(
+                    '#include <color_fragment>',
+                    `#include <color_fragment>
+                    if (uMode == 1.0) {
+                        diffuseColor.rgb = getHeatColor(vHeat);
+                    }
+                    `
+                );
+                material.userData.shader = shader;
+            };
+            customMaterials.push(material);
+            return material;
+        }
+
+        // --- 3. WORM & WHEEL GEOMETRY ---
+
+        // A. The Worm (Helical Screw)
+        class HelixCurve extends THREE.Curve {
+            constructor(radius, pitch, turns) {
+                super();
+                this.radius = radius;
+                this.pitch = pitch;
+                this.turns = turns;
+            }
+            getPoint(t, optionalTarget = new THREE.Vector3()) {
+                const angle = t * Math.PI * 2 * this.turns;
+                const x = (t - 0.5) * this.pitch * this.turns; // Shaft along X-axis
+                const y = Math.cos(angle) * this.radius;
+                const z = Math.sin(angle) * this.radius;
+                return optionalTarget.set(x, y, z);
+            }
+        }
+
+        const wormGroup = new THREE.Group();
+        
+        // Worm Core Shaft
+        const wormShaftGeom = new THREE.CylinderGeometry(0.8, 0.8, 12, 32);
+        wormShaftGeom.rotateZ(Math.PI/2);
+        const wormMat = createHeatMaterial(new THREE.Vector3(0,0,0), 0xaaaaaa, true);
+        const wormShaft = new THREE.Mesh(wormShaftGeom, wormMat);
+        wormShaft.castShadow = true;
+        wormGroup.add(wormShaft);
+
+        // Worm Thread (Single Start)
+        const helix = new HelixCurve(1.2, 1.0, 8); // radius, pitch, turns
+        const threadGeom = new THREE.TubeGeometry(helix, 200, 0.4, 16, false);
+        const wormThread = new THREE.Mesh(threadGeom, wormMat);
+        wormThread.castShadow = true;
+        wormGroup.add(wormThread);
+        
+        scene.add(wormGroup);
+
+        // B. The Worm Wheel (Gear)
+        const wheelTeeth = 40;
+        const wheelRadius = 4.5; // Positions it correctly against the worm
+        const shape = new THREE.Shape();
+        const step = (Math.PI * 2) / wheelTeeth;
+        const innerRadius = wheelRadius - 0.5;
+
+        for (let i = 0; i < wheelTeeth; i++) {
+            const a = i * step;
+            shape.lineTo(innerRadius * Math.cos(a - step*0.25), innerRadius * Math.sin(a - step*0.25));
+            shape.lineTo(wheelRadius * Math.cos(a - step*0.1), wheelRadius * Math.sin(a - step*0.1));
+            shape.lineTo(wheelRadius * Math.cos(a + step*0.1), wheelRadius * Math.sin(a + step*0.1));
+            shape.lineTo(innerRadius * Math.cos(a + step*0.25), innerRadius * Math.sin(a + step*0.25));
+        }
+        shape.closePath();
+        
+        // Weight reduction holes
+        for (let i = 0; i < 5; i++) {
+            const h = new THREE.Path();
+            const a = (i * Math.PI * 2) / 5;
+            h.absarc(wheelRadius * 0.5 * Math.cos(a), wheelRadius * 0.5 * Math.sin(a), 0.8, 0, Math.PI * 2, false);
+            shape.holes.push(h);
+        }
+
+        const wheelGeom = new THREE.ExtrudeGeometry(shape, { depth: 1.5, bevelEnabled: true, bevelSize: 0.1, bevelThickness: 0.1 });
+        wheelGeom.center();
+        
+        const wheelPos = new THREE.Vector3(0, -(wheelRadius + 1.2 - 0.3), 0); // Position below worm
+        const wheelMat = createHeatMaterial(wheelPos, 0x887766, false);
+        const wheel = new THREE.Mesh(wheelGeom, wheelMat);
+        
+        // Wheel rotates around Z axis, Worm rotates around X axis.
+        wheel.position.copy(wheelPos);
+        wheel.rotation.y = Math.PI / 2; // Face the right way
+        wheel.castShadow = true;
+        scene.add(wheel);
+
+        // Wheel Shaft connecting to Conveyor
+        const outputShaftGeom = new THREE.CylinderGeometry(0.6, 0.6, 15, 32);
+        outputShaftGeom.rotateX(Math.PI/2);
+        const outputShaft = new THREE.Mesh(outputShaftGeom, wormMat);
+        wheel.add(outputShaft); // Add to wheel so it rotates with it
+
+
+        // --- 4. CONVEYOR BELT SYSTEM ---
+        const conveyorGroup = new THREE.Group();
+        conveyorGroup.position.set(0, wheelPos.y, 6);
+        scene.add(conveyorGroup);
+
+        // Programmatic Conveyor Texture
+        const canvas = document.createElement('canvas');
+        canvas.width = 256; canvas.height = 256;
+        const ctx = canvas.getContext('2d');
+        ctx.fillStyle = '#111'; ctx.fillRect(0,0,256,256);
+        ctx.strokeStyle = '#222'; ctx.lineWidth = 10;
+        for(let i=0; i<256; i+=32) {
+            ctx.beginPath(); ctx.moveTo(0, i); ctx.lineTo(128, i+32); ctx.lineTo(256, i); ctx.stroke();
+        }
+        const beltTexture = new THREE.CanvasTexture(canvas);
+        beltTexture.wrapS = THREE.RepeatWrapping;
+        beltTexture.wrapT = THREE.RepeatWrapping;
+        beltTexture.repeat.set(1, 4);
+
+        // Drive Drum (Attached to Gearbox)
+        const drumGeom = new THREE.CylinderGeometry(1.5, 1.5, 6, 32);
+        drumGeom.rotateZ(Math.PI/2);
+        const drumMat = new THREE.MeshStandardMaterial({ color: 0x333333, metalness: 0.6, roughness: 0.8 });
+        const driveDrum = new THREE.Mesh(drumGeom, drumMat);
+        conveyorGroup.add(driveDrum);
+
+        // Idler Drum (Far end)
+        const idlerDrum = new THREE.Mesh(drumGeom, drumMat);
+        idlerDrum.position.set(15, 0, 0);
+        conveyorGroup.add(idlerDrum);
+
+        // The Belt
+        const beltGeom = new THREE.BoxGeometry(15, 3.2, 5.8);
+        beltGeom.translate(7.5, 0, 0); // Center between drums
+        const beltMaterial = new THREE.MeshStandardMaterial({ map: beltTexture, roughness: 0.9 });
+        const belt = new THREE.Mesh(beltGeom, beltMaterial);
+        conveyorGroup.add(belt);
+
+        // Ore Chunks (Particles on belt)
+        const oreGeom = new THREE.DodecahedronGeometry(0.4, 0);
+        const oreMat = new THREE.MeshStandardMaterial({ color: 0x555555, roughness: 1.0 });
+        const ores = [];
+        for(let i=0; i<15; i++) {
+            const ore = new THREE.Mesh(oreGeom, oreMat);
+            ore.position.set(Math.random()*15, 1.8, (Math.random()-0.5)*4);
+            ore.rotation.set(Math.random(), Math.random(), Math.random());
+            conveyorGroup.add(ore);
+            ores.push(ore);
+        }
+
+        // --- 5. Motor Visuals ---
+        const motorMat = new THREE.MeshStandardMaterial({ color: 0x111111, metalness: 0.4 });
+        const motorGeom = new THREE.CylinderGeometry(2, 2, 6, 32);
+        motorGeom.rotateZ(Math.PI/2);
+        const motor = new THREE.Mesh(motorGeom, motorMat);
+        motor.position.set(-8, 0, 0);
+        scene.add(motor);
+
+
+        // --- 6. Physics, Friction & Simulation ---
+        const params = { payload: 800, motorRPM: 1750, viewMode: 'Thermal Friction (Bloom)' };
+
+        const gui = new GUI({ title: 'System Controls' });
+        gui.add(params, 'payload', 0, 2000).name('Conveyor Payload (kg)');
+        gui.add(params, 'motorRPM', 0, 3000).name('Input Motor RPM');
+        gui.add(params, 'viewMode', ['PBR Realistic', 'Thermal Friction (Bloom)', 'Wireframe']).onChange(updateViewMode);
+
+        function updateViewMode(mode) {
+            const isThermal = mode.includes('Thermal');
+            const isWire = mode === 'Wireframe';
+            document.getElementById('legend-panel').style.display = isThermal ? 'block' : 'none';
+            bloomPass.strength = isThermal ? 1.5 : 0.0;
+            
+            customMaterials.forEach(mat => {
+                mat.wireframe = isWire;
+                if (mat.userData.shader) mat.userData.shader.uniforms.uMode.value = isThermal ? 1.0 : 0.0;
+            });
+        }
+
+        // DOM Elements
+        const elLoad = document.getElementById('val-load');
+        const elEff = document.getElementById('val-eff');
+        const elRpmIn = document.getElementById('val-rpm-in');
+        const elRpmOut = document.getElementById('val-rpm-out');
+        const elTemp = document.getElementById('val-temp');
+        const elDot = document.getElementById('safety-dot');
+        const elTxt = document.getElementById('safety-text');
+
+        const clock = new THREE.Clock();
+        let currentInRPM = 0;
+        let gearTemp = 25; // Ambient
+
+        function animate() {
+            requestAnimationFrame(animate);
+            const delta = clock.getDelta();
+
+            // Rotational Physics
+            // Smoothly reach target RPM
+            currentInRPM = THREE.MathUtils.lerp(currentInRPM, params.motorRPM, delta * 2.0);
+            
+            // Speed Math (Rad/s)
+            const inSpeed = (currentInRPM * Math.PI) / 30;
+            const outSpeed = inSpeed / wheelTeeth; // 40:1 Reduction
+            const outRPM = currentInRPM / wheelTeeth;
+
+            // Rotate components
+            wormGroup.rotation.x -= inSpeed * delta; // Drive shaft
+            wheel.rotation.z += outSpeed * delta;    // Output shaft
+            driveDrum.rotation.z += outSpeed * delta;
+            idlerDrum.rotation.z += outSpeed * delta;
+
+            // Move Belt Texture & Ore
+            const linearSpeed = outSpeed * 1.5; // V = omega * r (drum radius is 1.5)
+            beltTexture.offset.y -= linearSpeed * delta * 0.5;
+
+            ores.forEach(ore => {
+                ore.position.x += linearSpeed * delta;
+                if (ore.position.x > 15) { // Fall off end
+                    ore.position.x = 0;
+                    ore.position.z = (Math.random()-0.5)*4;
+                }
+            });
+
+            // Thermodynamics / Friction Math
+            // Worm gears lose efficiency due to extreme sliding friction.
+            // Higher RPM + Higher Load = Massive Heat Generation.
+            const frictionFactor = (currentInRPM / 1500) * (params.payload / 1000);
+            const targetTemp = 25 + (frictionFactor * 180); // Can reach over 200C easily
+            
+            if (currentInRPM > 0) {
+                gearTemp = THREE.MathUtils.lerp(gearTemp, targetTemp, delta * 0.05); // Heat up
+            } else {
+                gearTemp = THREE.MathUtils.lerp(gearTemp, 25, delta * 0.02); // Cool down slowly
+            }
+
+            // Efficiency calculation (Worm gears vary from 50% to 90% based on lead angle and friction)
+            // Hotter oil = slightly better efficiency up to a point, then breaks down.
+            let efficiency = 75 - (params.payload / 200) - (gearTemp > 120 ? (gearTemp - 120)*0.5 : 0);
+            if(efficiency < 0) efficiency = 0;
+            if(currentInRPM < 10) efficiency = 0;
+
+            // Pass heat data to shader
+            const normalizedHeat = (gearTemp - 25) / 150; // 0 to >1
+            customMaterials.forEach(mat => {
+                if (mat.userData.shader) mat.userData.shader.uniforms.uFriction.value = normalizedHeat;
+            });
+
+            // Update UI
+            elLoad.innerText = params.payload.toFixed(0);
+            elRpmIn.innerText = currentInRPM.toFixed(0);
+            elRpmOut.innerText = outRPM.toFixed(1);
+            elEff.innerText = efficiency.toFixed(1);
+            elTemp.innerText = gearTemp.toFixed(0);
+
+            // Safety System Updates
+            if (gearTemp > 180) { // CRITICAL
+                elTemp.style.color = "var(--danger)";
+                elDot.style.background = elDot.style.boxShadow = "var(--danger)";
+                elTxt.innerText = "CRITICAL: LUBRICANT BREAKDOWN";
+                elTxt.style.color = "var(--danger)";
+                // Camera shake indicating violent grinding
+                camera.position.x += (Math.random() - 0.5) * 0.05;
+                camera.position.y += (Math.random() - 0.5) * 0.05;
+            } else if (gearTemp > 100) { // WARNING
+                elTemp.style.color = "#ffff00";
+                elDot.style.background = elDot.style.boxShadow = "#ffff00";
+                elTxt.innerText = "WARNING: HIGH FRICTION HEAT";
+                elTxt.style.color = "#ffff00";
+            } else { // NORMAL
+                elTemp.style.color = "var(--success)";
+                elDot.style.background = elDot.style.boxShadow = "var(--success)";
+                elTxt.innerText = "LUBRICATION NOMINAL";
+                elTxt.style.color = "var(--success)";
+            }
+
+            controls.update();
+            composer.render();
+        }
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            composer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        // Start
+        updateViewMode(params.viewMode);
+        animate();
+    </script>
+</body>
+</html>

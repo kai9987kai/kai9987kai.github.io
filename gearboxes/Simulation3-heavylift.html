@@ -1,0 +1,595 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Advanced Multi-Stage Elevator Hoist</title>
+    <style>
+        :root {
+            --bg-dark: rgba(10, 15, 25, 0.85);
+            --border-accent: #00d2ff;
+            --text-main: #f0f4f8;
+            --text-muted: #9aa5b1;
+            --danger: #ff3366;
+            --warning: #ffcc00;
+            --success: #00e676;
+        }
+        
+        body { margin: 0; overflow: hidden; background-color: #030407; font-family: 'Consolas', 'Segoe UI', monospace; color: var(--text-main); }
+        #canvas-container { width: 100vw; height: 100vh; position: absolute; top: 0; left: 0; z-index: 1; }
+        
+        .panel {
+            position: absolute;
+            background: var(--bg-dark);
+            backdrop-filter: blur(15px);
+            -webkit-backdrop-filter: blur(15px);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-top: 2px solid var(--border-accent);
+            border-radius: 6px;
+            padding: 20px;
+            z-index: 10;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.7);
+            pointer-events: none;
+        }
+        
+        #header-panel { top: 20px; left: 20px; width: 350px; }
+        #telemetry-panel { top: 20px; right: 20px; width: 320px; }
+        #legend-panel { bottom: 20px; right: 20px; width: 320px; display: none; }
+        
+        h1 { margin: 0 0 5px 0; font-size: 1.3rem; text-transform: uppercase; letter-spacing: 2px; color: #fff; text-shadow: 0 0 10px rgba(0,210,255,0.5); }
+        h2 { margin: 0 0 15px 0; font-size: 0.8rem; font-weight: 400; color: var(--border-accent); text-transform: uppercase; letter-spacing: 1px; }
+        p { margin: 0 0 10px 0; font-size: 0.85rem; color: var(--text-muted); line-height: 1.5; font-family: sans-serif; }
+
+        .data-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 15px; }
+        .data-box { background: rgba(0,0,0,0.6); padding: 12px; border-radius: 4px; border-left: 3px solid var(--border-accent); position: relative; overflow: hidden;}
+        .data-label { font-size: 0.7rem; color: var(--text-muted); text-transform: uppercase; margin-bottom: 5px; display: block; }
+        .data-value { font-size: 1.4rem; font-weight: bold; font-variant-numeric: tabular-nums; color: #fff; }
+        .data-unit { font-size: 0.75rem; color: #888; margin-left: 4px; }
+
+        .bar-bg { width: 100%; height: 4px; background: #222; margin-top: 8px; border-radius: 2px; }
+        .bar-fill { height: 100%; background: var(--border-accent); width: 0%; transition: width 0.2s, background 0.2s; }
+
+        .status-indicator { display: flex; align-items: center; gap: 10px; font-size: 0.85rem; font-weight: bold; margin-top: 20px; padding-top: 15px; border-top: 1px solid rgba(255,255,255,0.1); text-transform: uppercase; }
+        .status-dot { width: 12px; height: 12px; border-radius: 50%; background: var(--success); box-shadow: 0 0 10px var(--success); }
+
+        .legend-title { font-size: 0.8rem; font-weight: bold; margin-bottom: 10px; text-transform: uppercase; }
+        .gradient-bar { width: 100%; height: 15px; background: linear-gradient(to right, #0011ff, #00ffff, #00ff00, #ffff00, #ff0000, #ffffff); border-radius: 4px; margin-bottom: 5px; }
+        .labels { display: flex; justify-content: space-between; font-size: 0.7rem; color: #aaa; }
+
+        /* Scanline Overlay */
+        .scanlines { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%), linear-gradient(90deg, rgba(255, 0, 0, 0.06), rgba(0, 255, 0, 0.02), rgba(0, 0, 255, 0.06)); background-size: 100% 4px, 6px 100%; pointer-events: none; z-index: 5; opacity: 0.3; }
+
+        .lil-gui { z-index: 20 !important; position: absolute !important; bottom: 20px !important; left: 20px !important; top: auto !important; right: auto !important; font-family: sans-serif; }
+    </style>
+    
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/",
+                "lil-gui": "https://unpkg.com/lil-gui@0.19.1/dist/lil-gui.esm.min.js"
+            }
+        }
+    </script>
+</head>
+<body>
+    <div class="scanlines"></div>
+    <div id="canvas-container"></div>
+    
+    <div id="header-panel" class="panel">
+        <h1>HEAVY LIFT SIMULATOR</h1>
+        <h2>2-Stage Planetary & Parallel System</h2>
+        <p>Detailed analysis of a high-torque traction hoist, featuring an AC induction motor, multi-stage helical reduction, and real-time stress bloom mapping.</p>
+    </div>
+
+    <div id="telemetry-panel" class="panel">
+        <div class="data-grid">
+            <div class="data-box">
+                <span class="data-label">Net Payload</span>
+                <span class="data-value" id="val-load">0</span><span class="data-unit">kg</span>
+                <div class="bar-bg"><div class="bar-fill" id="bar-load"></div></div>
+            </div>
+            <div class="data-box">
+                <span class="data-label">Output Torque</span>
+                <span class="data-value" id="val-torque">0</span><span class="data-unit">Nm</span>
+                <div class="bar-bg"><div class="bar-fill" id="bar-torque"></div></div>
+            </div>
+            <div class="data-box">
+                <span class="data-label">Motor Status</span>
+                <span class="data-value" id="val-rpm">0</span><span class="data-unit">RPM</span>
+                <span class="data-label" style="margin-top:5px; color:#ff6b6b" id="val-temp">Temp: 45°C</span>
+            </div>
+            <div class="data-box">
+                <span class="data-label">Peak Stress (VM)</span>
+                <span class="data-value" id="val-stress" style="color:var(--success);">0</span><span class="data-unit">MPa</span>
+                <div class="bar-bg"><div class="bar-fill" id="bar-stress"></div></div>
+            </div>
+        </div>
+        <div class="status-indicator">
+            <div class="status-dot" id="safety-dot"></div>
+            <span id="safety-text">SYSTEM NOMINAL (FoS: >5.0)</span>
+        </div>
+    </div>
+
+    <div id="legend-panel" class="panel">
+        <div class="legend-title">Equivalent Strain/Stress & Bloom (MPa)</div>
+        <div class="gradient-bar"></div>
+        <div class="labels">
+            <span>0</span>
+            <span>150 (Yield)</span>
+            <span>350+ (Fracture)</span>
+        </div>
+    </div>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+        import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+        import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+        import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+        import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+        import GUI from 'lil-gui';
+
+        // --- 1. Core Scene & Post-Processing Setup ---
+        const container = document.getElementById('canvas-container');
+        const scene = new THREE.Scene();
+        scene.fog = new THREE.FogExp2(0x030407, 0.015);
+
+        const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.set(-18, 15, 25);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: "high-performance" });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(window.devicePixelRatio);
+        renderer.shadowMap.enabled = true;
+        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+        renderer.toneMapping = THREE.ACESFilmicToneMapping;
+        renderer.toneMappingExposure = 1.0;
+        container.appendChild(renderer.domElement);
+
+        // Bloom Composer for Glowing FEA Heatmaps
+        const renderScene = new RenderPass(scene, camera);
+        const bloomPass = new UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 1.5, 0.4, 0.85);
+        bloomPass.threshold = 1.2; // Only colors boosted above 1.2 will glow (red zones)
+        bloomPass.strength = 1.2;
+        bloomPass.radius = 0.5;
+
+        const composer = new EffectComposer(renderer);
+        composer.addPass(renderScene);
+        composer.addPass(bloomPass);
+
+        const controls = new OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        controls.target.set(-2, 0, 2);
+
+        // Environment & Lighting
+        const pmremGenerator = new THREE.PMREMGenerator(renderer);
+        scene.environment = pmremGenerator.fromScene(new RoomEnvironment(), 0.04).texture;
+        
+        const mainLight = new THREE.SpotLight(0xffffff, 150);
+        mainLight.position.set(10, 25, 15);
+        mainLight.angle = Math.PI / 4;
+        mainLight.penumbra = 0.5;
+        mainLight.castShadow = true;
+        mainLight.shadow.mapSize.width = 2048;
+        mainLight.shadow.mapSize.height = 2048;
+        scene.add(mainLight);
+
+        const rimLight = new THREE.DirectionalLight(0x00d2ff, 1.5);
+        rimLight.position.set(-15, -5, -10);
+        scene.add(rimLight);
+
+        // Grid Floor
+        const grid = new THREE.GridHelper(50, 50, 0x00d2ff, 0x111122);
+        grid.position.y = -8;
+        grid.material.opacity = 0.3;
+        grid.material.transparent = true;
+        scene.add(grid);
+
+        // --- 2. Advanced Shader (Supports Bloom Emissive Multiplier) ---
+        const customMaterials = [];
+        const contact1 = new THREE.Vector3(-6.25, 0, 0); // Mesh: Pinion1 & Gear2
+        const contact2 = new THREE.Vector3(-1.25, 0, 2); // Mesh: Gear3 & Bull Gear
+
+        function createHybridMaterial(centerPos, baseColor, stageMultiplier = 1.0) {
+            const material = new THREE.MeshStandardMaterial({ color: baseColor, metalness: 0.9, roughness: 0.2 });
+
+            material.onBeforeCompile = function(shader) {
+                shader.uniforms.uTorque = { value: 0.0 };
+                shader.uniforms.uContact1 = { value: contact1 };
+                shader.uniforms.uContact2 = { value: contact2 };
+                shader.uniforms.uCenter = { value: centerPos };
+                shader.uniforms.uMode = { value: 0.0 };
+                shader.uniforms.uStage = { value: stageMultiplier };
+
+                shader.vertexShader = shader.vertexShader.replace(
+                    '#include <common>',
+                    `#include <common>
+                    uniform float uTorque;
+                    uniform vec3 uContact1;
+                    uniform vec3 uContact2;
+                    uniform vec3 uCenter;
+                    uniform float uStage;
+                    varying float vStress;`
+                );
+
+                shader.vertexShader = shader.vertexShader.replace(
+                    '#include <begin_vertex>',
+                    `#include <begin_vertex>
+                    vec4 worldPos = modelMatrix * vec4(position, 1.0);
+                    
+                    float d1 = distance(worldPos.xyz, uContact1);
+                    float d2 = distance(worldPos.xyz, uContact2);
+                    float dC = distance(worldPos.xyz, uCenter);
+
+                    float baseS = (uTorque / 8000.0) * 0.1 * uStage;
+                    float c1S = smoothstep(2.0, 0.0, d1) * (uTorque / 8000.0) * 0.5 * uStage;
+                    float c2S = smoothstep(2.5, 0.0, d2) * (uTorque / 8000.0) * 1.2 * uStage; // Stage 2 takes more torque
+                    float shaftS = smoothstep(2.0, 0.0, dC) * (uTorque / 8000.0) * 0.3 * uStage;
+
+                    vStress = baseS + c1S + c2S + shaftS;
+                    `
+                );
+
+                shader.fragmentShader = shader.fragmentShader.replace(
+                    '#include <common>',
+                    `#include <common>
+                    uniform float uMode;
+                    varying float vStress;
+
+                    vec3 getStressColor(float t) {
+                        t = clamp(t, 0.0, 1.2);
+                        vec3 color;
+                        if (t < 0.25) color = mix(vec3(0,0,1), vec3(0,1,1), t/0.25);
+                        else if (t < 0.5) color = mix(vec3(0,1,1), vec3(0,1,0), (t-0.25)/0.25);
+                        else if (t < 0.75) color = mix(vec3(0,1,0), vec3(1,1,0), (t-0.5)/0.25);
+                        else if (t < 1.0) color = mix(vec3(1,1,0), vec3(1,0,0), (t-0.75)/0.25);
+                        else color = mix(vec3(1,0,0), vec3(2.5, 2.5, 2.5), (t-1.0)/0.2); // Overdrive -> White/Glow
+                        
+                        // Artificial Boost to trigger Bloom Threshold > 1.2
+                        if(t > 0.8) color *= 1.0 + (t - 0.8) * 4.0; 
+                        return color;
+                    }`
+                );
+
+                shader.fragmentShader = shader.fragmentShader.replace(
+                    '#include <color_fragment>',
+                    `#include <color_fragment>
+                    if (uMode == 1.0) diffuseColor.rgb = getStressColor(vStress);
+                    `
+                ).replace(
+                    '#include <roughnessmap_fragment>',
+                    `#include <roughnessmap_fragment>
+                    if (uMode == 1.0) roughnessFactor = 0.9;
+                    `
+                ).replace(
+                    '#include <metalnessmap_fragment>',
+                    `#include <metalnessmap_fragment>
+                    if (uMode == 1.0) metalnessFactor = 0.0;
+                    `
+                );
+                material.userData.shader = shader;
+            };
+            customMaterials.push(material);
+            return material;
+        }
+
+        // --- 3. Complex Geometry Generators ---
+        function createGear(radius, teeth, depth, pos, color, hasHoles, stageMult) {
+            const shape = new THREE.Shape();
+            const step = (Math.PI * 2) / teeth;
+            const inner = radius - 0.4;
+            for (let i = 0; i < teeth; i++) {
+                const a = i * step;
+                shape.lineTo(inner * Math.cos(a - step*0.25), inner * Math.sin(a - step*0.25));
+                shape.lineTo(radius * Math.cos(a - step*0.1), radius * Math.sin(a - step*0.1));
+                shape.lineTo(radius * Math.cos(a + step*0.1), radius * Math.sin(a + step*0.1));
+                shape.lineTo(inner * Math.cos(a + step*0.25), inner * Math.sin(a + step*0.25));
+            }
+            shape.closePath();
+
+            const hole = new THREE.Path();
+            hole.absarc(0, 0, 0.7, 0, Math.PI * 2, false);
+            shape.holes.push(hole);
+
+            if (hasHoles) {
+                for (let i = 0; i < 6; i++) {
+                    const h = new THREE.Path();
+                    const a = (i * Math.PI * 2) / 6;
+                    h.absarc(radius * 0.55 * Math.cos(a), radius * 0.55 * Math.sin(a), radius * 0.2, 0, Math.PI * 2, false);
+                    shape.holes.push(h);
+                }
+            }
+
+            const geom = new THREE.ExtrudeGeometry(shape, { depth, bevelEnabled: true, bevelSegments: 2, steps: 1, bevelSize: 0.05, bevelThickness: 0.05 });
+            geom.center();
+            
+            const mat = createHybridMaterial(pos, color, stageMult);
+            const mesh = new THREE.Mesh(geom, mat);
+            mesh.position.copy(pos);
+            mesh.castShadow = true; mesh.receiveShadow = true;
+            return { mesh, mat };
+        }
+
+        // Detailed AC Motor
+        function createMotor(pos) {
+            const motorGroup = new THREE.Group();
+            motorGroup.position.copy(pos);
+
+            // Casing Body
+            const bodyMat = new THREE.MeshStandardMaterial({ color: 0x1a4b77, metalness: 0.5, roughness: 0.6 });
+            const bodyGeom = new THREE.CylinderGeometry(2.5, 2.5, 7, 32);
+            bodyGeom.rotateX(Math.PI/2);
+            const body = new THREE.Mesh(bodyGeom, bodyMat);
+            body.position.z = -3.5;
+            body.castShadow = true;
+            motorGroup.add(body);
+
+            // Cooling Fins
+            const finGeom = new THREE.TorusGeometry(2.5, 0.15, 8, 48);
+            for(let i=0; i<15; i++) {
+                const fin = new THREE.Mesh(finGeom, bodyMat);
+                fin.position.z = -1.0 - (i * 0.4);
+                fin.castShadow = true;
+                motorGroup.add(fin);
+            }
+
+            // End Bell
+            const bellGeom = new THREE.SphereGeometry(2.45, 32, 16, 0, Math.PI*2, 0, Math.PI/2);
+            bellGeom.rotateX(-Math.PI/2);
+            const bell = new THREE.Mesh(bellGeom, bodyMat);
+            bell.position.z = -7;
+            motorGroup.add(bell);
+
+            // Motor Shaft
+            const shaftGeom = new THREE.CylinderGeometry(0.68, 0.68, 12, 32);
+            shaftGeom.rotateX(Math.PI/2);
+            const shaftMat = createHybridMaterial(pos, 0x999999, 0.5);
+            const shaft = new THREE.Mesh(shaftGeom, shaftMat);
+            shaft.position.z = -2;
+            shaft.castShadow = true;
+            motorGroup.add(shaft);
+
+            scene.add(motorGroup);
+            return shaft;
+        }
+
+        // --- 4. Assembly of Components ---
+        const gears = [];
+        
+        // Structure Layout
+        const pMotor = new THREE.Vector3(-8.5, 0, 0);
+        const pInter = new THREE.Vector3(-4.0, 0, 0);
+        const pBull  = new THREE.Vector3( 1.5, 0, 2);
+
+        // Build Motor
+        const motorShaft = createMotor(pMotor);
+
+        // Stage 1: Motor Pinion (Teeth: 15) meshes with Inter Gear 2 (Teeth: 30)
+        const pinion1 = createGear(1.5, 15, 1.2, pMotor, 0x444455, false, 0.5);
+        scene.add(pinion1.mesh);
+        gears.push({ m: pinion1.mesh, ratio: 1 });
+
+        const gear2 = createGear(3.0, 30, 1.2, pInter, 0x556677, true, 0.8);
+        gear2.mesh.rotation.z = Math.PI / 30; // Mesh offset
+        scene.add(gear2.mesh);
+        gears.push({ m: gear2.mesh, ratio: 15/30 }); // 1:2 ratio
+
+        // Stage 2: Inter Pinion 3 (Teeth: 12) meshes with Bull Gear (Teeth: 36)
+        const pInterOffset = new THREE.Vector3(-4.0, 0, 2);
+        const gear3 = createGear(1.5, 12, 1.5, pInterOffset, 0x556677, false, 0.8);
+        scene.add(gear3.mesh);
+        gears.push({ m: gear3.mesh, ratio: 15/30 }); // Shares shaft with gear 2
+
+        // Intermediate Shaft connecting Gear 2 and 3
+        const interShaftGeom = new THREE.CylinderGeometry(0.68, 0.68, 4, 32);
+        interShaftGeom.rotateX(Math.PI/2);
+        const interShaft = new THREE.Mesh(interShaftGeom, createHybridMaterial(pInter, 0x888888, 0.8));
+        interShaft.position.set(-4.0, 0, 1.0);
+        scene.add(interShaft);
+
+        const bull = createGear(4.0, 36, 1.8, pBull, 0x778899, true, 1.5);
+        bull.mesh.rotation.z = Math.PI / 36;
+        scene.add(bull.mesh);
+        const totalRatio = (15/30) * (12/36); // 1:6 Reduction Total
+        gears.push({ m: bull.mesh, ratio: totalRatio });
+
+        // Sheave & Ropes
+        const sheaveGeom = new THREE.CylinderGeometry(3.5, 3.5, 2.5, 64);
+        sheaveGeom.rotateX(Math.PI/2);
+        const sheave = new THREE.Mesh(sheaveGeom, createHybridMaterial(pBull, 0x222222, 1.5));
+        sheave.position.set(0, 0, 2.5);
+        bull.mesh.add(sheave);
+
+        const ropes = [];
+        const ropeMat = new THREE.MeshStandardMaterial({ color: 0x050505, roughness: 1.0 });
+        for(let i=-0.8; i<=0.8; i+=0.4) {
+            const wrap = new THREE.Mesh(new THREE.TorusGeometry(3.5, 0.08, 16, 64, Math.PI), ropeMat);
+            wrap.position.set(0, 0, i);
+            sheave.add(wrap);
+            
+            const drop1 = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 30, 8), ropeMat);
+            drop1.position.set(pBull.x - 3.5, -15, pBull.z + 2.5 + i);
+            scene.add(drop1);
+            
+            const drop2 = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 30, 8), ropeMat);
+            drop2.position.set(pBull.x + 3.5, -15, pBull.z + 2.5 + i);
+            scene.add(drop2);
+            
+            ropes.push({ d1: drop1, d2: drop2 });
+        }
+
+        // --- 5. Particle Effects (Sparks on High Stress) ---
+        const sparkCount = 200;
+        const sparkGeom = new THREE.BufferGeometry();
+        const sparkPos = new Float32Array(sparkCount * 3);
+        const sparkVel = [];
+        for(let i=0; i<sparkCount; i++) {
+            sparkPos[i*3] = 999; // Hidden initially
+            sparkVel.push(new THREE.Vector3());
+        }
+        sparkGeom.setAttribute('position', new THREE.BufferAttribute(sparkPos, 3));
+        const sparkMat = new THREE.PointsMaterial({ color: 0xffaa00, size: 0.15, transparent: true, opacity: 0.8, blending: THREE.AdditiveBlending });
+        const sparks = new THREE.Points(sparkGeom, sparkMat);
+        scene.add(sparks);
+
+        function emitSparks(contactPt) {
+            const positions = sparks.geometry.attributes.position.array;
+            for(let i=0; i<5; i++) { // Emit 5 sparks per frame per point
+                const idx = Math.floor(Math.random() * sparkCount);
+                positions[idx*3] = contactPt.x + (Math.random()-0.5)*0.5;
+                positions[idx*3+1] = contactPt.y + (Math.random()-0.5)*0.5;
+                positions[idx*3+2] = contactPt.z + (Math.random()-0.5)*0.5;
+                sparkVel[idx].set((Math.random()-0.5)*4, Math.random()*5, (Math.random()-0.5)*4);
+            }
+            sparks.geometry.attributes.position.needsUpdate = true;
+        }
+
+        function updateSparks(delta) {
+            const positions = sparks.geometry.attributes.position.array;
+            for(let i=0; i<sparkCount; i++) {
+                if(positions[i*3+1] > -10) { // If active
+                    positions[i*3] += sparkVel[i].x * delta;
+                    positions[i*3+1] += sparkVel[i].y * delta;
+                    positions[i*3+2] += sparkVel[i].z * delta;
+                    sparkVel[i].y -= 9.8 * delta; // Gravity
+                }
+            }
+            sparks.geometry.attributes.position.needsUpdate = true;
+        }
+
+
+        // --- 6. Physics & Controls ---
+        const params = { cabinLoad: 1200, cWeight: 800, targetRPM: 1450, viewMode: 'FEA Stress Overlay (Bloom)' };
+
+        const gui = new GUI({ title: 'Machine Parameters' });
+        gui.add(params, 'cabinLoad', 0, 3000).name('Cabin Load (kg)');
+        gui.add(params, 'targetRPM', -2000, 2000).name('Motor Target RPM');
+        gui.add(params, 'viewMode', ['PBR Realistic', 'FEA Stress Overlay (Bloom)', 'Wireframe']).onChange(updateViewMode);
+
+        function updateViewMode(mode) {
+            const isFEA = mode.includes('FEA');
+            const isWire = mode === 'Wireframe';
+            document.getElementById('legend-panel').style.display = isFEA ? 'block' : 'none';
+            bloomPass.strength = isFEA ? 1.5 : 0.0; // Toggle post-processing glow
+            
+            customMaterials.forEach(mat => {
+                mat.wireframe = isWire;
+                if (mat.userData.shader) mat.userData.shader.uniforms.uMode.value = isFEA ? 1.0 : 0.0;
+            });
+        }
+
+        const dom = {
+            load: document.getElementById('val-load'), barL: document.getElementById('bar-load'),
+            torque: document.getElementById('val-torque'), barT: document.getElementById('bar-torque'),
+            rpm: document.getElementById('val-rpm'), temp: document.getElementById('val-temp'),
+            stress: document.getElementById('val-stress'), barS: document.getElementById('bar-stress'),
+            dot: document.getElementById('safety-dot'), txt: document.getElementById('safety-text')
+        };
+
+        const clock = new THREE.Clock();
+        let currentRPM = 0;
+        let motorTemp = 45;
+
+        // Base camera coords for shake effect
+        const baseCamPos = new THREE.Vector3(); 
+        
+        function animate() {
+            requestAnimationFrame(animate);
+            const delta = clock.getDelta();
+
+            // Calculate Torque & Speed
+            const unbalance = params.cabinLoad - params.cWeight;
+            const sheaveRadius = 3.5;
+            const outputTorque = Math.abs(unbalance * 9.81 * sheaveRadius); // Torque at sheave
+            
+            currentRPM = THREE.MathUtils.lerp(currentRPM, params.targetRPM, delta * 1.5);
+            const pinionSpeed = (currentRPM * Math.PI) / 30;
+            
+            // Rotate Gears
+            motorShaft.rotation.z -= pinionSpeed * delta;
+            gears[0].m.rotation.z -= pinionSpeed * delta;
+            gears[1].m.rotation.z += (pinionSpeed * 15/30) * delta;
+            interShaft.rotation.z += (pinionSpeed * 15/30) * delta;
+            gears[2].m.rotation.z += (pinionSpeed * 15/30) * delta;
+            gears[3].m.rotation.z -= (pinionSpeed * totalRatio) * delta; // Bull
+
+            // Ropes
+            const rSpeed = (pinionSpeed * totalRatio) * sheaveRadius;
+            ropes.forEach(r => {
+                r.d1.position.y = -15 + ((r.d1.position.y + 15 - rSpeed * delta) % 8);
+                r.d2.position.y = -15 + ((r.d2.position.y + 15 + rSpeed * delta) % 8);
+            });
+
+            // Update Shader Materials
+            customMaterials.forEach(mat => {
+                if (mat.userData.shader) mat.userData.shader.uniforms.uTorque.value = outputTorque;
+            });
+
+            // Calculate Stress Metric
+            const maxStress = (outputTorque / 8000.0) * 300.0; 
+            const foS = maxStress === 0 ? 99 : 350.0 / maxStress;
+
+            // Update UI & Hardware Metrics
+            dom.load.innerText = unbalance.toFixed(0);
+            dom.torque.innerText = outputTorque.toFixed(0);
+            dom.rpm.innerText = currentRPM.toFixed(0);
+            dom.stress.innerText = maxStress.toFixed(1);
+
+            // UI Bars
+            dom.barL.style.width = `${Math.min(100, Math.abs(unbalance)/20)}%`;
+            dom.barT.style.width = `${Math.min(100, outputTorque/100)}%`;
+            dom.barS.style.width = `${Math.min(100, maxStress/4)}%`;
+
+            // Dynamic Styling based on Stress
+            if (foS < 1.0) { // FAILURE
+                dom.stress.style.color = dom.barS.style.background = "var(--danger)";
+                dom.dot.style.background = dom.dot.style.boxShadow = "var(--danger)";
+                dom.txt.innerText = `CATASTROPHIC FAILURE (FoS: ${foS.toFixed(2)})`;
+                dom.txt.style.color = "var(--danger)";
+                emitSparks(contact1); emitSparks(contact2); // Sparking wildly!
+                
+                // Camera Shake
+                camera.position.x += (Math.random() - 0.5) * 0.2;
+                camera.position.y += (Math.random() - 0.5) * 0.2;
+            } else if (foS < 2.0) { // WARNING
+                dom.stress.style.color = dom.barS.style.background = "var(--warning)";
+                dom.dot.style.background = dom.dot.style.boxShadow = "var(--warning)";
+                dom.txt.innerText = `WARNING: OVERLOADED (FoS: ${foS.toFixed(2)})`;
+                dom.txt.style.color = "var(--warning)";
+                if(Math.random() > 0.8) emitSparks(contact2); // Occasional sparks
+                
+                // Light Vibration
+                camera.position.x += (Math.random() - 0.5) * 0.05;
+            } else { // NORMAL
+                dom.stress.style.color = dom.barS.style.background = "var(--success)";
+                dom.dot.style.background = dom.dot.style.boxShadow = "var(--success)";
+                dom.txt.innerText = `SYSTEM NOMINAL (FoS: ${foS>10 ? '>10' : foS.toFixed(2)})`;
+                dom.txt.style.color = "var(--success)";
+            }
+
+            // Motor Heat Simulation
+            if (currentRPM > 100) motorTemp = THREE.MathUtils.lerp(motorTemp, 45 + (outputTorque/200), delta * 0.1);
+            else motorTemp = THREE.MathUtils.lerp(motorTemp, 25, delta * 0.05); // Cool down
+            dom.temp.innerText = `Motor Temp: ${motorTemp.toFixed(1)}°C`;
+            dom.temp.style.color = motorTemp > 80 ? "var(--danger)" : "var(--text-muted)";
+
+            updateSparks(delta);
+            controls.update();
+            
+            // Use Composer instead of Renderer for Bloom effect
+            composer.render();
+        }
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            composer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        updateViewMode(params.viewMode);
+        animate();
+    </script>
+</body>
+</html>
