@@ -1,12 +1,13 @@
 Champion Chat Static Web (GitHub Pages)
 
 What this is
-- A browser-only chat UI (`index.html`) that loads a Champion chat metadata JSON and runs retrieval in JavaScript.
-- It works on GitHub Pages (no Python server).
+- A web chat UI (`index.html`) with two modes:
+  - `Static Metadata` (browser-only retrieval from metadata JSON; works on GitHub Pages)
+  - `Full Model API` (calls a Flask/PyTorch backend that runs the real `.pth` model)
 
 Important limitation
 - PyTorch `.pth` model weights do NOT run in GitHub Pages / browser JS directly.
-- This static version uses the metadata JSON as the browser-readable model source.
+- GitHub Pages can host the interface, but the full model must run on a separate Python backend.
 
 Files
 - `index.html` -> static chat UI
@@ -20,8 +21,14 @@ How to publish on GitHub Pages
 
 Optional
 - You can also point the Metadata URL box to a different `chat_model_meta_*.browser.json`.
+- You can switch to `Full Model API` mode and point the interface to a Flask backend URL.
+
+Full Model API mode (real `.pth` model)
+1. Run `chat_web_app.py` on a machine that has the `.pth` weights and full metadata JSON.
+2. In the web UI, switch `Run Mode` to `Full Model API`.
+3. Set the backend API URL and backend file paths, then click `Load Full Model`.
+4. Chat normally; requests go to `/api/chat` on the Flask backend.
 
 If you need the real neural `.pth` model in web
 - Convert the model to ONNX / WebGPU-compatible format and port the feature + ranking pipeline to browser JS.
 - That is a different deployment target than GitHub Pages static hosting.
-

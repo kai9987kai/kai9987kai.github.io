@@ -174,6 +174,9 @@
       font-size: .82rem;
       color: var(--muted);
     }
+    .hidden {
+      display: none !important;
+    }
     details {
       border-top: 1px dashed var(--line);
       padding-top: 8px;
@@ -214,18 +217,37 @@
     <section class="card">
       <div class="header">
         <div>
-          <h1 class="title">Champion Chat (Static Web)</h1>
-          <div class="subtitle">GitHub Pages-friendly chat using browser retrieval from metadata JSON</div>
+          <h1 class="title">Champion Chat (Web Interface)</h1>
+          <div class="subtitle">Use browser metadata mode or connect to a full-model Flask API backend</div>
         </div>
       </div>
       <div class="controls">
         <div class="row">
+          <label for="runMode">Run Mode</label>
+          <select id="runMode">
+            <option value="static" selected>Static Metadata (GitHub Pages)</option>
+            <option value="api">Full Model API (Flask backend)</option>
+          </select>
+        </div>
+        <div id="staticMetaUrlRow" class="row">
           <label for="metaUrl">Metadata JSON URL (same folder on GitHub Pages is easiest)</label>
           <input id="metaUrl" type="text" value="chat_model_meta_supermix_v27_500k.browser.json">
         </div>
-        <div class="row">
+        <div id="staticMetaFileRow" class="row">
           <label for="metaFile">Or load metadata JSON from your device</label>
           <input id="metaFile" type="file" accept=".json,application/json">
+        </div>
+        <div id="apiBaseRow" class="row hidden">
+          <label for="apiBaseUrl">Flask API Base URL (for example https://your-backend.example.com or http://127.0.0.1:8000)</label>
+          <input id="apiBaseUrl" type="text" value="http://127.0.0.1:8000">
+        </div>
+        <div id="apiWeightsRow" class="row hidden">
+          <label for="apiWeights">Weights path on the backend host (.pth)</label>
+          <input id="apiWeights" type="text" value="champion_model_chat_supermix_v27_500k_ft.pth">
+        </div>
+        <div id="apiMetaRow" class="row hidden">
+          <label for="apiMeta">Metadata path on the backend host (.json)</label>
+          <input id="apiMeta" type="text" value="chat_model_meta_supermix_v27_500k.json">
         </div>
         <div class="row inline">
           <select id="styleMode" title="Style mode">
@@ -251,8 +273,23 @@
           <button id="loadBtn" class="primary">Load Metadata</button>
           <button id="clearBtn">Clear Chat</button>
         </div>
+        <div id="apiTuneRow" class="row inline hidden">
+          <select id="apiResponseTemp" title="Response temperature">
+            <option value="0.0">Temp 0.00</option>
+            <option value="0.04">Temp 0.04</option>
+            <option value="0.08" selected>Temp 0.08</option>
+            <option value="0.15">Temp 0.15</option>
+            <option value="0.25">Temp 0.25</option>
+          </select>
+          <select id="apiShowTop" title="Top candidate debug">
+            <option value="0" selected>Debug top 0</option>
+            <option value="3">Debug top 3</option>
+            <option value="5">Debug top 5</option>
+            <option value="8">Debug top 8</option>
+          </select>
+        </div>
         <div class="footnote">
-          Static browser mode uses the metadata JSON only. PyTorch <code>.pth</code> weights do not run on GitHub Pages.
+          <span id="modeNote">Static browser mode uses the metadata JSON only. PyTorch <code>.pth</code> weights do not run on GitHub Pages.</span>
         </div>
       </div>
       <p id="status" class="status warn">Load a metadata JSON file to start.</p>
@@ -279,12 +316,26 @@
       candidates: [],
       history: [],
       recentAssistant: [],
-      loading: false
+      loading: false,
+      apiSessionId: (self.crypto && crypto.randomUUID) ? crypto.randomUUID() : `sess-${Date.now()}-${Math.floor(Math.random() * 1e6)}`
     };
 
     const els = {
+      runMode: document.getElementById('runMode'),
       metaUrl: document.getElementById('metaUrl'),
       metaFile: document.getElementById('metaFile'),
+      apiBaseUrl: document.getElementById('apiBaseUrl'),
+      apiWeights: document.getElementById('apiWeights'),
+      apiMeta: document.getElementById('apiMeta'),
+      apiResponseTemp: document.getElementById('apiResponseTemp'),
+      apiShowTop: document.getElementById('apiShowTop'),
+      staticMetaUrlRow: document.getElementById('staticMetaUrlRow'),
+      staticMetaFileRow: document.getElementById('staticMetaFileRow'),
+      apiBaseRow: document.getElementById('apiBaseRow'),
+      apiWeightsRow: document.getElementById('apiWeightsRow'),
+      apiMetaRow: document.getElementById('apiMetaRow'),
+      apiTuneRow: document.getElementById('apiTuneRow'),
+      modeNote: document.getElementById('modeNote'),
       loadBtn: document.getElementById('loadBtn'),
       clearBtn: document.getElementById('clearBtn'),
       status: document.getElementById('status'),
@@ -314,6 +365,61 @@
       els.status.className = `status ${kind}`;
     }
 
+    function isApiMode() {
+      return els.runMode.value === 'api';
+    }
+
+    function setHidden(el, hidden) {
+      if (!el) return;
+      el.classList.toggle('hidden', !!hidden);
+    }
+
+    function normalizedApiBase() {
+      const base = String(els.apiBaseUrl.value || '').trim().replace(/\/+$/, '');
+      if (!base) throw new Error('Enter a Flask API base URL first.');
+      return base;
+    }
+
+    function apiUrl(path) {
+      return `${normalizedApiBase()}${path}`;
+    }
+
+    async function apiJson(url, init) {
+      const res = await fetch(url, init);
+      let data = null;
+      try { data = await res.json(); } catch (_) {}
+      if (!res.ok || !data || data.ok === false) {
+        const msg = (data && data.error) ? data.error : `HTTP ${res.status}`;
+        throw new Error(msg);
+      }
+      return data;
+    }
+
+    function applyModeUI() {
+      const api = isApiMode();
+      setHidden(els.staticMetaUrlRow, api);
+      setHidden(els.staticMetaFileRow, api);
+      setHidden(els.apiBaseRow, !api);
+      setHidden(els.apiWeightsRow, !api);
+      setHidden(els.apiMetaRow, !api);
+      setHidden(els.apiTuneRow, !api);
+      els.creativity.classList.toggle('hidden', api);
+      els.topK.classList.toggle('hidden', api);
+      els.loadBtn.textContent = api ? 'Load Full Model' : 'Load Metadata';
+      els.modeNote.innerHTML = api
+        ? 'Full model mode calls a separate Flask/PyTorch backend API. GitHub Pages still hosts only the interface.'
+        : 'Static browser mode uses the metadata JSON only. PyTorch <code>.pth</code> weights do not run on GitHub Pages.';
+      if (!state.loading) {
+        setStatus(
+          api
+            ? 'Full Model API mode selected. Set API URL, weights/meta paths, then click Load Full Model.'
+            : 'Load a metadata JSON file to start.',
+          'warn'
+        );
+      }
+      els.topCandidates.innerHTML = '';
+    }
+
     function addMessage(role, text) {
       const box = document.createElement('div');
       box.className = `msg ${role}`;
@@ -326,7 +432,7 @@
       els.messages.scrollTop = els.messages.scrollHeight;
     }
 
-    function clearChat() {
+    function clearChatUI() {
       state.history = [];
       state.recentAssistant = [];
       els.messages.innerHTML = '';
@@ -500,7 +606,11 @@
         const div = document.createElement('div');
         div.className = 'cand';
         const preview = row.text.length > 220 ? row.text.slice(0, 220) + '...' : row.text;
-        div.innerHTML = `<code>score=${row.score.toFixed(3)} label=${row.label} count=${row.count}</code><div>${escapeHtml(preview)}</div>`;
+        const score = Number.isFinite(Number(row.score)) ? Number(row.score) : 0;
+        const bits = [`score=${score.toFixed(3)}`];
+        if (row.label !== undefined) bits.push(`label=${row.label}`);
+        if (row.count !== undefined) bits.push(`count=${row.count}`);
+        div.innerHTML = `<code>${bits.join(' ')}</code><div>${escapeHtml(preview)}</div>`;
         els.topCandidates.appendChild(div);
       }
     }
@@ -619,24 +729,94 @@
       });
     }
 
+    async function apiRefreshStatus() {
+      const d = await apiJson(apiUrl('/api/status'));
+      const s = d.status || {};
+      if (s.loaded) {
+        setStatus(`Backend ready (${s.model_size || 'model'} on ${s.device || 'device'}).`, 'ok');
+      } else {
+        setStatus('Backend reachable, but no model is loaded yet.', 'warn');
+      }
+      return s;
+    }
+
+    async function loadFromApi() {
+      const weights = String(els.apiWeights.value || '').trim();
+      const meta = String(els.apiMeta.value || '').trim();
+      if (!weights || !meta) {
+        throw new Error('Enter both backend weights and metadata paths.');
+      }
+      setStatus('Loading full model on backend...', 'warn');
+      const d = await apiJson(apiUrl('/api/load'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ weights, meta })
+      });
+      const status = d && d.loaded !== undefined ? d : null;
+      if (status) {
+        setStatus(`Full model loaded (${status.model_size || 'model'} on ${status.device || 'device'}).`, 'ok');
+      } else {
+        await apiRefreshStatus();
+      }
+      addMessage('sys', 'Backend full model loaded.');
+    }
+
+    async function sendViaApi(user) {
+      const temp = Number(els.apiResponseTemp.value || 0.08);
+      const showTop = Number(els.apiShowTop.value || 0);
+      const d = await apiJson(apiUrl('/api/chat'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          session_id: state.apiSessionId,
+          message: user,
+          style_mode: els.styleMode.value,
+          response_temperature: Number.isFinite(temp) ? temp : 0.08,
+          show_top_responses: Number.isFinite(showTop) ? showTop : 0
+        })
+      });
+      renderTopCandidates(Array.isArray(d.top_candidates) ? d.top_candidates : []);
+      addMessage('bot', d.response || 'No response');
+      if (d.timing_ms) {
+        const t = d.timing_ms;
+        addMessage('sys', `Timing: infer=${t.infer ?? '?'} ms | rank=${t.rank_pick ?? '?'} ms | total=${t.total ?? '?'} ms`);
+      }
+    }
+
+    async function clearApiSession() {
+      await apiJson(apiUrl('/api/clear'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ session_id: state.apiSessionId })
+      });
+    }
+
     async function doLoad() {
       if (state.loading) return;
       state.loading = true;
       els.loadBtn.disabled = true;
       try {
-        setStatus('Loading metadata...', 'warn');
-        let raw;
-        const file = els.metaFile.files && els.metaFile.files[0];
-        if (file) raw = await loadMetaFromFile(file);
-        else raw = await loadMetaFromUrl(els.metaUrl.value.trim());
+        if (isApiMode()) {
+          await loadFromApi();
+          await apiRefreshStatus();
+          if (!state.history.length) {
+            addMessage('bot', 'Full model API mode is ready. Ask a question.');
+          }
+        } else {
+          setStatus('Loading metadata...', 'warn');
+          let raw;
+          const file = els.metaFile.files && els.metaFile.files[0];
+          if (file) raw = await loadMetaFromFile(file);
+          else raw = await loadMetaFromUrl(els.metaUrl.value.trim());
 
-        const meta = normalizeMeta(raw);
-        state.meta = meta;
-        state.candidates = meta.candidates;
-        setStatus(`Loaded ${meta.stats.candidateCount} candidates across ${meta.stats.bucketCount} buckets.`, 'ok');
-        addMessage('sys', `Loaded metadata. Candidates: ${meta.stats.candidateCount}.`);
-        if (!state.history.length) {
-          addMessage('bot', 'Static web chat is ready. Ask a question.');
+          const meta = normalizeMeta(raw);
+          state.meta = meta;
+          state.candidates = meta.candidates;
+          setStatus(`Loaded ${meta.stats.candidateCount} candidates across ${meta.stats.bucketCount} buckets.`, 'ok');
+          addMessage('sys', `Loaded metadata. Candidates: ${meta.stats.candidateCount}.`);
+          if (!state.history.length) {
+            addMessage('bot', 'Static web chat is ready. Ask a question.');
+          }
         }
       } catch (err) {
         console.error(err);
@@ -652,6 +832,17 @@
       if (!user) return;
       addMessage('user', user);
       els.userInput.value = '';
+
+      if (isApiMode()) {
+        try {
+          await sendViaApi(user);
+        } catch (err) {
+          console.error(err);
+          addMessage('bot', `API error: ${err.message || err}`);
+          setStatus(`API error: ${err.message || err}`, 'err');
+        }
+        return;
+      }
 
       if (!state.candidates.length) {
         const msg = 'Load a metadata JSON first.';
@@ -681,9 +872,26 @@
       if (state.recentAssistant.length > 8) state.recentAssistant = state.recentAssistant.slice(-8);
     }
 
+    async function onClear() {
+      clearChatUI();
+      if (isApiMode()) {
+        try {
+          await clearApiSession();
+          addMessage('sys', 'Backend session cleared.');
+        } catch (err) {
+          console.error(err);
+          addMessage('bot', `Clear API error: ${err.message || err}`);
+        }
+      }
+    }
+
     els.loadBtn.addEventListener('click', doLoad);
-    els.clearBtn.addEventListener('click', clearChat);
+    els.clearBtn.addEventListener('click', onClear);
     els.sendBtn.addEventListener('click', onSend);
+    els.runMode.addEventListener('change', () => {
+      clearChatUI();
+      applyModeUI();
+    });
     els.userInput.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' && !e.shiftKey) {
         e.preventDefault();
@@ -691,7 +899,8 @@
       }
     });
 
-    clearChat();
+    clearChatUI();
+    applyModeUI();
   </script>
 </body>
 </html>
