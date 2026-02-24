@@ -116,6 +116,36 @@
     .status.ok { color: #065f46; }
     .status.warn { color: #92400e; }
     .status.err { color: #991b1b; }
+    .load-progress {
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: #fff;
+      padding: 8px 10px;
+      display: grid;
+      gap: 6px;
+    }
+    .load-progress-head {
+      display: flex;
+      justify-content: space-between;
+      gap: 8px;
+      align-items: center;
+      font-size: .82rem;
+      color: var(--muted);
+    }
+    .load-progress-head strong {
+      color: var(--ink);
+      font-weight: 600;
+    }
+    .load-progress progress {
+      width: 100%;
+      height: 12px;
+      accent-color: var(--accent);
+    }
+    .load-progress-text {
+      font-size: .8rem;
+      color: var(--muted);
+      min-height: 1.1em;
+    }
     .chat {
       display: grid;
       grid-template-rows: 1fr auto;
@@ -308,6 +338,16 @@
         <div class="footnote">
           <span id="modeNote">Static browser mode uses the metadata JSON only. PyTorch <code>.pth</code> weights do not run on GitHub Pages.</span>
         </div>
+        <div id="loadProgressWrap" class="row hidden">
+          <div class="load-progress" aria-live="polite">
+            <div class="load-progress-head">
+              <strong id="loadProgressLabel">Loading...</strong>
+              <span id="loadProgressPct">0%</span>
+            </div>
+            <progress id="loadProgress" max="1" value="0"></progress>
+            <div id="loadProgressText" class="load-progress-text"></div>
+          </div>
+        </div>
       </div>
       <p id="status" class="status warn">Load a metadata JSON file to start.</p>
     </section>
@@ -368,6 +408,11 @@
       apiMetaRow: document.getElementById('apiMetaRow'),
       apiTuneRow: document.getElementById('apiTuneRow'),
       modeNote: document.getElementById('modeNote'),
+      loadProgressWrap: document.getElementById('loadProgressWrap'),
+      loadProgress: document.getElementById('loadProgress'),
+      loadProgressLabel: document.getElementById('loadProgressLabel'),
+      loadProgressPct: document.getElementById('loadProgressPct'),
+      loadProgressText: document.getElementById('loadProgressText'),
       loadBtn: document.getElementById('loadBtn'),
       clearBtn: document.getElementById('clearBtn'),
       status: document.getElementById('status'),
@@ -395,6 +440,71 @@
     function setStatus(text, kind = 'warn') {
       els.status.textContent = text;
       els.status.className = `status ${kind}`;
+    }
+
+    function formatBytes(n) {
+      const x = Number(n);
+      if (!Number.isFinite(x) || x < 0) return '? B';
+      if (x < 1024) return `${Math.round(x)} B`;
+      const units = ['KB', 'MB', 'GB'];
+      let v = x / 1024;
+      let i = 0;
+      while (v >= 1024 && i < units.length - 1) {
+        v /= 1024;
+        i++;
+      }
+      return `${v.toFixed(v >= 100 ? 0 : v >= 10 ? 1 : 2)} ${units[i]}`;
+    }
+
+    function showLoadProgress() {
+      setHidden(els.loadProgressWrap, false);
+    }
+
+    function hideLoadProgress() {
+      if (!els.loadProgressWrap) return;
+      els.loadProgress.max = 1;
+      els.loadProgress.value = 0;
+      els.loadProgressPct.textContent = '0%';
+      els.loadProgressLabel.textContent = 'Loading...';
+      els.loadProgressText.textContent = '';
+      setHidden(els.loadProgressWrap, true);
+    }
+
+    function setLoadProgress({ label, fraction, detail, indeterminate = false }) {
+      showLoadProgress();
+      if (label) els.loadProgressLabel.textContent = label;
+      if (indeterminate) {
+        els.loadProgress.removeAttribute('value');
+        els.loadProgress.max = 1;
+        els.loadProgressPct.textContent = '...';
+      } else {
+        const f = Math.max(0, Math.min(1, Number(fraction) || 0));
+        els.loadProgress.max = 1;
+        els.loadProgress.value = f;
+        els.loadProgressPct.textContent = `${Math.round(f * 100)}%`;
+      }
+      els.loadProgressText.textContent = detail || '';
+    }
+
+    function setPhaseByteProgress(label, loaded, total, startFrac, endFrac) {
+      const hasTotal = Number.isFinite(total) && total > 0;
+      if (!hasTotal) {
+        setLoadProgress({
+          label,
+          fraction: startFrac,
+          detail: `${formatBytes(loaded)} loaded`,
+          indeterminate: true
+        });
+        return;
+      }
+      const phaseFrac = Math.max(0, Math.min(1, (Number(loaded) || 0) / total));
+      const span = Math.max(0, endFrac - startFrac);
+      const overallFrac = startFrac + phaseFrac * span;
+      setLoadProgress({
+        label,
+        fraction: overallFrac,
+        detail: `${formatBytes(loaded)} / ${formatBytes(total)}`
+      });
     }
 
     function isApiMode() {
@@ -774,18 +884,57 @@
       return styleAdjust(chosen.text, query, mode, creativity);
     }
 
-    async function loadMetaFromUrl(url) {
+    async function fetchArrayBufferWithProgress(url, onProgress) {
       const res = await fetch(url, { cache: 'no-store' });
       if (!res.ok) throw new Error(`HTTP ${res.status} loading ${url}`);
-      return res.json();
+      const totalHeader = Number(res.headers.get('content-length'));
+      const total = Number.isFinite(totalHeader) && totalHeader > 0 ? totalHeader : null;
+      if (!res.body || typeof res.body.getReader !== 'function') {
+        const buf = await res.arrayBuffer();
+        if (onProgress) onProgress(buf.byteLength, total || buf.byteLength);
+        return buf;
+      }
+
+      const reader = res.body.getReader();
+      const chunks = [];
+      let received = 0;
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        if (!value) continue;
+        chunks.push(value);
+        received += value.byteLength;
+        if (onProgress) onProgress(received, total);
+      }
+      const out = new Uint8Array(received);
+      let offset = 0;
+      for (const chunk of chunks) {
+        out.set(chunk, offset);
+        offset += chunk.byteLength;
+      }
+      if (onProgress) onProgress(received, total || received);
+      return out.buffer;
     }
 
-    function loadMetaFromFile(file) {
+    async function loadMetaFromUrl(url, onProgress) {
+      const buf = await fetchArrayBufferWithProgress(url, onProgress);
+      const text = new TextDecoder('utf-8').decode(new Uint8Array(buf));
+      return JSON.parse(text);
+    }
+
+    function loadMetaFromFile(file, onProgress) {
       return new Promise((resolve, reject) => {
         const reader = new FileReader();
         reader.onload = () => {
           try { resolve(JSON.parse(reader.result)); }
           catch (e) { reject(e); }
+        };
+        reader.onprogress = (e) => {
+          if (onProgress && e && e.lengthComputable) {
+            onProgress(e.loaded, e.total);
+          } else if (onProgress && e) {
+            onProgress(e.loaded || 0, null);
+          }
         };
         reader.onerror = () => reject(reader.error || new Error('File read failed'));
         reader.readAsText(file);
@@ -854,16 +1003,21 @@
       });
     }
 
-    async function loadArrayBufferFromUrl(url) {
-      const res = await fetch(url, { cache: 'no-store' });
-      if (!res.ok) throw new Error(`HTTP ${res.status} loading ${url}`);
-      return res.arrayBuffer();
+    async function loadArrayBufferFromUrl(url, onProgress) {
+      return fetchArrayBufferWithProgress(url, onProgress);
     }
 
-    function loadArrayBufferFromFile(file) {
+    function loadArrayBufferFromFile(file, onProgress) {
       return new Promise((resolve, reject) => {
         const reader = new FileReader();
         reader.onload = () => resolve(reader.result);
+        reader.onprogress = (e) => {
+          if (onProgress && e && e.lengthComputable) {
+            onProgress(e.loaded, e.total);
+          } else if (onProgress && e) {
+            onProgress(e.loaded || 0, null);
+          }
+        };
         reader.onerror = () => reject(reader.error || new Error('File read failed'));
         reader.readAsArrayBuffer(file);
       });
@@ -939,10 +1093,23 @@
       if (!onnxSource) throw new Error('Provide an ONNX model file or URL.');
       if (!metaSource) throw new Error('Provide a full metadata JSON file or URL.');
 
-      const [onnxBytes, rawMeta] = await Promise.all([
-        onnxFile ? loadArrayBufferFromFile(onnxFile) : loadArrayBufferFromUrl(onnxSource),
-        metaFile ? loadMetaFromFile(metaFile) : loadMetaFromUrl(metaSource),
-      ]);
+      const onnxBytes = onnxFile
+        ? await loadArrayBufferFromFile(onnxFile, (loaded, total) =>
+            setPhaseByteProgress('Loading ONNX model', loaded, total ?? onnxFile.size ?? null, 0.00, 0.82))
+        : await loadArrayBufferFromUrl(onnxSource, (loaded, total) =>
+            setPhaseByteProgress('Downloading ONNX model', loaded, total, 0.00, 0.82));
+
+      const rawMeta = metaFile
+        ? await loadMetaFromFile(metaFile, (loaded, total) =>
+            setPhaseByteProgress('Loading full metadata', loaded, total ?? metaFile.size ?? null, 0.82, 0.95))
+        : await loadMetaFromUrl(metaSource, (loaded, total) =>
+            setPhaseByteProgress('Downloading full metadata', loaded, total, 0.82, 0.95));
+
+      setLoadProgress({
+        label: 'Initializing ONNX runtime',
+        fraction: 0.96,
+        detail: 'Creating inference session...'
+      });
 
       const meta = normalizeMeta(rawMeta);
       if (!meta.bucketsByLabel || !Object.keys(meta.bucketsByLabel).length) {
@@ -953,6 +1120,11 @@
         ort.env.wasm.simd = true;
       }
       const session = await ort.InferenceSession.create(onnxBytes, { executionProviders: ['wasm'] });
+      setLoadProgress({
+        label: 'Finalizing browser ONNX',
+        fraction: 1,
+        detail: 'Model and metadata loaded.'
+      });
       const featureMode = String(meta.featureMode || 'context_v2').toLowerCase();
 
       state.onnxSession = session;
@@ -1043,8 +1215,13 @@
           setStatus('Loading metadata...', 'warn');
           let raw;
           const file = els.metaFile.files && els.metaFile.files[0];
-          if (file) raw = await loadMetaFromFile(file);
-          else raw = await loadMetaFromUrl(els.metaUrl.value.trim());
+          if (file) {
+            raw = await loadMetaFromFile(file, (loaded, total) =>
+              setPhaseByteProgress('Loading metadata JSON', loaded, total ?? file.size ?? null, 0, 1));
+          } else {
+            raw = await loadMetaFromUrl(els.metaUrl.value.trim(), (loaded, total) =>
+              setPhaseByteProgress('Downloading metadata JSON', loaded, total, 0, 1));
+          }
 
           const meta = normalizeMeta(raw);
           state.meta = meta;
@@ -1059,6 +1236,7 @@
         console.error(err);
         setStatus(`Load failed: ${err.message || err}`, 'err');
       } finally {
+        hideLoadProgress();
         els.loadBtn.disabled = false;
         state.loading = false;
       }
