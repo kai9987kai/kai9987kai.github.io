@@ -226,6 +226,7 @@
           <label for="runMode">Run Mode</label>
           <select id="runMode">
             <option value="static" selected>Static Metadata (GitHub Pages)</option>
+            <option value="onnx">Browser ONNX (Full Weights on Device)</option>
             <option value="api">Full Model API (Flask backend)</option>
           </select>
         </div>
@@ -236,6 +237,22 @@
         <div id="staticMetaFileRow" class="row">
           <label for="metaFile">Or load metadata JSON from your device</label>
           <input id="metaFile" type="file" accept=".json,application/json">
+        </div>
+        <div id="onnxModelUrlRow" class="row hidden">
+          <label for="onnxModelUrl">ONNX model URL (full weights, browser inference)</label>
+          <input id="onnxModelUrl" type="text" value="champion_model_chat_supermix_v27_500k_ft.onnx">
+        </div>
+        <div id="onnxModelFileRow" class="row hidden">
+          <label for="onnxModelFile">Or load ONNX model from your device</label>
+          <input id="onnxModelFile" type="file" accept=".onnx,application/octet-stream">
+        </div>
+        <div id="onnxMetaUrlRow" class="row hidden">
+          <label for="onnxMetaUrl">Full metadata JSON URL (needs buckets + vec/ctx_vec)</label>
+          <input id="onnxMetaUrl" type="text" value="chat_model_meta_supermix_v27_500k.json">
+        </div>
+        <div id="onnxMetaFileRow" class="row hidden">
+          <label for="onnxMetaFile">Or load full metadata JSON from your device</label>
+          <input id="onnxMetaFile" type="file" accept=".json,application/json">
         </div>
         <div id="apiBaseRow" class="row hidden">
           <label for="apiBaseUrl">Flask API Base URL (for example https://your-backend.example.com or http://127.0.0.1:8000)</label>
@@ -310,6 +327,9 @@
     </section>
   </div>
 
+  <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/ort.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/blakejs@1.2.1/blake2b.min.js"></script>
+  <script src="chat_feature_ctxv2.generated.js"></script>
   <script>
     const state = {
       meta: null,
@@ -317,13 +337,21 @@
       history: [],
       recentAssistant: [],
       loading: false,
-      apiSessionId: (self.crypto && crypto.randomUUID) ? crypto.randomUUID() : `sess-${Date.now()}-${Math.floor(Math.random() * 1e6)}`
+      apiSessionId: (self.crypto && crypto.randomUUID) ? crypto.randomUUID() : `sess-${Date.now()}-${Math.floor(Math.random() * 1e6)}`,
+      onnxSession: null,
+      onnxMetaRaw: null,
+      onnxModelSource: '',
+      onnxFeatureMode: 'context_v2'
     };
 
     const els = {
       runMode: document.getElementById('runMode'),
       metaUrl: document.getElementById('metaUrl'),
       metaFile: document.getElementById('metaFile'),
+      onnxModelUrl: document.getElementById('onnxModelUrl'),
+      onnxModelFile: document.getElementById('onnxModelFile'),
+      onnxMetaUrl: document.getElementById('onnxMetaUrl'),
+      onnxMetaFile: document.getElementById('onnxMetaFile'),
       apiBaseUrl: document.getElementById('apiBaseUrl'),
       apiWeights: document.getElementById('apiWeights'),
       apiMeta: document.getElementById('apiMeta'),
@@ -331,6 +359,10 @@
       apiShowTop: document.getElementById('apiShowTop'),
       staticMetaUrlRow: document.getElementById('staticMetaUrlRow'),
       staticMetaFileRow: document.getElementById('staticMetaFileRow'),
+      onnxModelUrlRow: document.getElementById('onnxModelUrlRow'),
+      onnxModelFileRow: document.getElementById('onnxModelFileRow'),
+      onnxMetaUrlRow: document.getElementById('onnxMetaUrlRow'),
+      onnxMetaFileRow: document.getElementById('onnxMetaFileRow'),
       apiBaseRow: document.getElementById('apiBaseRow'),
       apiWeightsRow: document.getElementById('apiWeightsRow'),
       apiMetaRow: document.getElementById('apiMetaRow'),
@@ -369,6 +401,10 @@
       return els.runMode.value === 'api';
     }
 
+    function isOnnxMode() {
+      return els.runMode.value === 'onnx';
+    }
+
     function setHidden(el, hidden) {
       if (!el) return;
       el.classList.toggle('hidden', !!hidden);
@@ -397,23 +433,32 @@
 
     function applyModeUI() {
       const api = isApiMode();
-      setHidden(els.staticMetaUrlRow, api);
-      setHidden(els.staticMetaFileRow, api);
+      const onnx = isOnnxMode();
+      setHidden(els.staticMetaUrlRow, api || onnx);
+      setHidden(els.staticMetaFileRow, api || onnx);
+      setHidden(els.onnxModelUrlRow, !onnx);
+      setHidden(els.onnxModelFileRow, !onnx);
+      setHidden(els.onnxMetaUrlRow, !onnx);
+      setHidden(els.onnxMetaFileRow, !onnx);
       setHidden(els.apiBaseRow, !api);
       setHidden(els.apiWeightsRow, !api);
       setHidden(els.apiMetaRow, !api);
       setHidden(els.apiTuneRow, !api);
       els.creativity.classList.toggle('hidden', api);
       els.topK.classList.toggle('hidden', api);
-      els.loadBtn.textContent = api ? 'Load Full Model' : 'Load Metadata';
+      els.loadBtn.textContent = api ? 'Load Full Model' : (onnx ? 'Load Browser ONNX' : 'Load Metadata');
       els.modeNote.innerHTML = api
-        ? 'Full model mode calls a separate Flask/PyTorch backend API. GitHub Pages still hosts only the interface.'
-        : 'Static browser mode uses the metadata JSON only. PyTorch <code>.pth</code> weights do not run on GitHub Pages.';
+        ? 'Full model API mode calls a separate Flask/PyTorch backend. GitHub Pages hosts only the interface.'
+        : (onnx
+          ? 'Browser ONNX mode runs the exported model weights on the user device with onnxruntime-web and a JS context_v2 encoder.'
+          : 'Static browser mode uses the metadata JSON only. PyTorch <code>.pth</code> weights do not run on GitHub Pages.');
       if (!state.loading) {
         setStatus(
           api
             ? 'Full Model API mode selected. Set API URL, weights/meta paths, then click Load Full Model.'
-            : 'Load a metadata JSON file to start.',
+            : (onnx
+              ? 'Browser ONNX mode selected. Load the ONNX model and full metadata JSON, then chat locally in your browser.'
+              : 'Load a metadata JSON file to start.'),
           'warn'
         );
       }
@@ -444,6 +489,10 @@
       if (!raw || typeof raw !== 'object') throw new Error('Invalid metadata JSON');
       let candidates = [];
       let labelPriors = {};
+      const bucketsByLabel = {};
+      const availableLabels = [];
+      const featureMode = String(raw.feature_mode || raw.source_meta?.feature_mode || '').trim();
+      const modelSize = String(raw.model_size || raw.source_meta?.model_size || '').trim();
 
       if (Array.isArray(raw.candidates)) {
         candidates = raw.candidates
@@ -458,16 +507,24 @@
         labelPriors = raw.label_priors || {};
         for (const [label, rows] of Object.entries(raw.buckets)) {
           if (!Array.isArray(rows)) continue;
+          const labelNum = Number(label);
+          if (Number.isFinite(labelNum)) availableLabels.push(labelNum);
+          const normRows = [];
           for (const row of rows) {
             if (!row || typeof row !== 'object') continue;
             const text = String(row.text || '').trim();
             if (!text) continue;
-            candidates.push({
+            const normRow = {
               label: String(label),
               text,
-              count: Number.isFinite(Number(row.count)) ? Number(row.count) : 1
-            });
+              count: Number.isFinite(Number(row.count)) ? Number(row.count) : 1,
+              vec: Array.isArray(row.vec) ? row.vec : undefined,
+              ctx_vec: Array.isArray(row.ctx_vec) ? row.ctx_vec : undefined
+            };
+            candidates.push(normRow);
+            normRows.push(normRow);
           }
+          bucketsByLabel[String(label)] = normRows;
         }
       } else {
         throw new Error('Metadata JSON missing candidates/buckets');
@@ -477,6 +534,10 @@
         raw,
         candidates,
         labelPriors,
+        bucketsByLabel,
+        availableLabels: availableLabels.length ? Array.from(new Set(availableLabels)).sort((a,b)=>a-b) : null,
+        featureMode,
+        modelSize,
         stats: {
           candidateCount: candidates.length,
           bucketCount: new Set(candidates.map(c => c.label)).size
@@ -623,7 +684,7 @@
         .replace(/\"/g, '&quot;');
     }
 
-    function rankCandidates(query) {
+    function rankCandidates(query, sourceCandidates = null) {
       const q = String(query || '').trim();
       const qTokens = tokenSet(q);
       const qBigrams = bigrams(q);
@@ -636,7 +697,8 @@
       const recentSet = new Set(state.recentAssistant.slice(-3).map(s => String(s).trim()).filter(Boolean));
 
       const scored = [];
-      for (const c of state.candidates) {
+      const candidateSource = Array.isArray(sourceCandidates) ? sourceCandidates : state.candidates;
+      for (const c of candidateSource) {
         const text = c.text;
         const tSet = tokenSet(text);
         if (!tSet.size) continue;
@@ -667,12 +729,13 @@
         const countBonus = Math.min(0.22, Math.log1p(Math.max(1, c.count)) / 30);
         const prior = Number(state.meta?.labelPriors?.[c.label] ?? 0) || 0;
         const priorBonus = Math.min(0.08, prior * 0.08);
+        const bucketBonus = Math.min(0.25, Math.max(0, Number(c.bucket_score || 0)) * 0.25);
         const repeatPenalty = recentSet.has(text) ? 0.45 : 0;
         const templatePenalty = isTemplateArtifact(text) ? (genericShort ? 0.8 : 0.25) : 0;
         const weirdPenalty = genericShort && /(?:\[[^\]]+\]|policy framing|youth populations)/i.test(text) ? 0.5 : 0;
         const convoBoost = genericShort && /\b(help|clarify|what|want|can|tell me)\b/i.test(text) ? 0.12 : 0;
 
-        let score = 0.58 * ctxOverlap + 0.30 * qOverlap + 0.18 * qJacc + 0.22 * bgOverlap + domain + countBonus + priorBonus + convoBoost;
+        let score = 0.58 * ctxOverlap + 0.30 * qOverlap + 0.18 * qJacc + 0.22 * bgOverlap + domain + countBonus + priorBonus + bucketBonus + convoBoost;
         const mode = inferStyleMode(q, els.styleMode.value);
         if (mode === 'concise') score += 0.18 * conciseSignal - 0.05 * creativeSignal;
         else if (mode === 'analyst') score += 0.16 * analyticSignal + 0.05 * domain;
@@ -791,6 +854,175 @@
       });
     }
 
+    async function loadArrayBufferFromUrl(url) {
+      const res = await fetch(url, { cache: 'no-store' });
+      if (!res.ok) throw new Error(`HTTP ${res.status} loading ${url}`);
+      return res.arrayBuffer();
+    }
+
+    function loadArrayBufferFromFile(file) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = () => reject(reader.error || new Error('File read failed'));
+        reader.readAsArrayBuffer(file);
+      });
+    }
+
+    function softmax(values) {
+      const xs = Array.from(values || []);
+      if (!xs.length) return [];
+      let mx = -Infinity;
+      for (const v of xs) if (v > mx) mx = v;
+      const exps = xs.map(v => Math.exp(v - mx));
+      const sum = exps.reduce((a, b) => a + b, 0) || 1;
+      return exps.map(v => v / sum);
+    }
+
+    function onnxAvailableLabels(meta) {
+      if (Array.isArray(meta?.availableLabels) && meta.availableLabels.length) {
+        return meta.availableLabels.map(v => Number(v)).filter(Number.isFinite);
+      }
+      if (meta?.bucketsByLabel && typeof meta.bucketsByLabel === 'object') {
+        return Object.keys(meta.bucketsByLabel).map(v => Number(v)).filter(Number.isFinite).sort((a, b) => a - b);
+      }
+      return Array.from({ length: 10 }, (_, i) => i);
+    }
+
+    function poolCandidatesFromOnnx(logitsVec, meta) {
+      const labels = onnxAvailableLabels(meta);
+      const labelLogits = labels.map(lbl => Number(logitsVec[lbl] ?? 0));
+      const probs = softmax(labelLogits);
+      const pooled = [];
+      for (let i = 0; i < labels.length; i++) {
+        const label = labels[i];
+        const bucketScore = probs[i] ?? 0;
+        const rows = meta?.bucketsByLabel?.[String(label)] || [];
+        for (const row of rows) {
+          pooled.push({
+            label: String(label),
+            text: String(row.text || ''),
+            count: Number.isFinite(Number(row.count)) ? Number(row.count) : 1,
+            bucket_score: bucketScore
+          });
+        }
+      }
+      const dedup = new Map();
+      for (const row of pooled) {
+        const text = String(row.text || '').trim();
+        if (!text) continue;
+        const prev = dedup.get(text);
+        if (!prev) {
+          dedup.set(text, { ...row, text });
+          continue;
+        }
+        prev.count = (Number(prev.count) || 1) + (Number(row.count) || 1);
+        prev.bucket_score = Math.max(Number(prev.bucket_score) || 0, Number(row.bucket_score) || 0);
+      }
+      return Array.from(dedup.values());
+    }
+
+    async function loadFromBrowserOnnx() {
+      if (typeof ort === 'undefined' || !ort?.InferenceSession) {
+        throw new Error('onnxruntime-web failed to load.');
+      }
+      if (!self.ChatFeatureCtxV2 || typeof ChatFeatureCtxV2.textToModelInput !== 'function') {
+        throw new Error('ChatFeatureCtxV2 encoder not loaded.');
+      }
+
+      setStatus('Loading ONNX model + full metadata in browser...', 'warn');
+
+      const onnxFile = els.onnxModelFile.files && els.onnxModelFile.files[0];
+      const metaFile = els.onnxMetaFile.files && els.onnxMetaFile.files[0];
+      const onnxSource = onnxFile ? onnxFile.name : String(els.onnxModelUrl.value || '').trim();
+      const metaSource = metaFile ? metaFile.name : String(els.onnxMetaUrl.value || '').trim();
+      if (!onnxSource) throw new Error('Provide an ONNX model file or URL.');
+      if (!metaSource) throw new Error('Provide a full metadata JSON file or URL.');
+
+      const [onnxBytes, rawMeta] = await Promise.all([
+        onnxFile ? loadArrayBufferFromFile(onnxFile) : loadArrayBufferFromUrl(onnxSource),
+        metaFile ? loadMetaFromFile(metaFile) : loadMetaFromUrl(metaSource),
+      ]);
+
+      const meta = normalizeMeta(rawMeta);
+      if (!meta.bucketsByLabel || !Object.keys(meta.bucketsByLabel).length) {
+        throw new Error('Browser ONNX mode requires full metadata JSON with buckets.');
+      }
+
+      if (ort.env?.wasm) {
+        ort.env.wasm.simd = true;
+      }
+      const session = await ort.InferenceSession.create(onnxBytes, { executionProviders: ['wasm'] });
+      const featureMode = String(meta.featureMode || 'context_v2').toLowerCase();
+
+      state.onnxSession = session;
+      state.onnxMetaRaw = rawMeta;
+      state.onnxModelSource = onnxSource;
+      state.onnxFeatureMode = featureMode;
+      state.meta = meta;
+      state.candidates = meta.candidates;
+
+      setStatus(`Browser ONNX loaded (${meta.modelSize || 'model'}, feature=${featureMode || 'context_v2'}).`, 'ok');
+      addMessage('sys', `Browser ONNX ready. Model: ${onnxSource}. Metadata buckets: ${meta.stats.bucketCount}.`);
+    }
+
+    async function sendViaBrowserOnnx(user) {
+      if (!state.onnxSession) {
+        throw new Error('Load Browser ONNX mode first.');
+      }
+      if (!state.meta?.bucketsByLabel) {
+        throw new Error('Full metadata with buckets is not loaded.');
+      }
+
+      const smallTalk = detectSmallTalk(user);
+      if (smallTalk) {
+        renderTopCandidates([]);
+        addMessage('bot', smallTalk);
+        state.history.push({ user, bot: smallTalk });
+        state.recentAssistant.push(smallTalk);
+        if (state.history.length > 20) state.history = state.history.slice(-20);
+        if (state.recentAssistant.length > 8) state.recentAssistant = state.recentAssistant.slice(-8);
+        return;
+      }
+
+      const t0 = performance.now();
+      const tFeat0 = performance.now();
+      let featureMode = String(state.onnxFeatureMode || 'context_v2').toLowerCase();
+      if (featureMode !== 'context_v2' && featureMode !== 'legacy') {
+        // Current generated encoder is exact for legacy + context_v2 (supermix v27 chat uses context_v2).
+        featureMode = 'context_v2';
+      }
+      const ctx = ChatFeatureCtxV2.buildContext(state.history, user, 2);
+      const featVec = ChatFeatureCtxV2.textToModelInput(ctx, featureMode);
+      const featMs = performance.now() - tFeat0;
+
+      const tInf0 = performance.now();
+      const inputName = (state.onnxSession.inputNames && state.onnxSession.inputNames[0]) || 'x';
+      const tensor = new ort.Tensor('float32', featVec, [1, 1, ChatFeatureCtxV2.FEAT_DIM]);
+      const outputs = await state.onnxSession.run({ [inputName]: tensor });
+      const outputName = (state.onnxSession.outputNames && state.onnxSession.outputNames[0]) || Object.keys(outputs)[0];
+      const out = outputs[outputName];
+      if (!out || !out.data) throw new Error('ONNX model returned no logits.');
+      const logits = Array.from(out.data).slice(-ChatFeatureCtxV2.MODEL_CLASSES);
+      const infMs = performance.now() - tInf0;
+
+      const tRank0 = performance.now();
+      const pooled = poolCandidatesFromOnnx(logits, state.meta);
+      const ranked = rankCandidates(user, pooled);
+      const bot = chooseResponse(user, ranked);
+      renderTopCandidates(ranked.slice(0, 8));
+      const rankMs = performance.now() - tRank0;
+      const totalMs = performance.now() - t0;
+
+      addMessage('bot', bot);
+      addMessage('sys', `Timing: feat=${featMs.toFixed(1)} ms | infer=${infMs.toFixed(1)} ms | rank=${rankMs.toFixed(1)} ms | total=${totalMs.toFixed(1)} ms`);
+
+      state.history.push({ user, bot });
+      state.recentAssistant.push(bot);
+      if (state.history.length > 20) state.history = state.history.slice(-20);
+      if (state.recentAssistant.length > 8) state.recentAssistant = state.recentAssistant.slice(-8);
+    }
+
     async function doLoad() {
       if (state.loading) return;
       state.loading = true;
@@ -801,6 +1033,11 @@
           await apiRefreshStatus();
           if (!state.history.length) {
             addMessage('bot', 'Full model API mode is ready. Ask a question.');
+          }
+        } else if (isOnnxMode()) {
+          await loadFromBrowserOnnx();
+          if (!state.history.length) {
+            addMessage('bot', 'Browser ONNX mode is ready. The full model weights are running on your device.');
           }
         } else {
           setStatus('Loading metadata...', 'warn');
@@ -843,6 +1080,16 @@
         }
         return;
       }
+      if (isOnnxMode()) {
+        try {
+          await sendViaBrowserOnnx(user);
+        } catch (err) {
+          console.error(err);
+          addMessage('bot', `Browser ONNX error: ${err.message || err}`);
+          setStatus(`Browser ONNX error: ${err.message || err}`, 'err');
+        }
+        return;
+      }
 
       if (!state.candidates.length) {
         const msg = 'Load a metadata JSON first.';
@@ -882,6 +1129,9 @@
           console.error(err);
           addMessage('bot', `Clear API error: ${err.message || err}`);
         }
+      }
+      if (isOnnxMode()) {
+        addMessage('sys', 'Browser ONNX session state cleared (local only).');
       }
     }
 
