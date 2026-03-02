@@ -1425,6 +1425,8 @@
                         <div class="tinyRow"><button id="btnCopy">Copy</button><button
                                 id="btnPaste">Paste</button><button id="btnApply" class="primary">Apply Text</button>
                         </div>
+                        <div class="tinyRow" style="margin-top:4px;"><button id="btnManifestCopy">Copy Run Manifest</button><button
+                                id="btnManifestExport">Export Manifest</button></div>
                     </div>
                 </div>
 
@@ -1731,6 +1733,20 @@
                 if (!Number.isFinite(n)) return 1;
                 return (Math.floor(n) >>> 0) || 1;
             }
+            function simpleHash(str) {
+                let h = 2166136261 >>> 0;
+                const txt = String(str || "");
+                for (let i = 0; i < txt.length; i++) {
+                    h ^= txt.charCodeAt(i);
+                    h = Math.imul(h, 16777619);
+                }
+                return (h >>> 0).toString(16).padStart(8, "0");
+            }
+
+            function makeRunId() {
+                const stamp = new Date().toISOString().replace(/[-:.TZ]/g, "").slice(0, 14);
+                return `run_${stamp}_${(Math.floor(Math.random() * 0xFFFF) >>> 0).toString(16).padStart(4, "0")}`;
+            }
 
             function downloadBlob(blob, filename) {
                 const a = document.createElement("a");
@@ -1824,6 +1840,19 @@
                 return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
             }
 
+            function createSignedNoiseSampler(mode, seed) {
+                const effectiveMode = (mode === "system") ? "system" : "seeded";
+                let localState = normalizeSeed(seed);
+                return () => {
+                    if (effectiveMode === "system") return Math.random() * 2 - 1;
+                    localState = (localState + 0x6D2B79F5) >>> 0;
+                    let t = localState;
+                    t = Math.imul(t ^ (t >>> 15), t | 1);
+                    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+                    return (((t ^ (t >>> 14)) >>> 0) / 4294967296) * 2 - 1;
+                };
+            }
+
             const signedNoise = () => ((rngMode === "system" ? Math.random() : seededRandom()) * 2 - 1);
 
             // DSL
@@ -1856,6 +1885,8 @@
 
             // Time
             let t_ms = 0;
+            let runId = makeRunId();
+            let runStartedAt = new Date().toISOString();
 
             // Arrays (typed)
             let V, m, h, n, w;
@@ -2605,6 +2636,7 @@
                 }
 
                 t_ms = 0;
+                beginNewRun();
                 noiseState = 0;
                 if (reseedOnReset) setRngSeed(rngSeed);
                 prevVprobe = V[probeIdx];
@@ -3125,6 +3157,7 @@
                     const cable = snap.cable;
                     const stimCfg = snap.stim;
                     const protoSnap = snap.proto;
+                    const renderNoise = createSignedNoiseSampler(stimCfg.rngMode, stimCfg.rngSeed);
 
                     // protocol
                     const pe = new ProtocolEngine();
@@ -3241,7 +3274,7 @@
                                         I0 += stimCfg.sineAmp * Math.sin(2 * Math.PI * stimCfg.sineFreqHz * (tms * 1e-3) + ph);
                                     }
                                     if (stimCfg.noiseAmp !== 0) {
-                                        const white = signedNoise() * stimCfg.noiseAmp;
+                                        const white = renderNoise() * stimCfg.noiseAmp;
                                         noiseSt = onePoleLP(noiseSt, white, stimCfg.noiseLPHz, dtMs);
                                         I0 += noiseSt;
                                     }
@@ -3780,6 +3813,36 @@
                 }
             }
 
+            function beginNewRun() {
+                runId = makeRunId();
+                runStartedAt = new Date().toISOString();
+            }
+
+            function exportRunManifest() {
+                const protocolText = $("txtDSL")?.value || "";
+                return {
+                    manifestVersion: 1,
+                    runId,
+                    runStartedAt,
+                    exportedAt: new Date().toISOString(),
+                    engine: { integrator, dt, stepsPerFrame, windowMs },
+                    cable: { N, gAx, dx_um, bc },
+                    stimulus: { stimIdx, stimSigma, probeIdx, useDSL, loopProto },
+                    rng: { rngSeed, rngMode, reseedOnReset },
+                    state: {
+                        t_ms,
+                        hash: simpleHash(JSON.stringify({ V: Array.from(V), m: Array.from(m), h: Array.from(h), n: Array.from(n), w: Array.from(w) }))
+                    },
+                    protocol: {
+                        enabled: useDSL,
+                        compiled: proto.compiled,
+                        template: dslTemplateKey,
+                        hash: simpleHash(protocolText),
+                        lines: protocolText.split(/\n/).length
+                    }
+                };
+            }
+
             // -----------------------------
             // Export / Import preset JSON
             // -----------------------------
@@ -3825,6 +3888,8 @@
                     innovation: innovationState,
                     state: {
                         t_ms,
+                        runId,
+                        runStartedAt,
                         V: Array.from(V),
                         m: Array.from(m),
                         h: Array.from(h),
@@ -3930,6 +3995,8 @@
                 // load state vectors if present
                 if (st.state?.V && st.state.V.length === N) {
                     t_ms = st.state.t_ms ?? 0;
+                    runId = st.state.runId || runId;
+                    runStartedAt = st.state.runStartedAt || runStartedAt;
                     const hasW = Array.isArray(st.state.w) && st.state.w.length === N;
                     for (let i = 0; i < N; i++) {
                         V[i] = st.state.V[i];
@@ -4348,6 +4415,24 @@ block 400ms off
                 try { applyState(JSON.parse($("txtJSON").value)); }
                 catch (e) { alert("Apply failed: " + (e?.message || String(e))); }
             });
+            if ($("btnManifestCopy")) {
+                $("btnManifestCopy").addEventListener("click", async () => {
+                    const txt = JSON.stringify(exportRunManifest(), null, 2);
+                    try { await navigator.clipboard.writeText(txt); }
+                    catch (e) {
+                        $("txtJSON").value = txt;
+                        $("txtJSON").select();
+                        document.execCommand("copy");
+                    }
+                });
+            }
+            if ($("btnManifestExport")) {
+                $("btnManifestExport").addEventListener("click", () => {
+                    const txt = JSON.stringify(exportRunManifest(), null, 2);
+                    const blob = new Blob([txt], { type: "application/json" });
+                    downloadBlob(blob, `cablelab_manifest_${runId}.json`);
+                });
+            }
             const btnStore = $("btnStore");
             if (btnStore) {
                 btnStore.addEventListener("click", () => {
