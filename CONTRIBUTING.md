@@ -1,175 +1,141 @@
-All contributions are welcome and can be added to a log a public contribution acknowledgement page of wanted
-# Contribution Rules (GitHub)
+# Contributing to Supermix_27
 
-Thanks for taking the time to contribute. These rules keep changes reviewable, secure, and easy to maintain.
-
----
-
-## 1) Ground Rules
-
-* Be respectful and professional in issues, discussions, and PRs.
-* Keep contributions relevant to the project scope.
-* Don’t include secrets (API keys, tokens, passwords) anywhere—ever.
-* Don’t upload copyrighted assets unless you own the rights or the license allows it.
+Thank you for your interest in contributing to Supermix_27! This guide explains how to get started, the code conventions we follow, and how to submit your changes.
 
 ---
 
-## 2) Before You Start
+## Getting Started
 
-1. **Search first**: check existing issues/PRs for duplicates.
-2. **Open an issue** (recommended) for non-trivial changes:
+### Prerequisites
 
-   * What you’re changing and why
-   * Expected behavior / acceptance criteria
-   * Screenshots/logs if applicable
-3. For security issues, **do not** open a public issue—use the project’s security contact or advisories.
+- **Python 3.10+**
+- **PyTorch 2.0+** (with CUDA support recommended but not required)
+- Install dependencies:
+  ```bash
+  pip install -r source/requirements_train_build.txt    # For training & building
+  pip install -r source/requirements_runtime_interface.txt  # For inference only
+  ```
 
----
+### Repository Structure
 
-## 3) How to Contribute
-
-### Fork & Branch
-
-* Fork the repository.
-* Create a branch from `main`:
-
-  * `feat/<short-topic>`
-  * `fix/<short-topic>`
-  * `docs/<short-topic>`
-  * `chore/<short-topic>`
-
-Example:
-
-```bash
-git checkout -b feat/add-export-button
 ```
-
-### Commit Style
-
-* Prefer **small, focused commits**.
-* Use conventional-ish commit messages:
-
-  * `feat: ...`
-  * `fix: ...`
-  * `docs: ...`
-  * `refactor: ...`
-  * `test: ...`
-  * `chore: ...`
-
-Example:
-
-```bash
-git commit -m "fix: prevent crash when config is missing"
+Supermix_27/
+├── source/                     # Training, model definitions, dataset builders
+│   ├── run.py                  # ChampionNet backbone definition
+│   ├── model_variants.py       # All classifier head variants
+│   ├── finetune_chat.py        # Main training script
+│   ├── chat_pipeline.py        # Data loading & feature extraction
+│   ├── device_utils.py         # Cross-platform device selection
+│   ├── benchmark.py            # Evaluation benchmarks
+│   └── build_*.py              # Dataset construction scripts
+├── runtime_python/             # Self-contained inference runtime
+│   ├── chat_web_app.py         # Production web server
+│   └── *.pth                   # Production checkpoint
+├── web_static/                 # GitHub Pages static UI
+├── MODEL_CARD_V28.md           # Model card with benchmarks
+├── ARCHITECTURE.md             # Technical architecture deep-dive
+└── README.md                   # Project overview & quick start
 ```
 
 ---
 
-## 4) Coding Standards
+## How to Contribute
 
-* Keep code readable: clear naming, minimal nesting, useful comments where needed.
-* Avoid large rewrites in a single PR unless agreed in advance.
-* Prefer deterministic output (avoid randomness unless it’s part of the feature).
-* Follow existing project patterns and folder structure.
+### Adding a New MoE Variant
 
-### Formatting & Linting
+1. **Define the classifier head** in `source/model_variants.py`:
+   - Subclass `nn.Module`.
+   - Maintain backward-compatible weight keys (`weight`, `bias`) from the base linear layer.
+   - Initialize new learnable scales to **0** (for stable warm-start).
+   - Implement `reset_parameters()` with appropriate initialization.
 
-* Run formatter/linter before pushing.
-* Don’t “format the whole repo” unless the PR is specifically a formatting PR.
+2. **Create a backbone wrapper** (e.g., `ChampionNetMyVariant`):
+   - Use `ChampionNet()` to get the base layers.
+   - Replace `layers[10]` with your new head.
+   - Keep `layers[11]` (final normalization) intact.
+
+3. **Register in `build_model()`**: Add your variant name to the dispatch logic.
+
+4. **Register in `finetune_chat.py`**: Add your variant to the `--model_size` choices.
+
+5. **Update documentation**: Add your variant to `MODEL_CARD_V28.md` and `ARCHITECTURE.md`.
+
+### Adding a New Dataset
+
+1. Create `source/build_<dataset_name>_dataset.py` following existing patterns.
+2. Output format: JSONL with `{"prompt": "...", "response": "..."}` entries.
+3. Add the dataset path to a manifest JSON for multi-shard training.
+
+### Bug Fixes & Improvements
+
+1. Fork the repository.
+2. Create a feature branch: `git checkout -b fix/description`.
+3. Make your changes with clear commit messages.
+4. Ensure all existing functionality still works.
+5. Submit a pull request with a description of what changed and why.
 
 ---
 
-## 5) Tests & Verification
+## Code Style
 
-Before opening a PR:
+### Python
 
-* Add or update tests when behavior changes.
-* Run existing tests locally and ensure they pass.
-* Include steps for reviewers to reproduce/verify your change.
+- **Docstrings**: Use Google-style docstrings for all public classes and functions.
+- **Type hints**: Use type annotations for function signatures.
+- **Naming**: `snake_case` for functions/variables, `PascalCase` for classes.
+- **Line length**: 120 characters max.
+- **Imports**: Group as stdlib → third-party → local, separated by blank lines.
 
-If the repo has scripts, run:
+### Markdown
 
-```bash
-npm test
-npm run lint
-# or
-pytest
+- Use ATX-style headers (`#`, `##`, `###`).
+- Use tables for structured data.
+- Use fenced code blocks with language identifiers.
+- Wrap lines at 120 characters where practical.
+
+---
+
+## Commit Message Convention
+
+```
+<type>(<scope>): <short description>
+
+<body - what and why, not how>
 ```
 
-(Use whatever the project’s tooling is—match the repo.)
+**Types**: `feat`, `fix`, `docs`, `refactor`, `perf`, `test`, `chore`
 
----
-
-## 6) Documentation Requirements
-
-If you change behavior, add features, or modify configuration:
-
-* Update `README.md` / docs accordingly.
-* Add usage examples when relevant.
-* If you change flags/options, document defaults and edge cases.
-
----
-
-## 7) Pull Request Rules
-
-### PR Quality Checklist
-
-Your PR should include:
-
-* A clear title and description of **what** and **why**
-* Linked issue(s) if applicable (`Fixes #123`)
-* Screenshots/GIFs for UI changes
-* Notes on breaking changes or migrations
-* Performance impact notes (if relevant)
-
-### Keep PRs Reviewable
-
-* Prefer PRs under ~300–500 lines of meaningful diff (when possible).
-* If bigger: split into logical PRs (refactor first, feature second).
-
----
-
-## 8) Review & Merge Policy
-
-* Maintainers may request changes for readability, correctness, security, or maintainability.
-* Address review comments with follow-up commits (don’t rewrite history unless asked).
-* A PR may be closed if it’s inactive, out-of-scope, or can’t be merged cleanly.
-
----
-
-## 9) Security & Safety
-
-* Don’t introduce:
-
-  * Hardcoded secrets
-  * Insecure defaults (e.g., open CORS/wildcard origins without justification)
-  * Unsafe file operations or command execution without validation/sandboxing
-* If your change touches auth, file IO, networking, or permissions: call it out in the PR.
-
----
-
-## 10) Licensing & Attribution
-
-* Your contribution must be compatible with the repository’s license.
-* If adding third-party code/assets:
-
-  * Provide license information
-  * Add attribution if required
-  * Avoid copy/paste from restricted sources
-
----
-
-## 11) Contributor Checklist (Copy/Paste)
-
-```md
-- [ ] I searched existing issues/PRs to avoid duplicates
-- [ ] I used a descriptive branch name
-- [ ] I made small, focused commits with clear messages
-- [ ] I ran tests/lint/format locally (or explained why not)
-- [ ] I updated docs/README if behavior or usage changed
-- [ ] I added screenshots/logs where helpful
-- [ ] I did not include secrets or sensitive data
+**Examples**:
+```
+feat(model): add SmarterExpertClassifierHead with Sigma Gating
+fix(training): correct preference loss warmup calculation
+docs(model_card): fill in v28 benchmark results
 ```
 
 ---
 
-If you want, paste your repo’s tech stack (Node/Python/Maya/Unity/etc.) and I’ll tailor this to exact commands, tooling, and folder conventions.
+## Testing
+
+Currently the project does not have a formal test suite. When contributing:
+
+1. **Smoke test** your changes by running a short training session:
+   ```bash
+   python source/finetune_chat.py --data source/conversation_data.smoke_manifest.json \
+       --data_manifest source/conversation_data.smoke_manifest.json \
+       --model_size <your_variant> --epochs 1 --batch_size 32
+   ```
+
+2. **Verify weight loading** from existing checkpoints to ensure backward compatibility.
+
+3. **Run benchmarks** if applicable:
+   ```bash
+   python source/benchmark.py
+   ```
+
+---
+
+## Contact
+
+- **Maintainer**: kai9987kai
+- **Email**: kai9987kai@gmail.com
+- **GitHub**: [github.com/kai9987kai](https://github.com/kai9987kai)
