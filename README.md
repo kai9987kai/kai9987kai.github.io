@@ -54,3 +54,7 @@ There are also many standalone `.html` pages at the repo root.
 ### Option A — Python (fastest)
 ```bash
 python -m http.server 8080
+
+
+<img width="3114" height="2847" alt="benchmark_all_models_common_plus_graph_20260410_runtime" src="https://github.com/user-attachments/assets/ff444541-e5f0-4485-a8d2-ea4b19b78268" />
+
