@@ -54,6 +54,8 @@ There are also many standalone `.html` pages at the repo root.
 ### Option A — Python (fastest)
 ```bash
 python -m http.server 8080
+```
 
 
 
+<img width="1097" height="666" alt="image" src="https://github.com/user-attachments/assets/89bf6cca-53db-48db-a7de-1c75e6efcc0e" />
