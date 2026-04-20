@@ -1,0 +1,736 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AETERNA HYBRID-MAG · G3 APEX</title>
+  <script type="importmap">
+  { "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+  }}
+  </script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;900&family=JetBrains+Mono:wght@400;700&display=swap');
+    :root {
+      --bg:#020305; --panel:rgba(6,14,30,0.92); --border:rgba(0,229,255,0.22);
+      --cyan:#00e5ff; --cyan2:#8befff; --blue:#3388ff; --green:#33ffaa;
+      --red:#ff4d4d; --amber:#ffb347; --text:#e0f0ff; --muted:#5a7a94;
+    }
+    *{box-sizing:border-box;margin:0;padding:0}
+    html,body{width:100%;height:100%;overflow:hidden;background:var(--bg);font-family:'Inter',system-ui,sans-serif;color:var(--text)}
+    canvas{display:block}
+
+    /* ─── LAYOUT ─── */
+    #ui{position:fixed;inset:0;pointer-events:none;z-index:10;display:grid;
+      grid-template-columns:300px 1fr 340px;grid-template-rows:auto 1fr auto;
+      padding:24px;gap:16px}
+
+    .glass{pointer-events:auto;background:var(--panel);border:1px solid var(--border);
+      border-radius:14px;backdrop-filter:blur(28px);
+      box-shadow:0 8px 40px rgba(0,0,0,0.5),inset 0 1px 0 rgba(255,255,255,0.04);
+      padding:20px;transition:border-color .3s,box-shadow .3s}
+    .glass:hover{border-color:rgba(0,229,255,0.5);box-shadow:0 0 24px rgba(0,229,255,0.08)}
+
+    /* SIDEBAR */
+    #sidebar{grid-row:1/4;grid-column:1;display:flex;flex-direction:column;gap:16px;overflow-y:auto}
+    #brand h1{font-size:20px;font-weight:900;letter-spacing:3px;
+      background:linear-gradient(135deg,#fff 0%,var(--cyan) 60%,var(--blue) 100%);
+      -webkit-background-clip:text;-webkit-text-fill-color:transparent}
+    #brand p{font-size:9px;color:var(--muted);letter-spacing:2px;margin-top:6px}
+
+    .section-title{font-size:9px;font-weight:900;letter-spacing:2.5px;color:var(--cyan2);
+      text-transform:uppercase;margin-bottom:14px;
+      border-bottom:1px solid rgba(0,229,255,0.12);padding-bottom:8px}
+
+    /* Sliders */
+    .ctrl{margin-bottom:18px}
+    .ctrl-head{display:flex;justify-content:space-between;font-size:10px;margin-bottom:8px}
+    .ctrl-head .lbl{color:var(--muted);font-weight:600;letter-spacing:1px;text-transform:uppercase}
+    .ctrl-head .val{color:var(--cyan);font-family:'JetBrains Mono',monospace;font-weight:700}
+    input[type=range]{width:100%;-webkit-appearance:none;height:5px;border-radius:3px;
+      background:linear-gradient(90deg,rgba(0,229,255,0.15),rgba(0,229,255,0.3));outline:none}
+    input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:16px;height:16px;
+      border-radius:50%;background:var(--cyan);cursor:pointer;
+      box-shadow:0 0 12px rgba(0,229,255,0.6),0 0 4px rgba(0,229,255,0.9)}
+
+    /* Mode Buttons */
+    .modes{display:flex;gap:6px}
+    .mbtn{flex:1;padding:10px 0;border-radius:8px;border:1px solid rgba(255,255,255,0.08);
+      background:rgba(255,255,255,0.03);color:var(--muted);font-size:9px;font-weight:900;
+      letter-spacing:1px;cursor:pointer;transition:all .2s;text-align:center}
+    .mbtn.on{background:rgba(0,229,255,0.12);color:var(--cyan);border-color:rgba(0,229,255,0.4);
+      box-shadow:0 0 12px rgba(0,229,255,0.1)}
+
+    /* Toggles */
+    .trow{display:flex;justify-content:space-between;align-items:center;margin:10px 0}
+    .trow span{font-size:11px;color:var(--text)}
+    .tsw{width:38px;height:20px;background:rgba(255,255,255,0.08);border-radius:20px;
+      position:relative;cursor:pointer;transition:.3s}
+    .tsw::after{content:'';position:absolute;width:16px;height:16px;border-radius:50%;
+      background:#555;top:2px;left:2px;transition:.3s}
+    .tsw.on{background:rgba(0,229,255,0.35)}
+    .tsw.on::after{background:var(--cyan);transform:translateX(18px);box-shadow:0 0 8px var(--cyan)}
+
+    /* RIGHT COLUMN */
+    #rpanel-top{grid-column:3;grid-row:1}
+    #rpanel-mid{grid-column:3;grid-row:2;overflow:hidden}
+    #rpanel-bot{grid-column:3;grid-row:3}
+    .ph{font-size:10px;letter-spacing:2.5px;font-weight:900;color:var(--cyan2);
+      border-bottom:1px solid rgba(0,229,255,0.1);padding-bottom:10px;margin-bottom:14px}
+    .sr{display:flex;justify-content:space-between;margin:9px 0;
+      font-family:'JetBrains Mono',monospace;font-size:12px}
+    .sl{color:var(--muted);font-size:9px;text-transform:uppercase;letter-spacing:1px}
+    .sv{font-weight:700}
+    .sv.g{color:var(--green)} .sv.r{color:var(--red)} .sv.a{color:var(--amber)}
+
+    /* Gauge */
+    #gauge-wrap{width:100%;display:flex;justify-content:center;margin:10px 0}
+    #gauge-wrap canvas{width:120px;height:70px}
+
+    /* Graphs */
+    .gw{height:55px;margin-top:10px;background:rgba(0,0,0,0.5);border-radius:6px;
+      border:1px solid rgba(0,229,255,0.08);overflow:hidden}
+    .gw canvas{width:100%;height:100%}
+
+    /* FPS */
+    #fps{position:fixed;top:24px;left:50%;transform:translateX(-50%);font-size:10px;
+      color:var(--muted);letter-spacing:2px;z-index:20;pointer-events:none;
+      font-family:'JetBrains Mono',monospace}
+
+    /* Alerts */
+    #alert-bar{position:fixed;top:60px;left:50%;transform:translateX(-50%);
+      padding:8px 24px;border-radius:8px;font-size:11px;font-weight:700;letter-spacing:1px;
+      z-index:20;pointer-events:none;opacity:0;transition:opacity .5s;
+      background:rgba(255,77,77,0.15);border:1px solid rgba(255,77,77,0.4);color:var(--red)}
+    #alert-bar.show{opacity:1}
+
+    /* Keyboard hint */
+    #keys{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);font-size:9px;
+      color:var(--muted);letter-spacing:1px;z-index:20;pointer-events:none;
+      font-family:'JetBrains Mono',monospace;text-align:center;opacity:.5}
+    kbd{background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.15);
+      padding:2px 6px;border-radius:3px;font-size:9px;margin:0 2px}
+
+    /* Hover tooltip */
+    #tooltip{position:fixed;padding:6px 14px;border-radius:6px;font-size:10px;
+      font-weight:700;letter-spacing:1px;z-index:25;pointer-events:none;
+      background:rgba(0,229,255,0.12);border:1px solid var(--cyan);color:var(--cyan);
+      display:none;font-family:'JetBrains Mono',monospace}
+
+    /* Vignette */
+    #vig{position:fixed;inset:0;pointer-events:none;z-index:4;
+      background:radial-gradient(ellipse at 50% 50%,transparent 50%,rgba(0,0,0,0.55) 100%)}
+  </style>
+</head>
+<body>
+<div id="vig"></div>
+<div id="fps">-- FPS</div>
+<div id="alert-bar">⚠ THERMAL OVERLOAD — REDUCE THROTTLE</div>
+<div id="tooltip"></div>
+<div id="keys"><kbd>SPACE</kbd> Toggle Power &nbsp; <kbd>↑</kbd><kbd>↓</kbd> Throttle &nbsp; <kbd>E</kbd> Explode &nbsp; <kbd>X</kbd> X-Ray &nbsp; <kbd>C</kbd> Cinema</div>
+
+<div id="ui">
+  <!-- SIDEBAR -->
+  <div id="sidebar" class="glass">
+    <div id="brand"><h1>AETERNA G3</h1><p>APEX PROPULSION COCKPIT · V3.0</p></div>
+
+    <div>
+      <div class="section-title">Drive Configuration</div>
+      <div class="modes" id="mode-btns">
+        <div class="mbtn" data-m="E-Drive">E-DRIVE</div>
+        <div class="mbtn on" data-m="Hybrid">HYBRID</div>
+        <div class="mbtn" data-m="Thermal">THERMAL</div>
+      </div>
+    </div>
+
+    <div>
+      <div class="section-title">Power Controls</div>
+      <div class="ctrl">
+        <div class="ctrl-head"><span class="lbl">Core Throttle</span><span class="val" id="v-thr">45%</span></div>
+        <input type="range" min="0" max="100" value="45" id="sl-thr">
+      </div>
+      <div class="ctrl">
+        <div class="ctrl-head"><span class="lbl">Load Resistance</span><span class="val" id="v-load">25%</span></div>
+        <input type="range" min="0" max="100" value="25" id="sl-load">
+      </div>
+      <div class="ctrl">
+        <div class="ctrl-head"><span class="lbl">Exploded View</span><span class="val" id="v-expl">0%</span></div>
+        <input type="range" min="0" max="100" value="0" id="sl-expl">
+      </div>
+      <div class="ctrl">
+        <div class="ctrl-head"><span class="lbl">Ambient Temp</span><span class="val" id="v-amb">24°C</span></div>
+        <input type="range" min="0" max="50" value="24" id="sl-amb">
+      </div>
+    </div>
+
+    <div style="margin-top:auto">
+      <div class="section-title">Diagnostics</div>
+      <div class="trow"><span>System Power</span><div class="tsw on" id="t-active"></div></div>
+      <div class="trow"><span>Magnetic Flux</span><div class="tsw on" id="t-flux"></div></div>
+      <div class="trow"><span>X-Ray Mode</span><div class="tsw" id="t-xray"></div></div>
+      <div class="trow"><span>Epic Camera</span><div class="tsw" id="t-epic"></div></div>
+      <div class="trow"><span>Spin Direction</span>
+        <div class="modes" style="width:100px">
+          <div class="mbtn on" data-d="1" style="padding:6px 0">CW</div>
+          <div class="mbtn" data-d="-1" style="padding:6px 0">CCW</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- RIGHT TOP -->
+  <div id="rpanel-top" class="glass">
+    <div class="ph">SYSTEM STATE</div>
+    <div class="sr"><span class="sl">Core Status</span><span class="sv g" id="d-status">NOMINAL</span></div>
+    <div class="sr"><span class="sl">Modality</span><span class="sv" id="d-mode">HYBRID</span></div>
+    <div class="sr"><span class="sl">Efficiency</span><span class="sv g" id="d-eff">98.2%</span></div>
+    <div id="gauge-wrap"><canvas id="gauge-cv"></canvas></div>
+  </div>
+
+  <!-- RIGHT MID -->
+  <div id="rpanel-mid" class="glass">
+    <div class="ph">KINETIC TELEMETRY</div>
+    <div class="sr"><span class="sl">Input RPM</span><span class="sv" id="d-rpmi">0</span></div>
+    <div class="sr"><span class="sl">Output RPM</span><span class="sv" id="d-rpmo">0</span></div>
+    <div class="sr"><span class="sl">Torque</span><span class="sv" id="d-torq">0.0 Nm</span></div>
+    <div class="sr"><span class="sl">Power Output</span><span class="sv g" id="d-power">0.0 kW</span></div>
+    <div class="sr"><span class="sl">Horsepower</span><span class="sv" id="d-hp">0.0 hp</span></div>
+    <div class="sr"><span class="sl">Gear Ratio</span><span class="sv" id="d-ratio">4:1 INV</span></div>
+    <div class="gw"><canvas id="cv-spec"></canvas></div>
+    <div style="margin-top:12px" class="ph">ACOUSTIC FFT</div>
+    <div class="gw"><canvas id="cv-fft"></canvas></div>
+  </div>
+
+  <!-- RIGHT BOT -->
+  <div id="rpanel-bot" class="glass">
+    <div class="ph">THERMAL ANALYSIS</div>
+    <div class="sr"><span class="sl">Core Temp</span><span class="sv" id="d-temp">24°C</span></div>
+    <div class="sr"><span class="sl">Stress Index</span><span class="sv g" id="d-stress">NOMINAL</span></div>
+    <div class="sr"><span class="sl">Coolant Flow</span><span class="sv g" id="d-cool">ACTIVE</span></div>
+    <div class="sr"><span class="sl">Regen Braking</span><span class="sv" id="d-regen">STANDBY</span></div>
+    <div class="gw"><canvas id="cv-therm"></canvas></div>
+  </div>
+</div>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { RectAreaLightUniformsLib } from 'three/addons/lights/RectAreaLightUniformsLib.js';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+RectAreaLightUniformsLib.init();
+
+/* ═══════════════ SHADERS ═══════════════ */
+const vFlux=`varying vec3 vC;varying float vO;uniform float time;uniform float load;attribute float size;
+void main(){vC=color;float p=.7+.3*sin(time*4.+position.x*.4);
+gl_PointSize=size*(3.+p*1.5+load*.6);vO=.35+.65*p;
+gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}`;
+const fFlux=`varying vec3 vC;varying float vO;
+void main(){float d=distance(gl_PointCoord,vec2(.5));if(d>.5)discard;
+gl_FragColor=vec4(vC,pow(1.-d*2.,2.)*vO);}`;
+
+/* ═══════════════ GRAPHS ═══════════════ */
+class LineGraph{
+  constructor(id,c,mx){this.cv=document.getElementById(id);this.x=this.cv.getContext('2d');
+    this.c=c;this.mx=mx;this.d=Array(80).fill(0);this._r()}
+  _r(){const r=this.cv.parentElement.getBoundingClientRect();
+    this.cv.width=r.width*2;this.cv.height=r.height*2;this.x.scale(2,2);this.w=r.width;this.h=r.height}
+  push(v){this.d.push(v);this.d.shift();const{x,w,h,c,mx,d}=this;
+    x.clearRect(0,0,w,h);
+    // gradient fill
+    x.beginPath();
+    for(let i=0;i<80;i++){const px=i*(w/79),py=h-(Math.min(d[i],mx)/mx)*h;
+      i?x.lineTo(px,py):x.moveTo(px,py)}
+    x.lineTo(w,h);x.lineTo(0,h);x.closePath();
+    const g=x.createLinearGradient(0,0,0,h);g.addColorStop(0,c+'44');g.addColorStop(1,c+'05');
+    x.fillStyle=g;x.fill();
+    // stroke
+    x.beginPath();
+    for(let i=0;i<80;i++){const px=i*(w/79),py=h-(Math.min(d[i],mx)/mx)*h;
+      i?x.lineTo(px,py):x.moveTo(px,py)}
+    x.strokeStyle=c;x.lineWidth=2;x.stroke();
+  }
+}
+
+class BarGraph{
+  constructor(id){this.cv=document.getElementById(id);this.x=this.cv.getContext('2d');
+    this.d=new Float32Array(48);this._r()}
+  _r(){const r=this.cv.parentElement.getBoundingClientRect();
+    this.cv.width=r.width*2;this.cv.height=r.height*2;this.x.scale(2,2);this.w=r.width;this.h=r.height}
+  update(rpm,thr){
+    const f=(rpm/20000)*48*.7;
+    for(let i=0;i<48;i++){let v=Math.random()*1.5;
+      if(rpm>50){v+=Math.exp(-Math.pow(i-f,2)/2)*35*thr;
+        v+=Math.exp(-Math.pow(i-f*2,2)/1.5)*18*thr;
+        v+=Math.exp(-Math.pow(i-f*3,2)/3)*8*thr;}
+      this.d[i]=this.d[i]*.75+v*.25}
+    const{x,w,h}=this;x.clearRect(0,0,w,h);const bw=w/48;
+    for(let i=0;i<48;i++){const bh=(this.d[i]/50)*h;
+      const hue=180+i*2;x.fillStyle=`hsla(${hue},100%,60%,0.5)`;
+      x.fillRect(i*bw,h-bh,bw-1,bh)}
+  }
+}
+
+/* ═══════════════ EFFICIENCY GAUGE ═══════════════ */
+class Gauge{
+  constructor(id){this.cv=document.getElementById(id);this.x=this.cv.getContext('2d');
+    this.cv.width=240;this.cv.height=140;this.val=0}
+  draw(v){this.val+=(v-this.val)*.1;const{x}=this;const cx=120,cy=110,r=80;
+    x.clearRect(0,0,240,140);
+    // bg arc
+    x.beginPath();x.arc(cx,cy,r,-Math.PI,0);x.lineWidth=10;x.strokeStyle='rgba(255,255,255,0.06)';x.stroke();
+    // value arc
+    const angle=-Math.PI+Math.PI*(this.val/100);
+    const grad=x.createLinearGradient(40,0,200,0);
+    grad.addColorStop(0,'#ff4d4d');grad.addColorStop(0.5,'#ffb347');grad.addColorStop(1,'#33ffaa');
+    x.beginPath();x.arc(cx,cy,r,-Math.PI,angle);x.lineWidth=10;x.lineCap='round';x.strokeStyle=grad;x.stroke();
+    // text
+    x.font='bold 22px JetBrains Mono';x.textAlign='center';x.fillStyle='#fff';
+    x.fillText(this.val.toFixed(1)+'%',cx,cy-15);
+    x.font='9px Inter';x.fillStyle='#5a7a94';x.fillText('EFFICIENCY',cx,cy+2);
+  }
+}
+
+/* ═══════════════ MAIN ENGINE ═══════════════ */
+class AeternaG3{
+  constructor(){
+    this.clock=new THREE.Clock();
+    this.P={active:true,throttle:.45,load:25,mode:'Hybrid',exploded:0,showFlux:true,
+      spinDir:1,ambTemp:24,xray:false,epic:false};
+    this.S={inRpm:0,outRpm:0,torque:0,temp:24,stress:0,eff:98,camT:0};
+    this.fps={frames:0,last:performance.now()};
+    this._heatColor=new THREE.Color();
+    this._fogTarget=new THREE.Color(0x020305);
+    this._zeroVec=new THREE.Vector3(0,0,0);
+    this._frameCount=0;
+    this.raycaster=new THREE.Raycaster();
+    this.mouse=new THREE.Vector2(-999,-999);
+    this.init();this.buildWorld();this.buildDrivetrain();this.buildFlux();this.buildArcs();
+    this.buildAirflow();this.setupPost();this.setupGraphs();this.bindUI();this.bindKeys();this.createCamPath();
+    this.setupRaycast();
+    this.animate();
+    console.log('%c AETERNA G3 APEX — ONLINE ','background:#00e5ff;color:#000;font-weight:900;font-size:14px');
+  }
+
+  init(){
+    this.scene=new THREE.Scene();this.scene.background=new THREE.Color(0x020305);
+    this.scene.fog=new THREE.FogExp2(0x020305,0.035);
+    this.cam=new THREE.PerspectiveCamera(55,innerWidth/innerHeight,.1,500);
+    this.cam.position.set(-16,9,20);
+    this.ren=new THREE.WebGLRenderer({antialias:true,powerPreference:'high-performance'});
+    this.ren.setSize(innerWidth,innerHeight);this.ren.setPixelRatio(Math.min(devicePixelRatio,2));
+    this.ren.toneMapping=THREE.ACESFilmicToneMapping;this.ren.toneMappingExposure=1.1;
+    document.body.appendChild(this.ren.domElement);
+    this.ctrl=new OrbitControls(this.cam,this.ren.domElement);
+    this.ctrl.enableDamping=true;this.ctrl.dampingFactor=0.06;
+    this.ctrl.target.set(0,0,0);
+    window.addEventListener('resize',()=>{
+      this.cam.aspect=innerWidth/innerHeight;this.cam.updateProjectionMatrix();
+      this.ren.setSize(innerWidth,innerHeight);this.comp.setSize(innerWidth,innerHeight);
+    });
+    // HDRI-style environment
+    const ec=document.createElement('canvas');ec.width=512;ec.height=256;const ex=ec.getContext('2d');
+    const eg=ex.createLinearGradient(0,0,0,256);
+    eg.addColorStop(0,'#02040a');eg.addColorStop(.5,'#060c18');eg.addColorStop(1,'#020206');
+    ex.fillStyle=eg;ex.fillRect(0,0,512,256);
+    ex.shadowBlur=60;ex.shadowColor='#fff';ex.fillStyle='#fff';ex.fillRect(60,30,140,50);
+    ex.shadowColor='#00e5ff';ex.fillStyle='#00e5ff';ex.fillRect(300,150,120,60);
+    const et=new THREE.CanvasTexture(ec);et.mapping=THREE.EquirectangularReflectionMapping;
+    this.envMap=new THREE.PMREMGenerator(this.ren).fromEquirectangular(et).texture;
+    this.scene.environment=this.envMap;
+  }
+
+  buildWorld(){
+    this.scene.add(new THREE.AmbientLight(0xffffff,0.04));
+    const k=new THREE.RectAreaLight(0x00e5ff,35,18,8);k.position.set(12,8,12);k.lookAt(0,0,0);this.scene.add(k);
+    const f=new THREE.RectAreaLight(0xff4400,20,12,12);f.position.set(-14,5,-10);f.lookAt(0,0,0);this.scene.add(f);
+    const r=new THREE.RectAreaLight(0x5577ff,10,6,6);r.position.set(0,12,0);r.lookAt(0,0,0);this.scene.add(r);
+    // Ground
+    const gc=document.createElement('canvas');gc.width=64;gc.height=64;const gx=gc.getContext('2d');
+    gx.fillStyle='#030405';gx.fillRect(0,0,64,64);gx.fillStyle='#050709';gx.fillRect(0,0,32,32);gx.fillRect(32,32,32,32);
+    const gt=new THREE.CanvasTexture(gc);gt.wrapS=gt.wrapT=THREE.RepeatWrapping;gt.repeat.set(40,40);
+    const gnd=new THREE.Mesh(new THREE.PlaneGeometry(120,120),new THREE.MeshStandardMaterial({map:gt,roughness:.15,metalness:.9}));
+    gnd.rotation.x=-Math.PI/2;gnd.position.y=-4.5;this.scene.add(gnd);
+    const grid=new THREE.GridHelper(120,120,0x00e5ff,0x010306);grid.position.y=-4.48;
+    grid.material.transparent=true;grid.material.opacity=.12;this.scene.add(grid);
+  }
+
+  M(){return{
+    ti:new THREE.MeshStandardMaterial({color:0x8899aa,metalness:1,roughness:.08,envMapIntensity:1.5}),
+    st:new THREE.MeshStandardMaterial({color:0x1a1a1e,metalness:.92,roughness:.35}),
+    cu:new THREE.MeshStandardMaterial({color:0xff7f50,metalness:.85,emissive:0xff4400,emissiveIntensity:2,toneMapped:false}),
+    mN:new THREE.MeshPhysicalMaterial({color:0xff2020,emissive:0xff0000,emissiveIntensity:.6,iridescence:1,iridescenceIOR:1.5,roughness:.05,metalness:.7}),
+    mS:new THREE.MeshPhysicalMaterial({color:0x2040ff,emissive:0x0000ff,emissiveIntensity:.6,iridescence:1,iridescenceIOR:1.5,roughness:.05,metalness:.7}),
+    gl:new THREE.MeshPhysicalMaterial({color:0x88ccff,transparent:true,opacity:.06,transmission:.96,roughness:.02,thickness:0.5}),
+    arc:new THREE.LineBasicMaterial({color:0x00e5ff,transparent:true,opacity:0,toneMapped:false,blending:THREE.AdditiveBlending}),
+  }}
+
+  buildDrivetrain(){
+    this.dt=new THREE.Group();this.m=this.M();
+    this.motor=this._motor();this.motor.position.x=-6;this.motor.userData={ox:-6,off:-5};
+    this.thermal=this._thermal();this.thermal.position.x=-2;this.thermal.userData={ox:-2,off:-2};
+    this.gearbox=this._gearbox();this.gearbox.position.x=2.5;this.gearbox.userData={ox:2.5,off:2};
+    this.outGroup=this._output();this.outGroup.position.x=7;this.outGroup.userData={ox:7,off:5};
+    this.dt.add(this.motor,this.thermal,this.gearbox,this.outGroup);
+    // Cables
+    this._cables();
+    // Labels
+    this._labels();
+    this.scene.add(this.dt);
+  }
+
+  _motor(){
+    const g=new THREE.Group();
+    // Housing
+    const h=new THREE.Mesh(new THREE.CylinderGeometry(2.6,2.6,2.8,64),this.m.st);h.rotation.z=Math.PI/2;g.add(h);
+    // End caps
+    const ec1=new THREE.Mesh(new THREE.CylinderGeometry(2.6,2.6,.15,64),this.m.ti);ec1.rotation.z=Math.PI/2;ec1.position.x=-1.4;g.add(ec1);
+    const ec2=ec1.clone();ec2.position.x=1.4;g.add(ec2);
+    // Stator coils
+    for(let i=0;i<16;i++){
+      const a=(i/16)*Math.PI*2;const coil=new THREE.Group();
+      coil.add(new THREE.Mesh(new THREE.TorusGeometry(.4,.12,12,32),this.m.cu));
+      const w=new THREE.Mesh(new THREE.TorusGeometry(.4,.04,8,48),this.m.cu);w.rotation.x=Math.PI/2;coil.add(w);
+      coil.position.set(0,Math.cos(a)*1.9,Math.sin(a)*1.9);coil.rotation.y=Math.PI/2;g.add(coil);
+    }
+    // Rotor
+    this.rotor=new THREE.Mesh(new THREE.CylinderGeometry(2.2,2.2,.4,64),this.m.ti);
+    this.rotor.rotation.z=Math.PI/2;this.rotor.position.x=.8;g.add(this.rotor);
+    // Shaft
+    const shaft=new THREE.Mesh(new THREE.CylinderGeometry(.3,.3,4,24),this.m.ti);
+    shaft.rotation.z=Math.PI/2;g.add(shaft);
+    // Bolts
+    for(let i=0;i<8;i++){const a=(i/8)*Math.PI*2;
+      const b=new THREE.Mesh(new THREE.CylinderGeometry(.06,.06,.25,6),this.m.ti);
+      b.position.set(1.45,Math.cos(a)*2.4,Math.sin(a)*2.4);b.rotation.z=Math.PI/2;g.add(b);
+      const b2=b.clone();b2.position.x=-1.45;g.add(b2);
+    }
+    // Cage
+    const cage=new THREE.Mesh(new THREE.CylinderGeometry(2.7,2.7,2.9,16,1,true),
+      new THREE.MeshBasicMaterial({color:0x00e5ff,wireframe:true,transparent:true,opacity:.04}));
+    cage.rotation.z=Math.PI/2;g.add(cage);
+    return g;
+  }
+
+  _thermal(){
+    const g=new THREE.Group();
+    g.add(new THREE.Mesh(new THREE.BoxGeometry(2.8,3.2,2.8),this.m.st));
+    // Fins
+    for(let i=0;i<14;i++){const f=new THREE.Mesh(new THREE.BoxGeometry(.04,3.4,3),this.m.ti);f.position.x=(i-6.5)*.18;g.add(f)}
+    // Pipes
+    for(let i=0;i<4;i++){const t=new THREE.Mesh(new THREE.TorusGeometry(.35,.08,8,16,Math.PI),this.m.st);
+      t.position.set((i-1.5)*.55,.9,1.2);t.rotation.y=Math.PI/2;g.add(t)}
+    // Pistons
+    this.pistons=new THREE.Group();
+    for(let i=0;i<4;i++){const p=new THREE.Mesh(new THREE.CylinderGeometry(.3,.3,.7,16),this.m.cu.clone());
+      p.position.set((i-1.5)*.55,1.3,0);this.pistons.add(p)}
+    g.add(this.pistons);
+    return g;
+  }
+
+  _gearbox(){
+    const g=new THREE.Group();
+    // Input gear
+    this.gIn=new THREE.Mesh(new THREE.CylinderGeometry(1.3,1.3,.5,48),this.m.ti);this.gIn.rotation.z=Math.PI/2;g.add(this.gIn);
+    // Modulator ring
+    this.mod=new THREE.Group();
+    for(let i=0;i<12;i++){
+      const a=(i/12)*Math.PI*2;const pg=new THREE.Group();
+      pg.add(new THREE.Mesh(new THREE.BoxGeometry(1.8,.45,.35),this.m.st));
+      const sp=new THREE.Mesh(new THREE.BoxGeometry(1.6,.08,.08),this.m.ti);sp.position.x=-.9;pg.add(sp);
+      // Magnets alternating N/S
+      const mag=new THREE.Mesh(new THREE.BoxGeometry(.3,.35,.25),i%2?this.m.mN:this.m.mS);
+      mag.position.x=.8;pg.add(mag);
+      pg.position.set(0,Math.cos(a)*1.7,Math.sin(a)*1.7);pg.rotation.x=-a;this.mod.add(pg);
+    }
+    g.add(this.mod);
+    // Output gear
+    this.gOut=new THREE.Mesh(new THREE.CylinderGeometry(2.6,2.6,.6,64),this.m.ti);
+    this.gOut.rotation.z=Math.PI/2;this.gOut.position.x=1;g.add(this.gOut);
+    // Glass shield
+    const sh=new THREE.Mesh(new THREE.CylinderGeometry(3.2,3.2,2.6,8,1,true),this.m.gl);
+    sh.rotation.z=Math.PI/2;g.add(sh);
+    return g;
+  }
+
+  _output(){
+    const g=new THREE.Group();
+    // Shaft
+    const s=new THREE.Mesh(new THREE.CylinderGeometry(.55,.55,3.5,32),this.m.ti);s.rotation.z=Math.PI/2;g.add(s);
+    // Brake disc
+    const bd=new THREE.Mesh(new THREE.CylinderGeometry(2.8,2.8,.2,64),this.m.st);bd.rotation.z=Math.PI/2;bd.position.x=1.5;g.add(bd);
+    // Disc detail
+    for(let i=0;i<24;i++){const a=(i/24)*Math.PI*2;
+      const v=new THREE.Mesh(new THREE.BoxGeometry(.08,.08,1.2),this.m.st);
+      v.position.set(1.5,Math.cos(a)*2,Math.sin(a)*2);v.rotation.x=-a;g.add(v)}
+    return g;
+  }
+
+  _cables(){
+    const pts=[
+      [new THREE.Vector3(-4.5,1.8,.6),new THREE.Vector3(-3.5,2.4,.9),new THREE.Vector3(-2,1.8,.6)],
+      [new THREE.Vector3(-4.5,-1.2,.4),new THREE.Vector3(-3.5,-1.8,.7),new THREE.Vector3(-2,-1.2,.4)],
+      [new THREE.Vector3(0,1.5,.6),new THREE.Vector3(1.2,2.2,.8),new THREE.Vector3(2.5,1.5,.5)],
+    ];
+    const cm=new THREE.MeshStandardMaterial({color:0x0a0a0a,roughness:.3,metalness:.6});
+    pts.forEach(p=>{const c=new THREE.CatmullRomCurve3(p);
+      this.dt.add(new THREE.Mesh(new THREE.TubeGeometry(c,16,.07,8,false),cm))});
+  }
+
+  _labels(){
+    const mk=(t,x,y)=>{const c=document.createElement('canvas');c.width=256;c.height=48;
+      const cx=c.getContext('2d');cx.font='bold 28px JetBrains Mono';cx.textAlign='center';
+      cx.shadowBlur=12;cx.shadowColor='#00e5ff';cx.fillStyle='#fff';cx.fillText(t,128,30);
+      const s=new THREE.Sprite(new THREE.SpriteMaterial({map:new THREE.CanvasTexture(c),transparent:true,depthTest:false}));
+      s.position.set(x,y,0);s.scale.set(3.5,.7,1);return s};
+    this.dt.add(mk('H-MOTOR V3',-6,3.5));this.dt.add(mk('THERMAL CORE',-2,4));
+    this.dt.add(mk('MODULATOR',2.5,5));this.dt.add(mk('OUTPUT',7,3.5));
+  }
+
+  buildFlux(){
+    const n=4000,g=new THREE.BufferGeometry(),p=new Float32Array(n*3),c=new Float32Array(n*3),s=new Float32Array(n);
+    this.fxD=[];
+    for(let i=0;i<n;i++){const r=1.2+Math.random()*7,a=Math.random()*Math.PI*2,x=(Math.random()-.5)*28;
+      p[i*3]=x;p[i*3+1]=Math.cos(a)*r;p[i*3+2]=Math.sin(a)*r;
+      c[i*3]=0;c[i*3+1]=.85;c[i*3+2]=1;s[i]=1+Math.random()*4.5;
+      this.fxD.push({r,a,x,sp:.08+Math.random()*.55})}
+    g.setAttribute('position',new THREE.BufferAttribute(p,3));
+    g.setAttribute('color',new THREE.BufferAttribute(c,3));
+    g.setAttribute('size',new THREE.BufferAttribute(s,1));
+    this.fxMat=new THREE.ShaderMaterial({uniforms:{time:{value:0},load:{value:0}},
+      vertexShader:vFlux,fragmentShader:fFlux,transparent:true,
+      blending:THREE.AdditiveBlending,depthWrite:false,vertexColors:true});
+    this.flux=new THREE.Points(g,this.fxMat);this.dt.add(this.flux);
+  }
+
+  buildArcs(){
+    this.arcs=[];
+    for(let i=0;i<6;i++){const g=new THREE.BufferGeometry();
+      g.setAttribute('position',new THREE.BufferAttribute(new Float32Array(60),3));
+      const l=new THREE.Line(g,this.m.arc.clone());this.dt.add(l);this.arcs.push(l)}
+  }
+
+  buildAirflow(){
+    const n=200,g=new THREE.BufferGeometry(),p=new Float32Array(n*3);
+    for(let i=0;i<n;i++){p[i*3]=(Math.random()-.5)*30;p[i*3+1]=(Math.random()-.5)*3;p[i*3+2]=(Math.random()-.5)*3}
+    g.setAttribute('position',new THREE.BufferAttribute(p,3));
+    this.afMat=new THREE.PointsMaterial({color:0x55aaff,size:.05,transparent:true,opacity:0});
+    this.airflow=new THREE.Points(g,this.afMat);this.dt.add(this.airflow);
+  }
+
+  setupPost(){
+    this.comp=new EffectComposer(this.ren);this.comp.addPass(new RenderPass(this.scene,this.cam));
+    this.bloom=new UnrealBloomPass(new THREE.Vector2(innerWidth,innerHeight),1.2,.4,.88);
+    this.comp.addPass(this.bloom);
+  }
+
+  setupGraphs(){
+    this.gSpec=new LineGraph('cv-spec','#00e5ff',100);
+    this.gTherm=new LineGraph('cv-therm','#ff6644',120);
+    this.gFFT=new BarGraph('cv-fft');
+    this.gauge=new Gauge('gauge-cv');
+  }
+
+  createCamPath(){
+    this.camPath=new THREE.CatmullRomCurve3([
+      new THREE.Vector3(-20,12,14),new THREE.Vector3(-6,4,18),new THREE.Vector3(4,6,16),
+      new THREE.Vector3(14,3,10),new THREE.Vector3(16,10,-8),new THREE.Vector3(0,12,-16),
+      new THREE.Vector3(-20,12,14)]);
+    this.camPath.closed=true;
+  }
+
+  /* ─── UI BINDING ─── */
+  bindUI(){
+    const P=this.P;
+    document.getElementById('sl-thr').oninput=e=>{P.throttle=e.target.value/100;document.getElementById('v-thr').textContent=Math.round(P.throttle*100)+'%'};
+    document.getElementById('sl-load').oninput=e=>{P.load=+e.target.value;document.getElementById('v-load').textContent=P.load+'%'};
+    document.getElementById('sl-expl').oninput=e=>{P.exploded=e.target.value/100;document.getElementById('v-expl').textContent=Math.round(P.exploded*100)+'%'};
+    document.getElementById('sl-amb').oninput=e=>{P.ambTemp=+e.target.value;document.getElementById('v-amb').textContent=P.ambTemp+'°C'};
+    // Modes
+    document.querySelectorAll('#mode-btns .mbtn').forEach(b=>b.onclick=()=>{
+      P.mode=b.dataset.m;document.querySelectorAll('#mode-btns .mbtn').forEach(x=>x.classList.toggle('on',x===b));
+      document.getElementById('d-mode').textContent=P.mode.toUpperCase()});
+    // Direction
+    document.querySelectorAll('[data-d]').forEach(b=>b.onclick=()=>{
+      P.spinDir=+b.dataset.d;document.querySelectorAll('[data-d]').forEach(x=>x.classList.toggle('on',+x.dataset.d===P.spinDir))});
+    // Toggles
+    const tog=(id,key,cb)=>{document.getElementById(id).onclick=()=>{P[key]=!P[key];
+      document.getElementById(id).classList.toggle('on',P[key]);if(cb)cb()}};
+    tog('t-active','active');tog('t-flux','showFlux');
+    tog('t-xray','xray',()=>this.dt.traverse(c=>{if(c.isMesh){c.material.wireframe=P.xray;c.material.transparent=true;c.material.opacity=P.xray?.15:1}}));
+    tog('t-epic','epic');
+  }
+
+  bindKeys(){
+    const P=this.P;
+    window.addEventListener('keydown',e=>{
+      switch(e.code){
+        case 'Space':e.preventDefault();P.active=!P.active;document.getElementById('t-active').classList.toggle('on',P.active);break;
+        case 'ArrowUp':e.preventDefault();P.throttle=Math.min(1,P.throttle+.05);document.getElementById('sl-thr').value=P.throttle*100;document.getElementById('v-thr').textContent=Math.round(P.throttle*100)+'%';break;
+        case 'ArrowDown':e.preventDefault();P.throttle=Math.max(0,P.throttle-.05);document.getElementById('sl-thr').value=P.throttle*100;document.getElementById('v-thr').textContent=Math.round(P.throttle*100)+'%';break;
+        case 'KeyX':P.xray=!P.xray;document.getElementById('t-xray').classList.toggle('on',P.xray);this.dt.traverse(c=>{if(c.isMesh){c.material.wireframe=P.xray;c.material.transparent=true;c.material.opacity=P.xray?.15:1}});break;
+        case 'KeyC':P.epic=!P.epic;document.getElementById('t-epic').classList.toggle('on',P.epic);break;
+        case 'KeyE':P.exploded=P.exploded>.5?0:1;document.getElementById('sl-expl').value=P.exploded*100;document.getElementById('v-expl').textContent=Math.round(P.exploded*100)+'%';break;
+      }
+    });
+  }
+
+  setupRaycast(){
+    const tooltip=document.getElementById('tooltip');
+    const names=new Map();
+    this.motor.traverse(c=>{if(c.isMesh)c.userData.label='H-MOTOR V3'});
+    this.thermal.traverse(c=>{if(c.isMesh)c.userData.label='THERMAL CORE'});
+    this.gearbox.traverse(c=>{if(c.isMesh)c.userData.label='MODULATOR ASSEMBLY'});
+    this.outGroup.traverse(c=>{if(c.isMesh)c.userData.label='OUTPUT SHAFT'});
+    window.addEventListener('mousemove',e=>{
+      this.mouse.x=(e.clientX/innerWidth)*2-1;this.mouse.y=-(e.clientY/innerHeight)*2+1;
+      tooltip.style.left=e.clientX+16+'px';tooltip.style.top=e.clientY-8+'px';
+    });
+  }
+
+  /* ─── PHYSICS ─── */
+  tick(dt){
+    const P=this.P,S=this.S;
+    if(!P.active){S.inRpm*=.985;S.torque*=.94}
+    else{const t=P.throttle*20000;S.inRpm+=(t-S.inRpm)*.08;
+      const bt=P.mode==='Thermal'?620:P.mode==='Hybrid'?1050:480;
+      S.torque=THREE.MathUtils.lerp(S.torque,bt*P.throttle*(1-P.load/300),.08)}
+    S.outRpm=(S.inRpm/4)*-P.spinDir;
+    const tr=38+(S.inRpm/380)+(P.load*.85)+(P.ambTemp-24);
+    S.temp=THREE.MathUtils.lerp(S.temp,tr,.04);
+    S.stress=Math.round(S.inRpm/220+S.temp*.45);
+    S.eff=Math.max(0,Math.min(99.8,98.5-P.load*.12-(S.temp>80?(S.temp-80)*.3:0)));
+    // Power output: P = Torque × AngularVelocity (rad/s) / 1000
+    const angVel=Math.abs(S.outRpm)*Math.PI/30;
+    S.powerKW=Math.max(0,(S.torque*angVel)/1000);
+    S.powerHP=S.powerKW*1.341;
+    // Regen braking: active when throttle low but RPM high
+    S.regen=!P.active&&S.inRpm>2000;
+
+    // Thermal heatmap (optimized — no allocation per frame)
+    if(this._frameCount%3===0){
+      const hn=Math.max(0,(S.temp-45)/110);
+      this._heatColor.setHSL(.04,1,.4).multiplyScalar(hn*4);
+      this.dt.traverse(c=>{if(c.isMesh&&c.material.emissive&&c.material!==this.m.cu)c.material.emissive.lerp(this._heatColor,.03)});
+    }
+  }
+
+  updateHUD(){
+    const S=this.S,P=this.P;
+    document.getElementById('d-rpmi').textContent=Math.round(S.inRpm).toLocaleString()+' RPM';
+    document.getElementById('d-rpmo').textContent=Math.round(Math.abs(S.outRpm)).toLocaleString()+' RPM';
+    document.getElementById('d-torq').textContent=S.torque.toFixed(1)+' Nm';
+    document.getElementById('d-power').textContent=(S.powerKW||0).toFixed(1)+' kW';
+    document.getElementById('d-hp').textContent=(S.powerHP||0).toFixed(1)+' hp';
+    document.getElementById('d-temp').textContent=Math.round(S.temp)+'°C';
+    const te=document.getElementById('d-temp');te.className='sv'+(S.temp>90?' r':S.temp>70?' a':'');
+    document.getElementById('d-status').textContent=P.active?'NOMINAL':'STANDBY';
+    document.getElementById('d-status').className='sv '+(P.active?'g':'');
+    const si=document.getElementById('d-stress');
+    si.textContent=S.stress>85?'CRITICAL':S.stress>55?'ELEVATED':'NOMINAL';
+    si.className='sv '+(S.stress>85?'r':S.stress>55?'a':'g');
+    document.getElementById('d-eff').textContent=S.eff.toFixed(1)+'%';
+    document.getElementById('d-eff').className='sv '+(S.eff>90?'g':S.eff>70?'a':'r');
+    document.getElementById('d-cool').textContent=S.temp>80?'MAX FLOW':'ACTIVE';
+    document.getElementById('d-cool').className='sv '+(S.temp>80?'a':'g');
+    const rg=document.getElementById('d-regen');
+    rg.textContent=S.regen?'RECOVERING':'STANDBY';
+    rg.className='sv '+(S.regen?'g':'');
+    // Alert
+    document.getElementById('alert-bar').classList.toggle('show',S.temp>95);
+    // Graphs (throttle to every 2nd frame)
+    if(this._frameCount%2===0){
+      this.gSpec.push(P.active?15+P.throttle*85:0);
+      this.gTherm.push(S.temp);
+      this.gFFT.update(S.inRpm,P.throttle);
+      this.gauge.draw(S.eff);
+    }
+  }
+
+  /* ─── RENDER LOOP ─── */
+  animate(){
+    requestAnimationFrame(()=>this.animate());
+    const dt=Math.min(this.clock.getDelta(),.1),t=this.clock.elapsedTime;
+    this._frameCount++;
+    // FPS
+    this.fps.frames++;const now=performance.now();
+    if(now-this.fps.last>=500){document.getElementById('fps').textContent=Math.round(this.fps.frames/((now-this.fps.last)/1000))+' FPS';
+      this.fps.frames=0;this.fps.last=now}
+
+    this.tick(dt);this.updateHUD();
+    const P=this.P,S=this.S;
+
+    // Raycasting (every 6th frame for performance)
+    if(this._frameCount%6===0){
+      this.raycaster.setFromCamera(this.mouse,this.cam);
+      const hits=this.raycaster.intersectObjects(this.dt.children,true);
+      const tooltip=document.getElementById('tooltip');
+      if(hits.length>0&&hits[0].object.userData.label){
+        tooltip.textContent=hits[0].object.userData.label;
+        tooltip.style.display='block';
+      }else{tooltip.style.display='none'}
+    }
+
+    // Epic camera
+    if(P.epic){S.camT=(S.camT+dt*.035)%1;
+      this.cam.position.lerp(this.camPath.getPointAt(S.camT),.04);
+      this.ctrl.target.lerp(this._zeroVec,.04)}
+
+    // Rotation
+    const is=S.inRpm*dt*.005*P.spinDir,os=S.outRpm*dt*.02;
+    if(Math.abs(S.inRpm)>1){
+      this.rotor.rotation.x+=is;this.gIn.rotation.x+=is;this.mod.rotation.x+=is*.25;
+      this.gOut.rotation.x+=os;this.outGroup.children[0].rotation.x+=os;this.outGroup.children[1].rotation.x+=os;
+      if(P.mode!=='E-Drive'&&P.active){
+        this.pistons.children.forEach((p,i)=>{const sp=Math.abs(S.inRpm)*.012;
+          p.position.y=1.3+Math.sin(t*sp+i*Math.PI/2)*.45;
+          p.material.emissiveIntensity=1.5+Math.sin(t*sp+i*Math.PI/2)*3})}}
+
+    // Flux
+    if(this.flux){
+      this.fxMat.uniforms.time.value=t;this.fxMat.uniforms.load.value=P.load/40;
+      const pos=this.flux.geometry.attributes.position.array,lf=P.load/100;
+      for(let i=0;i<this.fxD.length;i++){const d=this.fxD[i];
+        pos[i*3]+=(Math.abs(S.inRpm)*.0003+.06)*d.sp;if(pos[i*3]>14)pos[i*3]=-14;
+        d.a+=dt*(Math.abs(S.inRpm)*.00025+.7)*P.spinDir;
+        const bend=Math.sin(pos[i*3]*.22)*lf*.9;
+        pos[i*3+1]=Math.cos(d.a+bend)*(d.r+Math.sin(t*1.5+i)*.12);
+        pos[i*3+2]=Math.sin(d.a+bend)*(d.r+Math.sin(t*1.5+i)*.12)}
+      this.flux.geometry.attributes.position.needsUpdate=true;
+      this.fxMat.opacity=THREE.MathUtils.lerp(this.fxMat.opacity,(P.showFlux&&P.active)?.85:0,.08)}
+
+    // Airflow
+    if(this.airflow){const ap=this.airflow.geometry.attributes.position.array;
+      const sp=Math.abs(S.inRpm)*.002;
+      this.afMat.opacity=THREE.MathUtils.lerp(this.afMat.opacity,sp>.01?.45:0,.08);
+      for(let i=0;i<200;i++){ap[i*3]+=sp+.15;if(ap[i*3]>15)ap[i*3]=-15}
+      this.airflow.geometry.attributes.position.needsUpdate=true}
+
+    // Arcs
+    if(Math.abs(S.inRpm)>14000&&Math.random()>.82&&P.load>30){
+      const a=this.arcs[Math.floor(Math.random()*6)],pts=a.geometry.attributes.position.array;
+      const sy=Math.cos(t*3)*1.6,sz=Math.sin(t*3)*1.6;
+      for(let i=0;i<20;i++){pts[i*3]=.5+i*.15;pts[i*3+1]=sy+(Math.random()-.5)*1.5;pts[i*3+2]=sz+(Math.random()-.5)*1.5}
+      a.geometry.attributes.position.needsUpdate=true;a.material.opacity=1.5}
+    this.arcs.forEach(a=>a.material.opacity*=.55);
+
+    // Copper glow reactive
+    this.m.cu.emissiveIntensity=.8+P.throttle*4;
+
+    // Exploded view
+    [this.motor,this.thermal,this.gearbox,this.outGroup].forEach(c=>{if(c.userData.off){
+      const tx=c.userData.ox+c.userData.off*P.exploded;c.position.x=THREE.MathUtils.lerp(c.position.x,tx,.08)}});
+
+    // Fog mood (cached target)
+    this._fogTarget.set(P.mode==='Thermal'?0x080402:P.mode==='E-Drive'?0x010408:0x020305);
+    this.scene.fog.color.lerp(this._fogTarget,.03);
+
+    this.comp.render();this.ctrl.update();
+  }
+}
+window.addEventListener('load',()=>{window.app=new AeternaG3()});
+</script>
+</body>
+</html>
