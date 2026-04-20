@@ -3,57 +3,182 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Visual Sequence Synthesizer</title>
+    <title>Visual Sequence Synthesizer Pro</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- Removed Lucide icons as they are not used in this script -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/simplex-noise/2.4.0/simplex-noise.min.js"></script>
+    <!-- Add gif.js library for GIF export -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gif.js/0.2.0/gif.js"></script>
     <style>
-        /* Additional CSS if needed */
+        .slider {
+            -webkit-appearance: none;
+            height: 5px;
+            border-radius: 5px;
+            background: #d3d3d3;
+            outline: none;
+        }
+        
+        .slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 15px;
+            height: 15px;
+            border-radius: 50%;
+            background: #4c51bf;
+            cursor: pointer;
+        }
+        
+        @keyframes pulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+            100% { transform: scale(1); }
+        }
+        
+        .pulse-animation {
+            animation: pulse 2s infinite ease-in-out;
+        }
     </style>
 </head>
 <body class="bg-gradient-to-br from-blue-50 to-indigo-100 min-h-screen flex items-center justify-center p-6">
-    <div class="bg-white shadow-xl rounded-lg p-6 w-full max-w-2xl">
-        <h1 class="text-3xl font-bold mb-4 text-center text-indigo-700">
-            Visual Sequence Synthesizer
+    <div class="bg-white shadow-xl rounded-lg p-6 w-full max-w-4xl">
+        <h1 class="text-3xl font-bold mb-2 text-center text-indigo-700">
+            Visual Sequence Synthesizer Pro
         </h1>
+        <p class="text-center text-gray-500 mb-4">Generate beautiful visual sequences from text prompts</p>
 
-        <div class="flex space-x-4 mb-4">
-            <input 
-                type="text" 
-                id="promptInput"
-                placeholder="Enter a creative prompt" 
-                class="flex-grow p-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
-            />
-            <button 
-                id="generateBtn"
-                class="bg-indigo-600 text-white px-4 py-2 rounded-md hover:bg-indigo-700 disabled:opacity-50"
-            >
-                Synthesize
-            </button>
+        <div class="flex flex-col md:flex-row space-y-2 md:space-y-0 md:space-x-4 mb-4">
+            <div class="flex-grow">
+                <input 
+                    type="text" 
+                    id="promptInput"
+                    placeholder="Enter a creative prompt (e.g. cosmic nebula dance, urban techno grid)" 
+                    class="w-full p-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+            </div>
+            <div class="flex space-x-2">
+                <button 
+                    id="generateBtn"
+                    class="bg-indigo-600 text-white px-4 py-2 rounded-md hover:bg-indigo-700 disabled:opacity-50"
+                >
+                    Synthesize
+                </button>
+                <button 
+                    id="randomizeBtn"
+                    class="bg-purple-600 text-white px-3 py-2 rounded-md hover:bg-purple-700"
+                    title="Generate with random parameters"
+                >
+                    Random
+                </button>
+            </div>
         </div>
 
-        <div id="styleInfo" class="mb-4 text-sm text-gray-600 hidden">
-            Style: <span id="styleText"></span>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+            <div class="bg-gray-50 p-3 rounded-lg">
+                <h3 class="font-medium text-gray-700 mb-2">Style</h3>
+                <select id="styleSelect" class="w-full p-2 border rounded-md">
+                    <option value="auto">Auto-detect</option>
+                    <option value="nature">Nature</option>
+                    <option value="urban">Urban</option>
+                    <option value="cosmic">Cosmic</option>
+                    <option value="abstract">Abstract</option>
+                    <option value="cyberpunk">Cyberpunk</option>
+                    <option value="retro">Retro Wave</option>
+                    <option value="minimalist">Minimalist</option>
+                </select>
+            </div>
+            
+            <div class="bg-gray-50 p-3 rounded-lg">
+                <h3 class="font-medium text-gray-700 mb-2">Complexity</h3>
+                <input type="range" min="1" max="10" value="5" class="slider w-full" id="complexitySlider">
+                <div class="flex justify-between text-xs text-gray-500 mt-1">
+                    <span>Simple</span>
+                    <span>Complex</span>
+                </div>
+            </div>
+            
+            <div class="bg-gray-50 p-3 rounded-lg">
+                <h3 class="font-medium text-gray-700 mb-2">Animation Speed</h3>
+                <input type="range" min="1" max="10" value="5" class="slider w-full" id="speedSlider">
+                <div class="flex justify-between text-xs text-gray-500 mt-1">
+                    <span>Slow</span>
+                    <span>Fast</span>
+                </div>
+            </div>
         </div>
 
-        <canvas 
-            id="visualCanvas" 
-            class="w-full h-96 bg-gray-100 rounded-lg shadow-md"
-        ></canvas>
+        <div class="relative">
+            <div id="loadingOverlay" class="absolute inset-0 bg-black bg-opacity-30 rounded-lg flex items-center justify-center hidden z-10">
+                <div id="loadingText" class="text-white text-xl pulse-animation">Generating visual sequence...</div>
+            </div>
+            
+            <canvas 
+                id="visualCanvas" 
+                class="w-full h-96 bg-gray-100 rounded-lg shadow-md"
+            ></canvas>
 
-        <div class="mt-4 flex space-x-4 justify-center">
-            <button 
-                id="downloadPngBtn"
-                class="flex items-center bg-green-500 text-white px-4 py-2 rounded-md hover:bg-green-600"
-            >
+            <div id="animationControls" class="absolute bottom-4 left-4 bg-black bg-opacity-50 rounded-lg p-2 hidden">
+                <button id="playPauseBtn" class="text-white mr-2">⏸️</button>
+                <button id="restartBtn" class="text-white">⟳</button>
+            </div>
+        </div>
+
+        <div id="styleInfo" class="mt-3 text-sm text-gray-600 hidden">
+            <span class="font-medium">Detected Style:</span> <span id="styleText"></span> | 
+            <span class="font-medium">Seed:</span> <span id="seedText"></span>
+        </div>
+
+        <div class="mt-4 flex flex-wrap gap-2 justify-center">
+            <button id="downloadPngBtn" class="bg-green-500 text-white px-4 py-2 rounded-md hover:bg-green-600">
                 PNG
             </button>
-            <button 
-                id="downloadJpegBtn"
-                class="flex items-center bg-blue-500 text-white px-4 py-2 rounded-md hover:bg-blue-600"
-            >
+            <button id="downloadJpegBtn" class="bg-blue-500 text-white px-4 py-2 rounded-md hover:bg-blue-600">
                 JPEG
             </button>
+            <button id="downloadGifBtn" class="bg-yellow-500 text-white px-4 py-2 rounded-md hover:bg-yellow-600">
+                GIF
+            </button>
+            <button id="downloadSvgBtn" class="bg-purple-500 text-white px-4 py-2 rounded-md hover:bg-purple-600">
+                SVG
+            </button>
+            <button id="generateAudioBtn" class="bg-red-500 text-white px-4 py-2 rounded-md hover:bg-red-600">
+                Generate Audio
+            </button>
         </div>
+        
+        <div id="gifOptions" class="mt-4 bg-gray-50 p-3 rounded-lg hidden">
+            <h3 class="font-medium text-gray-700 mb-2">GIF Export Options</h3>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                    <label class="block text-sm text-gray-600 mb-1">Quality</label>
+                    <input type="range" min="1" max="10" value="7" class="slider w-full" id="gifQualitySlider">
+                    <div class="flex justify-between text-xs text-gray-500 mt-1">
+                        <span>Low</span>
+                        <span>High</span>
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-sm text-gray-600 mb-1">Frame Count</label>
+                    <input type="range" min="10" max="30" value="20" class="slider w-full" id="gifFramesSlider">
+                    <div class="flex justify-between text-xs text-gray-500 mt-1">
+                        <span>Fewer</span>
+                        <span>More</span>
+                    </div>
+                </div>
+            </div>
+            <div class="flex justify-end mt-3">
+                <button id="startGifExportBtn" class="bg-yellow-500 text-white px-4 py-2 rounded-md hover:bg-yellow-600">
+                    Create GIF
+                </button>
+            </div>
+        </div>
+        
+        <div id="historySection" class="mt-6 hidden">
+            <h3 class="font-medium text-gray-700 mb-2">History</h3>
+            <div id="historyContainer" class="grid grid-cols-2 md:grid-cols-4 gap-2 max-h-32 overflow-y-auto">
+                <!-- History items will be added here -->
+            </div>
+        </div>
+        
+        <audio id="audioPlayer" controls class="w-full mt-4 hidden"></audio>
     </div>
 
     <script>
@@ -61,93 +186,148 @@
         class VisualSequenceSynthesizer {
             static STYLE_MAPPINGS = {
                 nature: {
-                    keywords: ['meadow', 'forest', 'landscape', 'green', 'organic'],
+                    keywords: ['meadow', 'forest', 'landscape', 'green', 'organic', 'tree', 'plant', 'river', 'mountain', 'ocean'],
                     characteristics: {
-                        palette: ['#2ecc71', '#27ae60', '#3498db', '#1abc9c'],
-                        shapes: ['organic', 'flowing', 'fractal'],
-                        animations: ['grow', 'pulse', 'wave']
+                        palette: ['#2ecc71', '#27ae60', '#3498db', '#1abc9c', '#f1c40f'],
+                        shapes: ['organic', 'flowing', 'fractal', 'leaf', 'growth'],
+                        animations: ['grow', 'pulse', 'wave', 'flow', 'branch']
                     }
                 },
                 urban: {
-                    keywords: ['city', 'architecture', 'metropolitan', 'geometric'],
+                    keywords: ['city', 'architecture', 'metropolitan', 'geometric', 'building', 'street', 'skyline', 'urban'],
                     characteristics: {
-                        palette: ['#34495e', '#2c3e50', '#7f8c8d', '#95a5a6'],
-                        shapes: ['angular', 'grid', 'modular'],
-                        animations: ['grid-shift', 'deconstruct', 'scroll']
+                        palette: ['#34495e', '#2c3e50', '#7f8c8d', '#95a5a6', '#e74c3c'],
+                        shapes: ['angular', 'grid', 'modular', 'skyscraper', 'block'],
+                        animations: ['grid-shift', 'deconstruct', 'scroll', 'stack', 'assemble']
                     }
                 },
                 cosmic: {
-                    keywords: ['space', 'galaxy', 'universe', 'stellar'],
+                    keywords: ['space', 'galaxy', 'universe', 'stellar', 'cosmic', 'nebula', 'star', 'planet', 'orbit'],
                     characteristics: {
-                        palette: ['#9b59b6', '#8e44ad', '#2980b9', '#3498db'],
-                        shapes: ['spiral', 'radial', 'fractal'],
-                        animations: ['swirl', 'expand', 'nebula-pulse']
+                        palette: ['#9b59b6', '#8e44ad', '#2980b9', '#3498db', '#f1c40f'],
+                        shapes: ['spiral', 'radial', 'fractal', 'star', 'orbit'],
+                        animations: ['swirl', 'expand', 'nebula-pulse', 'orbit', 'stardust']
+                    }
+                },
+                abstract: {
+                    keywords: ['abstract', 'concept', 'surreal', 'imaginary', 'dream', 'thought'],
+                    characteristics: {
+                        palette: ['#e74c3c', '#3498db', '#f1c40f', '#1abc9c', '#9b59b6'],
+                        shapes: ['abstract', 'blob', 'polygon', 'surreal', 'void'],
+                        animations: ['morph', 'float', 'dissolve', 'reveal', 'transform']
+                    }
+                },
+                cyberpunk: {
+                    keywords: ['cyber', 'neon', 'futuristic', 'tech', 'digital', 'glitch', 'cyberpunk', 'synthwave'],
+                    characteristics: {
+                        palette: ['#ff00ff', '#00ffff', '#ff3333', '#111111', '#3333ff'],
+                        shapes: ['glitch', 'circuit', 'digital', 'tech', 'neon'],
+                        animations: ['glitch', 'scan', 'pulse', 'flicker', 'data-flow']
+                    }
+                },
+                retro: {
+                    keywords: ['vintage', 'retro', 'classic', 'nostalgic', 'old-school', 'throwback', 'synthwave'],
+                    characteristics: {
+                        palette: ['#ff71ce', '#01cdfe', '#05ffa1', '#b967ff', '#fffb96'],
+                        shapes: ['sunset', 'grid', 'horizon', 'arcade', 'pixel'],
+                        animations: ['scan-line', 'fade', 'vhs', 'wiggle', 'pixel']
+                    }
+                },
+                minimalist: {
+                    keywords: ['minimal', 'simple', 'clean', 'elegant', 'zen', 'monochrome'],
+                    characteristics: {
+                        palette: ['#ffffff', '#000000', '#f5f5f5', '#333333', '#e0e0e0'],
+                        shapes: ['circle', 'line', 'dot', 'square', 'minimal'],
+                        animations: ['float', 'fade', 'simple-pulse', 'trace', 'reveal']
                     }
                 }
             };
 
-            static analyzePrompt(prompt) {
+            static analyzePrompt(prompt, forcedStyle = null) {
+                if (forcedStyle && forcedStyle !== 'auto') {
+                    const style = this.STYLE_MAPPINGS[forcedStyle].characteristics;
+                    style.name = forcedStyle;
+                    return style;
+                }
+                
                 const words = prompt.toLowerCase().split(/\s+/);
                 const styleScores = {};
 
                 Object.entries(this.STYLE_MAPPINGS).forEach(([styleName, styleData]) => {
                     const matchScore = styleData.keywords.reduce((score, keyword) => {
-                        return words.includes(keyword) ? score + 1 : score;
+                        return words.some(word => word.includes(keyword)) ? score + 1 : score;
                     }, 0);
 
                     if (matchScore > 0) {
                         styleScores[styleName] = {
                             score: matchScore,
-                            style: styleData.characteristics
+                            style: styleData.characteristics,
+                            name: styleName
                         };
                     }
                 });
 
-                return Object.keys(styleScores).length > 0
-                    ? Object.entries(styleScores).reduce((a, b) => a[1].score > b[1].score ? a : b)[1].style
-                    : this.getDefaultStyle();
+                if (Object.keys(styleScores).length > 0) {
+                    const bestMatch = Object.entries(styleScores).reduce((a, b) => a[1].score > b[1].score ? a : b)[1];
+                    bestMatch.style.name = bestMatch.name;
+                    return bestMatch.style;
+                }
+                
+                const defaultStyle = this.getDefaultStyle();
+                defaultStyle.name = 'custom';
+                return defaultStyle;
             }
 
             static getDefaultStyle() {
                 return {
-                    palette: ['#3498db', '#2ecc71', '#e74c3c'],
+                    palette: ['#3498db', '#2ecc71', '#e74c3c', '#f1c40f', '#9b59b6'],
                     shapes: ['organic', 'geometric', 'random'],
                     animations: ['pulse', 'rotate', 'wave']
                 };
             }
 
-            static generateFrameSequence(prompt, style, frameCount = 12) {
+            static generateFrameSequence(prompt, style, settings) {
+                const { complexity = 5, speed = 5, seed = Date.now(), frameCount = 24 } = settings || {};
                 const frames = [];
-                const seed = prompt.split('').reduce((hash, char) => hash + char.charCodeAt(0), 0);
-
+                const simplexNoise = new SimplexNoise(seed.toString());
+                
+                // Initialize the noise function
+                const noise = (x, y) => simplexNoise.noise2D(x, y);
+                
                 for (let i = 0; i < frameCount; i++) {
                     frames.push({
                         render: (ctx) => {
                             const width = ctx.canvas.width;
                             const height = ctx.canvas.height;
+                            const progress = i / frameCount;
+                            const animationSpeed = speed / 5;  // Normalize to a 0.2-2.0 range
 
-                            const gradient = ctx.createRadialGradient(
-                                width / 2, height / 2, 0, 
-                                width / 2, height / 2, Math.max(width, height)
-                            );
+                            // Base background using improved gradients
+                            this.renderBackground(ctx, style, progress, animationSpeed, complexity);
+                            
+                            // Add multiple layers based on complexity
+                            const layerCount = Math.max(1, Math.floor(complexity / 2));
+                            for (let layer = 0; layer < layerCount; layer++) {
+                                const layerProgress = (progress + (layer / layerCount) * 0.5) % 1;
+                                this.renderLayer(ctx, style, layerProgress, layer, animationSpeed, complexity, noise);
+                            }
 
-                            const palette = style.palette;
-                            gradient.addColorStop(0, palette[i % palette.length]);
-                            gradient.addColorStop(1, palette[(i + 1) % palette.length]);
+                            // Add noise texture based on complexity
+                            if (complexity > 3) {
+                                this.renderNoiseTexture(ctx, complexity, noise);
+                            }
 
-                            ctx.fillStyle = gradient;
-                            ctx.fillRect(0, 0, width, height);
-
-                            this.renderDynamicShape(ctx, style.shapes[i % style.shapes.length], i);
-
-                            ctx.fillStyle = 'rgba(255,255,255,0.7)';
-                            ctx.font = '16px monospace';
-                            ctx.textAlign = 'center';
-                            ctx.fillText(
-                                `${prompt.slice(0, 20)}${prompt.length > 20 ? '...' : ''}`, 
-                                width / 2, 
-                                height - 20
-                            );
+                            // Add prompt text if complexity is low
+                            if (complexity < 6) {
+                                ctx.fillStyle = 'rgba(255,255,255,0.7)';
+                                ctx.font = '16px monospace';
+                                ctx.textAlign = 'center';
+                                ctx.fillText(
+                                    `${prompt.slice(0, 30)}${prompt.length > 30 ? '...' : ''}`, 
+                                    width / 2, 
+                                    height - 20
+                                );
+                            }
                         }
                     });
                 }
@@ -155,48 +335,386 @@
                 return frames;
             }
 
-            static renderDynamicShape(ctx, shapeType, iteration) {
+            static renderBackground(ctx, style, progress, speed, complexity) {
+                const width = ctx.canvas.width;
+                const height = ctx.canvas.height;
+                
+                // Choose gradient type based on complexity
+                if (complexity > 7) {
+                    // Complex multi-point gradient
+                    const gradient = ctx.createRadialGradient(
+                        width * (0.5 + 0.2 * Math.sin(progress * Math.PI * 2 * speed)), 
+                        height * (0.5 + 0.2 * Math.cos(progress * Math.PI * 2 * speed)), 
+                        10,
+                        width / 2, height / 2, Math.max(width, height) * 0.8
+                    );
+                    
+                    const palette = style.palette;
+                    gradient.addColorStop(0, palette[Math.floor(progress * palette.length) % palette.length]);
+                    gradient.addColorStop(0.5, palette[(Math.floor(progress * palette.length) + 1) % palette.length]);
+                    gradient.addColorStop(1, palette[(Math.floor(progress * palette.length) + 2) % palette.length]);
+                    
+                    ctx.fillStyle = gradient;
+                    ctx.fillRect(0, 0, width, height);
+                } else {
+                    // Simpler gradient
+                    const gradient = ctx.createLinearGradient(0, 0, width, height);
+                    
+                    const palette = style.palette;
+                    gradient.addColorStop(0, palette[Math.floor(progress * palette.length) % palette.length]);
+                    gradient.addColorStop(1, palette[(Math.floor(progress * palette.length) + 1) % palette.length]);
+                    
+                    ctx.fillStyle = gradient;
+                    ctx.fillRect(0, 0, width, height);
+                }
+            }
+
+            static renderLayer(ctx, style, progress, layer, speed, complexity, noise) {
                 const width = ctx.canvas.width;
                 const height = ctx.canvas.height;
                 const centerX = width / 2;
                 const centerY = height / 2;
-
+                
+                const shapeTypes = style.shapes || ['circle'];
+                const shapeType = shapeTypes[layer % shapeTypes.length];
+                
                 ctx.save();
                 ctx.translate(centerX, centerY);
-                ctx.rotate(iteration * 0.1);
-
+                ctx.rotate(progress * Math.PI * 2 * speed);
+                
+                const scale = 0.5 + complexity / 10;  // Scale based on complexity
+                ctx.scale(scale, scale);
+                
+                // Apply different rendering based on shape type
                 switch (shapeType) {
                     case 'organic':
-                        ctx.beginPath();
-                        ctx.moveTo(0, 0);
-                        for (let i = 0; i < 5; i++) {
-                            const angle = (i / 5) * Math.PI * 2;
-                            const radius = 100 + Math.sin(iteration + angle) * 50;
-                            ctx.lineTo(
-                                Math.cos(angle) * radius, 
-                                Math.sin(angle) * radius
+                    case 'blob':
+                        this.renderOrganicShape(ctx, progress, layer, complexity, noise);
+                        break;
+                    case 'fractal':
+                    case 'leaf':
+                    case 'growth':
+                        this.renderFractalShape(ctx, progress, layer, complexity, noise);
+                        break;
+                    case 'grid':
+                    case 'modular':
+                    case 'block':
+                        this.renderGridShape(ctx, progress, layer, complexity, noise);
+                        break;
+                    case 'spiral':
+                    case 'radial':
+                    case 'star':
+                        this.renderSpiralShape(ctx, progress, layer, complexity, noise);
+                        break;
+                    case 'glitch':
+                    case 'digital':
+                        this.renderGlitchShape(ctx, progress, layer, complexity, noise);
+                        break;
+                    default:
+                        this.renderDefaultShape(ctx, progress, layer, complexity, noise);
+                }
+                
+                ctx.restore();
+            }
+            
+            static renderOrganicShape(ctx, progress, layer, complexity, noise) {
+                ctx.beginPath();
+                
+                const points = 5 + Math.floor(complexity / 2);
+                const radius = 50 + layer * 20;
+                
+                for (let i = 0; i <= points; i++) {
+                    const angle = (i / points) * Math.PI * 2;
+                    const noiseValue = noise(Math.cos(angle) + progress, Math.sin(angle) + progress);
+                    const radiusNoise = radius * (1 + noiseValue * 0.5);
+                    
+                    const x = Math.cos(angle) * radiusNoise;
+                    const y = Math.sin(angle) * radiusNoise;
+                    
+                    if (i === 0) {
+                        ctx.moveTo(x, y);
+                    } else {
+                        ctx.lineTo(x, y);
+                    }
+                }
+                
+                ctx.closePath();
+                const alpha = 0.8 - (layer * 0.2);
+                ctx.fillStyle = `rgba(255, 255, 255, ${alpha})`;
+                ctx.fill();
+                
+                if (complexity > 7) {
+                    ctx.strokeStyle = `rgba(0, 0, 0, 0.1)`;
+                    ctx.lineWidth = 1;
+                    ctx.stroke();
+                }
+            }
+            
+            static renderFractalShape(ctx, progress, layer, complexity, noise) {
+                const iterations = Math.min(5, complexity);
+                const initialSize = 80;
+                
+                const drawBranch = (x, y, length, angle, depth) => {
+                    if (depth <= 0) return;
+                    
+                    const endX = x + length * Math.cos(angle);
+                    const endY = y + length * Math.sin(angle);
+                    
+                    ctx.beginPath();
+                    ctx.moveTo(x, y);
+                    ctx.lineTo(endX, endY);
+                    ctx.strokeStyle = `rgba(255, 255, 255, ${0.8 - depth * 0.1})`;
+                    ctx.lineWidth = (iterations - depth + 1);
+                    ctx.stroke();
+                    
+                    const noiseValue = noise(depth * 0.1, progress);
+                    const branchAngle = Math.PI / 4 + noiseValue * Math.PI / 8;
+                    
+                    drawBranch(endX, endY, length * 0.7, angle + branchAngle, depth - 1);
+                    drawBranch(endX, endY, length * 0.7, angle - branchAngle, depth - 1);
+                };
+                
+                const angleOffset = progress * Math.PI * 2;
+                drawBranch(0, 0, initialSize, -Math.PI / 2 + angleOffset, iterations);
+            }
+            
+            static renderGridShape(ctx, progress, layer, complexity, noise) {
+                const gridSize = 10 + Math.floor(complexity);
+                const cellSize = 200 / gridSize;
+                
+                for (let x = -gridSize/2; x < gridSize/2; x++) {
+                    for (let y = -gridSize/2; y < gridSize/2; y++) {
+                        const noiseValue = noise(x * 0.1 + progress, y * 0.1 + progress);
+                        
+                        if (noiseValue > 0) {
+                            ctx.fillStyle = `rgba(255, 255, 255, ${noiseValue * 0.8})`;
+                            ctx.fillRect(
+                                x * cellSize, 
+                                y * cellSize, 
+                                cellSize * noiseValue, 
+                                cellSize * noiseValue
                             );
                         }
-                        ctx.closePath();
-                        ctx.fillStyle = 'rgba(255,255,255,0.2)';
-                        ctx.fill();
-                        break;
-
-                    case 'geometric':
-                        ctx.beginPath();
-                        ctx.rect(-50, -50, 100, 100);
-                        ctx.fillStyle = 'rgba(255,255,255,0.1)';
-                        ctx.fill();
-                        break;
-
-                    default:
-                        ctx.beginPath();
-                        ctx.arc(0, 0, 75, 0, Math.PI * 2);
-                        ctx.fillStyle = 'rgba(255,255,255,0.15)';
-                        ctx.fill();
+                    }
                 }
+            }
+            
+            static renderSpiralShape(ctx, progress, layer, complexity, noise) {
+                const turns = 3 + complexity / 2;
+                const pointCount = 100 + complexity * 10;
+                const maxRadius = 100 + layer * 10;
+                
+                ctx.beginPath();
+                for (let i = 0; i < pointCount; i++) {
+                    const t = i / pointCount;
+                    const angle = t * Math.PI * 2 * turns + progress * Math.PI * 2;
+                    const radius = t * maxRadius;
+                    
+                    const noiseValue = noise(Math.cos(angle) * 0.1, Math.sin(angle) * 0.1 + progress);
+                    const adjustedRadius = radius * (1 + noiseValue * 0.2);
+                    
+                    const x = Math.cos(angle) * adjustedRadius;
+                    const y = Math.sin(angle) * adjustedRadius;
+                    
+                    if (i === 0) {
+                        ctx.moveTo(x, y);
+                    } else {
+                        ctx.lineTo(x, y);
+                    }
+                }
+                
+                ctx.strokeStyle = `rgba(255, 255, 255, ${0.6 - layer * 0.15})`;
+                ctx.lineWidth = 2;
+                ctx.stroke();
+            }
+            
+            static renderGlitchShape(ctx, progress, layer, complexity, noise) {
+                const segmentCount = 5 + complexity;
+                const maxOffset = 20 + complexity * 2;
+                
+                for (let i = 0; i < segmentCount; i++) {
+                    const y = (i - segmentCount/2) * (200 / segmentCount);
+                    const height = 200 / segmentCount;
+                    
+                    const noiseValue = noise(i * 0.5, progress);
+                    const xOffset = noiseValue * maxOffset;
+                    
+                    ctx.fillStyle = `rgba(255, 255, 255, ${0.3 + noiseValue * 0.3})`;
+                    ctx.fillRect(
+                        -100 + xOffset, 
+                        y, 
+                        200, 
+                        height
+                    );
+                    
+                    // Add glitch lines
+                    if (noiseValue > 0.6) {
+                        ctx.fillStyle = `rgba(0, 255, 255, 0.5)`;
+                        ctx.fillRect(
+                            -100 + xOffset * 1.5, 
+                            y, 
+                            height / 3
+                        );
+                    }
+                }
+            }
+            
+            static renderDefaultShape(ctx, progress, layer, complexity, noise) {
+                // Fallback to a basic shape
+                const size = 50 + layer * 10;
+                
+                ctx.beginPath();
+                ctx.arc(0, 0, size, 0, Math.PI * 2);
+                ctx.fillStyle = `rgba(255, 255, 255, ${0.5 - layer * 0.1})`;
+                ctx.fill();
+            }
+            
+            static renderNoiseTexture(ctx, complexity, noise) {
+                const width = ctx.canvas.width;
+                const height = ctx.canvas.height;
+                const intensity = (complexity - 3) / 7; // Scale from 0 to 1 based on complexity
+                
+                // Create a semi-transparent noise overlay
+                const imageData = ctx.getImageData(0, 0, width, height);
+                const data = imageData.data;
+                
+                for (let x = 0; x < width; x += 4) {
+                    for (let y = 0; y < height; y += 4) {
+                        const noiseValue = noise(x * 0.01, y * 0.01);
+                        const pixelIndex = (y * width + x) * 4;
+                        
+                        if (pixelIndex < data.length - 4) {
+                            const noiseAmount = noiseValue * 50 * intensity;
+                            
+                            data[pixelIndex] += noiseAmount;     // R
+                            data[pixelIndex + 1] += noiseAmount; // G
+                            data[pixelIndex + 2] += noiseAmount; // B
+                        }
+                    }
+                }
+                
+                ctx.putImageData(imageData, 0, 0);
+            }
+            
+            // Generate audio based on the visual
+            static generateAudioSequence(prompt, style, settings) {
+                const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                const duration = 5; // 5 seconds of audio
+                const { complexity = 5, speed = 5 } = settings || {};
+                
+                // Create audio buffer
+                const sampleRate = audioContext.sampleRate;
+                const bufferSize = sampleRate * duration;
+                const audioBuffer = audioContext.createBuffer(2, bufferSize, sampleRate);
+                
+                // Get audio channels
+                const leftChannel = audioBuffer.getChannelData(0);
+                const rightChannel = audioBuffer.getChannelData(1);
+                
+                // Generate audio based on style
+                const baseFreq = 220 + (style.name === 'cosmic' ? 100 : 0) + 
+                                      (style.name === 'cyberpunk' ? 200 : 0) -
+                                      (style.name === 'nature' ? 50 : 0);
+                
+                const secondaryFreq = baseFreq * 1.5;
+                const modulationSpeed = 0.2 + (speed / 10); // 0.2 to 1.2
+                const modulationDepth = 0.1 + (complexity / 20); // 0.1 to 0.6
+                
+                // Fill audio buffer
+                for (let i = 0; i < bufferSize; i++) {
+                    const time = i / sampleRate;
+                    
+                    // Base tone with frequency modulation
+                    const modulation = Math.sin(time * modulationSpeed * 2 * Math.PI) * modulationDepth;
+                    const tone = Math.sin(time * baseFreq * (1 + modulation) * 2 * Math.PI);
+                    
+                    // Add harmonics based on complexity
+                    let harmonics = 0;
+                    for (let j = 2; j <= Math.min(complexity, 8); j++) {
+                        harmonics += Math.sin(time * baseFreq * j * 2 * Math.PI) * (0.5 / j);
+                    }
+                    
+                    // Add second tone for richer sound
+                    const secondTone = Math.sin(time * secondaryFreq * 2 * Math.PI) * 0.3;
+                    
+                    // Combine and apply envelope
+                    const envelope = Math.min(1, time * 0.5) * Math.min(1, (duration - time) * 2);
+                    const sample = (tone * 0.5 + harmonics * 0.3 + secondTone * 0.2) * envelope * 0.7;
+                    
+                    leftChannel[i] = sample;
+                    rightChannel[i] = sample * 0.8; // Slightly different for stereo effect
+                }
+                
+                return audioBuffer;
+            }
 
-                ctx.restore();
+            // Generate SVG representation
+            static generateSVG(prompt, style, settings) {
+                const { width = 600, height = 400, complexity = 5 } = settings || {};
+                let svgContent = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" width="${width}" height="${height}">`;
+                
+                // Background gradient
+                svgContent += `
+                    <defs>
+                        <linearGradient id="bg-gradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                            <stop offset="0%" stop-color="${style.palette[0]}" />
+                            <stop offset="100%" stop-color="${style.palette[1]}" />
+                        </linearGradient>
+                        <filter id="noise" x="0%" y="0%" width="100%" height="100%">
+                            <feTurbulence type="fractalNoise" baseFrequency="0.01" numOctaves="3" result="noise" />
+                            <feDisplacementMap in="SourceGraphic" in2="noise" scale="5" xChannelSelector="R" yChannelSelector="G" />
+                        </filter>
+                    </defs>
+                `;
+                
+                // Background rectangle
+                svgContent += `<rect x="0" y="0" width="${width}" height="${height}" fill="url(#bg-gradient)" />`;
+                
+                // Generate shapes based on style and complexity
+                const shapeCount = complexity * 3;
+                const centerX = width / 2;
+                const centerY = height / 2;
+                
+                for (let i = 0; i < shapeCount; i++) {
+                    const size = 10 + (Math.random() * 50);
+                    const x = centerX + (Math.random() - 0.5) * width * 0.8;
+                    const y = centerY + (Math.random() - 0.5) * height * 0.8;
+                    const opacity = 0.1 + Math.random() * 0.4;
+                    const color = style.palette[i % style.palette.length];
+                    
+                    // Different shapes based on style
+                    if (style.name === 'nature' || style.shapes.includes('organic')) {
+                        // Organic shape (path)
+                        svgContent += `<circle cx="${x}" cy="${y}" r="${size}" fill="${color}" opacity="${opacity}" filter="url(#noise)" />`;
+                    } 
+                    else if (style.name === 'urban' || style.shapes.includes('angular')) {
+                        // Rectangle
+                        svgContent += `<rect x="${x-size/2}" y="${y-size/2}" width="${size}" height="${size}" 
+                                     fill="${color}" opacity="${opacity}" transform="rotate(${Math.random() * 45}, ${x}, ${y})" />`;
+                    }
+                    else if (style.name === 'cosmic' || style.shapes.includes('spiral')) {
+                        // Circle
+                        svgContent += `<circle cx="${x}" cy="${y}" r="${size}" fill="${color}" opacity="${opacity}" />`;
+                    }
+                    else {
+                        // Default shape
+                        svgContent += `<circle cx="${x}" cy="${y}" r="${size}" fill="${color}" opacity="${opacity}" />`;
+                    }
+                }
+                
+                // Add text if complexity is low
+                if (complexity < 6) {
+                    svgContent += `
+                        <text x="${centerX}" y="${height - 20}" text-anchor="middle" fill="rgba(255,255,255,0.7)" 
+                              font-family="monospace" font-size="16px">
+                            ${prompt.length > 30 ? prompt.slice(0, 30) + '...' : prompt}
+                        </text>
+                    `;
+                }
+                
+                // Close SVG
+                svgContent += `</svg>`;
+                return svgContent;
             }
         }
 
@@ -205,21 +723,72 @@
             constructor() {
                 this.promptInput = document.getElementById('promptInput');
                 this.generateBtn = document.getElementById('generateBtn');
+                this.randomizeBtn = document.getElementById('randomizeBtn');
+                this.styleSelect = document.getElementById('styleSelect');
+                this.complexitySlider = document.getElementById('complexitySlider');
+                this.speedSlider = document.getElementById('speedSlider');
                 this.canvas = document.getElementById('visualCanvas');
                 this.ctx = this.canvas.getContext('2d');
                 this.styleInfo = document.getElementById('styleInfo');
                 this.styleText = document.getElementById('styleText');
+                this.seedText = document.getElementById('seedText');
                 this.downloadPngBtn = document.getElementById('downloadPngBtn');
                 this.downloadJpegBtn = document.getElementById('downloadJpegBtn');
+                this.downloadGifBtn = document.getElementById('downloadGifBtn');
+                this.downloadSvgBtn = document.getElementById('downloadSvgBtn');
+                this.generateAudioBtn = document.getElementById('generateAudioBtn');
+                this.audioPlayer = document.getElementById('audioPlayer');
+                this.loadingOverlay = document.getElementById('loadingOverlay');
+                this.loadingText = document.getElementById('loadingText');
+                this.historySection = document.getElementById('historySection');
+                this.historyContainer = document.getElementById('historyContainer');
+                this.playPauseBtn = document.getElementById('playPauseBtn');
+                this.restartBtn = document.getElementById('restartBtn');
+                this.animationControls = document.getElementById('animationControls');
+                this.gifOptions = document.getElementById('gifOptions');
+                this.gifQualitySlider = document.getElementById('gifQualitySlider');
+                this.gifFramesSlider = document.getElementById('gifFramesSlider');
+                this.startGifExportBtn = document.getElementById('startGifExportBtn');
 
                 this.animationFrame = null;
+                this.frames = [];
+                this.currentFrame = 0;
+                this.isPlaying = true;
+                this.generationHistory = [];
+                this.currentSeed = Date.now();
+                this.audioBuffer = null;
+                this.currentStyle = null;
+                
                 this.setupEventListeners();
+                this.resizeCanvas();
             }
 
             setupEventListeners() {
                 this.generateBtn.addEventListener('click', () => this.handleGenerate());
+                this.randomizeBtn.addEventListener('click', () => this.handleRandomize());
                 this.downloadPngBtn.addEventListener('click', () => this.handleDownload('png'));
                 this.downloadJpegBtn.addEventListener('click', () => this.handleDownload('jpeg'));
+                this.downloadGifBtn.addEventListener('click', () => this.toggleGifOptions());
+                this.startGifExportBtn.addEventListener('click', () => this.handleDownloadGif());
+                this.downloadSvgBtn.addEventListener('click', () => this.handleDownloadSvg());
+                this.generateAudioBtn.addEventListener('click', () => this.handleGenerateAudio());
+                this.playPauseBtn.addEventListener('click', () => this.togglePlayPause());
+                this.restartBtn.addEventListener('click', () => this.restartAnimation());
+                
+                window.addEventListener('resize', () => this.resizeCanvas());
+            }
+
+            resizeCanvas() {
+                // Set canvas dimensions to match its display size
+                const rect = this.canvas.getBoundingClientRect();
+                this.canvas.width = rect.width;
+                this.canvas.height = rect.height;
+                
+                // If we have frames, redraw the current frame
+                if (this.frames.length > 0) {
+                    this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+                    this.frames[this.currentFrame].render(this.ctx);
+                }
             }
 
             handleGenerate() {
@@ -229,42 +798,439 @@
                     return;
                 }
 
-                if (this.animationFrame) {
-                    cancelAnimationFrame(this.animationFrame);
-                }
+                this.showLoading('Generating visual sequence...');
+                
+                // Use setTimeout to allow the loading indicator to appear before heavy computation
+                setTimeout(() => {
+                    if (this.animationFrame) {
+                        cancelAnimationFrame(this.animationFrame);
+                    }
+                    
+                    // Generate with current settings
+                    this.currentSeed = Date.now();
+                    this.generateSequence(prompt);
+                    
+                    // Add to history
+                    this.addToHistory(prompt);
+                    
+                    this.hideLoading();
+                }, 10);
+            }
+            
+            handleRandomize() {
+                // Generate a random prompt or use the existing one
+                const basePrompts = [
+                    "cosmic nebula dance", "urban geometric rhythm", "nature's fractal symphony",
+                    "digital glitch cascade", "ethereal light waves", "crystalline structure",
+                    "quantum particle flow", "neural network visualization", "cybernetic dreamscape"
+                ];
+                
+                const prompt = this.promptInput.value.trim() || 
+                               basePrompts[Math.floor(Math.random() * basePrompts.length)];
+                               
+                this.promptInput.value = prompt;
+                
+                // Randomize settings
+                this.styleSelect.value = "auto";
+                this.complexitySlider.value = 3 + Math.floor(Math.random() * 8); // 3-10
+                this.speedSlider.value = 3 + Math.floor(Math.random() * 8); // 3-10
+                
+                // Generate with random seed
+                this.currentSeed = Math.floor(Math.random() * 1000000);
+                
+                this.showLoading('Creating random sequence...');
+                setTimeout(() => {
+                    if (this.animationFrame) {
+                        cancelAnimationFrame(this.animationFrame);
+                    }
+                    
+                    this.generateSequence(prompt);
+                    this.addToHistory(prompt);
+                    
+                    this.hideLoading();
+                }, 10);
+            }
 
-                this.canvas.width = 600;
-                this.canvas.height = 400;
-
-                const detectedStyle = VisualSequenceSynthesizer.analyzePrompt(prompt);
-                this.updateStyleDisplay(detectedStyle);
-
-                const frames = VisualSequenceSynthesizer.generateFrameSequence(prompt, detectedStyle);
-                let currentFrame = 0;
-
-                const animate = () => {
-                    this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
-                    frames[currentFrame].render(this.ctx);
-                    currentFrame = (currentFrame + 1) % frames.length;
-                    this.animationFrame = requestAnimationFrame(animate);
+            generateSequence(prompt) {
+                const selectedStyle = this.styleSelect.value;
+                const complexity = parseInt(this.complexitySlider.value);
+                const speed = parseInt(this.speedSlider.value);
+                
+                const settings = {
+                    complexity: complexity,
+                    speed: speed,
+                    seed: this.currentSeed
                 };
+                
+                this.currentStyle = VisualSequenceSynthesizer.analyzePrompt(prompt, selectedStyle);
+                this.updateStyleDisplay(this.currentStyle);
+                
+                this.frames = VisualSequenceSynthesizer.generateFrameSequence(prompt, this.currentStyle, settings);
+                this.currentFrame = 0;
+                this.isPlaying = true;
+                this.showAnimationControls();
+                
+                this.animate();
+            }
 
-                animate();
+            animate() {
+                if (!this.isPlaying) {
+                    return; // Don't schedule next frame if paused
+                }
+                
+                this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+                this.frames[this.currentFrame].render(this.ctx);
+                
+                const speed = parseInt(this.speedSlider.value);
+                // Slower speed means we skip fewer frames
+                if (this.isPlaying) {
+                    this.currentFrame = (this.currentFrame + Math.max(1, Math.floor(speed / 3))) % this.frames.length;
+                }
+                
+                this.animationFrame = requestAnimationFrame(() => this.animate());
             }
 
             updateStyleDisplay(style) {
-                const styleName = Object.keys(VisualSequenceSynthesizer.STYLE_MAPPINGS)
-                    .find(key => VisualSequenceSynthesizer.STYLE_MAPPINGS[key].characteristics === style) || 'Custom';
-                
-                this.styleText.textContent = styleName;
+                this.styleText.textContent = style.name || 'Custom';
+                this.seedText.textContent = this.currentSeed;
                 this.styleInfo.classList.remove('hidden');
             }
 
             handleDownload(type = 'png') {
                 const link = document.createElement('a');
-                link.download = `visual-sequence.${type}`;
+                link.download = `visual-sequence-${this.currentSeed}.${type}`;
                 link.href = this.canvas.toDataURL(`image/${type}`);
                 link.click();
+            }
+            
+            toggleGifOptions() {
+                if (this.gifOptions.classList.contains('hidden')) {
+                    this.gifOptions.classList.remove('hidden');
+                } else {
+                    this.gifOptions.classList.add('hidden');
+                }
+            }
+            
+            handleDownloadGif() {
+                if (this.frames.length === 0) {
+                    alert('Please generate a sequence first');
+                    return;
+                }
+                
+                this.showLoading('Creating GIF... Please wait');
+                this.gifOptions.classList.add('hidden');
+                
+                // Get GIF settings
+                const quality = parseInt(this.gifQualitySlider.value);
+                const frameCount = parseInt(this.gifFramesSlider.value);
+                
+                // Calculate parameters based on quality
+                const gifWidth = Math.floor(this.canvas.width * (quality / 10));
+                const gifHeight = Math.floor(this.canvas.height * (quality / 10));
+                
+                setTimeout(() => {
+                    this.createGif(gifWidth, gifHeight, frameCount);
+                }, 100);
+            }
+            
+            createGif(width, height, frameCount) {
+                // Create a temporary canvas for resizing frames
+                const tempCanvas = document.createElement('canvas');
+                tempCanvas.width = width;
+                tempCanvas.height = height;
+                const tempCtx = tempCanvas.getContext('2d');
+                
+                // Initialize gif.js
+                const gif = new GIF({
+                    workers: 2,
+                    quality: 10,
+                    width: width,
+                    height: height,
+                    workerScript: 'https://cdnjs.cloudflare.com/ajax/libs/gif.js/0.2.0/gif.worker.js'
+                });
+                
+                // Generate frames for the GIF
+                const framesNeeded = Math.min(frameCount, this.frames.length);
+                
+                // Calculate which frames to use
+                const frameIndices = [];
+                if (framesNeeded >= this.frames.length) {
+                    // Use all frames
+                    for (let i = 0; i < this.frames.length; i++) {
+                        frameIndices.push(i);
+                    }
+                } else {
+                    // Use evenly distributed frames
+                    for (let i = 0; i < framesNeeded; i++) {
+                        frameIndices.push(Math.floor(i * this.frames.length / framesNeeded));
+                    }
+                }
+                
+                // Set the delay based on speed
+                const speed = parseInt(this.speedSlider.value);
+                const delay = Math.max(20, 200 - (speed * 15)); // 50-170ms
+                
+                // Add each frame to the GIF
+                let frameCounter = 0;
+                
+                const addNextFrame = () => {
+                    if (frameCounter < frameIndices.length) {
+                        const frameIndex = frameIndices[frameCounter];
+                        
+                        // Clear temp canvas
+                        tempCtx.clearRect(0, 0, width, height);
+                        
+                        // Draw the frame onto our large canvas
+                        this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+                        this.frames[frameIndex].render(this.ctx);
+                        
+                        // Copy and resize to the temp canvas
+                        tempCtx.drawImage(this.canvas, 0, 0, width, height);
+                        
+                        // Add the frame to the GIF
+                        gif.addFrame(tempCtx, {delay: delay, copy: true});
+                        
+                        // Update loading text
+                        this.loadingText.textContent = `Creating GIF... ${Math.floor((frameCounter / frameIndices.length) * 100)}%`;
+                        
+                        frameCounter++;
+                        setTimeout(addNextFrame, 0);
+                    } else {
+                        // All frames added, render the GIF
+                        this.loadingText.textContent = 'Rendering GIF...';
+                        
+                        gif.on('finished', (blob) => {
+                            // Create download link
+                            const url = URL.createObjectURL(blob);
+                            const link = document.createElement('a');
+                            link.href = url;
+                            link.download = `visual-sequence-${this.currentSeed}.gif`;
+                            link.click();
+                            
+                            URL.revokeObjectURL(url);
+                            this.hideLoading();
+                            
+                            // Resume animation
+                            this.animate();
+                        });
+                        
+                        gif.render();
+                    }
+                };
+                
+                // Stop animation while creating GIF
+                if (this.animationFrame) {
+                    cancelAnimationFrame(this.animationFrame);
+                }
+                
+                // Start the frame-adding process
+                addNextFrame();
+            }
+            
+            handleDownloadSvg() {
+                const prompt = this.promptInput.value.trim();
+                const complexity = parseInt(this.complexitySlider.value);
+                
+                const settings = {
+                    complexity: complexity,
+                    width: this.canvas.width,
+                    height: this.canvas.height
+                };
+                
+                const svgContent = VisualSequenceSynthesizer.generateSVG(prompt, this.currentStyle, settings);
+                
+                const blob = new Blob([svgContent], {type: 'image/svg+xml'});
+                const url = URL.createObjectURL(blob);
+                
+                const link = document.createElement('a');
+                link.download = `visual-sequence-${this.currentSeed}.svg`;
+                link.href = url;
+                link.click();
+                
+                URL.revokeObjectURL(url);
+            }
+            
+            handleGenerateAudio() {
+                const prompt = this.promptInput.value.trim();
+                const complexity = parseInt(this.complexitySlider.value);
+                const speed = parseInt(this.speedSlider.value);
+                
+                const settings = {
+                    complexity: complexity,
+                    speed: speed
+                };
+                
+                this.showLoading('Generating audio...');
+                setTimeout(() => {
+                    try {
+                        this.audioBuffer = VisualSequenceSynthesizer.generateAudioSequence(prompt, this.currentStyle, settings);
+                        this.playGeneratedAudio();
+                    } catch (error) {
+                        console.error("Audio generation error:", error);
+                        alert("There was a problem generating audio. Please try again.");
+                    }
+                    this.hideLoading();
+                }, 10);
+            }
+            
+            playGeneratedAudio() {
+                if (!this.audioBuffer) return;
+                
+                // Convert AudioBuffer to a playable audio element
+                const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                const source = audioContext.createBufferSource();
+                source.buffer = this.audioBuffer;
+                
+                // Create WAV file from the audio buffer
+                const wav = this.audioBufferToWav(this.audioBuffer);
+                const blob = new Blob([wav], { type: 'audio/wav' });
+                const url = URL.createObjectURL(blob);
+                
+                // Set up the audio player
+                this.audioPlayer.src = url;
+                this.audioPlayer.classList.remove('hidden');
+                this.audioPlayer.play();
+            }
+            
+            audioBufferToWav(buffer) {
+                // This is a simplified WAV encoder - in a real app you'd use a library
+                const numOfChan = buffer.numberOfChannels;
+                const length = buffer.length * numOfChan * 2;
+                const sampleRate = buffer.sampleRate;
+                
+                const wavBuffer = new ArrayBuffer(44 + length);
+                const view = new DataView(wavBuffer);
+                
+                /* RIFF identifier */
+                this.writeString(view, 0, 'RIFF');
+                /* file length */
+                view.setUint32(4, 36 + length, true);
+                /* RIFF type */
+                this.writeString(view, 8, 'WAVE');
+                /* format chunk identifier */
+                this.writeString(view, 12, 'fmt ');
+                /* format chunk length */
+                view.setUint32(16, 16, true);
+                /* sample format (raw) */
+                view.setUint16(20, 1, true);
+                /* channel count */
+                view.setUint16(22, numOfChan, true);
+                /* sample rate */
+                view.setUint32(24, sampleRate, true);
+                /* byte rate (sample rate * block align) */
+                view.setUint32(28, sampleRate * 4, true);
+                /* block align (channel count * bytes per sample) */
+                view.setUint16(32, numOfChan * 2, true);
+                /* bits per sample */
+                view.setUint16(34, 16, true);
+                /* data chunk identifier */
+                this.writeString(view, 36, 'data');
+                /* data chunk length */
+                view.setUint32(40, length, true);
+                
+                // Write the PCM samples
+                const data = new Float32Array(buffer.getChannelData(0));
+                let offset = 44;
+                for (let i = 0; i < data.length; i++) {
+                    const sample = Math.max(-1, Math.min(1, data[i]));
+                    view.setInt16(offset, sample < 0 ? sample * 0x8000 : sample * 0x7FFF, true);
+                    offset += 2;
+                }
+                
+                return new Uint8Array(wavBuffer);
+            }
+            
+            writeString(view, offset, string) {
+                for (let i = 0; i < string.length; i++) {
+                    view.setUint8(offset + i, string.charCodeAt(i));
+                }
+            }
+            
+            addToHistory(prompt) {
+                // Add this generation to history
+                this.generationHistory.unshift({
+                    prompt: prompt,
+                    seed: this.currentSeed,
+                    complexity: parseInt(this.complexitySlider.value),
+                    speed: parseInt(this.speedSlider.value),
+                    style: this.styleSelect.value
+                });
+                
+                // Limit history to 8 items
+                if (this.generationHistory.length > 8) {
+                    this.generationHistory = this.generationHistory.slice(0, 8);
+                }
+                
+                this.updateHistoryDisplay();
+            }
+            
+            updateHistoryDisplay() {
+                // Clear current history
+                this.historyContainer.innerHTML = '';
+                
+                if (this.generationHistory.length > 0) {
+                    this.historySection.classList.remove('hidden');
+                    
+                    // Add history items
+                    this.generationHistory.forEach((item, index) => {
+                        const historyItem = document.createElement('div');
+                        historyItem.className = 'bg-white p-2 rounded shadow text-sm cursor-pointer hover:bg-indigo-50';
+                        historyItem.innerHTML = `
+                            <div class="font-medium truncate">${item.prompt}</div>
+                            <div class="text-xs text-gray-500">Seed: ${item.seed}</div>
+                        `;
+                        
+                        historyItem.addEventListener('click', () => this.loadFromHistory(index));
+                        this.historyContainer.appendChild(historyItem);
+                    });
+                }
+            }
+            
+            loadFromHistory(index) {
+                const item = this.generationHistory[index];
+                
+                this.promptInput.value = item.prompt;
+                this.styleSelect.value = item.style;
+                this.complexitySlider.value = item.complexity;
+                this.speedSlider.value = item.speed;
+                this.currentSeed = item.seed;
+                
+                this.showLoading('Loading from history...');
+                setTimeout(() => {
+                    this.generateSequence(item.prompt);
+                    this.hideLoading();
+                }, 10);
+            }
+            
+            showLoading(message = 'Loading...') {
+                this.loadingText.textContent = message;
+                this.loadingOverlay.classList.remove('hidden');
+            }
+            
+            hideLoading() {
+                this.loadingOverlay.classList.add('hidden');
+            }
+            
+            togglePlayPause() {
+                this.isPlaying = !this.isPlaying;
+                this.playPauseBtn.textContent = this.isPlaying ? "⏸️" : "▶️";
+                
+                if (this.isPlaying) {
+                    this.animate();
+                }
+            }
+            
+            restartAnimation() {
+                this.currentFrame = 0;
+                if (!this.isPlaying) {
+                    this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+                    this.frames[this.currentFrame].render(this.ctx);
+                }
+            }
+            
+            showAnimationControls() {
+                this.animationControls.classList.remove('hidden');
+                this.playPauseBtn.textContent = this.isPlaying ? "⏸️" : "▶️";
             }
         }
 
