@@ -1,81 +1,689 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Advanced RGB Color Cube Explorer</title>
+  <style>
+    :root {
+      --panel: rgba(12, 18, 32, 0.72);
+      --panel-border: rgba(255, 255, 255, 0.14);
+      --text: #f8fafc;
+      --muted: #94a3b8;
+      --accent: #60a5fa;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      overflow: hidden;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      color: var(--text);
+      background:
+        radial-gradient(circle at top left, rgba(59, 130, 246, 0.35), transparent 34%),
+        radial-gradient(circle at bottom right, rgba(236, 72, 153, 0.28), transparent 32%),
+        #020617;
+    }
+
+    canvas {
+      display: block;
+    }
+
+    .hud {
+      position: fixed;
+      inset: 16px auto auto 16px;
+      width: min(390px, calc(100vw - 32px));
+      padding: 16px;
+      border: 1px solid var(--panel-border);
+      border-radius: 22px;
+      background: var(--panel);
+      backdrop-filter: blur(18px);
+      box-shadow: 0 18px 50px rgba(0, 0, 0, 0.36);
+      z-index: 10;
+      user-select: none;
+    }
+
+    .hud h1 {
+      margin: 0 0 6px;
+      font-size: 19px;
+      letter-spacing: -0.03em;
+    }
+
+    .hud p {
+      margin: 0 0 14px;
+      font-size: 13px;
+      color: var(--muted);
+      line-height: 1.45;
+    }
+
+    .selected {
+      display: grid;
+      grid-template-columns: 70px 1fr;
+      gap: 12px;
+      align-items: center;
+      margin: 14px 0;
+    }
+
+    .swatch {
+      height: 70px;
+      border-radius: 18px;
+      background: #ffffff;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.12), 0 14px 28px rgba(0, 0, 0, 0.25);
+    }
+
+    .color-readout {
+      display: grid;
+      gap: 5px;
+      font-size: 13px;
+      color: var(--muted);
+    }
+
+    .color-readout strong {
+      color: white;
+      font-size: 18px;
+      letter-spacing: 0.02em;
+    }
+
+    .controls {
+      display: grid;
+      gap: 12px;
+    }
+
+    .control-row {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 10px;
+      align-items: center;
+    }
+
+    label {
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    input[type="range"] {
+      width: 100%;
+      accent-color: var(--accent);
+    }
+
+    .range-line {
+      display: grid;
+      grid-template-columns: 1fr 44px;
+      gap: 10px;
+      align-items: center;
+    }
+
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 42px;
+      height: 28px;
+      padding: 0 9px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.08);
+      color: white;
+      font-size: 12px;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .button-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+      margin-top: 4px;
+    }
+
+    button, input[type="text"] {
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      border-radius: 13px;
+      background: rgba(255, 255, 255, 0.08);
+      color: white;
+      padding: 10px 12px;
+      font: inherit;
+      font-size: 13px;
+      outline: none;
+    }
+
+    button {
+      cursor: pointer;
+      transition: transform 150ms ease, background 150ms ease, border-color 150ms ease;
+    }
+
+    button:hover {
+      transform: translateY(-1px);
+      background: rgba(255, 255, 255, 0.14);
+      border-color: rgba(255, 255, 255, 0.24);
+    }
+
+    .hex-search {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 8px;
+    }
+
+    .legend {
+      position: fixed;
+      right: 16px;
+      bottom: 16px;
+      padding: 12px 14px;
+      border: 1px solid var(--panel-border);
+      border-radius: 18px;
+      background: var(--panel);
+      backdrop-filter: blur(18px);
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.5;
+      z-index: 10;
+    }
+
+    .axis-key {
+      display: inline-grid;
+      place-items: center;
+      width: 20px;
+      height: 20px;
+      margin-right: 6px;
+      border-radius: 7px;
+      color: white;
+      font-weight: 700;
+      font-size: 11px;
+    }
+
+    .r { background: #ef4444; }
+    .g { background: #22c55e; }
+    .b { background: #3b82f6; }
+
+    .toast {
+      position: fixed;
+      left: 50%;
+      bottom: 24px;
+      transform: translateX(-50%) translateY(20px);
+      opacity: 0;
+      pointer-events: none;
+      padding: 10px 14px;
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      border-radius: 999px;
+      background: rgba(15, 23, 42, 0.86);
+      backdrop-filter: blur(14px);
+      color: white;
+      font-size: 13px;
+      transition: opacity 180ms ease, transform 180ms ease;
+      z-index: 20;
+    }
+
+    .toast.show {
+      opacity: 1;
+      transform: translateX(-50%) translateY(0);
+    }
+
+    @media (max-width: 700px) {
+      .hud {
+        inset: 10px 10px auto 10px;
+        width: auto;
+        padding: 13px;
+      }
+
+      .legend {
+        display: none;
+      }
+
+      .hud h1 {
+        font-size: 17px;
+      }
+    }
+  </style>
 </head>
 <body>
-  <div id="selectedColor" style="position: fixed; top: 10px; left: 10px;"></div>
+  <section class="hud" aria-label="Color explorer controls">
+    <h1>RGB Color Cube Explorer</h1>
+    <p>Drag to orbit, scroll to zoom, hover or click a cube to inspect its color. Search a hex code to jump to the nearest sample.</p>
+
+    <div class="selected">
+      <div id="swatch" class="swatch"></div>
+      <div class="color-readout">
+        <strong id="hexValue">#FFFFFF</strong>
+        <span id="rgbValue">RGB 255, 255, 255</span>
+        <span id="hslValue">HSL 0°, 0%, 100%</span>
+      </div>
+    </div>
+
+    <div class="controls">
+      <div>
+        <div class="control-row">
+          <label for="resolution">Samples per RGB axis</label>
+          <span id="resolutionValue" class="pill">10</span>
+        </div>
+        <div class="range-line">
+          <input id="resolution" type="range" min="4" max="18" value="10" />
+          <span class="pill" id="cubeCount">1000</span>
+        </div>
+      </div>
+
+      <div>
+        <div class="control-row">
+          <label for="cubeSize">Cube size</label>
+          <span id="cubeSizeValue" class="pill">0.46</span>
+        </div>
+        <input id="cubeSize" type="range" min="0.18" max="0.9" step="0.01" value="0.46" />
+      </div>
+
+      <div class="hex-search">
+        <input id="hexInput" type="text" placeholder="Try #7C3AED" maxlength="7" aria-label="Hex color search" />
+        <button id="findColor">Find</button>
+      </div>
+
+      <div class="button-grid">
+        <button id="copyHex">Copy HEX</button>
+        <button id="randomColor">Random</button>
+        <button id="toggleRotate">Auto-rotate</button>
+        <button id="resetView">Reset view</button>
+      </div>
+    </div>
+  </section>
+
+  <aside class="legend" aria-label="Axis legend">
+    <div><span class="axis-key r">R</span>Red increases left → right</div>
+    <div><span class="axis-key g">G</span>Green increases bottom → top</div>
+    <div><span class="axis-key b">B</span>Blue increases back → front</div>
+  </aside>
+
+  <div id="toast" class="toast">Copied</div>
+
   <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/build/three.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/examples/js/controls/OrbitControls.js"></script>
   <script>
-    // Set up scene, camera, and renderer
-    var scene = new THREE.Scene();
-    var camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-    var renderer = new THREE.WebGLRenderer();
-    renderer.setSize(window.innerWidth, window.innerHeight);
-    document.body.appendChild(renderer.domElement);
-
-    // Add lighting
-    var light = new THREE.PointLight(0xFFFFFF);
-    light.position.set(10, 10, 10);
-    scene.add(light);
-
-    // Create an array to store the cubes
-    var cubes = [];
-
-    // Function to create color cubes
-    var createColorCube = function (r, g, b, x, y, z) {
-      var geometry = new THREE.BoxGeometry(0.5, 0.5, 0.5);
-      var material = new THREE.MeshLambertMaterial({ color: new THREE.Color(r, g, b) });
-      var cube = new THREE.Mesh(geometry, material);
-      cube.position.set(x, y, z);
-      scene.add(cube);
-      cubes.push(cube);
+    const app = {
+      resolution: 10,
+      cubeSize: 0.46,
+      spacing: 0.72,
+      selectedId: null,
+      hoveredId: null,
+      locked: false,
+      autoRotate: false,
+      colors: [],
+      cubes: [],
+      tempColor: new THREE.Color(),
+      selectedColor: new THREE.Color(1, 1, 1)
     };
 
-    // Create color cubes
-    for (var r = 0; r < 10; r++) {
-      for (var g = 0; g < 10; g++) {
-        for (var b = 0; b < 10; b++) {
-          createColorCube(r / 10, g / 10, b / 10, r - 5, g - 5, b - 5);
+    const elements = {
+      swatch: document.getElementById('swatch'),
+      hexValue: document.getElementById('hexValue'),
+      rgbValue: document.getElementById('rgbValue'),
+      hslValue: document.getElementById('hslValue'),
+      resolution: document.getElementById('resolution'),
+      resolutionValue: document.getElementById('resolutionValue'),
+      cubeCount: document.getElementById('cubeCount'),
+      cubeSize: document.getElementById('cubeSize'),
+      cubeSizeValue: document.getElementById('cubeSizeValue'),
+      hexInput: document.getElementById('hexInput'),
+      findColor: document.getElementById('findColor'),
+      copyHex: document.getElementById('copyHex'),
+      randomColor: document.getElementById('randomColor'),
+      toggleRotate: document.getElementById('toggleRotate'),
+      resetView: document.getElementById('resetView'),
+      toast: document.getElementById('toast')
+    };
+
+    const scene = new THREE.Scene();
+    scene.fog = new THREE.Fog(0x020617, 16, 38);
+
+    const camera = new THREE.PerspectiveCamera(58, window.innerWidth / window.innerHeight, 0.1, 100);
+    camera.position.set(8.6, 8.4, 12.5);
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.outputEncoding = THREE.sRGBEncoding;
+    document.body.appendChild(renderer.domElement);
+
+    const controls = new THREE.OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.06;
+    controls.target.set(0, 0, 0);
+    controls.minDistance = 4;
+    controls.maxDistance = 32;
+
+    const ambient = new THREE.AmbientLight(0xffffff, 0.62);
+    scene.add(ambient);
+
+    const keyLight = new THREE.PointLight(0xffffff, 1.15, 50);
+    keyLight.position.set(8, 12, 10);
+    scene.add(keyLight);
+
+    const rimLight = new THREE.PointLight(0x60a5fa, 0.65, 40);
+    rimLight.position.set(-8, -6, -10);
+    scene.add(rimLight);
+
+    const group = new THREE.Group();
+    scene.add(group);
+
+    const raycaster = new THREE.Raycaster();
+    const pointer = new THREE.Vector2();
+    const dummy = new THREE.Object3D();
+
+    let mesh = null;
+    let outline = null;
+    let axes = null;
+
+    function channelToHex(value) {
+      return Math.round(value * 255).toString(16).padStart(2, '0').toUpperCase();
+    }
+
+    function colorToHex(color) {
+      return '#' + channelToHex(color.r) + channelToHex(color.g) + channelToHex(color.b);
+    }
+
+    function colorToRgb(color) {
+      return [color.r, color.g, color.b].map(v => Math.round(v * 255));
+    }
+
+    function rgbToHsl(r, g, b) {
+      r /= 255; g /= 255; b /= 255;
+      const max = Math.max(r, g, b);
+      const min = Math.min(r, g, b);
+      let h = 0;
+      let s = 0;
+      const l = (max + min) / 2;
+
+      if (max !== min) {
+        const d = max - min;
+        s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+        switch (max) {
+          case r: h = (g - b) / d + (g < b ? 6 : 0); break;
+          case g: h = (b - r) / d + 2; break;
+          case b: h = (r - g) / d + 4; break;
         }
+        h /= 6;
+      }
+
+      return [Math.round(h * 360), Math.round(s * 100), Math.round(l * 100)];
+    }
+
+    function updateReadout(color) {
+      app.selectedColor.copy(color);
+      const hex = colorToHex(color);
+      const [r, g, b] = colorToRgb(color);
+      const [h, s, l] = rgbToHsl(r, g, b);
+
+      elements.swatch.style.background = hex;
+      elements.hexValue.textContent = hex;
+      elements.rgbValue.textContent = `RGB ${r}, ${g}, ${b}`;
+      elements.hslValue.textContent = `HSL ${h}°, ${s}%, ${l}%`;
+      elements.hexInput.value = hex;
+    }
+
+    function showToast(message) {
+      elements.toast.textContent = message;
+      elements.toast.classList.add('show');
+      clearTimeout(showToast.timer);
+      showToast.timer = setTimeout(() => elements.toast.classList.remove('show'), 1300);
+    }
+
+    function clearObject(object) {
+      if (!object) return;
+      object.traverse(child => {
+        if (child.geometry) child.geometry.dispose();
+        if (child.material) {
+          if (Array.isArray(child.material)) child.material.forEach(m => m.dispose());
+          else child.material.dispose();
+        }
+      });
+      group.remove(object);
+    }
+
+    function buildAxes(size) {
+      clearObject(axes);
+      axes = new THREE.Group();
+
+      const axisLength = size + 1.2;
+      const axisMaterialR = new THREE.LineBasicMaterial({ color: 0xef4444, transparent: true, opacity: 0.72 });
+      const axisMaterialG = new THREE.LineBasicMaterial({ color: 0x22c55e, transparent: true, opacity: 0.72 });
+      const axisMaterialB = new THREE.LineBasicMaterial({ color: 0x3b82f6, transparent: true, opacity: 0.72 });
+
+      function addAxis(points, material) {
+        const geometry = new THREE.BufferGeometry().setFromPoints(points);
+        axes.add(new THREE.Line(geometry, material));
+      }
+
+      addAxis([new THREE.Vector3(-axisLength / 2, -size / 2, -size / 2), new THREE.Vector3(axisLength / 2, -size / 2, -size / 2)], axisMaterialR);
+      addAxis([new THREE.Vector3(-size / 2, -axisLength / 2, -size / 2), new THREE.Vector3(-size / 2, axisLength / 2, -size / 2)], axisMaterialG);
+      addAxis([new THREE.Vector3(-size / 2, -size / 2, -axisLength / 2), new THREE.Vector3(-size / 2, -size / 2, axisLength / 2)], axisMaterialB);
+
+      group.add(axes);
+    }
+
+    function buildColorCube() {
+      clearObject(mesh);
+      clearObject(outline);
+
+      app.colors = [];
+      app.cubes = [];
+      const res = app.resolution;
+      const count = res * res * res;
+      const size = (res - 1) * app.spacing;
+
+      elements.resolutionValue.textContent = res;
+      elements.cubeCount.textContent = count.toLocaleString();
+      elements.cubeSizeValue.textContent = app.cubeSize.toFixed(2);
+
+      mesh = new THREE.Group();
+      mesh.name = 'color-cube-mesh-group';
+
+      let id = 0;
+      for (let r = 0; r < res; r++) {
+        for (let g = 0; g < res; g++) {
+          for (let b = 0; b < res; b++) {
+            const x = r * app.spacing - size / 2;
+            const y = g * app.spacing - size / 2;
+            const z = b * app.spacing - size / 2;
+
+            const color = new THREE.Color(r / (res - 1), g / (res - 1), b / (res - 1));
+            app.colors[id] = color.clone();
+
+            const cube = new THREE.Mesh(
+              new THREE.BoxGeometry(app.cubeSize, app.cubeSize, app.cubeSize),
+              new THREE.MeshBasicMaterial({ color: color })
+            );
+            cube.position.set(x, y, z);
+            cube.userData.colorId = id;
+
+            mesh.add(cube);
+            app.cubes[id] = cube;
+            id++;
+          }
+        }
+      }
+
+      group.add(mesh);
+      buildAxes(size);
+
+      const edgeGeometry = new THREE.BoxGeometry(app.cubeSize * 1.32, app.cubeSize * 1.32, app.cubeSize * 1.32);
+      const edgeMaterial = new THREE.MeshBasicMaterial({ color: 0xffffff, wireframe: true, transparent: true, opacity: 0.9 });
+      outline = new THREE.Mesh(edgeGeometry, edgeMaterial);
+      outline.visible = false;
+      group.add(outline);
+
+      const initialId = count - 1;
+      selectInstance(initialId, true);
+    }
+
+    function instancePosition(instanceId) {
+      const cube = app.cubes[instanceId];
+      if (!cube) return new THREE.Vector3();
+      return cube.position.clone();
+    }
+
+    function highlightInstance(instanceId) {
+      if (instanceId == null || !mesh) {
+        outline.visible = false;
+        return;
+      }
+      outline.position.copy(instancePosition(instanceId));
+      outline.visible = true;
+    }
+
+    function selectInstance(instanceId, lockSelection) {
+      if (instanceId == null || !app.colors[instanceId]) return;
+      app.selectedId = instanceId;
+      app.locked = Boolean(lockSelection);
+      updateReadout(app.colors[instanceId]);
+      highlightInstance(instanceId);
+    }
+
+    function findNearestHex(hex) {
+      const match = hex.trim().match(/^#?([0-9a-fA-F]{6})$/);
+      if (!match) {
+        showToast('Enter a valid 6-digit HEX color');
+        return;
+      }
+
+      const value = match[1];
+      const r = parseInt(value.slice(0, 2), 16) / 255;
+      const g = parseInt(value.slice(2, 4), 16) / 255;
+      const b = parseInt(value.slice(4, 6), 16) / 255;
+      const target = new THREE.Color(r, g, b);
+
+      let bestId = 0;
+      let bestDistance = Infinity;
+      app.colors.forEach((color, id) => {
+        const distance = Math.pow(color.r - target.r, 2) + Math.pow(color.g - target.g, 2) + Math.pow(color.b - target.b, 2);
+        if (distance < bestDistance) {
+          bestDistance = distance;
+          bestId = id;
+        }
+      });
+
+      selectInstance(bestId, true);
+      showToast(`Nearest sample: ${colorToHex(app.colors[bestId])}`);
+    }
+
+    function randomColor() {
+      const id = Math.floor(Math.random() * app.colors.length);
+      selectInstance(id, true);
+    }
+
+    function copyHex() {
+      const hex = elements.hexValue.textContent;
+      if (navigator.clipboard && window.isSecureContext) {
+        navigator.clipboard.writeText(hex).then(() => showToast(`${hex} copied`));
+      } else {
+        const helper = document.createElement('textarea');
+        helper.value = hex;
+        helper.style.position = 'fixed';
+        helper.style.opacity = 0;
+        document.body.appendChild(helper);
+        helper.select();
+        document.execCommand('copy');
+        helper.remove();
+        showToast(`${hex} copied`);
       }
     }
 
-    // Position camera
-    camera.position.z = 15;
+    function resetView() {
+      camera.position.set(8.6, 8.4, 12.5);
+      controls.target.set(0, 0, 0);
+      controls.update();
+      showToast('View reset');
+    }
 
-    // Add OrbitControls
-    var controls = new THREE.OrbitControls(camera, renderer.domElement);
+    function setPointer(event) {
+      pointer.x = (event.clientX / window.innerWidth) * 2 - 1;
+      pointer.y = -(event.clientY / window.innerHeight) * 2 + 1;
+    }
 
-    // Add raycaster and mouse vector
-    var raycaster = new THREE.Raycaster();
-    var mouse = new THREE.Vector2();
+    function pickInstance(event) {
+      if (!app.cubes.length) return null;
+      setPointer(event);
+      raycaster.setFromCamera(pointer, camera);
+      const intersects = raycaster.intersectObjects(app.cubes, false);
+      return intersects.length ? intersects[0].object.userData.colorId : null;
+    }
 
-    // Function to handle mouse click
-    var onMouseClick = function (event) {
-      mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
-      mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
-      raycaster.setFromCamera(mouse, camera);
-      var intersects = raycaster.intersectObjects(cubes);
-      if (intersects.length > 0) {
-        var color = intersects[0].object.material.color;
-        var hexColor = '#' + color.getHexString();
-        document.getElementById('selectedColor').style.backgroundColor = hexColor;
-        document.getElementById('selectedColor').innerHTML = 'Selected Color: ' + hexColor;
+    window.addEventListener('pointermove', event => {
+      const id = pickInstance(event);
+      app.hoveredId = id;
+
+      if (id != null && !app.locked) {
+        updateReadout(app.colors[id]);
+        highlightInstance(id);
       }
-    };
 
-    // Add event listener for mouse click
-    window.addEventListener('click', onMouseClick, false);
+      if (id == null && !app.locked) {
+        outline.visible = false;
+      }
+    });
 
-    // Render loop
-    var animate = function () {
+    window.addEventListener('click', event => {
+      const id = pickInstance(event);
+      if (id != null) {
+        selectInstance(id, true);
+      }
+    });
+
+    window.addEventListener('dblclick', () => {
+      app.locked = false;
+      showToast('Selection unlocked');
+    });
+
+    window.addEventListener('resize', () => {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+
+    elements.resolution.addEventListener('input', event => {
+      app.resolution = Number(event.target.value);
+      buildColorCube();
+    });
+
+    elements.cubeSize.addEventListener('input', event => {
+      app.cubeSize = Number(event.target.value);
+      buildColorCube();
+    });
+
+    elements.findColor.addEventListener('click', () => findNearestHex(elements.hexInput.value));
+    elements.hexInput.addEventListener('keydown', event => {
+      if (event.key === 'Enter') findNearestHex(elements.hexInput.value);
+    });
+
+    elements.copyHex.addEventListener('click', copyHex);
+    elements.randomColor.addEventListener('click', randomColor);
+    elements.resetView.addEventListener('click', resetView);
+
+    elements.toggleRotate.addEventListener('click', () => {
+      app.autoRotate = !app.autoRotate;
+      elements.toggleRotate.textContent = app.autoRotate ? 'Stop rotate' : 'Auto-rotate';
+      showToast(app.autoRotate ? 'Auto-rotate on' : 'Auto-rotate off');
+    });
+
+    window.addEventListener('keydown', event => {
+      if (event.key.toLowerCase() === 'c') copyHex();
+      if (event.key.toLowerCase() === 'r') randomColor();
+      if (event.key === 'Escape') {
+        app.locked = false;
+        showToast('Selection unlocked');
+      }
+    });
+
+    function animate() {
       requestAnimationFrame(animate);
-      controls.update(); // Update controls
-      renderer.render(scene, camera);
-    };
 
-    // Start animation
+      if (app.autoRotate) {
+        group.rotation.y += 0.0032;
+        group.rotation.x = Math.sin(performance.now() * 0.00035) * 0.08;
+      }
+
+      controls.update();
+      renderer.render(scene, camera);
+    }
+
+    buildColorCube();
     animate();
   </script>
 </body>
