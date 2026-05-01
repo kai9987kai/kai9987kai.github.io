@@ -1,0 +1,1185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Frontier Plant Growth Simulation</title>
+    <style>
+        :root {
+            --bg: #07120d;
+            --panel: rgba(10, 28, 18, 0.82);
+            --panel-2: rgba(17, 44, 30, 0.88);
+            --line: rgba(177, 255, 192, 0.18);
+            --text: #eaf7ef;
+            --muted: #a8cbb2;
+            --accent: #72f68a;
+            --accent-2: #4dd2ff;
+            --danger: #ff6b6b;
+            --warn: #ffd166;
+            --soil: #5b351e;
+            --soil-dark: #2c1a10;
+            --shadow: 0 20px 60px rgba(0,0,0,0.35);
+        }
+
+        * { box-sizing: border-box; }
+
+        body {
+            margin: 0;
+            min-height: 100vh;
+            font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+            color: var(--text);
+            background:
+                radial-gradient(circle at 15% 15%, rgba(77,210,255,0.20), transparent 28rem),
+                radial-gradient(circle at 85% 5%, rgba(114,246,138,0.18), transparent 26rem),
+                linear-gradient(160deg, #03110a 0%, #0a1c11 42%, #101018 100%);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 24px;
+            overflow-x: hidden;
+        }
+
+        h1 {
+            margin: 0;
+            font-size: clamp(2rem, 4vw, 4rem);
+            line-height: 0.95;
+            letter-spacing: -0.08em;
+            text-align: center;
+        }
+
+        .subtitle {
+            color: var(--muted);
+            margin: 12px 0 24px;
+            text-align: center;
+            max-width: 840px;
+        }
+
+        .app-shell {
+            width: min(1180px, 100%);
+            display: grid;
+            grid-template-columns: minmax(280px, 340px) minmax(320px, 1fr);
+            gap: 18px;
+        }
+
+        .panel {
+            background: var(--panel);
+            border: 1px solid var(--line);
+            border-radius: 28px;
+            box-shadow: var(--shadow);
+            backdrop-filter: blur(16px);
+            overflow: hidden;
+        }
+
+        .panel-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            padding: 18px 18px 10px;
+        }
+
+        .panel-header h2, .panel-header h3 {
+            margin: 0;
+            font-size: 0.92rem;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            color: #d4ffe1;
+        }
+
+        .chip {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            border-radius: 999px;
+            padding: 7px 10px;
+            border: 1px solid var(--line);
+            color: #dfffe8;
+            background: rgba(255,255,255,0.06);
+            font-size: 0.78rem;
+            white-space: nowrap;
+        }
+
+        .info-display {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 10px;
+            padding: 0 18px 18px;
+        }
+
+        .metric {
+            background: rgba(255,255,255,0.06);
+            border: 1px solid var(--line);
+            border-radius: 18px;
+            padding: 12px;
+            min-height: 74px;
+        }
+
+        .metric .label {
+            display: block;
+            color: var(--muted);
+            font-size: 0.76rem;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            margin-bottom: 8px;
+        }
+
+        .metric strong {
+            display: block;
+            font-size: 1.35rem;
+        }
+
+        .controls, .lab-controls, .speed-control {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 10px;
+            padding: 0 18px 18px;
+        }
+
+        button {
+            appearance: none;
+            border: 0;
+            border-radius: 16px;
+            color: #03110a;
+            background: linear-gradient(135deg, var(--accent), #d8ff7a);
+            padding: 12px 14px;
+            font-weight: 800;
+            cursor: pointer;
+            box-shadow: 0 12px 24px rgba(114,246,138,0.16);
+            transition: transform 160ms ease, filter 160ms ease, background 160ms ease, box-shadow 160ms ease;
+        }
+
+        button:hover { transform: translateY(-1px); filter: brightness(1.05); }
+        button:active { transform: translateY(1px) scale(0.99); }
+        button.secondary {
+            color: var(--text);
+            background: rgba(255,255,255,0.08);
+            border: 1px solid var(--line);
+            box-shadow: none;
+        }
+        button.danger { background: linear-gradient(135deg, #ff6b6b, #ffd166); }
+        button.active { outline: 2px solid var(--accent); outline-offset: 3px; }
+        button:disabled { opacity: 0.45; cursor: not-allowed; transform: none; }
+
+        .slider-group {
+            padding: 0 18px 18px;
+            display: grid;
+            gap: 14px;
+        }
+
+        .slider-row label {
+            display: flex;
+            justify-content: space-between;
+            gap: 10px;
+            color: var(--muted);
+            font-size: 0.85rem;
+            margin-bottom: 8px;
+        }
+
+        input[type="range"] {
+            width: 100%;
+            accent-color: var(--accent);
+        }
+
+        .simulation-card {
+            position: relative;
+        }
+
+        #simulation-area {
+            width: 100%;
+            height: clamp(360px, 53vw, 560px);
+            position: relative;
+            overflow: hidden;
+            border-radius: 28px;
+            border: 1px solid var(--line);
+            background:
+                radial-gradient(circle at var(--sun-x, 70%) 12%, rgba(255,248,178,0.9), rgba(255,209,102,0.22) 60px, transparent 150px),
+                linear-gradient(180deg, rgba(87,166,255,0.55), rgba(86,189,147,0.16) 48%, transparent 49%),
+                linear-gradient(180deg, #467f9f 0%, #6ca47c 48%, var(--soil) 49%, var(--soil-dark) 100%);
+            box-shadow: var(--shadow);
+        }
+
+        #simulation-area.night {
+            background:
+                radial-gradient(circle at 75% 16%, rgba(225,234,255,0.75), rgba(225,234,255,0.10) 55px, transparent 150px),
+                linear-gradient(180deg, #101a3b 0%, #132b2d 48%, var(--soil) 49%, var(--soil-dark) 100%);
+        }
+
+        .sky-haze {
+            position: absolute;
+            inset: 0 0 51% 0;
+            pointer-events: none;
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.16), transparent);
+            opacity: 0;
+            transform: translateX(-60%);
+        }
+
+        .cloudy .sky-haze, .rainy .sky-haze { opacity: 1; animation: cloudSlide 9s linear infinite; }
+        .rainy #simulation-area::after { opacity: 1; }
+
+        #simulation-area::before {
+            content: "";
+            position: absolute;
+            inset: 50% 0 0;
+            background:
+                radial-gradient(circle at 12% 16%, rgba(255,255,255,0.05) 0 3px, transparent 4px),
+                radial-gradient(circle at 42% 38%, rgba(255,255,255,0.035) 0 2px, transparent 3px),
+                radial-gradient(circle at 78% 26%, rgba(255,255,255,0.04) 0 3px, transparent 4px),
+                linear-gradient(180deg, rgba(0,0,0,0.05), rgba(0,0,0,0.35));
+            background-size: 110px 90px, 90px 70px, 140px 110px, 100% 100%;
+            pointer-events: none;
+        }
+
+        #simulation-area::after {
+            content: "";
+            position: absolute;
+            inset: 0;
+            pointer-events: none;
+            opacity: 0;
+            background-image: repeating-linear-gradient(105deg, transparent 0 9px, rgba(190,230,255,0.48) 10px 11px);
+            animation: rain 600ms linear infinite;
+        }
+
+        .soil-spot {
+            position: absolute;
+            bottom: 0;
+            height: 20%;
+            border-left: 1px solid rgba(255,255,255,0.06);
+            border-right: 1px solid rgba(0,0,0,0.18);
+            display: flex;
+            align-items: flex-end;
+            justify-content: center;
+            cursor: pointer;
+        }
+
+        .soil-spot::before {
+            content: "";
+            width: 72%;
+            height: 24%;
+            margin-bottom: 13%;
+            border-radius: 50%;
+            background: radial-gradient(ellipse, rgba(20,8,3,0.46), rgba(255,255,255,0.06));
+            border: 1px solid rgba(255,255,255,0.08);
+        }
+
+        .soil-spot:hover::before { outline: 2px solid rgba(114,246,138,0.45); }
+        .soil-spot.occupied::before { background: radial-gradient(ellipse, rgba(10,5,2,0.62), rgba(255,255,255,0.08)); }
+
+        .plant {
+            position: absolute;
+            bottom: 12%;
+            transform-origin: 50% 100%;
+            transition: left 0.5s ease, width 0.5s ease, height 0.5s ease, filter 0.3s ease;
+            cursor: pointer;
+            z-index: 5;
+        }
+
+        .plant.selected {
+            filter: drop-shadow(0 0 12px rgba(114,246,138,0.95));
+        }
+
+        .plant-body {
+            width: 100%;
+            height: 100%;
+            position: relative;
+            overflow: visible;
+        }
+
+        .stem {
+            position: absolute;
+            left: 50%;
+            bottom: 0;
+            width: 18%;
+            height: 100%;
+            border-radius: 999px 999px 6px 6px;
+            transform: translateX(-50%);
+            background: linear-gradient(90deg, rgba(0,0,0,0.24), var(--plant-color, #55c56a), rgba(255,255,255,0.14));
+            box-shadow: inset 0 0 8px rgba(255,255,255,0.16);
+        }
+
+        .canopy {
+            position: absolute;
+            left: 50%;
+            bottom: 46%;
+            width: 125%;
+            height: 62%;
+            transform: translateX(-50%);
+        }
+
+        .leaf {
+            position: absolute;
+            width: 46%;
+            height: 36%;
+            border-radius: 100% 0 100% 0;
+            background: linear-gradient(135deg, rgba(255,255,255,0.20), var(--leaf-color, #48b25c));
+            transform-origin: 100% 100%;
+            box-shadow: inset -4px -5px 10px rgba(0,0,0,0.12);
+        }
+        .leaf:nth-child(1) { top: 24%; left: -2%; transform: rotate(-24deg); }
+        .leaf:nth-child(2) { top: 30%; right: -3%; transform: scaleX(-1) rotate(-24deg); }
+        .leaf:nth-child(3) { top: 3%; left: 18%; transform: rotate(-50deg) scale(0.8); }
+        .leaf:nth-child(4) { top: 9%; right: 18%; transform: scaleX(-1) rotate(-50deg) scale(0.8); }
+
+        .fruit {
+            position: absolute;
+            width: 16%;
+            aspect-ratio: 1;
+            border-radius: 50%;
+            background: radial-gradient(circle at 35% 30%, #fff6a9, #ff6b6b 45%, #a31f28);
+            opacity: 0;
+            transform: scale(0.2);
+            transition: opacity 0.4s ease, transform 0.4s ease;
+        }
+        .fruit:nth-of-type(6) { left: 38%; top: 25%; }
+        .fruit:nth-of-type(7) { left: 58%; top: 48%; }
+        .fruit:nth-of-type(8) { left: 22%; top: 54%; }
+        .mature .fruit { opacity: 1; transform: scale(1); }
+
+        .root-hint {
+            position: absolute;
+            left: 50%;
+            top: 100%;
+            width: 120%;
+            height: 24%;
+            transform: translateX(-50%);
+            border-radius: 0 0 999px 999px;
+            border-bottom: 2px solid rgba(234,247,239,0.25);
+            opacity: 0.45;
+        }
+
+        .health-ring {
+            position: absolute;
+            left: 50%;
+            bottom: -18px;
+            width: 36px;
+            height: 5px;
+            transform: translateX(-50%);
+            border-radius: 99px;
+            background: rgba(255,255,255,0.18);
+            overflow: hidden;
+        }
+        .health-ring span {
+            display: block;
+            height: 100%;
+            width: var(--health, 100%);
+            background: linear-gradient(90deg, var(--danger), var(--warn), var(--accent));
+        }
+
+        .windy .plant { animation: sway 2.2s ease-in-out infinite; }
+        .sparkle {
+            position: absolute;
+            pointer-events: none;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: var(--accent);
+            animation: pop 700ms ease-out forwards;
+            z-index: 15;
+        }
+
+        .right-stack {
+            display: grid;
+            gap: 18px;
+        }
+
+        .hud-top {
+            position: absolute;
+            top: 12px;
+            left: 12px;
+            right: 12px;
+            display: flex;
+            justify-content: space-between;
+            gap: 10px;
+            z-index: 20;
+            pointer-events: none;
+        }
+
+        .hud-top .chip { background: rgba(0,0,0,0.24); }
+
+        .inspector {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 10px;
+            padding: 0 18px 18px;
+        }
+
+        .wide { grid-column: 1 / -1; }
+
+        .mini-chart {
+            height: 96px;
+            margin: 0 18px 18px;
+            border-radius: 18px;
+            border: 1px solid var(--line);
+            background: rgba(255,255,255,0.05);
+            overflow: hidden;
+        }
+
+        .mini-chart svg { width: 100%; height: 100%; display: block; }
+
+        .log {
+            max-height: 190px;
+            overflow: auto;
+            margin: 0 18px 18px;
+            display: grid;
+            gap: 8px;
+            scrollbar-width: thin;
+        }
+
+        .log-entry {
+            padding: 10px 12px;
+            border: 1px solid var(--line);
+            border-radius: 14px;
+            background: rgba(255,255,255,0.05);
+            color: var(--muted);
+            font-size: 0.86rem;
+        }
+
+        .event-banner {
+            position: absolute;
+            left: 50%;
+            top: 70px;
+            transform: translateX(-50%) translateY(-8px);
+            z-index: 25;
+            min-width: 220px;
+            max-width: 80%;
+            padding: 12px 14px;
+            border-radius: 16px;
+            background: rgba(4,14,8,0.86);
+            border: 1px solid var(--line);
+            text-align: center;
+            opacity: 0;
+            transition: opacity 0.2s ease, transform 0.2s ease;
+            pointer-events: none;
+        }
+        .event-banner.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+        .legend {
+            padding: 0 18px 18px;
+            color: var(--muted);
+            font-size: 0.86rem;
+            line-height: 1.55;
+        }
+
+        .legend b { color: var(--text); }
+
+        @media (max-width: 880px) {
+            body { padding: 14px; }
+            .app-shell { grid-template-columns: 1fr; }
+            .info-display { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+            .inspector { grid-template-columns: repeat(2, 1fr); }
+        }
+
+        @media (max-width: 520px) {
+            .controls, .lab-controls, .speed-control { grid-template-columns: 1fr; }
+            .info-display, .inspector { grid-template-columns: 1fr; }
+        }
+
+        @keyframes sway {
+            0%, 100% { transform: rotate(-2deg); }
+            50% { transform: rotate(5deg); }
+        }
+
+        @keyframes rain {
+            from { background-position: 0 -20px; }
+            to { background-position: 0 40px; }
+        }
+
+        @keyframes cloudSlide {
+            from { transform: translateX(-65%); }
+            to { transform: translateX(65%); }
+        }
+
+        @keyframes pop {
+            from { transform: scale(0.2); opacity: 1; }
+            to { transform: translateY(-38px) scale(2); opacity: 0; }
+        }
+    </style>
+</head>
+<body>
+    <h1>Frontier Plant Growth Simulation</h1>
+    <p class="subtitle">A richer, experimental “digital twin” garden: keep planting, harvesting, nutrients, weather, and speed controls while testing genetics, climate stress, resource loops, and phenotype feedback.</p>
+
+    <main class="app-shell">
+        <section class="panel">
+            <div class="panel-header">
+                <h2>Greenhouse Console</h2>
+                <span class="chip" id="mode-display">Experiment Mode</span>
+            </div>
+
+            <div class="info-display">
+                <div class="metric"><span class="label">Weather</span><strong id="weather-display">Sunny</strong></div>
+                <div class="metric"><span class="label">Seeds</span><strong id="seeds-display">5</strong></div>
+                <div class="metric"><span class="label">Nutrients</span><strong id="nutrients-display">50%</strong></div>
+                <div class="metric"><span class="label">Eco Score</span><strong id="score-display">0</strong></div>
+            </div>
+
+            <div class="controls">
+                <button id="plant-btn">Plant</button>
+                <button id="harvest-btn" class="danger">Harvest</button>
+            </div>
+
+            <div class="slider-group">
+                <div class="slider-row">
+                    <label for="nutrients-slider"><span>Nutrients</span><strong id="nutrients-readout">50%</strong></label>
+                    <input type="range" id="nutrients-slider" min="0" max="100" value="50">
+                </div>
+                <div class="slider-row">
+                    <label for="water-slider"><span>Water</span><strong id="water-readout">60%</strong></label>
+                    <input type="range" id="water-slider" min="0" max="100" value="60">
+                </div>
+                <div class="slider-row">
+                    <label for="light-slider"><span>Light</span><strong id="light-readout">72%</strong></label>
+                    <input type="range" id="light-slider" min="0" max="100" value="72">
+                </div>
+                <div class="slider-row">
+                    <label for="temp-slider"><span>Temperature</span><strong id="temp-readout">22°C</strong></label>
+                    <input type="range" id="temp-slider" min="8" max="38" value="22">
+                </div>
+                <div class="slider-row">
+                    <label for="ph-slider"><span>Soil pH</span><strong id="ph-readout">6.5</strong></label>
+                    <input type="range" id="ph-slider" min="45" max="85" value="65">
+                </div>
+            </div>
+
+            <div class="speed-control">
+                <button class="speed-btn active" id="speed-1x">1x Speed</button>
+                <button class="speed-btn secondary" id="speed-2x">2x Speed</button>
+                <button class="speed-btn secondary" id="speed-10x">10x Speed</button>
+            </div>
+
+            <div class="lab-controls">
+                <button id="sample-btn" class="secondary">Phenotype Scan</button>
+                <button id="optimize-btn" class="secondary">AI Tune</button>
+                <button id="mutate-btn" class="secondary">Mutate Seeds</button>
+                <button id="reset-btn" class="secondary">Reset Lab</button>
+            </div>
+
+            <p class="legend"><b>How to experiment:</b> click a soil bay or Plant, adjust environment sliders, scan traits, then harvest mature fruiting plants. Strong plants pass lightly mutated genes into the seed bank.</p>
+        </section>
+
+        <section class="right-stack">
+            <section class="simulation-card">
+                <div id="simulation-area">
+                    <div class="hud-top">
+                        <span class="chip" id="day-display">Day 1 · 06:00</span>
+                        <span class="chip" id="forecast-display">Forecast: stable</span>
+                    </div>
+                    <div class="sky-haze"></div>
+                    <div class="event-banner" id="event-banner">Event</div>
+                </div>
+            </section>
+
+            <section class="panel">
+                <div class="panel-header">
+                    <h3>Plant Twin Telemetry</h3>
+                    <span class="chip" id="population-display">0 / 10 plants</span>
+                </div>
+                <div class="inspector">
+                    <div class="metric"><span class="label">Avg Height</span><strong id="avg-height">0px</strong></div>
+                    <div class="metric"><span class="label">Avg Health</span><strong id="avg-health">0%</strong></div>
+                    <div class="metric"><span class="label">Generation</span><strong id="generation-display">G0</strong></div>
+                    <div class="metric"><span class="label">Selected</span><strong id="selected-display">None</strong></div>
+                    <div class="metric"><span class="label">Best Gene</span><strong id="best-gene-display">—</strong></div>
+                    <div class="metric"><span class="label">Yield Bank</span><strong id="yield-display">0</strong></div>
+                    <div class="metric wide"><span class="label">Research Cue</span><strong id="cue-display">Balance G × E × M: genetics, environment, management.</strong></div>
+                </div>
+                <div class="mini-chart" aria-label="growth history chart">
+                    <svg id="growth-chart" viewBox="0 0 520 100" preserveAspectRatio="none"></svg>
+                </div>
+                <div class="log" id="log"></div>
+            </section>
+        </section>
+    </main>
+
+    <script>
+        const simulationArea = document.getElementById('simulation-area');
+        const weatherDisplay = document.getElementById('weather-display');
+        const seedsDisplay = document.getElementById('seeds-display');
+        const nutrientsDisplay = document.getElementById('nutrients-display');
+        const nutrientsReadout = document.getElementById('nutrients-readout');
+        const waterReadout = document.getElementById('water-readout');
+        const lightReadout = document.getElementById('light-readout');
+        const tempReadout = document.getElementById('temp-readout');
+        const phReadout = document.getElementById('ph-readout');
+        const scoreDisplay = document.getElementById('score-display');
+        const dayDisplay = document.getElementById('day-display');
+        const forecastDisplay = document.getElementById('forecast-display');
+        const populationDisplay = document.getElementById('population-display');
+        const avgHeightDisplay = document.getElementById('avg-height');
+        const avgHealthDisplay = document.getElementById('avg-health');
+        const generationDisplay = document.getElementById('generation-display');
+        const selectedDisplay = document.getElementById('selected-display');
+        const bestGeneDisplay = document.getElementById('best-gene-display');
+        const yieldDisplay = document.getElementById('yield-display');
+        const cueDisplay = document.getElementById('cue-display');
+        const chart = document.getElementById('growth-chart');
+        const logEl = document.getElementById('log');
+        const eventBanner = document.getElementById('event-banner');
+
+        const plantBtn = document.getElementById('plant-btn');
+        const harvestBtn = document.getElementById('harvest-btn');
+        const sampleBtn = document.getElementById('sample-btn');
+        const optimizeBtn = document.getElementById('optimize-btn');
+        const mutateBtn = document.getElementById('mutate-btn');
+        const resetBtn = document.getElementById('reset-btn');
+        const nutrientsSlider = document.getElementById('nutrients-slider');
+        const waterSlider = document.getElementById('water-slider');
+        const lightSlider = document.getElementById('light-slider');
+        const tempSlider = document.getElementById('temp-slider');
+        const phSlider = document.getElementById('ph-slider');
+        const speedButtons = document.querySelectorAll('.speed-btn');
+
+        const soilSpots = 10;
+        let simulationInterval;
+        let plantIdCounter = 1;
+
+        const state = {
+            weather: 'sunny',
+            seeds: 5,
+            nutrients: 50,
+            water: 60,
+            light: 72,
+            temp: 22,
+            pH: 6.5,
+            plants: [],
+            seedBank: [],
+            simulationSpeed: 1,
+            day: 1,
+            hour: 6,
+            score: 0,
+            harvestCount: 0,
+            selectedPlantId: null,
+            totalYield: 0,
+            history: [],
+            forecast: 'stable',
+        };
+
+        const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
+        const round = (value, digits = 0) => Number(value).toFixed(digits);
+        const randomBetween = (min, max) => Math.random() * (max - min) + min;
+        const weatherNames = ['sunny', 'cloudy', 'rainy', 'windy', 'heatwave', 'cold snap'];
+        const cues = [
+            'Balance G × E × M: genetics, environment, management.',
+            'High light helps only when water and nutrients can support it.',
+            'Stress-tolerant plants may grow slower but survive volatile weather.',
+            'Phenotype scans reveal which traits are winning in this environment.',
+            'Harvested seed genetics carry small mutations into the next generation.',
+            'AI Tune nudges the lab toward healthier average growth, not maximum speed.'
+        ];
+
+        function createSoilSpots() {
+            simulationArea.querySelectorAll('.soil-spot').forEach(el => el.remove());
+            const width = 100 / soilSpots;
+            for (let i = 0; i < soilSpots; i++) {
+                const spot = document.createElement('div');
+                spot.className = 'soil-spot';
+                spot.dataset.index = i;
+                spot.style.left = `${i * width}%`;
+                spot.style.width = `${width}%`;
+                spot.addEventListener('click', () => plantSeed(i));
+                simulationArea.appendChild(spot);
+            }
+        }
+
+        function freshGenes() {
+            return {
+                growthRate: randomBetween(0.72, 1.28),
+                nutrientEfficiency: randomBetween(0.64, 1.26),
+                weatherResistance: randomBetween(0.58, 1.30),
+                droughtTolerance: randomBetween(0.55, 1.30),
+                rootStrength: randomBetween(0.62, 1.28),
+                seedYield: randomBetween(0.72, 1.34),
+                hue: Math.floor(randomBetween(105, 148))
+            };
+        }
+
+        function mutateGenes(parentGenes, intensity = 0.10) {
+            const genes = {};
+            Object.entries(parentGenes).forEach(([key, value]) => {
+                if (key === 'hue') {
+                    genes[key] = Math.floor(clamp(value + randomBetween(-12, 12), 80, 165));
+                } else {
+                    genes[key] = clamp(value * randomBetween(1 - intensity, 1 + intensity), 0.42, 1.65);
+                }
+            });
+            return genes;
+        }
+
+        class Plant {
+            constructor(spotIndex, genes = freshGenes(), generation = 0) {
+                this.id = plantIdCounter++;
+                this.spotIndex = spotIndex;
+                this.genes = genes;
+                this.generation = generation;
+                this.age = 0;
+                this.width = 18;
+                this.height = 24;
+                this.health = 100;
+                this.hunger = 0;
+                this.stressMemory = 0;
+                this.biomass = 1;
+                this.mature = false;
+                this.seeds = 0;
+                this.seedAnnounced = false;
+
+                this.element = document.createElement('div');
+                this.element.className = 'plant';
+                this.element.dataset.id = this.id;
+                this.element.innerHTML = `
+                    <div class="plant-body">
+                        <div class="stem"></div>
+                        <div class="canopy">
+                            <div class="leaf"></div>
+                            <div class="leaf"></div>
+                            <div class="leaf"></div>
+                            <div class="leaf"></div>
+                            <div class="fruit"></div>
+                            <div class="fruit"></div>
+                            <div class="fruit"></div>
+                        </div>
+                        <div class="root-hint"></div>
+                        <div class="health-ring"><span></span></div>
+                    </div>`;
+                this.element.addEventListener('click', event => {
+                    event.stopPropagation();
+                    selectPlant(this.id);
+                });
+                simulationArea.appendChild(this.element);
+                this.update();
+            }
+
+            environmentalFitness() {
+                const weatherFactor = {
+                    sunny: 1.05,
+                    cloudy: 0.78,
+                    rainy: 0.66,
+                    windy: 0.82,
+                    heatwave: 0.58,
+                    'cold snap': 0.48
+                }[state.weather] ?? 0.85;
+
+                const nutrientFactor = clamp(0.25 + (state.nutrients / 100) * this.genes.nutrientEfficiency, 0.18, 1.25);
+                const waterOptimum = 62 + this.genes.rootStrength * 8;
+                const waterFactor = clamp(1 - Math.abs(state.water - waterOptimum) / (82 * this.genes.droughtTolerance), 0.12, 1.12);
+                const lightFactor = clamp((state.light / 100) * (state.weather === 'sunny' ? 1.12 : state.weather === 'cloudy' ? 0.82 : 0.64), 0.10, 1.20);
+                const tempFactor = clamp(1 - Math.abs(state.temp - 22) / (18 * this.genes.weatherResistance), 0.10, 1.10);
+                const pHFactor = clamp(1 - Math.abs(state.pH - 6.5) / 2.4, 0.28, 1.0);
+
+                return { weatherFactor, nutrientFactor, waterFactor, lightFactor, tempFactor, pHFactor };
+            }
+
+            grow() {
+                if (this.health <= 0) return;
+                this.age += 1;
+                const f = this.environmentalFitness();
+                const combined = f.weatherFactor * f.nutrientFactor * f.waterFactor * f.lightFactor * f.tempFactor * f.pHFactor;
+                const growth = Math.max(0, this.genes.growthRate * combined * 1.36);
+                const stress = (
+                    (1 - f.nutrientFactor) * 0.38 +
+                    (1 - f.waterFactor) * 0.52 +
+                    (1 - f.tempFactor) * 0.48 +
+                    (state.weather === 'windy' ? 0.18 / this.genes.weatherResistance : 0) +
+                    (state.weather === 'heatwave' ? 0.42 / this.genes.weatherResistance : 0) +
+                    (state.weather === 'cold snap' ? 0.34 / this.genes.weatherResistance : 0)
+                );
+
+                this.biomass += growth * 0.22;
+                this.width = clamp(this.width + growth * 0.19, 12, 72);
+                this.height = clamp(this.height + growth * 0.92, 16, 220);
+                this.hunger = clamp(this.hunger + 0.10 - (state.nutrients / 100) * this.genes.nutrientEfficiency * 0.12, 0, 100);
+                this.stressMemory = clamp(this.stressMemory * 0.96 + stress, 0, 100);
+                this.health += growth * 0.10 - stress * 1.05 - (this.hunger > 55 ? (this.hunger - 55) * 0.02 : 0);
+                this.health = clamp(this.health, 0, 100);
+
+                if ((this.height > 95 || this.age > 72) && !this.mature && this.health > 35) {
+                    this.mature = true;
+                    this.seeds = Math.max(1, Math.floor((this.genes.seedYield * this.health / 20) + randomBetween(0, 3)));
+                    this.element.classList.add('mature');
+                    if (!this.seedAnnounced) {
+                        addLog(`Plant #${this.id} matured with ${this.seeds} seeds.`);
+                        this.seedAnnounced = true;
+                    }
+                }
+
+                if (this.health <= 0) {
+                    this.health = 0;
+                    addLog(`Plant #${this.id} collapsed from accumulated stress.`);
+                }
+                this.update();
+            }
+
+            update() {
+                const spotWidth = simulationArea.clientWidth / soilSpots;
+                const left = this.spotIndex * spotWidth + spotWidth / 2 - this.width / 2;
+                this.element.style.left = `${left}px`;
+                this.element.style.width = `${this.width}px`;
+                this.element.style.height = `${this.height}px`;
+                this.element.style.setProperty('--health', `${this.health}%`);
+                const hue = this.genes.hue;
+                const sat = clamp(45 + this.health / 2, 35, 92);
+                const light = clamp(24 + this.health / 3, 26, 62);
+                this.element.style.setProperty('--plant-color', `hsl(${hue}, ${sat}%, ${light}%)`);
+                this.element.style.setProperty('--leaf-color', `hsl(${hue + 7}, ${sat}%, ${clamp(light + 4, 28, 66)}%)`);
+                this.element.style.opacity = this.health <= 0 ? 0.45 : 1;
+                this.element.classList.toggle('selected', state.selectedPlantId === this.id);
+                this.element.classList.toggle('mature', this.mature);
+            }
+
+            summary() {
+                const entries = Object.entries(this.genes)
+                    .filter(([key]) => key !== 'hue')
+                    .sort((a, b) => b[1] - a[1]);
+                return `${entries[0][0]} ${entries[0][1].toFixed(2)}`;
+            }
+        }
+
+        function addLog(message) {
+            const entry = document.createElement('div');
+            entry.className = 'log-entry';
+            entry.textContent = `D${state.day} ${String(state.hour).padStart(2, '0')}:00 — ${message}`;
+            logEl.prepend(entry);
+            while (logEl.children.length > 12) logEl.lastChild.remove();
+        }
+
+        function showEvent(message) {
+            eventBanner.textContent = message;
+            eventBanner.classList.add('show');
+            clearTimeout(showEvent.timer);
+            showEvent.timer = setTimeout(() => eventBanner.classList.remove('show'), 2100);
+        }
+
+        function sparkle(x, y, count = 8) {
+            for (let i = 0; i < count; i++) {
+                const dot = document.createElement('span');
+                dot.className = 'sparkle';
+                dot.style.left = `${x + randomBetween(-14, 14)}px`;
+                dot.style.top = `${y + randomBetween(-8, 8)}px`;
+                dot.style.background = i % 2 ? 'var(--accent-2)' : 'var(--accent)';
+                simulationArea.appendChild(dot);
+                setTimeout(() => dot.remove(), 760);
+            }
+        }
+
+        function selectPlant(id) {
+            state.selectedPlantId = id;
+            state.plants.forEach(p => p.update());
+            updateDisplay();
+        }
+
+        function occupiedSpotIndexes() {
+            return new Set(state.plants.map(p => p.spotIndex));
+        }
+
+        function nextFreeSpot(preferred) {
+            const occupied = occupiedSpotIndexes();
+            if (Number.isInteger(preferred) && !occupied.has(preferred)) return preferred;
+            for (let i = 0; i < soilSpots; i++) if (!occupied.has(i)) return i;
+            return -1;
+        }
+
+        function plantSeed(preferredSpot) {
+            const spot = nextFreeSpot(preferredSpot);
+            if (state.seeds <= 0) {
+                showEvent('No seeds left. Harvest or mutate after a scan.');
+                return;
+            }
+            if (spot < 0) {
+                showEvent('All soil bays are occupied.');
+                return;
+            }
+            const seedGenome = state.seedBank.shift();
+            const genes = seedGenome ? mutateGenes(seedGenome.genes, 0.08) : freshGenes();
+            const generation = seedGenome ? seedGenome.generation + 1 : 0;
+            const plant = new Plant(spot, genes, generation);
+            state.plants.push(plant);
+            state.seeds -= 1;
+            selectPlant(plant.id);
+            addLog(`Planted seed #${plant.id} in bay ${spot + 1}.`);
+            sparkle(plant.element.offsetLeft + plant.width / 2, simulationArea.clientHeight * 0.78, 5);
+            updateDisplay();
+        }
+
+        function harvestPlant() {
+            const maturePlants = state.plants.filter(p => p.mature && p.health > 0).sort((a, b) => b.seeds - a.seeds || b.health - a.health);
+            if (maturePlants.length === 0) {
+                showEvent('No mature plants ready yet.');
+                return;
+            }
+            const plant = maturePlants[0];
+            state.seeds += plant.seeds;
+            state.totalYield += plant.seeds;
+            state.harvestCount += 1;
+            state.score += Math.floor(plant.seeds * plant.health + plant.generation * 10);
+            for (let i = 0; i < plant.seeds; i++) {
+                state.seedBank.push({ genes: mutateGenes(plant.genes, 0.06), generation: plant.generation });
+            }
+            sparkle(plant.element.offsetLeft + plant.width / 2, plant.element.offsetTop + 20, 16);
+            addLog(`Harvested plant #${plant.id}: +${plant.seeds} seeds, G${plant.generation}.`);
+            plant.element.remove();
+            state.plants = state.plants.filter(p => p !== plant);
+            if (state.selectedPlantId === plant.id) state.selectedPlantId = null;
+            updateDisplay();
+        }
+
+        function phenotypeScan() {
+            if (!state.plants.length) {
+                showEvent('Plant something first to scan phenotypes.');
+                return;
+            }
+            const best = [...state.plants].sort((a, b) => (b.health + b.height / 2) - (a.health + a.height / 2))[0];
+            state.score += 15;
+            cueDisplay.textContent = `Scan: plant #${best.id} leads with ${best.summary()} and ${Math.round(best.health)}% health.`;
+            addLog(`Phenotype scan found plant #${best.id} as current best performer.`);
+            selectPlant(best.id);
+        }
+
+        function aiTune() {
+            if (!state.plants.length) {
+                state.nutrients = 55; state.water = 62; state.light = 74; state.temp = 22; state.pH = 6.5;
+            } else {
+                const avgHealth = state.plants.reduce((sum, p) => sum + p.health, 0) / state.plants.length;
+                const avgStress = state.plants.reduce((sum, p) => sum + p.stressMemory, 0) / state.plants.length;
+                if (avgHealth < 70 || avgStress > 10) {
+                    state.water = clamp(state.water + (state.water < 62 ? 8 : -5), 0, 100);
+                    state.nutrients = clamp(state.nutrients + 8, 0, 100);
+                    state.temp = clamp(state.temp + (state.temp < 21 ? 2 : state.temp > 25 ? -2 : 0), 8, 38);
+                    state.pH = clamp(state.pH + (state.pH < 6.4 ? 0.2 : state.pH > 6.7 ? -0.2 : 0), 4.5, 8.5);
+                } else {
+                    state.light = clamp(state.light + 4, 0, 100);
+                    state.nutrients = clamp(state.nutrients + 3, 0, 100);
+                }
+            }
+            syncSliders();
+            state.score += 5;
+            showEvent('AI Tune adjusted the greenhouse setpoints.');
+            addLog('AI Tune nudged resources toward a healthier balance.');
+            updateDisplay();
+        }
+
+        function mutateSeeds() {
+            if (state.seeds <= 0) {
+                showEvent('No seeds available to mutate.');
+                return;
+            }
+            const bonusGenome = state.seedBank.length ? state.seedBank[Math.floor(Math.random() * state.seedBank.length)].genes : freshGenes();
+            state.seedBank.push({ genes: mutateGenes(bonusGenome, 0.22), generation: state.harvestCount });
+            state.score = Math.max(0, state.score - 10);
+            showEvent('Experimental mutation added to the seed bank.');
+            addLog('Mutation lab created one risky high-variance seed lineage.');
+            updateDisplay();
+        }
+
+        function changeWeather(forced) {
+            const previous = state.weather;
+            state.weather = forced || weatherNames[Math.floor(Math.random() * weatherNames.length)];
+            if (state.weather === previous && !forced) state.weather = weatherNames[(weatherNames.indexOf(previous) + 1) % weatherNames.length];
+            const messages = {
+                sunny: 'Sun burst: photosynthesis boost.',
+                cloudy: 'Cloud bank: light is reduced.',
+                rainy: 'Rain front: water replenished, growth slows.',
+                windy: 'Wind gusts: resilient stems matter.',
+                heatwave: 'Heatwave: temperature stress rising.',
+                'cold snap': 'Cold snap: growth slows sharply.'
+            };
+            showEvent(messages[state.weather]);
+            addLog(`Weather changed to ${state.weather}.`);
+            updateDisplay();
+        }
+
+        function tickClock() {
+            state.hour += 1;
+            if (state.hour >= 24) {
+                state.hour = 0;
+                state.day += 1;
+                state.score += Math.max(0, Math.round(10 + state.plants.length * 2));
+                if (Math.random() < 0.28) state.forecast = weatherNames[Math.floor(Math.random() * weatherNames.length)];
+                if (state.day % 3 === 0) cueDisplay.textContent = cues[Math.floor(Math.random() * cues.length)];
+            }
+        }
+
+        function resourceDrift() {
+            const plantLoad = state.plants.filter(p => p.health > 0).length;
+            const totalRoot = state.plants.reduce((sum, p) => sum + p.genes.rootStrength, 0);
+            state.nutrients = clamp(state.nutrients - plantLoad * 0.045, 0, 100);
+            state.water = clamp(state.water - plantLoad * 0.038 - (state.weather === 'sunny' ? 0.12 : 0) - (state.weather === 'heatwave' ? 0.36 : 0) + (state.weather === 'rainy' ? 0.82 : 0), 0, 100);
+            if (plantLoad && totalRoot / plantLoad > 1.12) state.water = clamp(state.water + 0.04, 0, 100);
+            if (state.weather === 'heatwave') state.temp = clamp(state.temp + 0.08, 8, 38);
+            if (state.weather === 'cold snap') state.temp = clamp(state.temp - 0.08, 8, 38);
+            syncSliders();
+        }
+
+        function runSimulationStep() {
+            tickClock();
+            resourceDrift();
+            state.plants.forEach(plant => plant.grow());
+            state.plants = state.plants.filter(plant => {
+                if (plant.health > 0 || plant.age < 4) return true;
+                plant.element.remove();
+                return false;
+            });
+            if (Math.random() < 0.048) changeWeather();
+            if (state.forecast !== 'stable' && Math.random() < 0.012) {
+                changeWeather(state.forecast);
+                state.forecast = 'stable';
+            }
+            recordHistory();
+            updateDisplay();
+        }
+
+        function setSimulationSpeed(speed) {
+            state.simulationSpeed = speed;
+            clearInterval(simulationInterval);
+            simulationInterval = setInterval(runSimulationStep, 1000 / speed);
+            speedButtons.forEach(btn => {
+                btn.classList.remove('active');
+                btn.classList.add('secondary');
+            });
+            const active = document.getElementById(`speed-${speed}x`);
+            if (active) {
+                active.classList.add('active');
+                active.classList.remove('secondary');
+            }
+            updateDisplay();
+        }
+
+        function recordHistory() {
+            const avgHeight = state.plants.length ? state.plants.reduce((sum, p) => sum + p.height, 0) / state.plants.length : 0;
+            const avgHealth = state.plants.length ? state.plants.reduce((sum, p) => sum + p.health, 0) / state.plants.length : 0;
+            if (state.history.length === 0 || state.hour % 3 === 0) {
+                state.history.push({ day: state.day, hour: state.hour, avgHeight, avgHealth });
+                if (state.history.length > 42) state.history.shift();
+                drawChart();
+            }
+        }
+
+        function drawChart() {
+            const points = state.history;
+            if (!points.length) {
+                chart.innerHTML = '';
+                return;
+            }
+            const maxHeight = Math.max(60, ...points.map(p => p.avgHeight));
+            const pathHeight = points.map((p, i) => {
+                const x = points.length === 1 ? 0 : (i / (points.length - 1)) * 520;
+                const y = 92 - (p.avgHeight / maxHeight) * 78;
+                return `${i === 0 ? 'M' : 'L'} ${x.toFixed(1)} ${y.toFixed(1)}`;
+            }).join(' ');
+            const pathHealth = points.map((p, i) => {
+                const x = points.length === 1 ? 0 : (i / (points.length - 1)) * 520;
+                const y = 92 - (p.avgHealth / 100) * 78;
+                return `${i === 0 ? 'M' : 'L'} ${x.toFixed(1)} ${y.toFixed(1)}`;
+            }).join(' ');
+            chart.innerHTML = `
+                <path d="${pathHeight}" fill="none" stroke="rgba(114,246,138,0.95)" stroke-width="3" stroke-linecap="round"/>
+                <path d="${pathHealth}" fill="none" stroke="rgba(77,210,255,0.85)" stroke-width="2" stroke-linecap="round" stroke-dasharray="5 5"/>
+                <text x="12" y="20" fill="rgba(234,247,239,0.72)" font-size="11">height</text>
+                <text x="12" y="38" fill="rgba(234,247,239,0.72)" font-size="11">health</text>
+            `;
+        }
+
+        function syncSliders() {
+            nutrientsSlider.value = Math.round(state.nutrients);
+            waterSlider.value = Math.round(state.water);
+            lightSlider.value = Math.round(state.light);
+            tempSlider.value = Math.round(state.temp);
+            phSlider.value = Math.round(state.pH * 10);
+        }
+
+        function updateSoilSpots() {
+            const occupied = occupiedSpotIndexes();
+            document.querySelectorAll('.soil-spot').forEach(spot => {
+                spot.classList.toggle('occupied', occupied.has(Number(spot.dataset.index)));
+            });
+        }
+
+        function updateDisplay() {
+            weatherDisplay.textContent = state.weather.replace(/\b\w/g, c => c.toUpperCase());
+            seedsDisplay.textContent = state.seeds;
+            nutrientsDisplay.textContent = `${Math.round(state.nutrients)}%`;
+            nutrientsReadout.textContent = `${Math.round(state.nutrients)}%`;
+            waterReadout.textContent = `${Math.round(state.water)}%`;
+            lightReadout.textContent = `${Math.round(state.light)}%`;
+            tempReadout.textContent = `${Math.round(state.temp)}°C`;
+            phReadout.textContent = state.pH.toFixed(1);
+            scoreDisplay.textContent = state.score;
+            yieldDisplay.textContent = state.totalYield;
+            dayDisplay.textContent = `Day ${state.day} · ${String(state.hour).padStart(2, '0')}:00`;
+            forecastDisplay.textContent = `Forecast: ${state.forecast}`;
+            populationDisplay.textContent = `${state.plants.length} / ${soilSpots} plants`;
+            generationDisplay.textContent = `G${state.plants.length ? Math.max(...state.plants.map(p => p.generation)) : 0}`;
+            const avgHeight = state.plants.length ? state.plants.reduce((sum, p) => sum + p.height, 0) / state.plants.length : 0;
+            const avgHealth = state.plants.length ? state.plants.reduce((sum, p) => sum + p.health, 0) / state.plants.length : 0;
+            avgHeightDisplay.textContent = `${Math.round(avgHeight)}px`;
+            avgHealthDisplay.textContent = `${Math.round(avgHealth)}%`;
+            const selected = state.plants.find(p => p.id === state.selectedPlantId);
+            selectedDisplay.textContent = selected ? `#${selected.id} · ${Math.round(selected.health)}%` : 'None';
+            const best = state.plants.length ? [...state.plants].sort((a, b) => (b.health + b.height) - (a.health + a.height))[0] : null;
+            bestGeneDisplay.textContent = best ? best.summary().replace(/([A-Z])/g, ' $1').trim() : '—';
+            harvestBtn.disabled = !state.plants.some(p => p.mature && p.health > 0);
+            plantBtn.disabled = state.seeds <= 0 || state.plants.length >= soilSpots;
+            simulationArea.className = `${state.weather} ${state.hour < 6 || state.hour > 20 ? 'night' : ''}`;
+            simulationArea.style.setProperty('--sun-x', `${clamp(8 + (state.hour / 24) * 84, 6, 94)}%`);
+            updateSoilSpots();
+        }
+
+        function resetLab() {
+            clearInterval(simulationInterval);
+            state.plants.forEach(p => p.element.remove());
+            Object.assign(state, {
+                weather: 'sunny',
+                seeds: 5,
+                nutrients: 50,
+                water: 60,
+                light: 72,
+                temp: 22,
+                pH: 6.5,
+                plants: [],
+                seedBank: [],
+                simulationSpeed: 1,
+                day: 1,
+                hour: 6,
+                score: 0,
+                harvestCount: 0,
+                selectedPlantId: null,
+                totalYield: 0,
+                history: [],
+                forecast: 'stable',
+            });
+            plantIdCounter = 1;
+            syncSliders();
+            drawChart();
+            addLog('Lab reset with five baseline seeds.');
+            setSimulationSpeed(1);
+            updateDisplay();
+        }
+
+        plantBtn.addEventListener('click', () => plantSeed());
+        harvestBtn.addEventListener('click', harvestPlant);
+        sampleBtn.addEventListener('click', phenotypeScan);
+        optimizeBtn.addEventListener('click', aiTune);
+        mutateBtn.addEventListener('click', mutateSeeds);
+        resetBtn.addEventListener('click', resetLab);
+
+        nutrientsSlider.addEventListener('input', function() { state.nutrients = Number(this.value); updateDisplay(); });
+        waterSlider.addEventListener('input', function() { state.water = Number(this.value); updateDisplay(); });
+        lightSlider.addEventListener('input', function() { state.light = Number(this.value); updateDisplay(); });
+        tempSlider.addEventListener('input', function() { state.temp = Number(this.value); updateDisplay(); });
+        phSlider.addEventListener('input', function() { state.pH = Number(this.value) / 10; updateDisplay(); });
+
+        speedButtons.forEach(button => {
+            button.addEventListener('click', function() {
+                const speed = parseInt(this.id.split('-')[1], 10);
+                setSimulationSpeed(speed);
+            });
+        });
+
+        window.addEventListener('resize', () => state.plants.forEach(p => p.update()));
+
+        createSoilSpots();
+        syncSliders();
+        addLog('Simulation online. Plant a seed to begin.');
+        recordHistory();
+        updateDisplay();
+        setSimulationSpeed(1);
+    </script>
+</body>
+</html>
