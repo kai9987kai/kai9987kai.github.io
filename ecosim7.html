@@ -1,0 +1,1550 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>EcoSim v7: Open-Ended Ecology Lab</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.5.1/dist/chart.umd.min.js"></script>
+  <style>
+    :root {
+      --bg: #07090d;
+      --panel: rgba(12, 17, 24, 0.86);
+      --panel-strong: rgba(8, 12, 18, 0.94);
+      --line: rgba(255,255,255,0.12);
+      --accent: #00d2ff;
+      --accent-2: #8cff7a;
+      --danger: #ff5c7a;
+      --warn: #ffd166;
+      --text: #c7ced9;
+      --muted: #7e8998;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: radial-gradient(circle at 50% 45%, #111821 0%, var(--bg) 68%);
+      color: var(--text);
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      overflow: hidden;
+      user-select: none;
+    }
+    canvas.world { position: absolute; inset: 0; width: 100vw; height: 100vh; }
+    #mainCanvas { z-index: 1; }
+    /* v6 fix: pheromones must sit above the opaque world canvas, otherwise they are hidden. */
+    #pheroCanvas { z-index: 2; opacity: 0.58; image-rendering: pixelated; mix-blend-mode: screen; pointer-events: none; }
+    #debugCanvas { z-index: 3; pointer-events: none; }
+    .ui { position: absolute; inset: 0; z-index: 10; pointer-events: none; }
+    .panel {
+      pointer-events: auto;
+      position: absolute;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 10px;
+      backdrop-filter: blur(8px);
+      box-shadow: 0 18px 50px rgba(0,0,0,0.22);
+    }
+    #controls { top: 10px; left: 10px; width: 306px; }
+    #stats { top: 10px; right: 10px; width: 276px; }
+    #inspector { bottom: 10px; left: 10px; width: 332px; min-height: 250px; display: none; flex-direction: column; gap: 6px; }
+    #env-readout { bottom: 10px; right: 10px; width: 270px; text-align: right; }
+    #legend { left: 50%; bottom: 10px; transform: translateX(-50%); width: min(580px, calc(100vw - 720px)); min-width: 310px; text-align: center; }
+    h3 {
+      margin: 0 0 8px 0;
+      font-size: 12px;
+      letter-spacing: 0.08em;
+      color: var(--accent);
+      text-transform: uppercase;
+    }
+    .grid { display: grid; grid-template-columns: 1fr auto; gap: 6px 10px; align-items: center; }
+    .row { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: 11px; margin-bottom: 5px; }
+    .mini { font-size: 10px; color: var(--muted); line-height: 1.35; }
+    .pill { border: 1px solid var(--line); border-radius: 999px; padding: 2px 7px; background: rgba(255,255,255,0.04); }
+    input[type="range"] { width: 126px; accent-color: var(--accent); }
+    input[type="number"] { width: 68px; background: #0d1118; color: var(--text); border: 1px solid var(--line); border-radius: 5px; padding: 2px 5px; }
+    input[type="checkbox"] { accent-color: var(--accent); }
+    button {
+      background: #111821;
+      color: var(--accent);
+      border: 1px solid rgba(0,210,255,0.55);
+      border-radius: 7px;
+      cursor: pointer;
+      padding: 6px 8px;
+      margin: 2px 0;
+      font: inherit;
+      font-size: 11px;
+      transition: transform 0.08s ease, background 0.12s ease;
+    }
+    button:hover { background: var(--accent); color: #001016; }
+    button:active { transform: translateY(1px); }
+    .btn-row { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 7px; }
+    .bar { height: 6px; background: rgba(255,255,255,0.09); border-radius: 999px; overflow: hidden; }
+    .bar > i { display: block; height: 100%; width: 0%; background: var(--accent); border-radius: 999px; }
+    .stats-list { display: grid; grid-template-columns: 1fr auto; gap: 4px 10px; font-size: 11px; }
+    .green { color: var(--accent-2); }
+    .red { color: var(--danger); }
+    .warn { color: var(--warn); }
+    #brainView { width: 100%; height: 132px; background:#020407; border:1px solid rgba(255,255,255,0.12); border-radius: 8px; margin-top: 4px; }
+    #chart { margin-top: 8px; max-height: 112px; }
+    .kbd { padding: 1px 5px; border-radius: 4px; border:1px solid var(--line); background: rgba(255,255,255,0.05); color: #d9e3ef; }
+    @media (max-width: 950px) {
+      #legend { display: none; }
+      #controls { width: 282px; }
+      #stats { width: 244px; }
+      #inspector { width: 296px; }
+    }
+  </style>
+</head>
+<body>
+  <canvas id="mainCanvas" class="world"></canvas>
+  <canvas id="pheroCanvas" class="world"></canvas>
+  <canvas id="debugCanvas" class="world"></canvas>
+
+  <div class="ui">
+    <div id="controls" class="panel">
+      <h3>EcoSim v7: Open-Ended Ecology Lab</h3>
+      <div class="grid">
+        <label>Pop Limit</label><input type="number" id="popCap" value="220" min="20" max="900" />
+        <label>Sim Speed</label><input type="range" id="timeScale" min="1" max="10" value="1" />
+        <label>Food Richness</label><input type="range" id="foodRichness" min="35" max="190" value="100" />
+        <label>Mutation</label><input type="range" id="mutationRate" min="2" max="45" value="12" />
+        <label>Speciation</label><input type="range" id="diversityPressure" min="0" max="100" value="48" />
+      </div>
+      <div class="row"><label>Pheromone Field</label><input type="checkbox" id="showPhero" checked /></div>
+      <div class="row"><label>Vision / Lidar</label><input type="checkbox" id="showVision" checked /></div>
+      <div class="row"><label>Quality-Diversity Map</label><input type="checkbox" id="showQD" checked /></div>
+      <div class="row"><label>Adaptive Weather</label><input type="checkbox" id="adaptiveWeather" checked /></div>
+      <div class="row"><label>Brain Economy Mode</label><input type="checkbox" id="brainEconomy" checked /></div>
+      <div class="row"><label>Ecosystem Autopilot</label><input type="checkbox" id="ecosystemAutopilot" checked /></div>
+      <div class="row"><label>Nutrient Cycling</label><input type="checkbox" id="nutrientCycling" checked /></div>
+      <div class="btn-row">
+        <button id="pauseBtn">PAUSE</button>
+        <button id="stepBtn">STEP</button>
+        <button id="resetBtn">RESET</button>
+        <button id="seedBtn">SEED FOOD</button>
+        <button id="herbBtn">+ HERBIVORES</button>
+        <button id="carnBtn">+ CARNIVORES</button>
+      </div>
+      <div class="mini" style="margin-top:8px">
+        Keeps: PBT, curiosity, lidar, pheromones, day/night, spatial hashing, food patches, weather, obstacles, social imitation, QD archive and neural inspector.<br>
+        v7 adds: speciation pressure, carrion/nutrient cycling, migration pulses, rare-niche protection, trophic autopilot, regime shifts, and richer open-ended telemetry.
+      </div>
+    </div>
+
+    <div id="stats" class="panel">
+      <h3>Population Dashboard</h3>
+      <div class="stats-list">
+        <span>Agents</span><span id="stCount">0</span>
+        <span class="green">Herbivores</span><span class="green" id="stHerb">0</span>
+        <span class="red">Carnivores</span><span class="red" id="stCarn">0</span>
+        <span>Food</span><span id="stFood">0</span>
+        <span>Avg Age</span><span id="stAge">0</span>
+        <span>Best Score</span><span id="stBest">0</span>
+        <span>QD Cells</span><span id="stQD">0</span>
+        <span>Species</span><span id="stSpecies">0</span>
+        <span>Novelty</span><span id="stNovelty">0</span>
+        <span>Stability</span><span id="stStability">0%</span>
+        <span>Carrion</span><span id="stCarrion">0</span>
+        <span>FPS / Nets</span><span id="stPerf">0 / 0</span>
+      </div>
+      <canvas id="chart" height="108"></canvas>
+    </div>
+
+    <div id="inspector" class="panel">
+      <h3>Neural Inspector</h3>
+      <div class="row"><span>ID</span><span id="inspId"></span></div>
+      <div class="row"><span>State</span><span id="inspState"></span></div>
+      <div class="row"><span>Genome</span><span id="inspGenome"></span></div>
+      <div class="row"><span>Fitness</span><span id="inspFit"></span></div>
+      <div class="bar"><i id="inspEnergy"></i></div>
+      <canvas id="brainView" width="308" height="132"></canvas>
+    </div>
+
+    <div id="legend" class="panel mini">
+      Click an agent to inspect neural inputs. Green dots are food; green agents forage; red agents hunt. Pheromones: green = food trails, red = danger trails. QD stores diverse high-scoring policies, while novelty emitters, speciation pressure and migration pulses protect rare behavioral niches.
+    </div>
+
+    <div id="env-readout" class="panel">
+      <div style="font-size:18px; font-weight:700;" id="clock">00:00</div>
+      <div id="weather" class="pill" style="display:inline-block; margin:4px 0;">Sunny</div>
+      <div class="row"><span>Temp</span><span id="temp">0°C</span></div>
+      <div class="row"><span>Light</span><span id="light">0%</span></div>
+      <div class="row"><span>Food Growth</span><span id="growth">0%</span></div>
+      <div class="row"><span>Wind</span><span id="wind">0%</span></div>
+      <div class="row"><span>Regime</span><span id="regime">Quiet</span></div>
+    </div>
+  </div>
+
+<script>
+(() => {
+  'use strict';
+
+  const $ = (id) => document.getElementById(id);
+  const cvs = $('mainCanvas');
+  const ctx = cvs.getContext('2d', { alpha: false });
+  const pCvs = $('pheroCanvas');
+  const pCtx = pCvs.getContext('2d', { alpha: true });
+  const dCvs = $('debugCanvas');
+  const dCtx = dCvs.getContext('2d', { alpha: true });
+
+  const UI = {};
+  const ids = [
+    'popCap','timeScale','foodRichness','mutationRate','diversityPressure','showPhero','showVision','showQD','adaptiveWeather','brainEconomy','ecosystemAutopilot','nutrientCycling',
+    'pauseBtn','stepBtn','resetBtn','seedBtn','herbBtn','carnBtn','stCount','stHerb','stCarn','stFood','stAge','stBest',
+    'stQD','stSpecies','stNovelty','stStability','stCarrion','stPerf','clock','weather','temp','light','growth','wind','regime','inspector','inspId','inspState',
+    'inspGenome','inspFit','inspEnergy','brainView','chart'
+  ];
+  for (const id of ids) UI[id] = $(id);
+
+  const CFG = {
+    cell: 64,
+    foodCell: 54,
+    obstacleCell: 76,
+    pGrid: 12,
+    baseVision: 160,
+    sectors: 10,
+    sectorInputs: 5, // wall, food/prey, danger, friend, obstacle
+    pheroInputs: 4, // food scent, danger scent, forward food gradient, forward danger gradient
+    stateInputs: 9,
+    memoryInputs: 4,
+    outputs: 3,
+    noveltyCell: 52,
+    maxFood: 220,
+    maxCarrion: 90,
+    archiveLimit: 300,
+    get inputs() { return this.sectors * this.sectorInputs + this.pheroInputs + this.stateInputs + this.memoryInputs; }
+  };
+
+  const TWO_PI = Math.PI * 2;
+  const rand = (min, max) => Math.random() * (max - min) + min;
+  const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
+  const lerp = (a, b, t) => a + (b - a) * t;
+  const dist2 = (ax, ay, bx, by) => (ax - bx) ** 2 + (ay - by) ** 2;
+  const angleNorm = (a) => {
+    a %= TWO_PI;
+    return a < 0 ? a + TWO_PI : a;
+  };
+  const randn = () => {
+    let u = 0, v = 0;
+    while (u === 0) u = Math.random();
+    while (v === 0) v = Math.random();
+    return Math.sqrt(-2 * Math.log(u)) * Math.cos(TWO_PI * v);
+  };
+
+  class SpatialHash {
+    constructor(size) { this.size = size; this.map = new Map(); }
+    clear() { this.map.clear(); }
+    keyXY(cx, cy) { return `${cx}|${cy}`; }
+    key(x, y) { return this.keyXY(Math.floor(x / this.size), Math.floor(y / this.size)); }
+    add(obj) {
+      const k = this.key(obj.x, obj.y);
+      let bucket = this.map.get(k);
+      if (!bucket) { bucket = []; this.map.set(k, bucket); }
+      bucket.push(obj);
+    }
+    queryInto(out, x, y, radius = this.size) {
+      out.length = 0;
+      const cx = Math.floor(x / this.size);
+      const cy = Math.floor(y / this.size);
+      const span = Math.ceil(radius / this.size);
+      for (let ix = -span; ix <= span; ix++) {
+        for (let iy = -span; iy <= span; iy++) {
+          const bucket = this.map.get(this.keyXY(cx + ix, cy + iy));
+          if (bucket) for (let i = 0; i < bucket.length; i++) out.push(bucket[i]);
+        }
+      }
+      return out;
+    }
+  }
+
+  class Brain {
+    constructor(source = null, sigma = 0) {
+      const i = CFG.inputs, h1 = 32, h2 = 24, o = CFG.outputs;
+      this.w1 = new Float32Array(i * h1); this.b1 = new Float32Array(h1);
+      this.w2 = new Float32Array(h1 * h2); this.b2 = new Float32Array(h2);
+      this.w3 = new Float32Array(h2 * o); this.b3 = new Float32Array(o);
+      this.h1 = new Float32Array(h1); this.h2 = new Float32Array(h2);
+      if (source) this.copyFrom(source, sigma);
+      else this.randomize();
+    }
+    randomize() {
+      const fill = (arr, scale) => { for (let i = 0; i < arr.length; i++) arr[i] = randn() * scale; };
+      fill(this.w1, 0.30 / Math.sqrt(CFG.inputs)); fill(this.b1, 0.025);
+      fill(this.w2, 0.34 / Math.sqrt(32)); fill(this.b2, 0.025);
+      fill(this.w3, 0.42 / Math.sqrt(24)); fill(this.b3, 0.025);
+    }
+    copyFrom(src, sigma = 0) {
+      const cp = (dst, s) => { for (let i = 0; i < dst.length; i++) dst[i] = s[i] + (sigma ? randn() * sigma : 0); };
+      cp(this.w1, src.w1); cp(this.b1, src.b1);
+      cp(this.w2, src.w2); cp(this.b2, src.b2);
+      cp(this.w3, src.w3); cp(this.b3, src.b3);
+    }
+    cloneWeights() {
+      return {
+        w1: new Float32Array(this.w1), b1: new Float32Array(this.b1),
+        w2: new Float32Array(this.w2), b2: new Float32Array(this.b2),
+        w3: new Float32Array(this.w3), b3: new Float32Array(this.b3)
+      };
+    }
+    mixFrom(other, alpha = 0.035, sigma = 0.0035) {
+      const mix = (a, b) => {
+        for (let i = 0; i < a.length; i++) a[i] = a[i] * (1 - alpha) + b[i] * alpha + randn() * sigma;
+      };
+      mix(this.w1, other.w1); mix(this.b1, other.b1);
+      mix(this.w2, other.w2); mix(this.b2, other.b2);
+      mix(this.w3, other.w3); mix(this.b3, other.b3);
+    }
+    predict(input, out) {
+      const h1 = this.h1, h2 = this.h2;
+      for (let j = 0; j < 32; j++) {
+        let sum = this.b1[j];
+        for (let k = 0, off = j; k < CFG.inputs; k++, off += 32) sum += input[k] * this.w1[off];
+        h1[j] = sum > 0 ? sum : 0;
+      }
+      for (let j = 0; j < 24; j++) {
+        let sum = this.b2[j];
+        for (let k = 0, off = j; k < 32; k++, off += 24) sum += h1[k] * this.w2[off];
+        h2[j] = sum > 0 ? sum : 0;
+      }
+      for (let j = 0; j < CFG.outputs; j++) {
+        let sum = this.b3[j];
+        for (let k = 0, off = j; k < 24; k++, off += CFG.outputs) sum += h2[k] * this.w3[off];
+        out[j] = Math.tanh(sum);
+      }
+      return out;
+    }
+    dispose() {}
+  }
+
+  function cloneGenes(g) { return JSON.parse(JSON.stringify(g)); }
+
+  class QDArchive {
+    constructor(limit) {
+      this.limit = limit;
+      this.cells = new Map();
+      this.bestScore = 0;
+      this.lastEmitter = 'seed';
+    }
+    descriptor(agent) {
+      const speedBin = clamp(Math.floor(agent.genes.speed * 4.2), 0, 6);
+      const aggrBin = clamp(Math.floor(agent.genes.aggr * 5.5), 0, 6);
+      const senseBin = clamp(Math.floor(agent.genes.sight * 4.1), 0, 6);
+      const noveltyBin = clamp(Math.floor((agent.curiosityScore / Math.max(1, agent.age)) * 13), 0, 6);
+      const homeoBin = clamp(Math.floor((1 - Math.abs(agent.energy - 70) / 90) * 6), 0, 6);
+      const speciesFragment = agent.speciesKey.split(':').slice(1, 4).join(':');
+      return `${agent.type}:${speedBin}:${aggrBin}:${senseBin}:${noveltyBin}:${homeoBin}:${speciesFragment}`;
+    }
+    score(agent) {
+      const noveltyRate = agent.curiosityScore / Math.max(1, agent.age);
+      const homeostasis = 1 - clamp(Math.abs(agent.energy - 76) / 90, 0, 1);
+      const trophic = agent.type === 0 ? agent.meals * 8 : agent.kills * 26;
+      const rare = rareSpeciesBonus(agent) * 150;
+      return agent.fitness() + noveltyRate * 420 + homeostasis * 38 + trophic + rare;
+    }
+    consider(agent) {
+      if (!agent || agent.age < 100) return;
+      const score = this.score(agent);
+      const key = this.descriptor(agent);
+      const current = this.cells.get(key);
+      if (!current || score > current.score) {
+        this.cells.set(key, {
+          key,
+          type: agent.type,
+          score,
+          novelty: agent.curiosityScore / Math.max(1, agent.age),
+          generation: agent.generation,
+          genes: cloneGenes(agent.genes),
+          brain: agent.brain.cloneWeights(),
+          bornFrame: frame
+        });
+        this.bestScore = Math.max(this.bestScore, score);
+      }
+      this.trim();
+    }
+    trim() {
+      if (this.cells.size <= this.limit) return;
+      const entries = [...this.cells.values()].sort((a, b) => a.score - b.score);
+      while (this.cells.size > this.limit) {
+        const victim = entries.shift();
+        if (!victim) break;
+        this.cells.delete(victim.key);
+      }
+    }
+    sample(type = null) {
+      let pool = [...this.cells.values()].filter(c => type === null || c.type === type);
+      if (!pool.length) pool = [...this.cells.values()];
+      if (!pool.length) return null;
+      const roll = Math.random();
+      if (roll < 0.22) {
+        this.lastEmitter = 'novelty';
+        pool.sort((a, b) => b.novelty - a.novelty);
+        return pool[Math.floor(Math.random() * Math.max(1, Math.ceil(pool.length * 0.35)))];
+      }
+      if (roll < 0.42) {
+        this.lastEmitter = 'coverage';
+        return pool[Math.floor(Math.random() * pool.length)];
+      }
+      this.lastEmitter = 'elite';
+      pool.sort((a, b) => b.score - a.score);
+      return pool[Math.floor(Math.random() * Math.max(1, Math.ceil(pool.length * 0.42)))];
+    }
+    dispose() { this.cells.clear(); this.bestScore = 0; this.lastEmitter = 'seed'; }
+  }
+
+  const spatial = new SpatialHash(CFG.cell);
+  const foodHash = new SpatialHash(CFG.foodCell);
+  const obstacleHash = new SpatialHash(CFG.obstacleCell);
+  const qdArchive = new QDArchive(CFG.archiveLimit);
+
+  const scratchAgents = [];
+  const scratchFood = [];
+  const scratchObstacles = [];
+
+  let agents = [];
+  let foods = [];
+  let carrion = [];
+  let patches = [];
+  let obstacles = [];
+  let frame = 0;
+  let simDays = 0;
+  let timeOfDay = 8;
+  let paused = false;
+  let selectedId = null;
+  let lastFrameT = performance.now();
+  let fps = 0;
+  let chart = null;
+  let foodHashDirty = true;
+  let speciesCounts = new Map();
+  let ecosystemStability = 1;
+  let activeRegime = { name: 'Quiet', timer: 0, foodMul: 1, predMul: 1, mutationMul: 1 };
+  let lastPheroDrawFrame = -1;
+
+  let pW = 0, pH = 0, pData = null, pTmp = null, pImg = null, pBuffer = null, pBufferCtx = null;
+  let visitMap = new Map();
+  let env = {
+    weatherName: 'Sunny', rain: 0, heat: 0, wind: 0, windX: 0, windY: 0,
+    lightLevel: 1, temp: 22, tempMod: 1, foodGrowth: 1, scentDecay: 0.982, nutrientPulse: 0
+  };
+
+  function worldW() { return window.innerWidth; }
+  function worldH() { return window.innerHeight; }
+
+  function resize() {
+    const ratio = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
+    for (const canvas of [cvs, pCvs, dCvs]) {
+      canvas.width = Math.floor(window.innerWidth * ratio);
+      canvas.height = Math.floor(window.innerHeight * ratio);
+      canvas.style.width = `${window.innerWidth}px`;
+      canvas.style.height = `${window.innerHeight}px`;
+      const g = canvas.getContext('2d');
+      g.setTransform(ratio, 0, 0, ratio, 0, 0);
+    }
+    initPheromoneGrid(true);
+    constrainWorldObjects();
+    rebuildObstacleHash();
+    foodHashDirty = true;
+  }
+
+  function initPheromoneGrid(preserve = false) {
+    const old = preserve ? pData : null;
+    const oldW = pW, oldH = pH;
+    pW = Math.ceil(worldW() / CFG.pGrid);
+    pH = Math.ceil(worldH() / CFG.pGrid);
+    pData = new Float32Array(pW * pH * 2);
+    pTmp = new Float32Array(pW * pH * 2);
+    if (old) {
+      const w = Math.min(oldW, pW), h = Math.min(oldH, pH);
+      for (let y = 0; y < h; y++) {
+        for (let x = 0; x < w; x++) {
+          const ni = (y * pW + x) * 2;
+          const oi = (y * oldW + x) * 2;
+          pData[ni] = old[oi];
+          pData[ni + 1] = old[oi + 1];
+        }
+      }
+    }
+    pBuffer = document.createElement('canvas');
+    pBuffer.width = pW;
+    pBuffer.height = pH;
+    pBufferCtx = pBuffer.getContext('2d', { willReadFrequently: true });
+    pImg = pBufferCtx.createImageData(pW, pH);
+    lastPheroDrawFrame = -1;
+  }
+
+  function pIndex(x, y) {
+    const gx = Math.floor(x / CFG.pGrid), gy = Math.floor(y / CFG.pGrid);
+    if (gx < 0 || gy < 0 || gx >= pW || gy >= pH) return -1;
+    return (gy * pW + gx) * 2;
+  }
+
+  function addScent(x, y, type, val) {
+    const idx = pIndex(x, y);
+    if (idx < 0) return;
+    pData[idx + type] = Math.min(18, pData[idx + type] + val);
+  }
+
+  function scentAt(x, y, type) {
+    const idx = pIndex(x, y);
+    return idx < 0 ? 0 : pData[idx + type];
+  }
+
+  function updatePheromoneField() {
+    const decay = env.scentDecay;
+    for (let i = 0; i < pData.length; i++) pData[i] *= decay;
+    if ((frame & 1) !== 0) return;
+
+    const spread = env.rain > 0.4 ? 0.080 : 0.034;
+    pTmp.fill(0);
+    for (let y = 0; y < pH; y++) {
+      for (let x = 0; x < pW; x++) {
+        const idx = (y * pW + x) * 2;
+        for (let c = 0; c < 2; c++) {
+          const v = pData[idx + c];
+          if (v < 0.001) continue;
+          let neighbors = 0;
+          if (x > 0) neighbors++; if (x < pW - 1) neighbors++;
+          if (y > 0) neighbors++; if (y < pH - 1) neighbors++;
+          const keep = 1 - spread * neighbors;
+          pTmp[idx + c] += v * keep;
+          if (x > 0) pTmp[idx - 2 + c] += v * spread;
+          if (x < pW - 1) pTmp[idx + 2 + c] += v * spread;
+          if (y > 0) pTmp[idx - pW * 2 + c] += v * spread;
+          if (y < pH - 1) pTmp[idx + pW * 2 + c] += v * spread;
+        }
+      }
+    }
+    const swap = pData; pData = pTmp; pTmp = swap;
+  }
+
+  function renderPheromones() {
+    if (!UI.showPhero.checked) {
+      pCtx.clearRect(0, 0, worldW(), worldH());
+      return;
+    }
+    const stride = parseInt(UI.timeScale.value, 10) > 4 ? 3 : 2;
+    if (lastPheroDrawFrame >= 0 && frame - lastPheroDrawFrame < stride) return;
+    lastPheroDrawFrame = frame;
+    const data = pImg.data;
+    for (let i = 0; i < pW * pH; i++) {
+      const f = pData[i * 2];
+      const d = pData[i * 2 + 1];
+      const px = i * 4;
+      data[px] = Math.min(255, d * 145);
+      data[px + 1] = Math.min(255, f * 150);
+      data[px + 2] = Math.min(255, (f + d) * 24);
+      data[px + 3] = Math.min(170, Math.pow(f + d, 0.70) * 72);
+    }
+    pBufferCtx.putImageData(pImg, 0, 0);
+    pCtx.clearRect(0, 0, worldW(), worldH());
+    pCtx.imageSmoothingEnabled = false;
+    pCtx.drawImage(pBuffer, 0, 0, worldW(), worldH());
+  }
+
+  function randomGenes(type) {
+    const herb = type === 0;
+    return {
+      speed: herb ? rand(0.55, 1.1) : rand(0.74, 1.28),
+      size: herb ? rand(0.55, 1.15) : rand(0.7, 1.36),
+      aggr: herb ? rand(0.02, 0.28) : rand(0.55, 1.0),
+      sight: rand(0.76, 1.28),
+      metabolism: rand(0.75, 1.25),
+      curiosity: herb ? rand(0.55, 1.25) : rand(0.35, 1.05),
+      social: rand(0.2, 1.0),
+      risk: herb ? rand(0.1, 0.5) : rand(0.45, 1.0),
+      hue: herb ? rand(95, 135) : (Math.random() < 0.5 ? rand(350, 360) : rand(0, 12)),
+      sat: herb ? rand(65, 90) : rand(72, 95)
+    };
+  }
+
+  function mutateGenes(base, rate = 0.12) {
+    const g = cloneGenes(base);
+    const n = rate;
+    g.speed = clamp(g.speed + randn() * n, 0.25, 1.65);
+    g.size = clamp(g.size + randn() * n, 0.35, 1.70);
+    g.aggr = clamp(g.aggr + randn() * n, 0, 1.18);
+    g.sight = clamp(g.sight + randn() * n, 0.45, 1.70);
+    g.metabolism = clamp(g.metabolism + randn() * n, 0.48, 1.75);
+    g.curiosity = clamp(g.curiosity + randn() * n, 0.05, 1.75);
+    g.social = clamp(g.social + randn() * n, 0.0, 1.45);
+    g.risk = clamp((g.risk ?? 0.5) + randn() * n, 0.02, 1.2);
+    g.hue = (g.hue + randn() * n * 24 + 360) % 360;
+    g.sat = clamp(g.sat + randn() * n * 18, 35, 100);
+    return g;
+  }
+
+  function diversityPressure() { return parseInt(UI.diversityPressure.value, 10) / 100; }
+
+  function speciesKeyForGenes(g, type = 0) {
+    const spd = clamp(Math.floor(g.speed * 3.2), 0, 6);
+    const siz = clamp(Math.floor(g.size * 3.0), 0, 6);
+    const ag = clamp(Math.floor(g.aggr * 4.8), 0, 6);
+    const cur = clamp(Math.floor(g.curiosity * 3.4), 0, 6);
+    const risk = clamp(Math.floor((g.risk ?? 0.5) * 4.0), 0, 6);
+    return `${type}:${spd}:${siz}:${ag}:${cur}:${risk}`;
+  }
+
+  function rebuildSpeciesStats() {
+    speciesCounts.clear();
+    for (const a of agents) speciesCounts.set(a.speciesKey, (speciesCounts.get(a.speciesKey) || 0) + 1);
+    return speciesCounts.size;
+  }
+
+  function rareSpeciesBonus(agent) {
+    const count = speciesCounts.get(agent.speciesKey) || 1;
+    return Math.sqrt(1 / count) * diversityPressure();
+  }
+
+  function noteRegime(name, timer, foodMul = 1, predMul = 1, mutationMul = 1) {
+    activeRegime = { name, timer, foodMul, predMul, mutationMul };
+  }
+
+  function maybeRegimeShift() {
+    if (activeRegime.timer > 0) { activeRegime.timer--; return; }
+    if (frame < 600 || frame % 1450 !== 0) return;
+    let herbs = 0, carns = 0;
+    for (const a of agents) a.type === 0 ? herbs++ : carns++;
+    const ratio = carns / Math.max(1, herbs);
+    const roll = Math.random();
+    if (ratio > 0.35) noteRegime('Prey Refuge', 520, 1.18, 0.86, 1.06);
+    else if (foods.length < 34) noteRegime('Nutrient Bloom', 560, 1.48, 1.0, 1.04);
+    else if (speciesCounts.size < 9 || roll < 0.22) noteRegime('Migration Pulse', 420, 1.05, 1.0, 1.24);
+    else if (roll < 0.42) noteRegime('Famine Belt', 420, 0.64, 0.92, 1.14);
+    else noteRegime('Quiet', 600, 1, 1, 1);
+  }
+
+  function updateEcosystemStability() {
+    let herbs = 0, carns = 0;
+    for (const a of agents) a.type === 0 ? herbs++ : carns++;
+    const popCap = Math.max(1, parseInt(UI.popCap.value, 10));
+    const popScore = 1 - clamp(Math.abs(agents.length - popCap * 0.46) / (popCap * 0.52), 0, 1);
+    const foodScore = 1 - clamp(Math.abs(foods.length - CFG.maxFood * 0.46) / (CFG.maxFood * 0.48), 0, 1);
+    const ratio = carns / Math.max(1, herbs);
+    const ratioScore = 1 - clamp(Math.abs(ratio - 0.18) / 0.34, 0, 1);
+    const speciesScore = clamp(speciesCounts.size / 16, 0, 1);
+    ecosystemStability = clamp(popScore * 0.30 + foodScore * 0.25 + ratioScore * 0.25 + speciesScore * 0.20, 0, 1);
+  }
+
+  class Agent {
+    constructor(x, y, type, options = {}) {
+      this.id = Math.random().toString(36).slice(2, 7);
+      this.parentId = options.parentId || 'wild';
+      this.x = x;
+      this.y = y;
+      this.type = type; // 0 herbivore, 1 carnivore
+      this.angle = rand(0, TWO_PI);
+      this.vx = 0;
+      this.vy = 0;
+      this.genes = options.genes ? cloneGenes(options.genes) : randomGenes(type);
+      this.speciesKey = speciesKeyForGenes(this.genes, type);
+      this.generation = options.generation || 0;
+      this.radius = 4.5 + this.genes.size * 5.8;
+      this.energy = options.energy || rand(70, 105);
+      this.health = 100;
+      this.age = 0;
+      this.meals = 0;
+      this.kills = 0;
+      this.births = 0;
+      this.curiosityScore = 0;
+      this.novelCells = 0;
+      this.sensors = new Float32Array(CFG.inputs);
+      this.brainOut = new Float32Array(CFG.outputs);
+      this.lastDecision = null;
+      this.memory = new Float32Array(CFG.memoryInputs);
+      this.brainPhase = Math.floor(Math.random() * 4);
+      this.brain = new Brain(options.brainWeights || null, options.mutationSigma ?? 0);
+    }
+
+    fitness() {
+      const rare = rareSpeciesBonus(this) * 32;
+      return this.age + this.meals * 34 + this.kills * 115 + this.births * 58 + this.curiosityScore * 1.7 + this.energy * 0.25 + rare;
+    }
+
+    visionRange() {
+      const nocturnalBoost = this.type === 1 && env.lightLevel < 0.55 ? 1.24 : 1.0;
+      const stressPenalty = this.energy < 18 ? 0.85 : 1.0;
+      return CFG.baseVision * this.genes.sight * env.lightLevel * nocturnalBoost * stressPenalty;
+    }
+
+    shouldThink() {
+      if (!UI.brainEconomy.checked || this.id === selectedId || !this.lastDecision) return true;
+      const interval = this.type === 1 ? 2 : (this.energy > 55 ? 3 : 2);
+      return ((frame + this.brainPhase) % interval) === 0;
+    }
+
+    writeSector(relAngle, channel, val) {
+      const sector = Math.floor(angleNorm(relAngle) / (TWO_PI / CFG.sectors)) % CFG.sectors;
+      const idx = sector * CFG.sectorInputs + channel;
+      if (val > this.sensors[idx]) this.sensors[idx] = val;
+    }
+
+    think() {
+      const sensors = this.sensors;
+      sensors.fill(0);
+      const vision = this.visionRange();
+      const angleStep = TWO_PI / CFG.sectors;
+
+      for (let i = 0; i < CFG.sectors; i++) {
+        const theta = this.angle + i * angleStep;
+        const dx = Math.cos(theta), dy = Math.sin(theta);
+        const wallDistX = dx > 0 ? (worldW() - this.x) / dx : dx < 0 ? -this.x / dx : Infinity;
+        const wallDistY = dy > 0 ? (worldH() - this.y) / dy : dy < 0 ? -this.y / dy : Infinity;
+        const wallDist = Math.min(wallDistX, wallDistY);
+        if (wallDist < vision) sensors[i * CFG.sectorInputs] = clamp(1 - wallDist / vision, 0, 1);
+      }
+
+      spatial.queryInto(scratchAgents, this.x, this.y, vision);
+      for (let n = 0; n < scratchAgents.length; n++) {
+        const other = scratchAgents[n];
+        if (other === this || other.energy <= 0 || other.health <= 0) continue;
+        const ox = other.x - this.x, oy = other.y - this.y;
+        const d2 = ox * ox + oy * oy;
+        if (d2 > vision * vision) continue;
+        const val = 1 - Math.sqrt(d2) / vision;
+        const rel = Math.atan2(oy, ox) - this.angle;
+        if (other.type === this.type) this.writeSector(rel, 3, val);
+        else if (this.type === 0) this.writeSector(rel, 2, val);
+        else this.writeSector(rel, 1, val);
+      }
+
+      if (this.type === 0) {
+        foodHash.queryInto(scratchFood, this.x, this.y, vision);
+        for (let n = 0; n < scratchFood.length; n++) {
+          const f = scratchFood[n];
+          if (f.eaten) continue;
+          const fx = f.x - this.x, fy = f.y - this.y;
+          const fd2 = fx * fx + fy * fy;
+          if (fd2 > vision * vision) continue;
+          this.writeSector(Math.atan2(fy, fx) - this.angle, 1, 1 - Math.sqrt(fd2) / vision);
+        }
+      }
+
+      obstacleHash.queryInto(scratchObstacles, this.x, this.y, vision + 70);
+      for (let n = 0; n < scratchObstacles.length; n++) {
+        const o = scratchObstacles[n];
+        const ox = o.x - this.x, oy = o.y - this.y;
+        const od = Math.sqrt(ox * ox + oy * oy);
+        const edge = Math.max(0, od - o.r);
+        if (edge > vision) continue;
+        this.writeSector(Math.atan2(oy, ox) - this.angle, 4, 1 - edge / vision);
+      }
+
+      let offset = CFG.sectors * CFG.sectorInputs;
+      const localFood = scentAt(this.x, this.y, 0);
+      const localDanger = scentAt(this.x, this.y, 1);
+      const frontX = this.x + Math.cos(this.angle) * CFG.pGrid * 2;
+      const frontY = this.y + Math.sin(this.angle) * CFG.pGrid * 2;
+      sensors[offset++] = clamp(localFood / 8, 0, 1);
+      sensors[offset++] = clamp(localDanger / 8, 0, 1);
+      sensors[offset++] = clamp((scentAt(frontX, frontY, 0) - localFood) / 5, -1, 1);
+      sensors[offset++] = clamp((scentAt(frontX, frontY, 1) - localDanger) / 5, -1, 1);
+
+      sensors[offset++] = clamp(this.energy / 120, 0, 1);
+      sensors[offset++] = clamp(this.health / 100, 0, 1);
+      sensors[offset++] = clamp(this.age / 5000, 0, 1);
+      sensors[offset++] = Math.sin(timeOfDay / 24 * TWO_PI);
+      sensors[offset++] = Math.cos(timeOfDay / 24 * TWO_PI);
+      sensors[offset++] = clamp((env.temp + 5) / 45, 0, 1);
+      sensors[offset++] = env.rain;
+      sensors[offset++] = this.type;
+      sensors[offset++] = clamp((100 - this.energy) / 100, 0, 1);
+
+      for (let i = 0; i < this.memory.length; i++) sensors[offset++] = this.memory[i];
+
+      this.brain.predict(sensors, this.brainOut);
+      const decision = {
+        turn: clamp(this.brainOut[0], -1, 1),
+        thrust: clamp((this.brainOut[1] + 1) / 2, 0, 1),
+        signal: clamp(this.brainOut[2], -1, 1),
+        sensors
+      };
+      this.lastDecision = decision;
+      this.memory[0] = decision.turn;
+      this.memory[1] = decision.thrust;
+      this.memory[2] = clamp(localFood / 8, 0, 1);
+      this.memory[3] = clamp(localDanger / 8, 0, 1);
+      return decision;
+    }
+
+    applyPhysics(decision) {
+      const risk = this.type === 1 ? 1 : clamp(this.genes.risk ?? 0.5, 0.08, 1.2);
+      this.angle += decision.turn * 0.34 * risk;
+      const fatigue = this.energy < 25 ? 0.68 : 1.0;
+      const speed = this.genes.speed * 2.66 * decision.thrust * env.tempMod * fatigue;
+      this.vx = Math.cos(this.angle) * speed + env.windX * (0.20 + this.radius * 0.006);
+      this.vy = Math.sin(this.angle) * speed + env.windY * (0.20 + this.radius * 0.006);
+      this.x += this.vx;
+      this.y += this.vy;
+
+      if (this.x < this.radius || this.x > worldW() - this.radius) {
+        this.x = clamp(this.x, this.radius, worldW() - this.radius);
+        this.angle = Math.PI - this.angle + rand(-0.12, 0.12);
+      }
+      if (this.y < this.radius || this.y > worldH() - this.radius) {
+        this.y = clamp(this.y, this.radius, worldH() - this.radius);
+        this.angle = -this.angle + rand(-0.12, 0.12);
+      }
+
+      obstacleHash.queryInto(scratchObstacles, this.x, this.y, this.radius + 54);
+      for (let n = 0; n < scratchObstacles.length; n++) {
+        const o = scratchObstacles[n];
+        const dx = this.x - o.x, dy = this.y - o.y;
+        const minD = this.radius + o.r;
+        const d2 = dx * dx + dy * dy;
+        if (d2 < minD * minD) {
+          const d = Math.max(0.001, Math.sqrt(d2));
+          const nx = dx / d, ny = dy / d;
+          this.x = o.x + nx * minD;
+          this.y = o.y + ny * minD;
+          this.angle = Math.atan2(ny, nx) + rand(-0.55, 0.55);
+          this.energy -= 0.78;
+        }
+      }
+
+      const ck = `${this.type}:${Math.floor(this.x / CFG.noveltyCell)},${Math.floor(this.y / CFG.noveltyCell)}`;
+      const visits = visitMap.get(ck) || 0;
+      if (visits < 10) {
+        const novelty = (1 / Math.sqrt(visits + 1)) * this.genes.curiosity;
+        this.curiosityScore += novelty;
+        this.energy = Math.min(122, this.energy + novelty * 0.30);
+        this.novelCells += visits === 0 ? 1 : 0;
+        visitMap.set(ck, visits + 1);
+      }
+
+      if (decision.signal > 0.35) addScent(this.x, this.y, this.type === 0 ? 0 : 1, 0.08 * decision.signal);
+    }
+
+    metabolize() {
+      this.age++;
+      const basal = 0.107 * this.genes.metabolism + this.radius * 0.006 + this.genes.speed * 0.043;
+      const coldStress = env.temp < 8 ? 0.05 : 0;
+      const heatStress = env.temp > 34 ? 0.035 : 0;
+      const rainDrag = env.rain > 0.4 ? 0.010 : 0;
+      this.energy -= basal + coldStress + heatStress + rainDrag;
+      if (this.energy < 0) this.health += this.energy * 0.45;
+      if (this.energy > 70 && this.health < 100) this.health += 0.025;
+    }
+
+    dispose() { this.brain.dispose(); }
+  }
+
+  function generatePatches() {
+    patches = [];
+    const n = Math.max(4, Math.floor((worldW() * worldH()) / 180000));
+    for (let i = 0; i < n; i++) {
+      patches.push({ x: rand(60, worldW() - 60), y: rand(60, worldH() - 60), r: rand(65, 160), richness: rand(0.65, 1.35), nutrients: rand(0.85, 1.25), drift: rand(0, TWO_PI) });
+    }
+  }
+
+  function generateObstacles() {
+    obstacles = [];
+    const n = Math.max(5, Math.floor((worldW() * worldH()) / 230000));
+    for (let i = 0; i < n; i++) {
+      obstacles.push({ x: rand(80, worldW() - 80), y: rand(80, worldH() - 80), r: rand(18, 48) });
+    }
+    rebuildObstacleHash();
+  }
+
+  function driftPatches() {
+    if (frame % 12 !== 0) return;
+    for (const p of patches) {
+      p.drift += rand(-0.04, 0.04) + env.wind * 0.002;
+      p.x = clamp(p.x + Math.cos(p.drift) * 0.12 + env.windX * 0.18, 45, worldW() - 45);
+      p.y = clamp(p.y + Math.sin(p.drift) * 0.12 + env.windY * 0.18, 45, worldH() - 45);
+      p.nutrients = lerp(p.nutrients || 1, 1, 0.0018);
+    }
+  }
+
+  function constrainWorldObjects() {
+    for (const a of agents) { a.x = clamp(a.x, a.radius, worldW() - a.radius); a.y = clamp(a.y, a.radius, worldH() - a.radius); }
+    for (const f of foods) { f.x = clamp(f.x, 0, worldW()); f.y = clamp(f.y, 0, worldH()); }
+    for (const p of patches) { p.x = clamp(p.x, 50, worldW() - 50); p.y = clamp(p.y, 50, worldH() - 50); }
+    for (const o of obstacles) { o.x = clamp(o.x, o.r, worldW() - o.r); o.y = clamp(o.y, o.r, worldH() - o.r); }
+  }
+
+  function spawnFood(amount = 1, forcePatch = true) {
+    for (let i = 0; i < amount && foods.length < CFG.maxFood; i++) {
+      const patch = patches.length && (forcePatch || Math.random() < 0.78) ? patches[Math.floor(Math.random() * patches.length)] : null;
+      let x, y, energy;
+      if (patch) {
+        const a = rand(0, TWO_PI), r = Math.sqrt(Math.random()) * patch.r;
+        x = clamp(patch.x + Math.cos(a) * r, 4, worldW() - 4);
+        y = clamp(patch.y + Math.sin(a) * r, 4, worldH() - 4);
+        energy = rand(18, 33) * patch.richness * (patch.nutrients || 1);
+      } else {
+        x = rand(4, worldW() - 4);
+        y = rand(4, worldH() - 4);
+        energy = rand(14, 25);
+      }
+      foods.push({ x, y, energy, eaten: false, age: 0 });
+      addScent(x, y, 0, 0.45);
+    }
+    foodHashDirty = true;
+  }
+
+  function createCarrion(x, y, energy, sourceType = 0) {
+    if (!UI.nutrientCycling.checked || carrion.length >= CFG.maxCarrion) return;
+    carrion.push({
+      x: clamp(x, 5, worldW() - 5),
+      y: clamp(y, 5, worldH() - 5),
+      energy: clamp(energy, 12, 80),
+      age: 0,
+      sourceType
+    });
+    addScent(x, y, 1, sourceType === 0 ? 1.1 : 0.35);
+  }
+
+  function recycleCarrion() {
+    if (!UI.nutrientCycling.checked) { carrion.length = 0; return; }
+    let nutrientPulse = 0;
+    const survivors = [];
+    for (const c of carrion) {
+      if (c.eaten) { continue; }
+      c.age++;
+      c.energy *= 0.997;
+      if (c.age % 18 === 0) addScent(c.x, c.y, 1, 0.08);
+      if (c.age > 750 || c.energy < 5) {
+        nutrientPulse += 1;
+        const nearest = nearestPatch(c.x, c.y);
+        if (nearest) nearest.nutrients = clamp((nearest.nutrients || 1) + 0.18, 0.35, 2.5);
+        if (Math.random() < 0.34 * env.foodGrowth) spawnFood(1, true);
+      } else survivors.push(c);
+    }
+    carrion = survivors;
+    env.nutrientPulse = lerp(env.nutrientPulse, nutrientPulse, 0.08);
+  }
+
+  function nearestPatch(x, y) {
+    let best = null, bestD = Infinity;
+    for (const p of patches) {
+      const d = dist2(x, y, p.x, p.y);
+      if (d < bestD) { best = p; bestD = d; }
+    }
+    return best;
+  }
+
+  function currentMutationRate() { return (parseInt(UI.mutationRate.value, 10) / 100) * activeRegime.mutationMul; }
+
+  function spawnAgent(type, x = rand(40, worldW() - 40), y = rand(40, worldH() - 40), useArchive = true) {
+    let options = {};
+    const donor = useArchive && Math.random() < 0.74 ? qdArchive.sample(type) : null;
+    if (donor) {
+      options = {
+        brainWeights: donor.brain,
+        genes: mutateGenes(donor.genes, currentMutationRate()),
+        mutationSigma: 0.018 + currentMutationRate() * (qdArchive.lastEmitter === 'novelty' ? 0.24 : 0.16),
+        parentId: `${qdArchive.lastEmitter}:${donor.key}`,
+        generation: (donor.generation || 0) + 1,
+        energy: rand(80, 112)
+      };
+    }
+    const a = new Agent(clamp(x, 10, worldW() - 10), clamp(y, 10, worldH() - 10), type, options);
+    agents.push(a);
+    return a;
+  }
+
+  function rebuildAgentHash() {
+    spatial.clear();
+    for (const a of agents) if (a.energy > 0 && a.health > 0) spatial.add(a);
+  }
+
+  function rebuildFoodHash() {
+    foodHash.clear();
+    for (const f of foods) if (!f.eaten) foodHash.add(f);
+    foodHashDirty = false;
+  }
+
+  function rebuildObstacleHash() {
+    obstacleHash.clear();
+    for (const o of obstacles) obstacleHash.add(o);
+  }
+
+  function updateEnvironment() {
+    const prev = timeOfDay;
+    maybeRegimeShift();
+    timeOfDay = (timeOfDay + 0.035) % 24;
+    if (timeOfDay < prev) simDays++;
+
+    if (UI.adaptiveWeather.checked && frame % 850 === 0) {
+      const roll = Math.random();
+      if (roll < 0.46) env.weatherName = 'Sunny';
+      else if (roll < 0.66) env.weatherName = 'Cloudy';
+      else if (roll < 0.82) env.weatherName = 'Rain';
+      else if (roll < 0.91) env.weatherName = 'Drought';
+      else if (roll < 0.97) env.weatherName = 'Cold Snap';
+      else env.weatherName = 'Wind Bloom';
+    }
+
+    const night = timeOfDay > 20 || timeOfDay < 5;
+    const dawnDusk = (timeOfDay > 5 && timeOfDay < 7) || (timeOfDay > 18 && timeOfDay < 20);
+    const dayLight = night ? 0.38 : dawnDusk ? 0.72 : 1;
+    const season = Math.sin((simDays / 22) * TWO_PI);
+    const dailyTemp = 21 + Math.sin(((timeOfDay - 6) / 24) * TWO_PI) * 12 + season * 5;
+
+    let rain = 0, heat = 0, cloud = 0, wind = 0;
+    if (env.weatherName === 'Cloudy') { cloud = 0.25; wind = 0.08; }
+    if (env.weatherName === 'Rain') { rain = 0.85; cloud = 0.45; wind = 0.10; }
+    if (env.weatherName === 'Drought') { heat = 7; wind = 0.04; }
+    if (env.weatherName === 'Cold Snap') { heat = -10; wind = 0.06; }
+    if (env.weatherName === 'Wind Bloom') { cloud = 0.12; wind = 0.26; }
+
+    env.rain = rain;
+    env.heat = heat;
+    env.wind = wind;
+    env.windX = Math.cos(simDays * 0.37 + timeOfDay * 0.08) * wind;
+    env.windY = Math.sin(simDays * 0.31 + timeOfDay * 0.07) * wind;
+    env.lightLevel = clamp(dayLight - cloud, 0.28, 1);
+    env.temp = dailyTemp + heat;
+    env.tempMod = env.temp < 7 ? 0.68 : env.temp > 36 ? 0.82 : 1.0;
+    env.foodGrowth = clamp((0.48 + env.lightLevel * 0.65 + rain * 0.45 - (env.weatherName === 'Drought' ? 0.45 : 0) + (env.weatherName === 'Wind Bloom' ? 0.28 : 0) + env.nutrientPulse * 0.025) * activeRegime.foodMul * (parseInt(UI.foodRichness.value, 10) / 100), 0.08, 2.35);
+    env.scentDecay = rain ? 0.966 : night ? 0.986 : 0.979;
+  }
+
+  function interactions(agent) {
+    if (agent.type === 0) {
+      foodHash.queryInto(scratchFood, agent.x, agent.y, agent.radius + 8);
+      for (let i = 0; i < scratchFood.length; i++) {
+        const f = scratchFood[i];
+        if (f.eaten) continue;
+        if (dist2(agent.x, agent.y, f.x, f.y) < (agent.radius + 6) ** 2) {
+          f.eaten = true;
+          foodHashDirty = true;
+          agent.meals++;
+          agent.energy = Math.min(127, agent.energy + f.energy);
+          addScent(agent.x, agent.y, 0, 2.2);
+        }
+      }
+    } else {
+      if (UI.nutrientCycling.checked && carrion.length) {
+        for (let i = 0; i < carrion.length; i++) {
+          const c = carrion[i];
+          if (c.eaten) continue;
+          if (dist2(agent.x, agent.y, c.x, c.y) < (agent.radius + 8) ** 2) {
+            c.eaten = true;
+            agent.meals++;
+            agent.energy = Math.min(138, agent.energy + Math.min(42, c.energy * 0.72));
+            addScent(agent.x, agent.y, 1, 0.95);
+          }
+        }
+      }
+      spatial.queryInto(scratchAgents, agent.x, agent.y, agent.radius + 18);
+      for (let i = 0; i < scratchAgents.length; i++) {
+        const prey = scratchAgents[i];
+        if (prey === agent || prey.type !== 0 || prey.energy <= 0 || prey.health <= 0) continue;
+        const touch = agent.radius + prey.radius;
+        if (dist2(agent.x, agent.y, prey.x, prey.y) < touch * touch) {
+          prey.health -= 10 + 18 * agent.genes.aggr;
+          prey.energy -= 2;
+          agent.energy = Math.min(127, agent.energy + 5.5);
+          addScent(agent.x, agent.y, 1, 3.3);
+          if (prey.health <= 0 || prey.energy <= 0) {
+            createCarrion(prey.x, prey.y, prey.radius * 3.8 + prey.energy * 0.25, prey.type);
+            prey.carrionMade = true;
+            prey.energy = 0;
+            prey.health = 0;
+            agent.kills++;
+            agent.energy = Math.min(138, agent.energy + 64 * activeRegime.predMul);
+            qdArchive.consider(agent);
+          }
+        }
+      }
+    }
+  }
+
+  function maybeSocialImitate(agent) {
+    if (frame % 32 !== 0 || Math.random() > agent.genes.social * 0.008) return;
+    spatial.queryInto(scratchAgents, agent.x, agent.y, 58);
+    let mentor = null;
+    let best = agent.fitness() * 1.28;
+    for (let i = 0; i < scratchAgents.length; i++) {
+      const other = scratchAgents[i];
+      if (other === agent || other.type !== agent.type) continue;
+      if (diversityPressure() > 0.55 && speciesCounts.get(agent.speciesKey) <= 2 && other.speciesKey !== agent.speciesKey) continue;
+      const fit = other.fitness();
+      if (fit > best) { best = fit; mentor = other; }
+    }
+    if (!mentor) return;
+    agent.brain.mixFrom(mentor.brain, mentor.speciesKey === agent.speciesKey ? 0.040 : 0.024, 0.004);
+    agent.energy -= 0.62;
+  }
+
+  function maybeReproduce(agent) {
+    const cap = parseInt(UI.popCap.value, 10);
+    if (agents.length >= cap || agent.energy < 96 || agent.age < 160) return;
+    const rareBoost = rareSpeciesBonus(agent) * 0.012;
+    const birthChance = (agent.type === 0 ? 0.030 : 0.018) + rareBoost;
+    if (Math.random() > birthChance) return;
+
+    agent.energy -= 44;
+    agent.births++;
+    qdArchive.consider(agent);
+
+    const useArchive = Math.random() < 0.18;
+    if (useArchive) {
+      const child = spawnAgent(agent.type, agent.x + rand(-14, 14), agent.y + rand(-14, 14), true);
+      child.parentId = `PBT:${agent.id}+QD`;
+      child.generation = agent.generation + 1;
+      return;
+    }
+
+    const child = new Agent(
+      clamp(agent.x + rand(-18, 18), 8, worldW() - 8),
+      clamp(agent.y + rand(-18, 18), 8, worldH() - 8),
+      agent.type,
+      {
+        brainWeights: agent.brain,
+        genes: mutateGenes(agent.genes, currentMutationRate()),
+        mutationSigma: 0.018 + currentMutationRate() * 0.20,
+        parentId: agent.id,
+        generation: agent.generation + 1,
+        energy: 70
+      }
+    );
+    agents.push(child);
+  }
+
+  function rescuePopulations() {
+    if (frame % 150 !== 0) return;
+    let herbs = 0, carns = 0;
+    for (const a of agents) a.type === 0 ? herbs++ : carns++;
+    if (herbs < 8) for (let i = 0; i < 4; i++) spawnAgent(0);
+    if (carns < 2 && herbs > 35) spawnAgent(1);
+  }
+
+  function ecosystemAutopilot() {
+    rebuildSpeciesStats();
+    updateEcosystemStability();
+    if (!UI.ecosystemAutopilot.checked || frame % 120 !== 0) return;
+
+    let herbs = 0, carns = 0;
+    for (const a of agents) a.type === 0 ? herbs++ : carns++;
+    const rareLow = speciesCounts.size < 8 && agents.length < parseInt(UI.popCap.value, 10) * 0.85;
+    if (foods.length < 24 || ecosystemStability < 0.32) spawnFood(8 + Math.floor((1 - ecosystemStability) * 12), true);
+    if (herbs < 16) for (let i = 0; i < 3; i++) spawnAgent(0, rand(20, worldW() - 20), rand(20, worldH() - 20), true);
+    if (carns < 2 && herbs > 45) spawnAgent(1, rand(20, worldW() - 20), rand(20, worldH() - 20), true);
+    if ((activeRegime.name === 'Migration Pulse' || rareLow) && frame % 240 === 0) {
+      const edge = Math.floor(Math.random() * 4);
+      for (let i = 0; i < 4; i++) {
+        const type = Math.random() < 0.20 ? 1 : 0;
+        const x = edge === 0 ? 8 : edge === 1 ? worldW() - 8 : rand(20, worldW() - 20);
+        const y = edge === 2 ? 8 : edge === 3 ? worldH() - 8 : rand(20, worldH() - 20);
+        const migrant = spawnAgent(type, x, y, Math.random() < 0.60);
+        migrant.parentId = `migrant:${migrant.parentId}`;
+        migrant.energy = rand(86, 116);
+      }
+      noteRegime('Migration Pulse', Math.max(activeRegime.timer, 260), 1.06, 1, 1.28);
+    }
+  }
+
+  function advance() {
+    frame++;
+    updateEnvironment();
+    driftPatches();
+    if (foodHashDirty) rebuildFoodHash();
+    rebuildAgentHash();
+
+    // Phase 1: sense, decide, move. Hashes are rebuilt after movement before contact interactions.
+    for (const a of agents) {
+      if (a.energy <= 0 || a.health <= 0) continue;
+      a.metabolize();
+      if (a.energy <= 0 || a.health <= 0) continue;
+      const d = a.shouldThink() ? a.think() : a.lastDecision;
+      a.applyPhysics(d);
+    }
+
+    rebuildAgentHash();
+
+    // Phase 2: contacts and evolution use current positions, fixing stale broad-phase queries.
+    const lenBeforeBirths = agents.length;
+    for (let i = 0; i < lenBeforeBirths; i++) {
+      const a = agents[i];
+      if (a.energy <= 0 || a.health <= 0) continue;
+      interactions(a);
+      maybeSocialImitate(a);
+      maybeReproduce(a);
+      if (a.age % 700 === 0) qdArchive.consider(a);
+      if (a.age > 7200) a.health -= 0.1;
+    }
+
+    const survivors = [];
+    for (const a of agents) {
+      if (a.energy > 0 && a.health > 0) survivors.push(a);
+      else {
+        if (!a.carrionMade) createCarrion(a.x, a.y, a.radius * 2.8 + Math.max(0, a.energy) * 0.18, a.type);
+        qdArchive.consider(a);
+        if (a.id === selectedId) selectedId = null;
+        a.dispose();
+      }
+    }
+    agents = survivors;
+    rebuildSpeciesStats();
+
+    if (foodHashDirty) foods = foods.filter(f => !f.eaten);
+    recycleCarrion();
+    const targetFood = Math.floor(CFG.maxFood * env.foodGrowth * 0.62);
+    const newFood = foods.length < targetFood && Math.random() < (0.11 * env.foodGrowth) ? Math.ceil(env.foodGrowth * 2) : 0;
+    if (newFood) spawnFood(newFood);
+    for (const f of foods) f.age++;
+
+    updatePheromoneField();
+    rescuePopulations();
+    ecosystemAutopilot();
+  }
+
+  function drawBackground() {
+    const night = 1 - env.lightLevel;
+    const g = ctx.createRadialGradient(worldW() / 2, worldH() / 2, 30, worldW() / 2, worldH() / 2, Math.max(worldW(), worldH()) * 0.75);
+    g.addColorStop(0, `rgb(${Math.floor(12 + env.lightLevel * 10)}, ${Math.floor(17 + env.lightLevel * 14)}, ${Math.floor(23 + env.lightLevel * 18)})`);
+    g.addColorStop(1, `rgb(${Math.floor(5 + night * 2)}, ${Math.floor(8 + night * 2)}, ${Math.floor(12 + night * 4)})`);
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, worldW(), worldH());
+
+    for (const p of patches) {
+      const grd = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, p.r);
+      const pulse = clamp((p.nutrients || 1) - 1, 0, 1.5);
+      grd.addColorStop(0, `rgba(${Math.floor(50 + pulse * 60)}, ${Math.floor(125 + pulse * 55)}, 55, ${0.10 * env.lightLevel + pulse * 0.045})`);
+      grd.addColorStop(1, 'rgba(50, 125, 55, 0)');
+      ctx.fillStyle = grd;
+      ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, TWO_PI); ctx.fill();
+    }
+  }
+
+  function drawObstacles() {
+    for (const o of obstacles) {
+      ctx.fillStyle = 'rgba(112, 125, 136, 0.32)';
+      ctx.strokeStyle = 'rgba(196, 210, 220, 0.16)';
+      ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.arc(o.x, o.y, o.r, 0, TWO_PI); ctx.fill(); ctx.stroke();
+    }
+  }
+
+  function drawFood() {
+    ctx.fillStyle = '#75ff76';
+    ctx.shadowColor = 'rgba(117,255,118,0.55)';
+    ctx.shadowBlur = env.lightLevel < 0.5 ? 7 : 2;
+    for (const f of foods) {
+      if (f.eaten) continue;
+      const r = clamp(f.energy / 9, 2.1, 4.6);
+      ctx.globalAlpha = clamp(0.55 + f.energy / 80, 0.55, 1);
+      ctx.beginPath(); ctx.arc(f.x, f.y, r, 0, TWO_PI); ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+    ctx.shadowBlur = 0;
+  }
+
+  function drawCarrion() {
+    if (!UI.nutrientCycling.checked || !carrion.length) return;
+    ctx.save();
+    ctx.shadowColor = 'rgba(255,150,80,0.30)';
+    ctx.shadowBlur = 5;
+    for (const c of carrion) {
+      if (c.eaten) continue;
+      const r = clamp(Math.sqrt(c.energy) * 0.64, 2.5, 7.5);
+      ctx.globalAlpha = clamp(0.75 - c.age / 900, 0.15, 0.75);
+      ctx.fillStyle = 'rgba(255,154,79,0.72)';
+      ctx.beginPath(); ctx.arc(c.x, c.y, r, 0, TWO_PI); ctx.fill();
+      ctx.strokeStyle = 'rgba(255,215,170,0.32)';
+      ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(c.x - r * 0.55, c.y); ctx.lineTo(c.x + r * 0.55, c.y); ctx.stroke();
+    }
+    ctx.restore();
+    ctx.globalAlpha = 1;
+  }
+
+  function drawAgents() {
+    for (const a of agents) {
+      const hue = a.genes.hue;
+      const lum = a.energy < 25 ? 38 : 52;
+      ctx.save();
+      ctx.translate(a.x, a.y);
+      ctx.rotate(a.angle);
+
+      if (a.id === selectedId) {
+        ctx.shadowBlur = 22;
+        ctx.shadowColor = '#ffffff';
+      }
+
+      ctx.fillStyle = `hsl(${hue}, ${a.genes.sat}%, ${lum}%)`;
+      ctx.strokeStyle = a.type === 0 ? 'rgba(160,255,160,0.55)' : 'rgba(255,120,140,0.62)';
+      ctx.lineWidth = 1.2;
+
+      ctx.beginPath();
+      if (a.type === 1 || a.genes.aggr > 0.62) {
+        const spikes = 7;
+        for (let i = 0; i < spikes * 2; i++) {
+          const r = i % 2 === 0 ? a.radius * 1.18 : a.radius * 0.72;
+          const th = (i / (spikes * 2)) * TWO_PI;
+          const px = Math.cos(th) * r;
+          const py = Math.sin(th) * r;
+          if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+        }
+        ctx.closePath();
+      } else {
+        ctx.ellipse(0, 0, a.radius * 1.12, a.radius * 0.88, 0, 0, TWO_PI);
+      }
+      ctx.fill(); ctx.stroke();
+
+      ctx.shadowBlur = 0;
+      ctx.fillStyle = 'rgba(0,0,0,0.85)';
+      ctx.beginPath(); ctx.arc(a.radius * 0.48, -a.radius * 0.26, 1.7, 0, TWO_PI); ctx.fill();
+      ctx.beginPath(); ctx.arc(a.radius * 0.48, a.radius * 0.26, 1.7, 0, TWO_PI); ctx.fill();
+
+      if (a.genes.speed > 0.9) {
+        ctx.strokeStyle = `hsla(${hue}, ${a.genes.sat}%, 65%, 0.55)`;
+        ctx.lineWidth = 2.4;
+        ctx.beginPath(); ctx.moveTo(-a.radius * 0.8, 0); ctx.lineTo(-a.radius * (1.6 + a.genes.speed * 0.55), 0); ctx.stroke();
+      }
+      ctx.restore();
+    }
+  }
+
+  function drawDebug() {
+    dCtx.clearRect(0, 0, worldW(), worldH());
+    const selected = agents.find(a => a.id === selectedId);
+    if (selected && UI.showVision.checked && selected.lastDecision) {
+      const vision = selected.visionRange();
+      dCtx.save();
+      dCtx.translate(selected.x, selected.y);
+      dCtx.rotate(selected.angle);
+      dCtx.strokeStyle = 'rgba(255,255,255,0.22)';
+      dCtx.lineWidth = 1;
+      for (let i = 0; i < CFG.sectors; i++) {
+        const th = i * TWO_PI / CFG.sectors;
+        dCtx.beginPath(); dCtx.moveTo(0, 0); dCtx.lineTo(Math.cos(th) * vision, Math.sin(th) * vision); dCtx.stroke();
+      }
+      dCtx.beginPath(); dCtx.arc(0, 0, vision, 0, TWO_PI); dCtx.stroke();
+      dCtx.restore();
+    }
+
+    if (UI.showQD.checked) drawQDOverlay();
+  }
+
+  function drawQDOverlay() {
+    const size = 6;
+    const cols = 20;
+    const x0 = 12, y0 = worldH() - 82;
+    let i = 0;
+    for (const cell of qdArchive.cells.values()) {
+      const x = x0 + (i % cols) * (size + 2);
+      const y = y0 + Math.floor(i / cols) * (size + 2);
+      dCtx.fillStyle = cell.type === 0 ? 'rgba(120,255,120,0.65)' : 'rgba(255,90,110,0.65)';
+      dCtx.globalAlpha = clamp(cell.score / Math.max(1, qdArchive.bestScore), 0.18, 0.95);
+      dCtx.fillRect(x, y, size, size);
+      i++;
+      if (i > 170) break;
+    }
+    dCtx.globalAlpha = 1;
+  }
+
+  function render() {
+    drawBackground();
+    drawObstacles();
+    drawFood();
+    drawCarrion();
+    drawAgents();
+    renderPheromones();
+    drawDebug();
+    updateInspector();
+  }
+
+  function drawInspectorBrain(agent) {
+    const b = UI.brainView;
+    const g = b.getContext('2d');
+    g.clearRect(0, 0, b.width, b.height);
+    if (!agent.lastDecision) return;
+
+    const cx = 68, cy = 66, r = 45;
+    const sens = agent.lastDecision.sensors;
+    g.strokeStyle = '#39414e';
+    g.beginPath(); g.arc(cx, cy, r, 0, TWO_PI); g.stroke();
+
+    for (let i = 0; i < CFG.sectors; i++) {
+      const base = i * CFG.sectorInputs;
+      const wall = sens[base], food = sens[base + 1], danger = sens[base + 2], friend = sens[base + 3], obstacle = sens[base + 4];
+      const strongest = Math.max(wall, food, danger, friend, obstacle);
+      if (strongest < 0.05) continue;
+      const a0 = i * TWO_PI / CFG.sectors;
+      const a1 = (i + 1) * TWO_PI / CFG.sectors;
+      if (danger >= strongest) g.fillStyle = `rgba(255,60,90,${danger})`;
+      else if (food >= strongest) g.fillStyle = `rgba(70,255,90,${food})`;
+      else if (friend >= strongest) g.fillStyle = `rgba(70,190,255,${friend})`;
+      else if (obstacle >= strongest) g.fillStyle = `rgba(190,190,190,${obstacle})`;
+      else g.fillStyle = `rgba(255,255,255,${wall})`;
+      g.beginPath(); g.moveTo(cx, cy); g.arc(cx, cy, r, a0, a1); g.closePath(); g.fill();
+    }
+
+    const d = agent.lastDecision;
+    const bars = [
+      ['Turn', (d.turn + 1) / 2, '#00d2ff'],
+      ['Speed', d.thrust, '#7cff7c'],
+      ['Signal', (d.signal + 1) / 2, '#ffd166'],
+      ['Novel', clamp(agent.curiosityScore / Math.max(1, agent.age) * 8, 0, 1), '#c586ff']
+    ];
+    g.font = '10px monospace';
+    for (let i = 0; i < bars.length; i++) {
+      const [label, value, color] = bars[i];
+      const y = 30 + i * 22;
+      g.fillStyle = '#dbe6f2';
+      g.fillText(label, 138, y + 8);
+      g.fillStyle = '#1d2530';
+      g.fillRect(188, y, 90, 9);
+      g.fillStyle = color;
+      g.fillRect(188, y, 90 * value, 9);
+    }
+  }
+
+  function updateInspector() {
+    const agent = agents.find(a => a.id === selectedId);
+    if (!agent) { UI.inspector.style.display = 'none'; return; }
+    UI.inspector.style.display = 'flex';
+    UI.inspId.textContent = `${agent.id} ${agent.type === 0 ? 'Herbivore' : 'Carnivore'} S:${agent.speciesKey} G:${agent.generation} ← ${agent.parentId}`;
+    UI.inspState.textContent = `E:${agent.energy.toFixed(0)} H:${agent.health.toFixed(0)} Age:${agent.age}`;
+    UI.inspGenome.textContent = `spd ${agent.genes.speed.toFixed(2)} size ${agent.genes.size.toFixed(2)} aggr ${agent.genes.aggr.toFixed(2)} sight ${agent.genes.sight.toFixed(2)}`;
+    UI.inspFit.textContent = `${agent.fitness().toFixed(0)} | novelty ${agent.curiosityScore.toFixed(1)} | cells ${agent.novelCells} | rare ${rareSpeciesBonus(agent).toFixed(2)}`;
+    UI.inspEnergy.style.width = `${clamp(agent.energy, 0, 100)}%`;
+    drawInspectorBrain(agent);
+  }
+
+  function updateUI() {
+    let herbs = 0, carns = 0, ageSum = 0, novelty = 0;
+    for (const a of agents) {
+      if (a.type === 0) herbs++; else carns++;
+      ageSum += a.age;
+      novelty += a.curiosityScore / Math.max(1, a.age);
+    }
+    rebuildSpeciesStats();
+    updateEcosystemStability();
+    const avgAge = ageSum / Math.max(1, agents.length);
+    UI.stCount.textContent = agents.length;
+    UI.stHerb.textContent = herbs;
+    UI.stCarn.textContent = carns;
+    UI.stFood.textContent = foods.length;
+    UI.stAge.textContent = avgAge.toFixed(0);
+    UI.stBest.textContent = qdArchive.bestScore.toFixed(0);
+    UI.stQD.textContent = qdArchive.cells.size;
+    UI.stSpecies.textContent = speciesCounts.size;
+    UI.stNovelty.textContent = (novelty / Math.max(1, agents.length)).toFixed(2);
+    UI.stStability.textContent = `${Math.round(ecosystemStability * 100)}%`;
+    UI.stCarrion.textContent = carrion.filter(c => !c.eaten).length;
+    UI.stPerf.textContent = `${fps.toFixed(0)} / ${agents.length}`;
+
+    const min = Math.floor((timeOfDay % 1) * 60).toString().padStart(2, '0');
+    UI.clock.textContent = `${Math.floor(timeOfDay).toString().padStart(2, '0')}:${min}`;
+    UI.weather.textContent = env.weatherName;
+    UI.temp.textContent = `${env.temp.toFixed(1)}°C`;
+    UI.light.textContent = `${Math.round(env.lightLevel * 100)}%`;
+    UI.growth.textContent = `${Math.round(env.foodGrowth * 100)}%`;
+    UI.wind.textContent = `${Math.round(env.wind * 100)}%`;
+    UI.regime.textContent = activeRegime.name;
+
+    if (chart) {
+      chart.data.labels.push(frame);
+      chart.data.datasets[0].data.push(herbs);
+      chart.data.datasets[1].data.push(carns);
+      chart.data.datasets[2].data.push(foods.length);
+      if (chart.data.labels.length > 88) {
+        chart.data.labels.shift();
+        for (const ds of chart.data.datasets) ds.data.shift();
+      }
+      chart.update('none');
+    }
+  }
+
+  function initChart() {
+    if (chart) chart.destroy();
+    if (typeof Chart === 'undefined') { chart = null; return; }
+    chart = new Chart(UI.chart, {
+      type: 'line',
+      data: {
+        labels: [],
+        datasets: [
+          { label: 'Herb', data: [], borderColor: '#78ff78', borderWidth: 1, tension: 0.15, pointRadius: 0 },
+          { label: 'Carn', data: [], borderColor: '#ff5c7a', borderWidth: 1, tension: 0.15, pointRadius: 0 },
+          { label: 'Food', data: [], borderColor: '#00d2ff', borderWidth: 1, tension: 0.15, pointRadius: 0 }
+        ]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        animation: false,
+        plugins: { legend: { labels: { color: '#98a6b5', boxWidth: 8, font: { size: 10 } } } },
+        scales: { x: { display: false }, y: { display: false, beginAtZero: true } }
+      }
+    });
+  }
+
+  function initSim() {
+    for (const a of agents) a.dispose();
+    agents = [];
+    foods = [];
+    carrion = [];
+    qdArchive.dispose();
+    visitMap.clear();
+    initPheromoneGrid(false);
+    generatePatches();
+    generateObstacles();
+    timeOfDay = 8;
+    simDays = 0;
+    frame = 0;
+    selectedId = null;
+    env.weatherName = 'Sunny';
+    foodHashDirty = true;
+
+    const initialAgents = Math.min(92, Math.max(38, Math.floor(worldW() * worldH() / 13800)));
+    for (let i = 0; i < initialAgents; i++) spawnAgent(Math.random() < 0.18 ? 1 : 0, rand(40, worldW() - 40), rand(40, worldH() - 40), false);
+    spawnFood(Math.min(CFG.maxFood, Math.floor(worldW() * worldH() / 8800)), true);
+    rebuildFoodHash();
+    rebuildAgentHash();
+    initChart();
+    updateUI();
+    render();
+  }
+
+  function seedFoodBurst() { spawnFood(38, true); rebuildFoodHash(); render(); }
+  function spawnHerbBurst() { for (let i = 0; i < 8; i++) spawnAgent(0); rebuildAgentHash(); render(); }
+  function spawnCarnBurst() { for (let i = 0; i < 3; i++) spawnAgent(1); rebuildAgentHash(); render(); }
+
+  function loop(now) {
+    const dt = Math.max(1, now - lastFrameT);
+    fps = lerp(fps, 1000 / dt, 0.08);
+    lastFrameT = now;
+
+    if (!paused) {
+      const ticks = parseInt(UI.timeScale.value, 10);
+      for (let i = 0; i < ticks; i++) advance();
+    }
+    render();
+    if (frame % 20 === 0) updateUI();
+    requestAnimationFrame(loop);
+  }
+
+  cvs.addEventListener('mousedown', (e) => {
+    const r = cvs.getBoundingClientRect();
+    const x = e.clientX - r.left, y = e.clientY - r.top;
+    let best = null, bestD = Infinity;
+    for (const a of agents) {
+      const d = dist2(a.x, a.y, x, y);
+      if (d < Math.max(26, a.radius * 2.2) ** 2 && d < bestD) { best = a; bestD = d; }
+    }
+    selectedId = best ? best.id : null;
+    render();
+  });
+
+  window.addEventListener('resize', () => { resize(); generatePatches(); generateObstacles(); render(); });
+  UI.pauseBtn.addEventListener('click', () => { paused = !paused; UI.pauseBtn.textContent = paused ? 'RESUME' : 'PAUSE'; });
+  UI.stepBtn.addEventListener('click', () => { if (paused) { advance(); render(); updateUI(); } });
+  UI.resetBtn.addEventListener('click', initSim);
+  UI.seedBtn.addEventListener('click', seedFoodBurst);
+  UI.herbBtn.addEventListener('click', spawnHerbBurst);
+  UI.carnBtn.addEventListener('click', spawnCarnBurst);
+
+  function boot() {
+    resize();
+    initSim();
+    requestAnimationFrame(loop);
+  }
+
+  boot();
+})();
+</script>
+</body>
+</html>
