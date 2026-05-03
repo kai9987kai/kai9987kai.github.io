@@ -1,327 +1,1555 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Flappy Chicken</title>
-    <style>
-        body {
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
-            align-items: center;
-            height: 100vh;
-            margin: 0;
-            background-color: #000;
-            font-family: Arial, sans-serif;
-            color: white;
-        }
-        #gameCanvas {
-            border: 2px solid #333;
-            border-radius: 10px;
-            box-shadow: 0 0 10px rgba(0,0,0,0.3);
-        }
-        #difficultySelector {
-            margin-top: 20px;
-            display: flex;
-            gap: 10px;
-        }
-        .difficulty-btn {
-            padding: 10px 20px;
-            border: none;
-            border-radius: 5px;
-            background-color: #3498db;
-            color: white;
-            font-size: 16px;
-            cursor: pointer;
-            transition: background-color 0.3s, transform 0.1s;
-        }
-        .difficulty-btn:hover {
-            background-color: #2980b9;
-        }
-        .difficulty-btn.active {
-            background-color: #e74c3c;
-            transform: scale(1.05);
-        }
-    </style>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>Flappy Chicken — Advanced Edition</title>
+  <style>
+    :root {
+      --bg: #070812;
+      --panel: rgba(12, 16, 32, 0.78);
+      --panel-strong: rgba(12, 16, 32, 0.95);
+      --line: rgba(255, 255, 255, 0.16);
+      --text: #ffffff;
+      --muted: rgba(255, 255, 255, 0.72);
+      --accent: #ffcc33;
+      --accent-2: #28e0a6;
+      --danger: #ff5577;
+      --blue: #4aa8ff;
+      --shadow: 0 26px 90px rgba(0, 0, 0, 0.45);
+      --radius: 18px;
+    }
+
+    * { box-sizing: border-box; }
+
+    html, body {
+      width: 100%;
+      min-height: 100%;
+      margin: 0;
+      background:
+        radial-gradient(circle at top left, rgba(255, 204, 51, 0.14), transparent 34rem),
+        radial-gradient(circle at bottom right, rgba(74, 168, 255, 0.18), transparent 34rem),
+        var(--bg);
+      color: var(--text);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
+      overflow-x: hidden;
+    }
+
+    body {
+      display: grid;
+      place-items: center;
+      padding: 18px;
+    }
+
+    .game-shell {
+      width: min(1060px, 100%);
+      display: grid;
+      grid-template-columns: minmax(320px, 560px) minmax(280px, 360px);
+      gap: 18px;
+      align-items: start;
+    }
+
+    .stage-card, .side-card {
+      background: linear-gradient(180deg, rgba(255,255,255,0.12), rgba(255,255,255,0.06));
+      border: 1px solid var(--line);
+      border-radius: calc(var(--radius) + 8px);
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(18px);
+    }
+
+    .stage-card {
+      padding: 14px;
+      position: relative;
+    }
+
+    .canvas-wrap {
+      position: relative;
+      width: 100%;
+      aspect-ratio: 2 / 3;
+      min-height: 480px;
+      border-radius: 24px;
+      overflow: hidden;
+      background: #000;
+      border: 2px solid rgba(255,255,255,0.18);
+    }
+
+    #gameCanvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+      image-rendering: auto;
+      cursor: pointer;
+      touch-action: manipulation;
+    }
+
+    .top-ribbon {
+      position: absolute;
+      top: 12px;
+      left: 12px;
+      right: 12px;
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 10px;
+      pointer-events: none;
+      z-index: 3;
+    }
+
+    .pill-stack { display: flex; gap: 8px; flex-wrap: wrap; }
+
+    .hud-pill {
+      padding: 7px 10px;
+      border-radius: 999px;
+      background: rgba(0, 0, 0, 0.34);
+      border: 1px solid rgba(255,255,255,0.18);
+      color: white;
+      font-weight: 800;
+      font-size: 13px;
+      line-height: 1;
+      text-shadow: 0 2px 4px rgba(0,0,0,0.4);
+      box-shadow: 0 8px 24px rgba(0,0,0,0.22);
+      backdrop-filter: blur(12px);
+    }
+
+    .hud-pill span { color: var(--accent); }
+
+    .overlay-message {
+      position: absolute;
+      inset: 0;
+      display: grid;
+      place-items: center;
+      padding: 18px;
+      text-align: center;
+      z-index: 4;
+      pointer-events: none;
+      background: radial-gradient(circle, rgba(0,0,0,0.04), rgba(0,0,0,0.24));
+      opacity: 1;
+      transition: opacity 180ms ease;
+    }
+
+    .overlay-message.hidden { opacity: 0; }
+
+    .message-card {
+      width: min(390px, 92%);
+      padding: 22px 20px;
+      border-radius: 26px;
+      border: 1px solid rgba(255,255,255,0.18);
+      background: rgba(0, 0, 0, 0.44);
+      backdrop-filter: blur(18px);
+      box-shadow: 0 30px 90px rgba(0,0,0,0.45);
+      animation: popIn 420ms cubic-bezier(.2,1.4,.4,1);
+    }
+
+    @keyframes popIn {
+      from { transform: translateY(16px) scale(0.94); opacity: 0; }
+      to { transform: translateY(0) scale(1); opacity: 1; }
+    }
+
+    .message-card h1 {
+      margin: 0 0 8px;
+      font-size: clamp(28px, 6vw, 48px);
+      letter-spacing: -0.04em;
+    }
+
+    .message-card p {
+      margin: 8px 0;
+      color: rgba(255,255,255,0.82);
+      line-height: 1.45;
+    }
+
+    .message-card .big-score {
+      font-size: 44px;
+      font-weight: 950;
+      color: var(--accent);
+      text-shadow: 0 4px 14px rgba(0,0,0,0.45);
+      margin: 10px 0 6px;
+    }
+
+    .side-card {
+      padding: 18px;
+      min-height: 480px;
+    }
+
+    .title-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 14px;
+    }
+
+    .title-row h2 {
+      margin: 0;
+      font-size: 24px;
+      letter-spacing: -0.04em;
+    }
+
+    .badge {
+      padding: 6px 9px;
+      border-radius: 999px;
+      background: rgba(255, 204, 51, 0.16);
+      color: #ffe18a;
+      font-size: 12px;
+      font-weight: 800;
+      border: 1px solid rgba(255, 204, 51, 0.28);
+      white-space: nowrap;
+    }
+
+    .section {
+      margin-top: 16px;
+      padding-top: 16px;
+      border-top: 1px solid rgba(255,255,255,0.11);
+    }
+
+    .section h3 {
+      margin: 0 0 10px;
+      font-size: 13px;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      color: var(--muted);
+    }
+
+    #difficultySelector,
+    .button-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 9px;
+    }
+
+    .difficulty-btn,
+    .control-btn,
+    .theme-btn {
+      border: none;
+      border-radius: 14px;
+      padding: 11px 10px;
+      background: rgba(255,255,255,0.10);
+      color: white;
+      border: 1px solid rgba(255,255,255,0.14);
+      font-size: 14px;
+      font-weight: 800;
+      cursor: pointer;
+      transition: transform 120ms ease, background 160ms ease, border-color 160ms ease, box-shadow 160ms ease;
+    }
+
+    .difficulty-btn:hover,
+    .control-btn:hover,
+    .theme-btn:hover {
+      transform: translateY(-1px);
+      background: rgba(255,255,255,0.15);
+    }
+
+    .difficulty-btn.active,
+    .theme-btn.active {
+      background: linear-gradient(135deg, #ffcc33, #ff7a55);
+      color: #231600;
+      border-color: rgba(255,255,255,0.38);
+      box-shadow: 0 12px 24px rgba(255, 164, 54, 0.25);
+    }
+
+    .control-btn.primary {
+      grid-column: span 3;
+      background: linear-gradient(135deg, #28e0a6, #4aa8ff);
+      color: #041019;
+      box-shadow: 0 16px 34px rgba(54, 183, 232, 0.24);
+    }
+
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 9px;
+    }
+
+    .stat {
+      padding: 12px;
+      border-radius: 16px;
+      background: rgba(0,0,0,0.2);
+      border: 1px solid rgba(255,255,255,0.11);
+    }
+
+    .stat label {
+      display: block;
+      font-size: 12px;
+      color: var(--muted);
+      margin-bottom: 4px;
+    }
+
+    .stat strong {
+      display: block;
+      font-size: 22px;
+      letter-spacing: -0.04em;
+    }
+
+    .help-list {
+      display: grid;
+      gap: 8px;
+      margin: 0;
+      padding: 0;
+      list-style: none;
+      color: rgba(255,255,255,0.78);
+      font-size: 14px;
+      line-height: 1.42;
+    }
+
+    .help-list kbd {
+      display: inline-block;
+      min-width: 28px;
+      text-align: center;
+      padding: 2px 7px;
+      border-radius: 8px;
+      background: rgba(255,255,255,0.12);
+      border: 1px solid rgba(255,255,255,0.16);
+      color: white;
+      font-family: inherit;
+      font-size: 12px;
+      font-weight: 900;
+    }
+
+    .toggle-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      margin-top: 10px;
+      padding: 10px 12px;
+      border-radius: 14px;
+      background: rgba(255,255,255,0.08);
+      border: 1px solid rgba(255,255,255,0.12);
+      font-size: 14px;
+      color: rgba(255,255,255,0.82);
+    }
+
+    .switch {
+      position: relative;
+      width: 50px;
+      height: 28px;
+      flex: 0 0 auto;
+    }
+
+    .switch input { opacity: 0; width: 0; height: 0; }
+
+    .slider {
+      position: absolute;
+      inset: 0;
+      cursor: pointer;
+      background: rgba(255,255,255,0.18);
+      border: 1px solid rgba(255,255,255,0.18);
+      border-radius: 999px;
+      transition: 180ms;
+    }
+
+    .slider:before {
+      content: "";
+      position: absolute;
+      width: 20px;
+      height: 20px;
+      left: 3px;
+      top: 3px;
+      border-radius: 50%;
+      background: white;
+      transition: 180ms;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.35);
+    }
+
+    .switch input:checked + .slider {
+      background: linear-gradient(135deg, #28e0a6, #4aa8ff);
+    }
+
+    .switch input:checked + .slider:before {
+      transform: translateX(22px);
+    }
+
+    .mini-note {
+      margin: 10px 0 0;
+      color: rgba(255,255,255,0.58);
+      font-size: 12px;
+      line-height: 1.45;
+    }
+
+    @media (max-width: 850px) {
+      body { padding: 10px; }
+      .game-shell { grid-template-columns: 1fr; }
+      .side-card { min-height: unset; }
+      .canvas-wrap { min-height: min(76vh, 620px); }
+    }
+
+    @media (max-width: 450px) {
+      .stage-card, .side-card { padding: 10px; border-radius: 20px; }
+      .canvas-wrap { min-height: 520px; border-radius: 18px; }
+      #difficultySelector, .button-grid { grid-template-columns: 1fr; }
+      .control-btn.primary { grid-column: span 1; }
+      .title-row { align-items: flex-start; flex-direction: column; }
+    }
+  </style>
 </head>
 <body>
-    <canvas id="gameCanvas" width="320" height="480"></canvas>
-    <div id="difficultySelector">
-        <button class="difficulty-btn active" data-difficulty="easy">Easy</button>
-        <button class="difficulty-btn" data-difficulty="medium">Medium</button>
-        <button class="difficulty-btn" data-difficulty="hard">Hard</button>
-    </div>
-    <script>
-        const canvas = document.getElementById('gameCanvas');
-        const ctx = canvas.getContext('2d');
-        const difficultyButtons = document.querySelectorAll('.difficulty-btn');
+  <main class="game-shell" aria-label="Flappy Chicken game">
+    <section class="stage-card">
+      <div class="canvas-wrap">
+        <canvas id="gameCanvas" width="320" height="480" aria-label="Flappy Chicken game canvas"></canvas>
 
-        // Game parameters
-        let chickenY = canvas.height / 2;
-        let chickenVelocity = 0;
-        const chickenSize = 30;
-        let gravity = 0.5;
-        let jumpStrength = -10;
-        let chickenRotation = 0;
+        <div class="top-ribbon" aria-hidden="true">
+          <div class="pill-stack">
+            <div class="hud-pill">Score <span id="hudScore">0</span></div>
+            <div class="hud-pill">Best <span id="hudBest">0</span></div>
+            <div class="hud-pill">Coins <span id="hudCoins">0</span></div>
+          </div>
+          <div class="pill-stack">
+            <div class="hud-pill">❤ <span id="hudLives">1</span></div>
+            <div class="hud-pill">🔥 <span id="hudStreak">0</span></div>
+          </div>
+        </div>
 
-        let pipes = [];
-        let pipeWidth = 60;
-        let pipeGap = 150;
-        let pipeSpeed = 2;
-        let pipeSpawnInterval = 1500;
+        <div id="overlay" class="overlay-message">
+          <div class="message-card">
+            <h1 id="overlayTitle">Flappy Chicken</h1>
+            <p id="overlayText">Click, tap, Space, or Arrow Up to flap. Dodge pipes, collect corn, and chase your best score.</p>
+            <div id="overlayScore" class="big-score" hidden>0</div>
+            <p id="overlayHint">Press Start or flap to begin.</p>
+          </div>
+        </div>
+      </div>
+    </section>
 
-        let score = 0;
-        let gameOver = false;
-        let gameLoop;
-        let pipeInterval;
+    <aside class="side-card">
+      <div class="title-row">
+        <h2>🐔 Flappy Chicken</h2>
+        <span class="badge">Advanced single-file edition</span>
+      </div>
 
-        // Background
-        let time = 0;
-        const colorSpeed = 0.02;
-        const waveSpeed = 0.05;
-        const waveAmplitude = 20;
+      <div class="section">
+        <h3>Difficulty</h3>
+        <div id="difficultySelector">
+          <button class="difficulty-btn active" data-difficulty="easy" type="button">Easy</button>
+          <button class="difficulty-btn" data-difficulty="medium" type="button">Medium</button>
+          <button class="difficulty-btn" data-difficulty="hard" type="button">Hard</button>
+        </div>
+      </div>
 
-        // Difficulty settings
-        const difficulties = {
-            easy: { gravity: 0.5, jumpStrength: -10, pipeSpeed: 2, pipeGap: 150, pipeSpawnInterval: 1500 },
-            medium: { gravity: 0.6, jumpStrength: -10, pipeSpeed: 3, pipeGap: 140, pipeSpawnInterval: 1300 },
-            hard: { gravity: 0.7, jumpStrength: -10, pipeSpeed: 4, pipeGap: 130, pipeSpawnInterval: 1100 }
+      <div class="section">
+        <h3>Controls</h3>
+        <div class="button-grid">
+          <button id="startBtn" class="control-btn primary" type="button">Start / Restart</button>
+          <button id="pauseBtn" class="control-btn" type="button">Pause</button>
+          <button id="muteBtn" class="control-btn" type="button">Sound On</button>
+          <button id="resetBestBtn" class="control-btn" type="button">Reset Best</button>
+        </div>
+      </div>
+
+      <div class="section">
+        <h3>Theme</h3>
+        <div class="button-grid">
+          <button class="theme-btn active" data-theme="rainbow" type="button">Rainbow</button>
+          <button class="theme-btn" data-theme="sunset" type="button">Sunset</button>
+          <button class="theme-btn" data-theme="night" type="button">Night</button>
+        </div>
+      </div>
+
+      <div class="section">
+        <h3>Stats</h3>
+        <div class="stats">
+          <div class="stat"><label>Best Easy</label><strong id="bestEasy">0</strong></div>
+          <div class="stat"><label>Best Medium</label><strong id="bestMedium">0</strong></div>
+          <div class="stat"><label>Best Hard</label><strong id="bestHard">0</strong></div>
+          <div class="stat"><label>Total Coins</label><strong id="totalCoins">0</strong></div>
+        </div>
+      </div>
+
+      <div class="section">
+        <h3>Options</h3>
+        <label class="toggle-row">
+          Reduced motion
+          <span class="switch"><input id="reducedMotionToggle" type="checkbox" /><span class="slider"></span></span>
+        </label>
+        <label class="toggle-row">
+          Ghost trail
+          <span class="switch"><input id="ghostToggle" type="checkbox" checked /><span class="slider"></span></span>
+        </label>
+      </div>
+
+      <div class="section">
+        <h3>How to play</h3>
+        <ul class="help-list">
+          <li><kbd>Space</kbd> <kbd>↑</kbd> click or tap to flap.</li>
+          <li><kbd>P</kbd> pauses. <kbd>M</kbd> toggles sound.</li>
+          <li>🌽 Corn gives coins. 🛡️ Feathers give a temporary shield.</li>
+          <li>Score streaks add extra particle bursts and medals.</li>
+        </ul>
+        <p class="mini-note">Your difficulty, theme, best scores, coins, sound, reduced motion, and ghost trail settings save automatically using localStorage.</p>
+      </div>
+    </aside>
+  </main>
+
+  <script>
+    (() => {
+      'use strict';
+
+      const canvas = document.getElementById('gameCanvas');
+      const ctx = canvas.getContext('2d');
+      const shell = document.querySelector('.canvas-wrap');
+      const difficultyButtons = document.querySelectorAll('.difficulty-btn');
+      const themeButtons = document.querySelectorAll('.theme-btn');
+
+      const hudScore = document.getElementById('hudScore');
+      const hudBest = document.getElementById('hudBest');
+      const hudCoins = document.getElementById('hudCoins');
+      const hudLives = document.getElementById('hudLives');
+      const hudStreak = document.getElementById('hudStreak');
+      const overlay = document.getElementById('overlay');
+      const overlayTitle = document.getElementById('overlayTitle');
+      const overlayText = document.getElementById('overlayText');
+      const overlayScore = document.getElementById('overlayScore');
+      const overlayHint = document.getElementById('overlayHint');
+
+      const startBtn = document.getElementById('startBtn');
+      const pauseBtn = document.getElementById('pauseBtn');
+      const muteBtn = document.getElementById('muteBtn');
+      const resetBestBtn = document.getElementById('resetBestBtn');
+      const reducedMotionToggle = document.getElementById('reducedMotionToggle');
+      const ghostToggle = document.getElementById('ghostToggle');
+
+      const bestEasy = document.getElementById('bestEasy');
+      const bestMedium = document.getElementById('bestMedium');
+      const bestHard = document.getElementById('bestHard');
+      const totalCoins = document.getElementById('totalCoins');
+
+      const STORAGE_KEY = 'flappyChickenAdvancedSave.v1';
+      const LOGICAL_WIDTH = 320;
+      const LOGICAL_HEIGHT = 480;
+
+      const difficulties = {
+        easy: {
+          label: 'Easy',
+          gravity: 0.155,
+          jumpStrength: -4.9,
+          pipeSpeed: 1.72,
+          pipeGap: 156,
+          pipeSpawnMs: 1480,
+          movingChance: 0.08,
+          coinChance: 0.72,
+          shieldChance: 0.08,
+          startingLives: 1,
+          worldSpeedGrowth: 0.004
+        },
+        medium: {
+          label: 'Medium',
+          gravity: 0.18,
+          jumpStrength: -5.1,
+          pipeSpeed: 2.25,
+          pipeGap: 142,
+          pipeSpawnMs: 1280,
+          movingChance: 0.16,
+          coinChance: 0.63,
+          shieldChance: 0.06,
+          startingLives: 1,
+          worldSpeedGrowth: 0.006
+        },
+        hard: {
+          label: 'Hard',
+          gravity: 0.205,
+          jumpStrength: -5.25,
+          pipeSpeed: 2.78,
+          pipeGap: 128,
+          pipeSpawnMs: 1120,
+          movingChance: 0.27,
+          coinChance: 0.55,
+          shieldChance: 0.045,
+          startingLives: 1,
+          worldSpeedGrowth: 0.008
+        }
+      };
+
+      const themes = {
+        rainbow: {
+          name: 'Rainbow',
+          pipe: '#2ecc71',
+          pipeDark: '#179b50',
+          pipeLight: '#8dffbc',
+          ground: '#5b371e',
+          cloud: 'rgba(255,255,255,0.24)',
+          particle: '#ffcc33'
+        },
+        sunset: {
+          name: 'Sunset',
+          skyA: '#ff7a55',
+          skyB: '#6c3dff',
+          skyC: '#ffd36b',
+          pipe: '#44d07e',
+          pipeDark: '#237346',
+          pipeLight: '#a9ffc8',
+          ground: '#66391d',
+          cloud: 'rgba(255,232,184,0.24)',
+          particle: '#ffe18a'
+        },
+        night: {
+          name: 'Night',
+          skyA: '#05111f',
+          skyB: '#18245a',
+          skyC: '#2d4a85',
+          pipe: '#38c777',
+          pipeDark: '#0c6337',
+          pipeLight: '#85ffc0',
+          ground: '#1d2b34',
+          cloud: 'rgba(190,220,255,0.14)',
+          particle: '#b9d7ff'
+        }
+      };
+
+      const defaultSave = {
+        currentDifficulty: 'easy',
+        currentTheme: 'rainbow',
+        bestScores: { easy: 0, medium: 0, hard: 0 },
+        totalCoins: 0,
+        muted: false,
+        reducedMotion: false,
+        ghostTrail: true
+      };
+
+      let save = loadSave();
+
+      let dpr = 1;
+      let animationId = 0;
+      let audioCtx = null;
+      let lastFrame = 0;
+
+      let state = createInitialState('menu');
+
+      function createInitialState(mode = 'ready') {
+        const settings = difficulties[save.currentDifficulty];
+        return {
+          status: mode,
+          chickenY: LOGICAL_HEIGHT / 2,
+          chickenVelocity: 0,
+          chickenRotation: 0,
+          chickenSize: 30,
+          chickenX: 50,
+          wingPhase: 0,
+          pipes: [],
+          collectibles: [],
+          particles: [],
+          clouds: buildClouds(),
+          score: 0,
+          coins: 0,
+          lives: settings.startingLives,
+          shieldTimer: 0,
+          streak: 0,
+          comboTimer: 0,
+          time: 0,
+          pipeTimer: 0,
+          screenShake: 0,
+          flash: 0,
+          medal: '',
+          justStarted: false
         };
+      }
 
-        let currentDifficulty = 'easy';
+      function loadSave() {
+        try {
+          const raw = localStorage.getItem(STORAGE_KEY);
+          if (!raw) return structuredClone(defaultSave);
+          const parsed = JSON.parse(raw);
+          return {
+            ...structuredClone(defaultSave),
+            ...parsed,
+            bestScores: { ...defaultSave.bestScores, ...(parsed.bestScores || {}) }
+          };
+        } catch (error) {
+          console.warn('Save failed to load, using defaults.', error);
+          return structuredClone(defaultSave);
+        }
+      }
 
-        function setDifficulty(difficulty) {
-            currentDifficulty = difficulty;
-            const settings = difficulties[difficulty];
-            gravity = settings.gravity;
-            jumpStrength = settings.jumpStrength;
-            pipeSpeed = settings.pipeSpeed;
-            pipeGap = settings.pipeGap;
-            pipeSpawnInterval = settings.pipeSpawnInterval;
+      function persist() {
+        try { localStorage.setItem(STORAGE_KEY, JSON.stringify(save)); }
+        catch (error) { console.warn('Save failed.', error); }
+      }
 
-            difficultyButtons.forEach(btn => {
-                btn.classList.remove('active');
-                if (btn.dataset.difficulty === difficulty) {
-                    btn.classList.add('active');
-                }
-            });
+      function fitCanvas() {
+        dpr = Math.max(1, Math.min(3, window.devicePixelRatio || 1));
+        canvas.width = Math.round(LOGICAL_WIDTH * dpr);
+        canvas.height = Math.round(LOGICAL_HEIGHT * dpr);
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      }
 
-            resetGame();
+      function buildClouds() {
+        return Array.from({ length: 9 }, (_, i) => ({
+          x: Math.random() * LOGICAL_WIDTH,
+          y: 34 + Math.random() * 200,
+          r: 11 + Math.random() * 20,
+          speed: 0.08 + Math.random() * 0.22,
+          wobble: Math.random() * Math.PI * 2,
+          layer: i % 3
+        }));
+      }
+
+      function setDifficulty(difficulty, shouldRestart = true) {
+        save.currentDifficulty = difficulty;
+        difficultyButtons.forEach(btn => btn.classList.toggle('active', btn.dataset.difficulty === difficulty));
+        persist();
+        updateHud();
+        if (shouldRestart) resetGame('ready');
+      }
+
+      function setTheme(theme, shouldPersist = true) {
+        save.currentTheme = theme;
+        themeButtons.forEach(btn => btn.classList.toggle('active', btn.dataset.theme === theme));
+        if (shouldPersist) persist();
+      }
+
+      function resetGame(mode = 'ready') {
+        cancelAnimationFrame(animationId);
+        state = createInitialState(mode);
+        lastFrame = 0;
+        updateHud();
+        if (mode === 'ready') showOverlay('Ready?', `Difficulty: ${difficulties[save.currentDifficulty].label}. Collect corn and dodge pipes.`, '', 'Flap or press Start to begin.');
+        if (mode === 'menu') showOverlay('Flappy Chicken', 'Click, tap, Space, or Arrow Up to flap. Dodge pipes, collect corn, and chase your best score.', '', 'Press Start or flap to begin.');
+        animationId = requestAnimationFrame(loop);
+      }
+
+      function startGame() {
+        if (state.status === 'playing') return;
+        if (state.status === 'gameover' || state.status === 'menu' || state.status === 'ready') {
+          state = createInitialState('playing');
+          state.justStarted = true;
+          hideOverlay();
+          spawnPipe(true);
+          spawnParticles(state.chickenX + 10, state.chickenY + 15, 16, '#ffcc33', 1.4);
+          playTone(520, 0.08, 'triangle', 0.06);
+        } else if (state.status === 'paused') {
+          state.status = 'playing';
+          hideOverlay();
+          playTone(440, 0.06, 'triangle', 0.04);
+        }
+        updateHud();
+      }
+
+      function pauseGame() {
+        if (state.status === 'playing') {
+          state.status = 'paused';
+          showOverlay('Paused', 'Take a breather. Your run is safe.', '', 'Press P, Start, click, or tap to continue.');
+        } else if (state.status === 'paused') {
+          startGame();
+        }
+        updateHud();
+      }
+
+      function gameOver() {
+        state.status = 'gameover';
+        const diff = save.currentDifficulty;
+        let newBest = false;
+        if (state.score > save.bestScores[diff]) {
+          save.bestScores[diff] = state.score;
+          newBest = true;
+        }
+        save.totalCoins += state.coins;
+        persist();
+        updateHud();
+
+        const medal = medalForScore(state.score);
+        const title = newBest ? 'New Best!' : 'Game Over';
+        const text = `${medal ? medal + ' ' : ''}You scored ${state.score} on ${difficulties[diff].label}. ${state.coins ? `You banked ${state.coins} corn coins.` : 'No corn this time.'}`;
+        showOverlay(title, text, state.score, 'Click, tap, Space, or Start to restart.');
+        playTone(150, 0.18, 'sawtooth', 0.045);
+        playTone(95, 0.2, 'sine', 0.04, 0.12);
+      }
+
+      function medalForScore(score) {
+        if (score >= 50) return '🏆 Legendary Chicken';
+        if (score >= 30) return '🥇 Golden Roost';
+        if (score >= 18) return '🥈 Silver Feather';
+        if (score >= 10) return '🥉 Bronze Beak';
+        return '';
+      }
+
+      function jump() {
+        if (state.status === 'menu' || state.status === 'ready' || state.status === 'gameover') {
+          startGame();
+          return;
+        }
+        if (state.status === 'paused') {
+          startGame();
+          return;
+        }
+        const settings = difficulties[save.currentDifficulty];
+        state.chickenVelocity = settings.jumpStrength;
+        state.wingPhase = Math.PI;
+        state.screenShake = Math.max(state.screenShake, 1.5);
+        spawnParticles(state.chickenX + 6, state.chickenY + 20, 8, '#fff2a8', 0.85);
+        playTone(620 + Math.min(260, state.streak * 8), 0.055, 'square', 0.035);
+      }
+
+      function loop(now) {
+        if (!lastFrame) lastFrame = now;
+        const rawDt = now - lastFrame;
+        lastFrame = now;
+        const dt = Math.min(34, rawDt || 16.67) / 16.67;
+
+        if (state.status === 'playing') update(dt);
+        else updateAmbient(dt);
+
+        draw();
+        animationId = requestAnimationFrame(loop);
+      }
+
+      function updateAmbient(dt) {
+        state.time += dt * 0.016;
+        updateClouds(dt);
+        updateParticles(dt);
+        state.flash = Math.max(0, state.flash - dt * 0.03);
+        state.screenShake = Math.max(0, state.screenShake - dt * 0.2);
+      }
+
+      function update(dt) {
+        const settings = difficulties[save.currentDifficulty];
+        const speedBoost = 1 + state.score * settings.worldSpeedGrowth;
+
+        state.time += dt * 0.016;
+        state.pipeTimer += dt * 16.67;
+        state.wingPhase += dt * 0.34;
+        state.comboTimer = Math.max(0, state.comboTimer - dt * 16.67);
+        state.shieldTimer = Math.max(0, state.shieldTimer - dt * 16.67);
+        state.flash = Math.max(0, state.flash - dt * 0.035);
+        state.screenShake = Math.max(0, state.screenShake - dt * 0.24);
+
+        if (state.comboTimer === 0) state.streak = 0;
+
+        state.chickenVelocity += settings.gravity * dt;
+        state.chickenY += state.chickenVelocity * dt;
+        state.chickenRotation = clamp(state.chickenVelocity * 0.11, -Math.PI / 5.5, Math.PI / 4.8);
+
+        if (state.pipeTimer >= settings.pipeSpawnMs) {
+          state.pipeTimer = 0;
+          spawnPipe(false);
         }
 
-        difficultyButtons.forEach(btn => {
-            btn.addEventListener('click', () => {
-                setDifficulty(btn.dataset.difficulty);
-            });
-        });
+        updateClouds(dt);
+        updatePipes(dt, speedBoost);
+        updateCollectibles(dt, speedBoost);
+        updateParticles(dt);
+        checkBounds();
+        updateHud();
+      }
 
-        function drawBackground() {
-            const gradient = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
-            gradient.addColorStop(0, `hsl(${(time * colorSpeed * 100) % 360}, 100%, 50%)`);
-            gradient.addColorStop(1, `hsl(${((time * colorSpeed * 100) + 180) % 360}, 100%, 50%)`);
-            
-            ctx.fillStyle = gradient;
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
+      function spawnPipe(isFirst) {
+        const settings = difficulties[save.currentDifficulty];
+        const marginTop = 58;
+        const marginBottom = 78;
+        const minTop = marginTop;
+        const maxTop = LOGICAL_HEIGHT - settings.pipeGap - marginBottom;
+        const top = Math.random() * (maxTop - minTop) + minTop;
+        const moving = !isFirst && Math.random() < settings.movingChance;
+        const pipe = {
+          x: isFirst ? LOGICAL_WIDTH + 80 : LOGICAL_WIDTH + 20,
+          top,
+          baseTop: top,
+          bottom: top + settings.pipeGap,
+          width: 60,
+          passed: false,
+          moving,
+          phase: Math.random() * Math.PI * 2,
+          amplitude: moving ? 16 + Math.random() * 15 : 0
+        };
+        state.pipes.push(pipe);
 
-            ctx.beginPath();
-            for (let x = 0; x < canvas.width; x++) {
-                const y = Math.sin((x * 0.02) + (time * waveSpeed)) * waveAmplitude + canvas.height / 2;
-                ctx.lineTo(x, y);
+        if (!isFirst && Math.random() < settings.coinChance) {
+          state.collectibles.push({
+            type: 'coin',
+            x: pipe.x + pipe.width / 2,
+            y: pipe.top + settings.pipeGap / 2,
+            r: 9,
+            collected: false,
+            phase: Math.random() * Math.PI * 2
+          });
+        }
+
+        if (!isFirst && Math.random() < settings.shieldChance) {
+          state.collectibles.push({
+            type: 'shield',
+            x: pipe.x + pipe.width + 84,
+            y: clamp(pipe.top + settings.pipeGap / 2 + randomRange(-46, 46), 70, LOGICAL_HEIGHT - 86),
+            r: 10,
+            collected: false,
+            phase: Math.random() * Math.PI * 2
+          });
+        }
+      }
+
+      function updatePipes(dt, speedBoost) {
+        const settings = difficulties[save.currentDifficulty];
+        const speed = settings.pipeSpeed * speedBoost;
+        for (const pipe of state.pipes) {
+          pipe.x -= speed * dt;
+          if (pipe.moving && !save.reducedMotion) {
+            pipe.top = pipe.baseTop + Math.sin(state.time * 3.2 + pipe.phase) * pipe.amplitude;
+            pipe.bottom = pipe.top + settings.pipeGap;
+          }
+
+          if (!pipe.passed && pipe.x + pipe.width < state.chickenX) {
+            pipe.passed = true;
+            state.score++;
+            state.streak++;
+            state.comboTimer = 2500;
+            state.flash = 0.2;
+            spawnParticles(state.chickenX + 26, state.chickenY + 15, 14 + Math.min(18, state.streak), '#fff2a8', 1.3);
+            playTone(740 + Math.min(280, state.streak * 15), 0.07, 'triangle', 0.045);
+          }
+
+          if (collidesWithPipe(pipe)) {
+            takeHit();
+            break;
+          }
+        }
+        state.pipes = state.pipes.filter(pipe => pipe.x + pipe.width > -30);
+      }
+
+      function updateCollectibles(dt, speedBoost) {
+        const settings = difficulties[save.currentDifficulty];
+        const speed = settings.pipeSpeed * speedBoost;
+        for (const item of state.collectibles) {
+          item.x -= speed * dt;
+          item.phase += dt * 0.11;
+          const bob = Math.sin(item.phase) * 3.5;
+          if (!item.collected && circleHitsChicken(item.x, item.y + bob, item.r + 3)) {
+            item.collected = true;
+            if (item.type === 'coin') {
+              state.coins++;
+              state.streak++;
+              state.comboTimer = 2600;
+              spawnParticles(item.x, item.y, 22, '#ffd63d', 1.6);
+              playTone(980, 0.07, 'triangle', 0.05);
+            } else {
+              state.shieldTimer = 5200;
+              spawnParticles(item.x, item.y, 30, '#7cf4ff', 1.8);
+              playTone(420, 0.07, 'sine', 0.05);
+              playTone(740, 0.12, 'sine', 0.035, 0.06);
             }
-            ctx.lineTo(canvas.width, canvas.height);
-            ctx.lineTo(0, canvas.height);
-            ctx.fillStyle = 'rgba(255, 255, 255, 0.2)';
-            ctx.fill();
+          }
+        }
+        state.collectibles = state.collectibles.filter(item => item.x > -40 && !item.collected);
+      }
+
+      function updateClouds(dt) {
+        for (const cloud of state.clouds) {
+          cloud.x -= cloud.speed * dt;
+          cloud.wobble += 0.01 * dt;
+          if (cloud.x < -80) {
+            cloud.x = LOGICAL_WIDTH + randomRange(20, 120);
+            cloud.y = 34 + Math.random() * 200;
+            cloud.r = 11 + Math.random() * 20;
+          }
+        }
+      }
+
+      function updateParticles(dt) {
+        for (const p of state.particles) {
+          p.x += p.vx * dt;
+          p.y += p.vy * dt;
+          p.vy += 0.035 * dt;
+          p.life -= p.decay * dt;
+          p.spin += p.spinSpeed * dt;
+        }
+        state.particles = state.particles.filter(p => p.life > 0);
+      }
+
+      function checkBounds() {
+        const floor = LOGICAL_HEIGHT - 28;
+        if (state.chickenY + state.chickenSize > floor) {
+          state.chickenY = floor - state.chickenSize;
+          takeHit(true);
+        }
+        if (state.chickenY < -state.chickenSize * 0.5) {
+          state.chickenY = -state.chickenSize * 0.5;
+          state.chickenVelocity = Math.max(1, state.chickenVelocity);
+        }
+      }
+
+      function takeHit(fromFloor = false) {
+        if (state.status !== 'playing') return;
+        if (state.shieldTimer > 0) {
+          state.shieldTimer = 0;
+          state.screenShake = 6;
+          state.flash = 0.45;
+          state.chickenVelocity = fromFloor ? -4.3 : -3.2;
+          spawnParticles(state.chickenX + 15, state.chickenY + 15, 36, '#7cf4ff', 2.2);
+          playTone(220, 0.08, 'sawtooth', 0.05);
+          return;
+        }
+        state.lives -= 1;
+        state.screenShake = 8;
+        state.flash = 0.55;
+        spawnParticles(state.chickenX + 14, state.chickenY + 14, 46, '#ff5577', 2.25);
+        if (state.lives <= 0) gameOver();
+        else {
+          state.chickenVelocity = -4;
+          playTone(190, 0.12, 'sawtooth', 0.05);
+        }
+      }
+
+      function collidesWithPipe(pipe) {
+        const hitbox = getChickenHitbox();
+        const topRect = { x: pipe.x + 8, y: 0, w: pipe.width - 16, h: pipe.top - 15 };
+        const capTop = { x: pipe.x, y: pipe.top - 20, w: pipe.width, h: 20 };
+        const bottomRect = { x: pipe.x + 8, y: pipe.bottom + 15, w: pipe.width - 16, h: LOGICAL_HEIGHT - pipe.bottom - 15 };
+        const capBottom = { x: pipe.x, y: pipe.bottom, w: pipe.width, h: 20 };
+        return rectsOverlap(hitbox, topRect) || rectsOverlap(hitbox, capTop) || rectsOverlap(hitbox, bottomRect) || rectsOverlap(hitbox, capBottom);
+      }
+
+      function getChickenHitbox() {
+        return {
+          x: state.chickenX + 4,
+          y: state.chickenY + 5,
+          w: state.chickenSize - 5,
+          h: state.chickenSize - 8
+        };
+      }
+
+      function circleHitsChicken(cx, cy, r) {
+        const box = getChickenHitbox();
+        const closestX = clamp(cx, box.x, box.x + box.w);
+        const closestY = clamp(cy, box.y, box.y + box.h);
+        const dx = cx - closestX;
+        const dy = cy - closestY;
+        return dx * dx + dy * dy <= r * r;
+      }
+
+      function rectsOverlap(a, b) {
+        return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
+      }
+
+      function spawnParticles(x, y, count, color, power = 1) {
+        if (save.reducedMotion) count = Math.ceil(count * 0.35);
+        for (let i = 0; i < count; i++) {
+          const angle = Math.random() * Math.PI * 2;
+          const speed = randomRange(0.6, 2.9) * power;
+          state.particles.push({
+            x, y,
+            vx: Math.cos(angle) * speed,
+            vy: Math.sin(angle) * speed,
+            size: randomRange(1.5, 4.5),
+            color,
+            life: randomRange(0.45, 1),
+            decay: randomRange(0.018, 0.036),
+            spin: Math.random() * Math.PI,
+            spinSpeed: randomRange(-0.12, 0.12)
+          });
+        }
+      }
+
+      function draw() {
+        ctx.save();
+        ctx.clearRect(0, 0, LOGICAL_WIDTH, LOGICAL_HEIGHT);
+
+        const shake = state.screenShake > 0 && !save.reducedMotion ? state.screenShake : 0;
+        if (shake) ctx.translate(randomRange(-shake, shake), randomRange(-shake, shake));
+
+        drawBackground();
+        drawClouds();
+        drawPipes();
+        drawCollectibles();
+        drawGhostTrail();
+        drawChicken();
+        drawGround();
+        drawParticles();
+        drawCanvasScore();
+        drawStatusEffects();
+
+        if (state.flash > 0) {
+          ctx.fillStyle = `rgba(255,255,255,${state.flash * 0.18})`;
+          ctx.fillRect(0, 0, LOGICAL_WIDTH, LOGICAL_HEIGHT);
         }
 
-        function drawChicken() {
+        ctx.restore();
+      }
+
+      function drawBackground() {
+        const theme = themes[save.currentTheme];
+        const gradient = ctx.createLinearGradient(0, 0, LOGICAL_WIDTH, LOGICAL_HEIGHT);
+
+        if (save.currentTheme === 'rainbow') {
+          const speed = save.reducedMotion ? 8 : 100;
+          gradient.addColorStop(0, `hsl(${(state.time * 2.0 * speed) % 360}, 100%, 50%)`);
+          gradient.addColorStop(1, `hsl(${((state.time * 2.0 * speed) + 180) % 360}, 100%, 50%)`);
+        } else {
+          gradient.addColorStop(0, theme.skyA);
+          gradient.addColorStop(0.6, theme.skyB);
+          gradient.addColorStop(1, theme.skyC);
+        }
+        ctx.fillStyle = gradient;
+        ctx.fillRect(0, 0, LOGICAL_WIDTH, LOGICAL_HEIGHT);
+
+        const waveAmplitude = save.reducedMotion ? 6 : 20;
+        const waveSpeed = save.reducedMotion ? 0.4 : 2.8;
+        ctx.beginPath();
+        ctx.moveTo(0, LOGICAL_HEIGHT);
+        for (let x = 0; x <= LOGICAL_WIDTH; x += 2) {
+          const y = Math.sin((x * 0.02) + (state.time * waveSpeed)) * waveAmplitude + LOGICAL_HEIGHT / 2;
+          ctx.lineTo(x, y);
+        }
+        ctx.lineTo(LOGICAL_WIDTH, LOGICAL_HEIGHT);
+        ctx.lineTo(0, LOGICAL_HEIGHT);
+        ctx.closePath();
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.18)';
+        ctx.fill();
+
+        drawSunMoon();
+      }
+
+      function drawSunMoon() {
+        if (save.currentTheme === 'night') {
+          ctx.fillStyle = 'rgba(255,255,255,0.92)';
+          ctx.beginPath();
+          ctx.arc(258, 58, 18, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.fillStyle = 'rgba(24,36,90,0.95)';
+          ctx.beginPath();
+          ctx.arc(266, 52, 17, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.fillStyle = 'rgba(255,255,255,0.8)';
+          for (let i = 0; i < 26; i++) {
+            const x = (i * 47) % LOGICAL_WIDTH;
+            const y = 22 + ((i * 31) % 178);
+            const twinkle = 0.45 + Math.sin(state.time * 4 + i) * 0.25;
+            ctx.globalAlpha = clamp(twinkle, 0.2, 0.9);
+            ctx.fillRect(x, y, 1.5, 1.5);
+          }
+          ctx.globalAlpha = 1;
+        } else {
+          const x = save.currentTheme === 'sunset' ? 260 : 250;
+          const y = save.currentTheme === 'sunset' ? 82 : 62;
+          const grd = ctx.createRadialGradient(x, y, 4, x, y, 50);
+          grd.addColorStop(0, 'rgba(255,240,170,0.95)');
+          grd.addColorStop(1, 'rgba(255,240,170,0)');
+          ctx.fillStyle = grd;
+          ctx.beginPath();
+          ctx.arc(x, y, 52, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.fillStyle = '#ffe78a';
+          ctx.beginPath();
+          ctx.arc(x, y, 19, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+
+      function drawClouds() {
+        const theme = themes[save.currentTheme];
+        ctx.fillStyle = theme.cloud;
+        for (const c of state.clouds) {
+          const y = c.y + Math.sin(c.wobble) * (save.reducedMotion ? 0.5 : 2);
+          ctx.beginPath();
+          ctx.arc(c.x, y, c.r, 0, Math.PI * 2);
+          ctx.arc(c.x + c.r * 0.72, y + 3, c.r * 0.74, 0, Math.PI * 2);
+          ctx.arc(c.x - c.r * 0.68, y + 5, c.r * 0.58, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+
+      function drawPipes() {
+        const theme = themes[save.currentTheme];
+        for (const pipe of state.pipes) {
+          drawPipe(pipe.x, 0, pipe.width, pipe.top - 20, true, theme);
+          drawPipeCap(pipe.x, pipe.top - 20, pipe.width, 22, true, theme);
+          drawPipeCap(pipe.x, pipe.bottom, pipe.width, 22, false, theme);
+          drawPipe(pipe.x + 10, pipe.bottom + 20, pipe.width - 20, LOGICAL_HEIGHT - pipe.bottom - 48, false, theme);
+
+          if (pipe.moving) {
             ctx.save();
-            ctx.translate(50 + chickenSize / 2, chickenY + chickenSize / 2);
-            ctx.rotate(chickenRotation);
-
-            // Body
-            ctx.fillStyle = '#f1c40f';
-            ctx.beginPath();
-            ctx.ellipse(0, 0, chickenSize / 2, chickenSize / 3, 0, 0, Math.PI * 2);
-            ctx.fill();
-
-            // Wing
-            ctx.fillStyle = '#f39c12';
-            ctx.beginPath();
-            ctx.ellipse(-5, 5, chickenSize / 4, chickenSize / 6, Math.PI / 4, 0, Math.PI * 2);
-            ctx.fill();
-
-            // Head
-            ctx.fillStyle = '#f1c40f';
-            ctx.beginPath();
-            ctx.arc(chickenSize / 3, -chickenSize / 4, chickenSize / 4, 0, Math.PI * 2);
-            ctx.fill();
-
-            // Eye
-            ctx.fillStyle = 'white';
-            ctx.beginPath();
-            ctx.arc(chickenSize / 2, -chickenSize / 4, chickenSize / 10, 0, Math.PI * 2);
-            ctx.fill();
-            ctx.fillStyle = 'black';
-            ctx.beginPath();
-            ctx.arc(chickenSize / 2, -chickenSize / 4, chickenSize / 20, 0, Math.PI * 2);
-            ctx.fill();
-
-            // Beak
-            ctx.fillStyle = '#e67e22';
-            ctx.beginPath();
-            ctx.moveTo(chickenSize / 2, -chickenSize / 6);
-            ctx.lineTo(chickenSize, -chickenSize / 8);
-            ctx.lineTo(chickenSize / 2, 0);
-            ctx.fill();
-
+            ctx.globalAlpha = 0.65;
+            ctx.fillStyle = 'rgba(255,255,255,0.82)';
+            ctx.font = '11px Arial';
+            ctx.fillText('↕', pipe.x + pipe.width / 2 - 4, pipe.top + (pipe.bottom - pipe.top) / 2 + 4);
             ctx.restore();
+          }
+        }
+      }
+
+      function drawPipe(x, y, w, h, topPipe, theme) {
+        if (h <= 0) return;
+        const grad = ctx.createLinearGradient(x, 0, x + w, 0);
+        grad.addColorStop(0, theme.pipeDark);
+        grad.addColorStop(0.45, theme.pipe);
+        grad.addColorStop(1, theme.pipeLight);
+        ctx.fillStyle = grad;
+        roundRect(x, y, w, h, 7);
+        ctx.fill();
+
+        ctx.strokeStyle = 'rgba(0,0,0,0.24)';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+
+        ctx.globalAlpha = 0.16;
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(x + w * 0.62, y + 4, 5, Math.max(0, h - 8));
+        ctx.globalAlpha = 1;
+      }
+
+      function drawPipeCap(x, y, w, h, topPipe, theme) {
+        const grad = ctx.createLinearGradient(x, 0, x + w, 0);
+        grad.addColorStop(0, theme.pipeDark);
+        grad.addColorStop(0.45, theme.pipe);
+        grad.addColorStop(1, theme.pipeLight);
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        if (topPipe) {
+          ctx.moveTo(x + 10, y);
+          ctx.lineTo(x + w - 10, y);
+          ctx.lineTo(x + w, y + h);
+          ctx.lineTo(x, y + h);
+        } else {
+          ctx.moveTo(x, y);
+          ctx.lineTo(x + w, y);
+          ctx.lineTo(x + w - 10, y + h);
+          ctx.lineTo(x + 10, y + h);
+        }
+        ctx.closePath();
+        ctx.fill();
+        ctx.strokeStyle = 'rgba(0,0,0,0.24)';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+      }
+
+      function drawCollectibles() {
+        for (const item of state.collectibles) {
+          const y = item.y + Math.sin(item.phase) * 3.5;
+          ctx.save();
+          ctx.translate(item.x, y);
+          ctx.rotate(Math.sin(item.phase) * 0.24);
+          if (item.type === 'coin') {
+            const scaleX = 0.62 + Math.abs(Math.sin(item.phase)) * 0.38;
+            ctx.scale(scaleX, 1);
+            ctx.fillStyle = '#ffd63d';
+            ctx.beginPath();
+            ctx.arc(0, 0, item.r, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.strokeStyle = '#9e6500';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+            ctx.fillStyle = '#9e6500';
+            ctx.font = 'bold 12px Arial';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText('🌽', 0, 0.5);
+          } else {
+            ctx.fillStyle = 'rgba(124,244,255,0.25)';
+            ctx.beginPath();
+            ctx.arc(0, 0, item.r + 8 + Math.sin(item.phase) * 2, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = '#7cf4ff';
+            ctx.font = '18px Arial';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText('🛡️', 0, 0);
+          }
+          ctx.restore();
+        }
+      }
+
+      function drawGhostTrail() {
+        if (!save.ghostTrail || state.status !== 'playing' || save.reducedMotion) return;
+        const trailCount = 4;
+        for (let i = trailCount; i >= 1; i--) {
+          ctx.save();
+          ctx.globalAlpha = 0.06 * (trailCount - i + 1);
+          ctx.translate(state.chickenX - i * 6, state.chickenY + state.chickenSize / 2 + Math.sin(state.time * 10 - i) * 2);
+          ctx.fillStyle = '#fff8b5';
+          ctx.beginPath();
+          ctx.ellipse(0, 0, state.chickenSize / 2, state.chickenSize / 3, 0, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.restore();
+        }
+      }
+
+      function drawChicken() {
+        const size = state.chickenSize;
+        const flap = Math.sin(state.wingPhase * 2.2) * 0.6;
+        ctx.save();
+        ctx.translate(state.chickenX + size / 2, state.chickenY + size / 2);
+        ctx.rotate(state.chickenRotation);
+
+        if (state.shieldTimer > 0) {
+          const pulse = 1 + Math.sin(state.time * 10) * 0.05;
+          ctx.scale(pulse, pulse);
+          ctx.strokeStyle = 'rgba(124,244,255,0.78)';
+          ctx.lineWidth = 3;
+          ctx.beginPath();
+          ctx.arc(0, 0, size * 0.72, 0, Math.PI * 2);
+          ctx.stroke();
+          ctx.scale(1 / pulse, 1 / pulse);
         }
 
-        function drawPipes() {
-            pipes.forEach(pipe => {
-                // Lower pipe
-                ctx.fillStyle = '#2ecc71';
-                ctx.beginPath();
-                ctx.moveTo(pipe.x, pipe.bottom);
-                ctx.lineTo(pipe.x + pipeWidth, pipe.bottom);
-                ctx.lineTo(pipe.x + pipeWidth - 10, pipe.bottom + 20);
-                ctx.lineTo(pipe.x + 10, pipe.bottom + 20);
-                ctx.closePath();
-                ctx.fill();
-                ctx.fillRect(pipe.x + 10, pipe.bottom + 20, pipeWidth - 20, canvas.height - pipe.bottom - 20);
+        // Feet
+        ctx.strokeStyle = '#c36b17';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(-5, size / 3 - 2);
+        ctx.lineTo(-8, size / 2);
+        ctx.moveTo(7, size / 3 - 2);
+        ctx.lineTo(10, size / 2);
+        ctx.stroke();
 
-                // Upper pipe
-                ctx.beginPath();
-                ctx.moveTo(pipe.x, pipe.top);
-                ctx.lineTo(pipe.x + pipeWidth, pipe.top);
-                ctx.lineTo(pipe.x + pipeWidth - 10, pipe.top - 20);
-                ctx.lineTo(pipe.x + 10, pipe.top - 20);
-                ctx.closePath();
-                ctx.fill();
-                ctx.fillRect(pipe.x + 10, 0, pipeWidth - 20, pipe.top - 20);
-            });
+        // Body
+        const bodyGrad = ctx.createRadialGradient(-5, -7, 4, 0, 0, size * 0.62);
+        bodyGrad.addColorStop(0, '#fff7a7');
+        bodyGrad.addColorStop(0.52, '#f1c40f');
+        bodyGrad.addColorStop(1, '#d99400');
+        ctx.fillStyle = bodyGrad;
+        ctx.beginPath();
+        ctx.ellipse(0, 0, size / 2, size / 3, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Wing
+        ctx.fillStyle = '#f39c12';
+        ctx.beginPath();
+        ctx.ellipse(-7, 5, size / 4, size / 6, Math.PI / 4 + flap, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = 'rgba(120,70,0,0.28)';
+        ctx.lineWidth = 1;
+        ctx.stroke();
+
+        // Head
+        ctx.fillStyle = '#f1c40f';
+        ctx.beginPath();
+        ctx.arc(size / 3, -size / 4, size / 4, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Comb
+        ctx.fillStyle = '#e94242';
+        for (let i = 0; i < 3; i++) {
+          ctx.beginPath();
+          ctx.arc(size / 3 - 6 + i * 5, -size / 2 + 1 - Math.abs(i - 1) * 2, 4.2, 0, Math.PI * 2);
+          ctx.fill();
         }
 
-        function drawScore() {
-            ctx.fillStyle = 'white';
-            ctx.strokeStyle = 'black';
-            ctx.lineWidth = 3;
-            ctx.font = 'bold 24px Arial';
-            ctx.strokeText(`Score: ${score}`, 10, 30);
-            ctx.fillText(`Score: ${score}`, 10, 30);
+        // Eye
+        ctx.fillStyle = 'white';
+        ctx.beginPath();
+        ctx.arc(size / 2, -size / 4, size / 10, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = 'black';
+        ctx.beginPath();
+        ctx.arc(size / 2 + 1, -size / 4, size / 22, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Beak
+        ctx.fillStyle = '#e67e22';
+        ctx.beginPath();
+        ctx.moveTo(size / 2, -size / 6);
+        ctx.lineTo(size, -size / 8);
+        ctx.lineTo(size / 2, 0);
+        ctx.closePath();
+        ctx.fill();
+
+        ctx.restore();
+      }
+
+      function drawGround() {
+        const theme = themes[save.currentTheme];
+        const y = LOGICAL_HEIGHT - 28;
+        ctx.fillStyle = theme.ground;
+        ctx.fillRect(0, y, LOGICAL_WIDTH, 28);
+        ctx.fillStyle = 'rgba(255,255,255,0.12)';
+        for (let x = -20; x < LOGICAL_WIDTH + 30; x += 20) {
+          const offset = (state.time * 90) % 20;
+          ctx.beginPath();
+          ctx.moveTo(x - offset, y);
+          ctx.lineTo(x + 12 - offset, y);
+          ctx.lineTo(x + 6 - offset, y + 8);
+          ctx.closePath();
+          ctx.fill();
         }
+      }
 
-        function updateChicken() {
-            chickenVelocity += gravity;
-            chickenY += chickenVelocity;
-            chickenRotation = Math.min(Math.PI / 6, Math.max(-Math.PI / 6, chickenVelocity * 0.1));
-
-            if (chickenY + chickenSize > canvas.height) {
-                chickenY = canvas.height - chickenSize;
-                gameOver = true;
-            }
+      function drawParticles() {
+        for (const p of state.particles) {
+          ctx.save();
+          ctx.globalAlpha = clamp(p.life, 0, 1);
+          ctx.translate(p.x, p.y);
+          ctx.rotate(p.spin);
+          ctx.fillStyle = p.color;
+          ctx.fillRect(-p.size / 2, -p.size / 2, p.size, p.size);
+          ctx.restore();
         }
+        ctx.globalAlpha = 1;
+      }
 
-        function updatePipes() {
-            pipes.forEach(pipe => {
-                pipe.x -= pipeSpeed;
+      function drawCanvasScore() {
+        ctx.save();
+        ctx.fillStyle = 'white';
+        ctx.strokeStyle = 'rgba(0,0,0,0.58)';
+        ctx.lineWidth = 4;
+        ctx.font = '900 25px Arial';
+        ctx.textAlign = 'left';
+        ctx.strokeText(`Score: ${state.score}`, 10, 34);
+        ctx.fillText(`Score: ${state.score}`, 10, 34);
 
-                // Check if the chicken has passed the pipe
-                if (!pipe.passed && pipe.x + pipeWidth < 50) {
-                    pipe.passed = true;
-                    score++;
-                }
-
-                // Check for collision
-                if (pipe.x < 50 + chickenSize && pipe.x + pipeWidth > 50 &&
-                    (chickenY < pipe.top || chickenY + chickenSize > pipe.bottom)) {
-                    gameOver = true;
-                }
-            });
-
-            // Remove pipes that have gone off screen
-            pipes = pipes.filter(pipe => pipe.x + pipeWidth > 0);
+        if (state.streak > 2 && state.status === 'playing') {
+          ctx.font = '900 16px Arial';
+          ctx.strokeText(`Combo x${state.streak}`, 10, 58);
+          ctx.fillStyle = '#ffef8f';
+          ctx.fillText(`Combo x${state.streak}`, 10, 58);
         }
+        ctx.restore();
+      }
 
-        function spawnPipe() {
-            const pipeY = Math.random() * (canvas.height - pipeGap - 100) + 50;
-            pipes.push({
-                x: canvas.width,
-                top: pipeY,
-                bottom: pipeY + pipeGap,
-                passed: false
-            });
+      function drawStatusEffects() {
+        if (state.shieldTimer > 0) {
+          const pct = state.shieldTimer / 5200;
+          ctx.save();
+          ctx.fillStyle = 'rgba(0,0,0,0.35)';
+          roundRect(100, 448, 120, 10, 999);
+          ctx.fill();
+          ctx.fillStyle = '#7cf4ff';
+          roundRect(100, 448, 120 * pct, 10, 999);
+          ctx.fill();
+          ctx.fillStyle = 'white';
+          ctx.font = 'bold 10px Arial';
+          ctx.textAlign = 'center';
+          ctx.fillText('Shield', 160, 443);
+          ctx.restore();
         }
+      }
 
-        function gameLoopFunction() {
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
+      function roundRect(x, y, w, h, r) {
+        const radius = Math.min(r, w / 2, h / 2);
+        ctx.beginPath();
+        ctx.moveTo(x + radius, y);
+        ctx.arcTo(x + w, y, x + w, y + h, radius);
+        ctx.arcTo(x + w, y + h, x, y + h, radius);
+        ctx.arcTo(x, y + h, x, y, radius);
+        ctx.arcTo(x, y, x + w, y, radius);
+        ctx.closePath();
+      }
 
-            time += 0.016; // Assume 60 FPS
-            drawBackground();
+      function updateHud() {
+        const best = save.bestScores[save.currentDifficulty] || 0;
+        hudScore.textContent = state.score;
+        hudBest.textContent = best;
+        hudCoins.textContent = state.coins;
+        hudLives.textContent = state.lives;
+        hudStreak.textContent = state.streak;
+        bestEasy.textContent = save.bestScores.easy || 0;
+        bestMedium.textContent = save.bestScores.medium || 0;
+        bestHard.textContent = save.bestScores.hard || 0;
+        totalCoins.textContent = save.totalCoins || 0;
+        muteBtn.textContent = save.muted ? 'Sound Off' : 'Sound On';
+        pauseBtn.textContent = state.status === 'paused' ? 'Resume' : 'Pause';
+      }
 
-            if (!gameOver) {
-                updateChicken();
-                updatePipes();
-            }
-
-            drawPipes();
-            drawChicken();
-            drawScore();
-
-            if (gameOver) {
-                ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
-                ctx.fillRect(0, 0, canvas.width, canvas.height);
-                ctx.fillStyle = 'white';
-                ctx.font = 'bold 48px Arial';
-                ctx.fillText('Game Over', canvas.width / 2 - 100, canvas.height / 2);
-                ctx.font = '24px Arial';
-                ctx.fillText(`Final Score: ${score}`, canvas.width / 2 - 60, canvas.height / 2 + 40);
-                ctx.fillText('Click to restart', canvas.width / 2 - 70, canvas.height / 2 + 80);
-            } else {
-                requestAnimationFrame(gameLoopFunction);
-            }
+      function showOverlay(title, text, score, hint) {
+        overlayTitle.textContent = title;
+        overlayText.textContent = text;
+        if (score === '' || score === undefined || score === null) {
+          overlayScore.hidden = true;
+        } else {
+          overlayScore.hidden = false;
+          overlayScore.textContent = score;
         }
+        overlayHint.textContent = hint;
+        overlay.classList.remove('hidden');
+      }
 
-        function startGame() {
-            gameLoop = requestAnimationFrame(gameLoopFunction);
-            pipeInterval = setInterval(spawnPipe, pipeSpawnInterval);
+      function hideOverlay() {
+        overlay.classList.add('hidden');
+      }
+
+      function toggleMute() {
+        save.muted = !save.muted;
+        persist();
+        updateHud();
+        if (!save.muted) playTone(660, 0.07, 'triangle', 0.04);
+      }
+
+      function resetBestScores() {
+        save.bestScores = { easy: 0, medium: 0, hard: 0 };
+        save.totalCoins = 0;
+        persist();
+        updateHud();
+        showOverlay('Stats reset', 'Best scores and banked coins have been cleared.', '', 'Press Start or flap to play.');
+      }
+
+      function playTone(freq, duration = 0.08, type = 'sine', gain = 0.04, delay = 0) {
+        if (save.muted) return;
+        try {
+          audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+          const start = audioCtx.currentTime + delay;
+          const oscillator = audioCtx.createOscillator();
+          const amp = audioCtx.createGain();
+          oscillator.type = type;
+          oscillator.frequency.setValueAtTime(freq, start);
+          amp.gain.setValueAtTime(0, start);
+          amp.gain.linearRampToValueAtTime(gain, start + 0.008);
+          amp.gain.exponentialRampToValueAtTime(0.0001, start + duration);
+          oscillator.connect(amp);
+          amp.connect(audioCtx.destination);
+          oscillator.start(start);
+          oscillator.stop(start + duration + 0.02);
+        } catch (error) {
+          // Audio can be unavailable in some browsers or until user interaction.
         }
+      }
 
-        function stopGame() {
-            cancelAnimationFrame(gameLoop);
-            clearInterval(pipeInterval);
+      function randomRange(min, max) { return Math.random() * (max - min) + min; }
+      function clamp(value, min, max) { return Math.max(min, Math.min(max, value)); }
+
+      difficultyButtons.forEach(btn => {
+        btn.addEventListener('click', () => setDifficulty(btn.dataset.difficulty, true));
+      });
+
+      themeButtons.forEach(btn => {
+        btn.addEventListener('click', () => setTheme(btn.dataset.theme, true));
+      });
+
+      startBtn.addEventListener('click', () => {
+        if (state.status === 'playing') resetGame('ready');
+        else startGame();
+      });
+
+      pauseBtn.addEventListener('click', pauseGame);
+      muteBtn.addEventListener('click', toggleMute);
+      resetBestBtn.addEventListener('click', resetBestScores);
+
+      reducedMotionToggle.addEventListener('change', () => {
+        save.reducedMotion = reducedMotionToggle.checked;
+        persist();
+      });
+
+      ghostToggle.addEventListener('change', () => {
+        save.ghostTrail = ghostToggle.checked;
+        persist();
+      });
+
+      canvas.addEventListener('click', jump);
+      canvas.addEventListener('pointerdown', (e) => {
+        if (e.pointerType === 'touch') {
+          jump();
+          e.preventDefault();
         }
+      }, { passive: false });
 
-        function resetGame() {
-            stopGame();
-            chickenY = canvas.height / 2;
-            chickenVelocity = 0;
-            pipes = [];
-            score = 0;
-            gameOver = false;
-            startGame();
+      document.addEventListener('keydown', (e) => {
+        if (e.code === 'Space' || e.code === 'ArrowUp') {
+          jump();
+          e.preventDefault();
+        } else if (e.code === 'KeyP') {
+          pauseGame();
+        } else if (e.code === 'KeyM') {
+          toggleMute();
+        } else if (e.code === 'Enter') {
+          startGame();
         }
+      });
 
-        function jump() {
-            if (gameOver) {
-                resetGame();
-            } else {
-                chickenVelocity = jumpStrength;
-            }
-        }
+      document.addEventListener('visibilitychange', () => {
+        if (document.hidden && state.status === 'playing') pauseGame();
+      });
 
-        canvas.addEventListener('click', jump);
-        document.addEventListener('keydown', (e) => {
-            if (e.code === 'Space' || e.code === 'ArrowUp') {
-                jump();
-                e.preventDefault(); // Prevent scrolling when using spacebar
-            }
-        });
+      window.addEventListener('resize', fitCanvas);
 
-        // Initial game start
-        setDifficulty('easy');
-    </script>
+      fitCanvas();
+      reducedMotionToggle.checked = save.reducedMotion;
+      ghostToggle.checked = save.ghostTrail;
+      setTheme(save.currentTheme, false);
+      setDifficulty(save.currentDifficulty, false);
+      resetGame('menu');
+    })();
+  </script>
 </body>
 </html>
