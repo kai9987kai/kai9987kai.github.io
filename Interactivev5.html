@@ -1,0 +1,3099 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Advanced Interactive Simulation Environment — Research Lab v5</title>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.22.0/dist/tf.min.js"></script>
+  <style>
+    :root {
+      --bg: #eef3f7;
+      --ink: #22313f;
+      --muted: #6b7a89;
+      --panel: rgba(255,255,255,0.92);
+      --panel-strong: #ffffff;
+      --line: rgba(34,49,63,0.14);
+      --accent: #2d9cdb;
+      --accent-2: #27ae60;
+      --warn: #f2c94c;
+      --danger: #eb5757;
+      --purple: #9b51e0;
+      --shadow: 0 18px 55px rgba(31, 45, 61, 0.16);
+      --radius: 18px;
+    }
+
+    [data-theme="dark"] {
+      --bg: #091018;
+      --ink: #d9e7f2;
+      --muted: #93a4b5;
+      --panel: rgba(10,18,28,0.88);
+      --panel-strong: #101a27;
+      --line: rgba(255,255,255,0.12);
+      --accent: #00d2ff;
+      --accent-2: #8cff7a;
+      --warn: #ffe66d;
+      --danger: #ff5c7a;
+      --purple: #c792ea;
+      --shadow: 0 20px 70px rgba(0,0,0,0.38);
+    }
+
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+      font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+    }
+
+    body {
+      min-height: 100vh;
+      background:
+        radial-gradient(circle at top left, rgba(45,156,219,0.18), transparent 38rem),
+        radial-gradient(circle at bottom right, rgba(39,174,96,0.14), transparent 34rem),
+        var(--bg);
+      color: var(--ink);
+    }
+
+    header {
+      background:
+        linear-gradient(135deg, rgba(44,62,80,0.98), rgba(12,22,34,0.94)),
+        radial-gradient(circle at 30% 40%, rgba(0,210,255,0.28), transparent 24rem);
+      color: white;
+      padding: 1.2rem;
+      text-align: center;
+      border-bottom: 1px solid rgba(255,255,255,0.12);
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      backdrop-filter: blur(14px);
+    }
+
+    header h1 {
+      font-size: clamp(1.35rem, 2.5vw, 2.1rem);
+      letter-spacing: -0.02em;
+    }
+
+    header p {
+      margin-top: 0.35rem;
+      color: rgba(255,255,255,0.75);
+      font-size: 0.92rem;
+    }
+
+    .container {
+      max-width: 1440px;
+      margin: 0 auto;
+      padding: 1rem;
+    }
+
+    .simulation-area {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 340px;
+      gap: 1rem;
+      margin-bottom: 1rem;
+    }
+
+    .main-visualization,
+    .controls-panel,
+    .info-panel,
+    .research-panel {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(14px);
+    }
+
+    .main-visualization {
+      padding: 1rem;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .canvas-wrap {
+      position: relative;
+    }
+
+    .simulation-canvas {
+      width: 100%;
+      height: min(64vh, 640px);
+      min-height: 480px;
+      display: block;
+      background: #101820;
+      border-radius: 14px;
+      border: 1px solid rgba(255,255,255,0.10);
+      cursor: crosshair;
+      touch-action: none;
+    }
+
+    .hud {
+      position: absolute;
+      top: 0.75rem;
+      left: 0.75rem;
+      right: 0.75rem;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.45rem;
+      pointer-events: none;
+    }
+
+
+
+    .inspector {
+      position: absolute;
+      left: 0.75rem;
+      bottom: 0.75rem;
+      max-width: min(420px, calc(100% - 1.5rem));
+      background: rgba(2, 8, 16, 0.74);
+      color: #dff7ff;
+      border: 1px solid rgba(255,255,255,0.13);
+      border-radius: 14px;
+      padding: 0.65rem 0.75rem;
+      font-size: 0.78rem;
+      line-height: 1.35;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.24);
+      pointer-events: none;
+      backdrop-filter: blur(8px);
+    }
+
+    .inspector strong {
+      color: #ffffff;
+    }
+
+    .mini-note {
+      border: 1px dashed var(--line);
+      border-radius: 13px;
+      padding: 0.75rem;
+      margin-top: 0.75rem;
+      background: rgba(45,156,219,0.08);
+    }
+
+    body.theater header,
+    body.theater .below-grid,
+    body.theater footer {
+      display: none;
+    }
+
+    body.theater .container {
+      max-width: none;
+      padding: 0.5rem;
+    }
+
+    body.theater .simulation-area {
+      grid-template-columns: minmax(0, 1fr) 340px;
+      height: calc(100vh - 1rem);
+      margin-bottom: 0;
+    }
+
+    body.theater .main-visualization,
+    body.theater .controls-panel {
+      height: calc(100vh - 1rem);
+      max-height: calc(100vh - 1rem);
+    }
+
+    body.theater .simulation-canvas {
+      height: calc(100vh - 5.1rem);
+      min-height: 420px;
+    }
+
+
+    body.minimal-hud .controls-panel,
+    body.minimal-hud .below-grid,
+    body.minimal-hud footer {
+      display: none;
+    }
+
+    body.minimal-hud .container {
+      max-width: none;
+      padding: 0;
+    }
+
+    body.minimal-hud .simulation-area {
+      grid-template-columns: 1fr;
+      gap: 0;
+      margin-bottom: 0;
+    }
+
+    body.minimal-hud .main-visualization {
+      border-radius: 0;
+      min-height: calc(100vh - 6rem);
+    }
+
+    body.minimal-hud .simulation-canvas {
+      height: calc(100vh - 10rem);
+      min-height: 520px;
+    }
+
+    .director-chip {
+      color: var(--warn);
+      border-color: rgba(242,201,76,0.35);
+    }
+
+    .badge {
+      background: rgba(2, 8, 16, 0.72);
+      color: #dff7ff;
+      border: 1px solid rgba(255,255,255,0.13);
+      border-radius: 999px;
+      padding: 0.32rem 0.58rem;
+      font-size: 0.78rem;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.18);
+    }
+
+    .legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.75rem;
+      margin-top: 1rem;
+      font-size: 0.88rem;
+      color: var(--muted);
+    }
+
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 0.45rem;
+      white-space: nowrap;
+    }
+
+    .legend-color {
+      width: 15px;
+      height: 15px;
+      border-radius: 50%;
+      border: 1px solid rgba(255,255,255,0.35);
+      box-shadow: inset 0 0 0 1px rgba(0,0,0,0.12);
+    }
+
+    .controls-panel {
+      padding: 1rem;
+      height: fit-content;
+      max-height: calc(100vh - 120px);
+      overflow: auto;
+    }
+
+    .control-group {
+      padding: 0.85rem;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: rgba(255,255,255,0.35);
+      margin-bottom: 0.85rem;
+    }
+
+    [data-theme="dark"] .control-group {
+      background: rgba(255,255,255,0.035);
+    }
+
+    .control-group h3 {
+      margin-bottom: 0.65rem;
+      color: var(--ink);
+      font-size: 0.98rem;
+    }
+
+    .control-row {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 0.6rem;
+      align-items: center;
+      margin: 0.52rem 0 0.2rem;
+    }
+
+    .control-group label {
+      display: block;
+      color: var(--muted);
+      font-size: 0.82rem;
+      font-weight: 650;
+    }
+
+    output {
+      color: var(--ink);
+      font-variant-numeric: tabular-nums;
+      font-weight: 700;
+      font-size: 0.82rem;
+    }
+
+    input[type="range"],
+    select,
+    button {
+      width: 100%;
+      margin-bottom: 0.45rem;
+    }
+
+    input[type="range"] {
+      accent-color: var(--accent);
+    }
+
+    select {
+      background: var(--panel-strong);
+      color: var(--ink);
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 0.48rem;
+      outline: none;
+    }
+
+    .button-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 0.45rem;
+    }
+
+    button {
+      background: linear-gradient(135deg, var(--accent), #2268d8);
+      color: white;
+      border: none;
+      padding: 0.58rem 0.72rem;
+      border-radius: 11px;
+      cursor: pointer;
+      font-weight: 750;
+      box-shadow: 0 8px 22px rgba(45,156,219,0.22);
+      transition: transform 140ms ease, filter 140ms ease, box-shadow 140ms ease;
+    }
+
+    button:hover {
+      transform: translateY(-1px);
+      filter: brightness(1.05);
+      box-shadow: 0 12px 28px rgba(45,156,219,0.26);
+    }
+
+    button.secondary {
+      background: linear-gradient(135deg, #667085, #344054);
+      box-shadow: none;
+    }
+
+    button.green {
+      background: linear-gradient(135deg, var(--accent-2), #168c52);
+    }
+
+    button.yellow {
+      background: linear-gradient(135deg, #f2994a, #d97706);
+    }
+
+    .toggle {
+      display: flex;
+      align-items: center;
+      gap: 0.55rem;
+      margin: 0.45rem 0;
+      color: var(--muted);
+      font-size: 0.86rem;
+      font-weight: 650;
+    }
+
+    .toggle input {
+      width: auto;
+      accent-color: var(--accent-2);
+    }
+
+    .below-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1.2fr) minmax(320px, 0.8fr);
+      gap: 1rem;
+    }
+
+    .info-panel,
+    .research-panel {
+      padding: 1rem;
+    }
+
+    .info-panel h2,
+    .research-panel h2 {
+      margin-bottom: 0.75rem;
+      color: var(--ink);
+      font-size: 1.1rem;
+    }
+
+    .info-panel p,
+    .info-panel li,
+    .research-panel p,
+    .research-panel li {
+      margin-bottom: 0.45rem;
+      color: var(--muted);
+      font-size: 0.9rem;
+      line-height: 1.45;
+    }
+
+    .info-panel ul,
+    .research-panel ul {
+      padding-left: 1.2rem;
+    }
+
+    .stats-display {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(110px, 1fr));
+      gap: 0.65rem;
+      margin-top: 1rem;
+    }
+
+    .stat-item {
+      background: var(--panel-strong);
+      border: 1px solid var(--line);
+      padding: 0.65rem;
+      border-radius: 13px;
+      min-height: 68px;
+    }
+
+    .stat-item label {
+      display: block;
+      font-size: 0.75rem;
+      color: var(--muted);
+      margin-bottom: 0.25rem;
+    }
+
+    .stat-item value,
+    .stat-item span.value {
+      font-weight: 850;
+      font-size: 1.18rem;
+      color: var(--ink);
+      font-variant-numeric: tabular-nums;
+    }
+
+    .snapshot-row {
+      display: grid;
+      grid-template-columns: 170px 1fr;
+      gap: 1rem;
+      align-items: center;
+      margin-top: 0.8rem;
+    }
+
+    #snapshotCanvas {
+      width: 170px;
+      height: 95px;
+      border-radius: 12px;
+      background: #101820;
+      border: 1px solid var(--line);
+    }
+
+    #logPanel {
+      max-height: 180px;
+      overflow-y: auto;
+      background: var(--panel-strong);
+      padding: 0.75rem;
+      margin-top: 0.85rem;
+      border: 1px solid var(--line);
+      border-radius: 13px;
+      font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+      font-size: 0.78rem;
+      color: var(--muted);
+    }
+
+    .sparkline {
+      width: 100%;
+      height: 80px;
+      display: block;
+      margin-top: 0.7rem;
+      background: var(--panel-strong);
+      border: 1px solid var(--line);
+      border-radius: 13px;
+    }
+
+    footer {
+      text-align: center;
+      padding: 1rem;
+      color: var(--muted);
+      font-size: 0.84rem;
+    }
+
+    @media (max-width: 1050px) {
+      .simulation-area,
+      .below-grid {
+        grid-template-columns: 1fr;
+      }
+      .controls-panel {
+        max-height: none;
+      }
+      .stats-display {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+    }
+
+    @media (max-width: 600px) {
+      .container {
+        padding: 0.65rem;
+      }
+      .simulation-canvas {
+        min-height: 360px;
+      }
+      .button-grid,
+      .snapshot-row {
+        grid-template-columns: 1fr;
+      }
+      .stats-display {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body data-theme="dark">
+  <header>
+    <h1>Advanced Interactive Simulation Environment — Research Lab v5</h1>
+    <p>Open-ended ecosystem lab with learning agents, evolving genomes, cellular fields, novelty search, tasks, threats, food, obstacles, brush tools, live inspection, export/import, and comparison-merged augmentation, open-ended director, Red Queen coevolution, social learning, signal communication, ghost probes, symbiosis, epigenetic plasticity, anomaly guard, habitat engineering, and experiment referee notes.</p>
+  </header>
+
+  <div class="container">
+    <div class="simulation-area">
+      <div class="main-visualization">
+        <div class="canvas-wrap">
+          <canvas id="simulationCanvas" class="simulation-canvas"></canvas>
+          <div class="hud">
+            <div class="badge" id="runBadge">Running</div>
+            <div class="badge" id="timeBadge">12:00 Day</div>
+            <div class="badge" id="weatherBadge">Weather: Clear</div>
+            <div class="badge" id="tfBadge">TF.js: loading</div>
+            <div class="badge" id="brushBadge">Brush: Food</div>
+            <div class="badge director-chip" id="directorBadge">Director: Stabilise</div>
+            <div class="badge" id="anomalyBadge">Stability: Nominal</div>
+            <div class="badge">Click: selected brush · Shift: Task · Alt: Threat · Ctrl: Obstacle</div>
+          </div>
+          <div class="inspector" id="inspectorPanel">Inspect brush: click an agent to see lineage, genome traits, score, energy, and behavioural niche.</div>
+        </div>
+
+        <div class="legend">
+          <div class="legend-item"><div class="legend-color" style="background:#27ae60;"></div><span>Food / resources</span></div>
+          <div class="legend-item"><div class="legend-color" style="background:#2d9cdb;"></div><span>Adaptive agents</span></div>
+          <div class="legend-item"><div class="legend-color" style="background:#eb5757;"></div><span>Threats</span></div>
+          <div class="legend-item"><div class="legend-color" style="background:#f2c94c;"></div><span>Environmental tasks</span></div>
+          <div class="legend-item"><div class="legend-color" style="background:#7f8c8d;"></div><span>Obstacles</span></div>
+          <div class="legend-item"><div class="legend-color" style="background:linear-gradient(90deg,#27ae60,#9b51e0,#eb5757);"></div><span>NCA-style nutrient/danger/trail field</span></div>
+        </div>
+      </div>
+
+      <div class="controls-panel">
+        <div class="control-group">
+          <h3>Simulation Controls</h3>
+          <div class="button-grid">
+            <button id="pauseBtn">Pause / Resume</button>
+            <button class="secondary" onclick="resetSimulation()">Reset</button>
+            <button class="green" onclick="createEnvironmentalTask()">Create Task</button>
+            <button class="yellow" id="eventBtn">Force Event</button>
+            <button class="secondary" id="saveBtn">Save</button>
+            <button class="secondary" id="loadBtn">Load</button>
+            <button class="secondary" id="theaterBtn">Theater View</button>
+            <button class="secondary" id="minimalBtn">Minimal HUD</button>
+            <button class="yellow" id="directorPulseBtn">Director Pulse</button>
+            <button class="yellow" id="microExperimentBtn">Micro Experiment</button>
+            <button class="green" id="habitatSeedBtn">Seed Habitat</button>
+            <button class="green" id="seedEliteBtn">Seed Elite</button>
+            <button class="secondary" id="exportBtn">Export JSON</button>
+            <button class="secondary" id="importBtn">Import JSON</button>
+            <button class="secondary" id="clearLogBtn">Clear Log</button>
+          </div>
+          <input id="importFile" type="file" accept="application/json,.json" style="display:none">
+          <div class="control-row"><label for="simulationSpeed">Simulation Speed</label><output id="simulationSpeedOut">1.0×</output></div>
+          <input type="range" id="simulationSpeed" min="0.2" max="3" step="0.1" value="1">
+          <label class="toggle"><input type="checkbox" id="themeToggle" checked> Dark research UI</label>
+          <label class="toggle"><input type="checkbox" id="autoEvents" checked> Auto-generate experimental events</label>
+          <label class="toggle"><input type="checkbox" id="openDirector" checked> Open-ended research director</label>
+          <label class="toggle"><input type="checkbox" id="redQueen" checked> Red Queen coevolution</label>
+          <label class="toggle"><input type="checkbox" id="socialLearning" checked> Local social learning</label>
+          <label class="toggle"><input type="checkbox" id="signalComms" checked> Agent signal communication</label>
+          <label class="toggle"><input type="checkbox" id="ghostProbes" checked> Counterfactual ghost probes</label>
+          <label class="toggle"><input type="checkbox" id="symbiosis" checked> Symbiotic guild learning</label>
+          <label class="toggle"><input type="checkbox" id="epigenetics" checked> Epigenetic plasticity</label>
+          <label class="toggle"><input type="checkbox" id="anomalyGuard" checked> Anomaly guard / collapse rescue</label>
+          <label class="toggle"><input type="checkbox" id="habitatEngineer" checked> Habitat engineering</label>
+        </div>
+
+        <div class="control-group">
+          <h3>Agent Parameters</h3>
+          <div class="control-row"><label for="agentSpeed">Agent Speed Bias</label><output id="agentSpeedOut">5</output></div>
+          <input type="range" id="agentSpeed" min="1" max="10" value="5">
+          <div class="control-row"><label for="maxSpeed">Max Speed Cap</label><output id="maxSpeedOut">5</output></div>
+          <input type="range" id="maxSpeed" min="1" max="10" value="5">
+          <div class="control-row"><label for="energyDecay">Energy Decay</label><output id="energyDecayOut">0.10</output></div>
+          <input type="range" id="energyDecay" min="0" max="1" step="0.01" value="0.10">
+          <div class="control-row"><label for="mutationRate">Mutation Rate</label><output id="mutationRateOut">0.08</output></div>
+          <input type="range" id="mutationRate" min="0" max="0.3" step="0.01" value="0.08">
+        </div>
+
+        <div class="control-group">
+          <h3>Environment Settings</h3>
+          <div class="control-row"><label for="foodCount">Food Count</label><output id="foodCountOut">20</output></div>
+          <input type="range" id="foodCount" min="5" max="100" value="20">
+          <div class="control-row"><label for="threatCount">Threat Count</label><output id="threatCountOut">10</output></div>
+          <input type="range" id="threatCount" min="0" max="30" value="10">
+          <div class="control-row"><label for="obstacleCount">Obstacle Count</label><output id="obstacleCountOut">20</output></div>
+          <input type="range" id="obstacleCount" min="0" max="80" value="20">
+          <div class="control-row"><label for="threatAggressiveness">Threat Aggressiveness</label><output id="threatAggressivenessOut">3</output></div>
+          <input type="range" id="threatAggressiveness" min="1" max="5" value="3">
+          <div class="control-row"><label for="dayRate">Day / Night Speed</label><output id="dayRateOut">0.010</output></div>
+          <input type="range" id="dayRate" min="0" max="0.05" step="0.001" value="0.01">
+        </div>
+
+        <div class="control-group">
+          <h3>Research Overlays</h3>
+          <label class="toggle"><input type="checkbox" id="showFields" checked> Show cellular fields</label>
+          <label class="toggle"><input type="checkbox" id="showVision"> Show agent vision</label>
+          <label class="toggle"><input type="checkbox" id="showTrails" checked> Show movement trails</label>
+          <label class="toggle"><input type="checkbox" id="showArchive" checked> Show quality-diversity archive map</label>
+          <div class="control-row"><label for="brushMode">Canvas Brush</label><output id="brushModeOut">Food</output></div>
+          <select id="brushMode">
+            <option value="food">Food brush</option>
+            <option value="task">Task brush</option>
+            <option value="threat">Threat brush</option>
+            <option value="obstacle">Obstacle brush</option>
+            <option value="agent">Agent brush</option>
+            <option value="erase">Erase nearest</option>
+            <option value="inspect">Inspect agent</option>
+          </select>
+          <div class="control-row"><label for="scenarioSelect">Scenario Preset</label><output id="scenarioOut">Balanced</output></div>
+          <select id="scenarioSelect">
+            <option value="balanced">Balanced ecosystem</option>
+            <option value="scarcity">Sparse food / survival pressure</option>
+            <option value="predators">Predator pressure</option>
+            <option value="maze">Obstacle maze</option>
+            <option value="bloom">Resource bloom</option>
+            <option value="frontier">Frontier curriculum</option>
+            <option value="symbiosis">Symbiosis stress test</option>
+          </select>
+          <button id="applyScenarioBtn">Apply Scenario</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="below-grid">
+      <div class="info-panel">
+        <h2>Simulation Information</h2>
+        <p>This version preserves the original agents, threats, food, tasks, obstacles, controls, day/night cycle, learning memory, data augmentation, stats, and log panel. It upgrades them into a more experimental artificial-life lab.</p>
+        <ul>
+          <li><strong>Intrinsic motivation:</strong> agents receive curiosity reward for visiting novel cells and completing new task types.</li>
+          <li><strong>Quality-diversity archive:</strong> successful genomes are stored by behavioural niche, so the population does not collapse into one “best” strategy.</li>
+          <li><strong>Cellular field:</strong> food, agents, and threats continuously write nutrient, trail, and danger signals into a local grid that diffuses and decays.</li>
+          <li><strong>Open-ended events:</strong> bloom, drought, storm, migration, and predator-pulse events reshape the environment during the run.</li>
+          <li><strong>Real energy economy:</strong> energy decay now affects movement, health, reproduction, task completion, and death.</li>
+          <li><strong>Comparison merge:</strong> adds rotate90/rotate180 augmentation, true fullscreen-style simulation behaviour, capped logs, live step-cost timing, and a clearer warm-start/pre-training status.</li>
+          <li><strong>Lab workflow:</strong> brush tools, inspect mode, elite seeding, JSON export/import, theater view, and minimal HUD make experiments easier to run and compare.</li>
+          <li><strong>Research director:</strong> watches population, novelty, archive coverage, and food pressure, then injects curriculum tasks instead of random-only events.</li>
+          <li><strong>Red Queen pressure:</strong> threats slowly adapt when agents dominate, while struggling populations trigger gentler rescue conditions.</li>
+          <li><strong>Signal communication + ghost probes:</strong> agents leave lightweight social traces and the lab samples counterfactual futures to nudge task placement.</li>
+          <li><strong>v5 research layer:</strong> adds symbiotic guild learning, epigenetic plasticity, anomaly/collapse guard, adaptive habitat engineering, and micro-experiment referee notes.</li>
+        </ul>
+
+        <div class="snapshot-row">
+          <canvas id="snapshotCanvas" width="340" height="190"></canvas>
+          <div>
+            <p><strong>Generated world snapshot:</strong> replaces the old static placeholder image with a live mini-preview of the simulation state.</p>
+            <button id="snapshotBtn">Download Snapshot</button>
+          </div>
+        </div>
+
+        <div class="stats-display">
+          <div class="stat-item"><label>Agents</label><value id="agentCount">30</value></div>
+          <div class="stat-item"><label>Threats</label><value id="threatCountStat">10</value></div>
+          <div class="stat-item"><label>Food</label><value id="foodCountStat">20</value></div>
+          <div class="stat-item"><label>Tasks</label><value id="taskCount">0</value></div>
+          <div class="stat-item"><label>FPS</label><value id="fps">60</value></div>
+          <div class="stat-item"><label>Step Time</label><span class="value" id="stepTime">16</span> ms</div>
+          <div class="stat-item"><label>Generation</label><value id="generationStat">1</value></div>
+          <div class="stat-item"><label>Avg Energy</label><value id="energyStat">100</value></div>
+          <div class="stat-item"><label>Archive Niches</label><value id="archiveStat">0</value></div>
+          <div class="stat-item"><label>Novelty</label><value id="noveltyStat">0</value></div>
+          <div class="stat-item"><label>Lineages</label><value id="lineageStat">0</value></div>
+          <div class="stat-item"><label>Best Score</label><value id="bestScoreStat">0</value></div>
+          <div class="stat-item"><label>Tasks Done</label><value id="tasksDoneStat">0</value></div>
+          <div class="stat-item"><label>World Health</label><value id="worldHealthStat">0</value></div>
+          <div class="stat-item"><label>Director Goal</label><value id="directorGoalStat">Stabilise</value></div>
+          <div class="stat-item"><label>Red Queen</label><value id="redQueenStat">0.00</value></div>
+          <div class="stat-item"><label>Diversity</label><value id="diversityStat">0</value></div>
+          <div class="stat-item"><label>Ghost Score</label><value id="ghostStat">0</value></div>
+          <div class="stat-item"><label>Species</label><value id="speciesStat">0</value></div>
+          <div class="stat-item"><label>Symbiosis</label><value id="symbiosisStat">0</value></div>
+          <div class="stat-item"><label>Stability</label><value id="stabilityStat">100</value></div>
+          <div class="stat-item"><label>Habitat Projects</label><value id="habitatStat">0</value></div>
+          <div class="stat-item"><label>Alarm</label><value id="alarmStat">Nominal</value></div>
+        </div>
+
+        <canvas id="sparklineCanvas" class="sparkline" width="900" height="120"></canvas>
+        <div id="logPanel"></div>
+      </div>
+
+      <div class="research-panel">
+        <h2>Research-Inspired Experiment Notes</h2>
+        <p><strong>What to watch:</strong> a healthy world should show shifting niches, not just rising population. If one strategy dominates, increase mutation or turn on more events.</p>
+        <ul>
+          <li><strong>Blue/cyan agents</strong> tend to be fast foragers.</li>
+          <li><strong>Purple/pink agents</strong> usually have stronger curiosity or risk traits.</li>
+          <li><strong>Yellow tasks</strong> become curriculum landmarks: they reward agents for exploring beyond food chasing.</li>
+          <li><strong>Red fields</strong> show remembered danger. Green fields show nutrients. Purple/blue fields show social trails.</li>
+        </ul>
+        <p><strong>Invented addition:</strong> “regenerative pressure” links scarcity to field fertility. If agents over-consume without exploration, the map becomes less fertile; diverse movement helps new food patches appear.</p>
+        <div class="mini-note"><strong>Borrowed from the comparison version:</strong> minimal fullscreen overlay thinking, direct performance telemetry, capped/autoscrolling logs, resize-first canvas behaviour, and simple always-visible controls. <strong>Kept from our version:</strong> QD archive, local cellular fields, evolution, tasks, particles, scenarios, localStorage, snapshot, JSON tools, theater mode, and richer controls.</div>
+        <p><strong>New v4 invention:</strong> “counterfactual curriculum pressure” runs cheap ghost probes around the world and turns promising areas into experimental task clusters, so the world teaches agents instead of only reacting to them.</p>
+        <p><strong>New v5 invention:</strong> “closed-loop experiment referee” watches collapse, stagnation, over-dominance, and under-exploration. It writes short notes to the event log, launches small test tasks, restores habitats, and nudges agents through lifetime plasticity instead of only mutation.</p>
+        <p><strong>Feature audit:</strong> v5 preserves every major chain feature: original entities and controls, day/night, threats/resources/tasks/obstacles, logs/stats/performance, learning and augmentation, field ecology, evolution, QD archive, localStorage, scenarios, brush/inspect tools, JSON import/export, snapshot download, theater/minimal HUD, research director, Red Queen, social learning, signals, and ghost probes.</p>
+        <p><strong>Keyboard:</strong> Space pauses. R resets. T creates a task. E triggers an experimental event. D pulses the director. X launches a micro-experiment. H seeds habitat. M toggles minimal HUD. S saves. L loads. B cycles brush mode. Escape exits theater/minimal view.</p>
+      </div>
+    </div>
+  </div>
+
+  <footer>
+    <p>Research Lab v5 — single-file HTML/CSS/JS. Full feature-preserving artificial-life lab with adaptive curriculum, symbiosis, anomaly guard, epigenetic plasticity, habitat engineering, and open-ended coevolution.</p>
+  </footer>
+
+  <script>
+    "use strict";
+
+    const canvas = document.getElementById("simulationCanvas");
+    const ctx = canvas.getContext("2d");
+    const snapshotCanvas = document.getElementById("snapshotCanvas");
+    const snapshotCtx = snapshotCanvas.getContext("2d");
+    const sparklineCanvas = document.getElementById("sparklineCanvas");
+    const sparkCtx = sparklineCanvas.getContext("2d");
+
+    let dpr = 1;
+    let viewW = 900;
+    let viewH = 560;
+    let lastTime = performance.now();
+    let accumulator = 0;
+    let fps = 60;
+    let simulationRunning = true;
+    let timeOfDay = 12;
+    let weather = "Clear";
+    let eventClock = 0;
+    let statClock = 0;
+    let logThrottle = new Map();
+    let history = [];
+    let pointer = { x: 0, y: 0, down: false };
+    let selectedAgent = null;
+    let tasksCompletedTotal = 0;
+    let bestScoreEver = 0;
+    let lastStepCostMs = 0;
+    let warmStartStatus = "ready";
+    let eventLogStore = [];
+    let directorClock = 0;
+    let currentDirectorGoal = "Stabilise";
+    let redQueenLevel = 0;
+    let ghostProbeScore = 0;
+    let minimalHud = false;
+    let anomalyState = "Nominal";
+    let stabilityScore = 100;
+    let habitatProjects = 0;
+    let symbiosisLinks = 0;
+    let refereeClock = 0;
+    let habitatClock = 0;
+    let epigeneticClock = 0;
+    let speciesClock = 0;
+    let microExperimentCount = 0;
+    let lastSpeciesCount = 0;
+
+    let agents = [];
+    let threats = [];
+    let foods = [];
+    let tasks = [];
+    let obstacles = [];
+    let particles = [];
+    let archive = new Map();
+    let globalVisited = new Set();
+
+    const settings = {
+      agent: {
+        count: 30,
+        speedBias: 5,
+        maxSpeed: 5,
+        maxHealth: 150,
+        maxEnergy: 130,
+        reproductionRate: 0.11,
+        visionRadius: 150,
+        sustainabilityAwareness: 1,
+        maxCount: 120,
+        energyDecay: 0.10,
+        mutationRate: 0.08
+      },
+      threat: {
+        count: 10,
+        speed: 1.5,
+        health: 50,
+        aggressiveness: 3,
+        vision: 210
+      },
+      food: {
+        count: 20,
+        nutrition: 34,
+        respawnRate: 5000
+      },
+      task: {
+        count: 0,
+        completionReward: 35
+      },
+      obstacle: {
+        count: 20,
+        ageLimit: 300
+      },
+      qLearning: {
+        learningRate: 0.08,
+        discountRate: 0.9,
+        explorationRate: 0.18
+      },
+      dayNightCycle: {
+        enabled: true,
+        timeIncrement: 0.01
+      },
+      simulation: {
+        speed: 1,
+        width: 900,
+        height: 560
+      },
+      field: {
+        cols: 72,
+        rows: 44,
+        diffusion: 0.08,
+        decay: 0.985,
+        enabled: true
+      },
+      overlays: {
+        showFields: true,
+        showVision: false,
+        showTrails: true,
+        showArchive: true
+      },
+      autoEvents: true,
+      director: {
+        enabled: true,
+        redQueen: true,
+        socialLearning: true,
+        signalComms: true,
+        ghostProbes: true,
+        symbiosis: true,
+        epigenetics: true,
+        anomalyGuard: true,
+        habitatEngineer: true,
+        adaptiveCurriculum: true,
+        pulseEvery: 8
+      },
+      scenario: "balanced",
+      brushMode: "food"
+    };
+
+    const field = {
+      nutrient: [],
+      danger: [],
+      trail: [],
+      fertility: [],
+      signal: [],
+      hormone: []
+    };
+
+    function transformVector(input, mode) {
+      const out = input.slice();
+      const pairs = input.length === 2 ? [[0, 1]] : [[0, 1], [2, 3], [4, 5]];
+      for (const [x, y] of pairs) {
+        if (x >= out.length || y >= out.length) continue;
+        const ox = out[x];
+        const oy = out[y];
+        if (mode === "flipX") out[x] = -ox;
+        else if (mode === "flipY") out[y] = -oy;
+        else if (mode === "rotate90") { out[x] = -oy; out[y] = ox; }
+        else if (mode === "rotate180") { out[x] = -ox; out[y] = -oy; }
+      }
+      return out;
+    }
+
+    const transformations = {
+      identity: input => input.slice(),
+      flipX: input => transformVector(input, "flipX"),
+      flipY: input => transformVector(input, "flipY"),
+      rotate90: input => transformVector(input, "rotate90"),
+      rotate180: input => transformVector(input, "rotate180")
+    };
+    const transformKeys = Object.keys(transformations);
+
+    const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
+    const lerp = (a, b, t) => a + (b - a) * t;
+    const rand = (min, max) => min + Math.random() * (max - min);
+    const randInt = (min, max) => Math.floor(rand(min, max + 1));
+    const hypot = Math.hypot;
+    const nowSec = () => performance.now() / 1000;
+
+    function logEvent(message, key = message, minGap = 0.6) {
+      const t = nowSec();
+      if (logThrottle.has(key) && t - logThrottle.get(key) < minGap) return;
+      logThrottle.set(key, t);
+
+      const logPanel = document.getElementById("logPanel");
+      const timeStamp = new Date().toLocaleTimeString();
+      eventLogStore.push({ time: timeStamp, message });
+      while (eventLogStore.length > 160) eventLogStore.shift();
+      const logEntry = document.createElement("div");
+      logEntry.textContent = "[" + timeStamp + "] " + message;
+      logPanel.appendChild(logEntry);
+      while (logPanel.children.length > 90) logPanel.removeChild(logPanel.firstChild);
+      logPanel.scrollTop = logPanel.scrollHeight;
+    }
+
+    function resizeCanvas() {
+      const rect = canvas.getBoundingClientRect();
+      dpr = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
+      viewW = Math.max(320, Math.floor(rect.width));
+      viewH = Math.max(320, Math.floor(rect.height));
+      canvas.width = Math.floor(viewW * dpr);
+      canvas.height = Math.floor(viewH * dpr);
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      settings.simulation.width = viewW;
+      settings.simulation.height = viewH;
+    }
+
+    function initField() {
+      const n = settings.field.cols * settings.field.rows;
+      field.nutrient = new Float32Array(n);
+      field.danger = new Float32Array(n);
+      field.trail = new Float32Array(n);
+      field.fertility = new Float32Array(n);
+      field.signal = new Float32Array(n);
+      field.hormone = new Float32Array(n);
+      for (let i = 0; i < n; i++) {
+        field.fertility[i] = rand(0.25, 0.9);
+        field.nutrient[i] = Math.random() * 0.25;
+      }
+    }
+
+    function fieldIndexFromXY(x, y) {
+      const c = clamp(Math.floor((x / viewW) * settings.field.cols), 0, settings.field.cols - 1);
+      const r = clamp(Math.floor((y / viewH) * settings.field.rows), 0, settings.field.rows - 1);
+      return r * settings.field.cols + c;
+    }
+
+    function fieldAt(x, y, layer) {
+      return field[layer][fieldIndexFromXY(x, y)] || 0;
+    }
+
+    function addField(x, y, layer, amount) {
+      const i = fieldIndexFromXY(x, y);
+      field[layer][i] = clamp(field[layer][i] + amount, 0, 1.5);
+    }
+
+    function diffuseLayer(layer) {
+      const cols = settings.field.cols;
+      const rows = settings.field.rows;
+      const src = field[layer];
+      const out = new Float32Array(src.length);
+      const diffusion = settings.field.diffusion;
+      const decay = layer === "fertility" ? 0.9995 : settings.field.decay;
+
+      for (let r = 0; r < rows; r++) {
+        for (let c = 0; c < cols; c++) {
+          const i = r * cols + c;
+          const center = src[i];
+          let sum = center * 4;
+          let count = 4;
+          if (c > 0) { sum += src[i - 1]; count++; }
+          if (c < cols - 1) { sum += src[i + 1]; count++; }
+          if (r > 0) { sum += src[i - cols]; count++; }
+          if (r < rows - 1) { sum += src[i + cols]; count++; }
+          const blurred = sum / count;
+          out[i] = clamp(lerp(center, blurred, diffusion) * decay, 0, 2);
+        }
+      }
+      field[layer] = out;
+    }
+
+    function updateField(dt) {
+      diffuseLayer("nutrient");
+      diffuseLayer("danger");
+      diffuseLayer("trail");
+      diffuseLayer("fertility");
+      diffuseLayer("signal");
+      diffuseLayer("hormone");
+
+      // Regenerative pressure: unexplored, fertile, low-danger cells slowly become better food patches.
+      if (Math.random() < 0.25 * dt && foods.length < settings.food.count) {
+        let best = 0;
+        let bestScore = -Infinity;
+        for (let i = 0; i < 32; i++) {
+          const x = Math.random() * viewW;
+          const y = Math.random() * viewH;
+          const idx = fieldIndexFromXY(x, y);
+          const score = field.fertility[idx] + field.nutrient[idx] * 0.7 - field.danger[idx] * 0.9 + Math.random() * 0.35;
+          if (score > bestScore) {
+            bestScore = score;
+            best = idx;
+          }
+        }
+        const c = best % settings.field.cols;
+        const r = Math.floor(best / settings.field.cols);
+        foods.push(new Food((c + Math.random()) / settings.field.cols * viewW, (r + Math.random()) / settings.field.rows * viewH));
+      }
+    }
+
+    class TinyBrain {
+      constructor(inputSize = 11, hiddenSize = 9) {
+        this.inputSize = inputSize;
+        this.hiddenSize = hiddenSize;
+        this.w1 = Array.from({ length: inputSize * hiddenSize }, () => rand(-1, 1));
+        this.w2 = Array.from({ length: hiddenSize * 2 }, () => rand(-1, 1));
+        this.bias = Array.from({ length: hiddenSize + 2 }, () => rand(-0.25, 0.25));
+      }
+
+      clone(mutation = 0.05) {
+        const b = new TinyBrain(this.inputSize, this.hiddenSize);
+        b.w1 = this.w1.map(w => w + rand(-mutation, mutation));
+        b.w2 = this.w2.map(w => w + rand(-mutation, mutation));
+        b.bias = this.bias.map(w => w + rand(-mutation, mutation) * 0.5);
+        return b;
+      }
+
+      forward(input) {
+        const h = new Array(this.hiddenSize).fill(0);
+        for (let j = 0; j < this.hiddenSize; j++) {
+          let sum = this.bias[j];
+          for (let i = 0; i < this.inputSize; i++) sum += input[i] * this.w1[i * this.hiddenSize + j];
+          h[j] = Math.tanh(sum);
+        }
+        const out = [this.bias[this.hiddenSize], this.bias[this.hiddenSize + 1]];
+        for (let j = 0; j < this.hiddenSize; j++) {
+          out[0] += h[j] * this.w2[j * 2];
+          out[1] += h[j] * this.w2[j * 2 + 1];
+        }
+        return [Math.tanh(out[0]), Math.tanh(out[1])];
+      }
+
+      reinforce(input, target, strength = 0.02) {
+        const h = new Array(this.hiddenSize).fill(0);
+        for (let j = 0; j < this.hiddenSize; j++) {
+          let sum = this.bias[j];
+          for (let i = 0; i < this.inputSize; i++) sum += input[i] * this.w1[i * this.hiddenSize + j];
+          h[j] = Math.tanh(sum);
+        }
+        const out = this.forward(input);
+        const err = [target[0] - out[0], target[1] - out[1]];
+        for (let j = 0; j < this.hiddenSize; j++) {
+          this.w2[j * 2] += err[0] * h[j] * strength;
+          this.w2[j * 2 + 1] += err[1] * h[j] * strength;
+        }
+        this.bias[this.hiddenSize] += err[0] * strength;
+        this.bias[this.hiddenSize + 1] += err[1] * strength;
+      }
+    }
+
+    class Entity {
+      constructor(x, y, size, color) {
+        this.x = x;
+        this.y = y;
+        this.vx = 0;
+        this.vy = 0;
+        this.size = size;
+        this.color = color;
+        this.isAlive = true;
+      }
+
+      distanceTo(other) {
+        return hypot(this.x - other.x, this.y - other.y);
+      }
+
+      keepWithinBounds() {
+        if (this.x < this.size) { this.x = this.size; this.vx = Math.abs(this.vx) * 0.45; }
+        if (this.y < this.size) { this.y = this.size; this.vy = Math.abs(this.vy) * 0.45; }
+        if (this.x > viewW - this.size) { this.x = viewW - this.size; this.vx = -Math.abs(this.vx) * 0.45; }
+        if (this.y > viewH - this.size) { this.y = viewH - this.size; this.vy = -Math.abs(this.vy) * 0.45; }
+      }
+
+      avoidObstacles(force = 1) {
+        for (const o of obstacles) {
+          const dx = this.x - o.x;
+          const dy = this.y - o.y;
+          const d = Math.max(0.01, hypot(dx, dy));
+          const hit = this.size + o.size + 8;
+          if (d < hit) {
+            const push = (hit - d) / hit * force;
+            this.vx += (dx / d) * push;
+            this.vy += (dy / d) * push;
+          }
+        }
+      }
+
+      drawCircle(fill = this.color, stroke = null) {
+        ctx.fillStyle = fill;
+        ctx.beginPath();
+        ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+        ctx.fill();
+        if (stroke) {
+          ctx.strokeStyle = stroke;
+          ctx.lineWidth = 1;
+          ctx.stroke();
+        }
+      }
+    }
+
+    class Food extends Entity {
+      constructor(x, y) {
+        super(x, y, rand(4, 6.5), "#27ae60");
+        this.nutrition = settings.food.nutrition * rand(0.75, 1.25);
+        this.pulse = Math.random() * Math.PI * 2;
+      }
+
+      draw() {
+        this.pulse += 0.045;
+        const glow = 0.35 + Math.sin(this.pulse) * 0.15;
+        ctx.fillStyle = `rgba(39,174,96,${glow})`;
+        ctx.beginPath();
+        ctx.arc(this.x, this.y, this.size * 2.4, 0, Math.PI * 2);
+        ctx.fill();
+        this.drawCircle("#27ae60", "rgba(255,255,255,0.45)");
+      }
+    }
+
+    class Task extends Entity {
+      constructor(x, y) {
+        super(x, y, 7, "#f2c94c");
+        this.difficulty = rand(30, 90);
+        this.progress = 0;
+        this.kind = ["sample", "repair", "map", "signal"][randInt(0, 3)];
+      }
+
+      draw() {
+        ctx.save();
+        ctx.translate(this.x, this.y);
+        ctx.rotate(performance.now() / 900 + this.x * 0.01);
+        ctx.fillStyle = "rgba(242,201,76,0.35)";
+        ctx.fillRect(-this.size * 1.8, -this.size * 1.8, this.size * 3.6, this.size * 3.6);
+        ctx.fillStyle = "#f2c94c";
+        ctx.fillRect(-this.size, -this.size, this.size * 2, this.size * 2);
+        ctx.restore();
+
+        ctx.strokeStyle = "rgba(255,255,255,0.55)";
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(this.x, this.y, this.size + 5, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * (this.progress / this.difficulty));
+        ctx.stroke();
+      }
+    }
+
+    class Obstacle extends Entity {
+      constructor(x, y) {
+        super(x, y, rand(9, 18), "#7f8c8d");
+        this.angle = rand(0, Math.PI);
+        this.rough = rand(0.85, 1.25);
+      }
+
+      draw() {
+        ctx.save();
+        ctx.translate(this.x, this.y);
+        ctx.rotate(this.angle);
+        ctx.fillStyle = "#7f8c8d";
+        ctx.strokeStyle = "rgba(255,255,255,0.15)";
+        ctx.lineWidth = 1;
+        const s = this.size * this.rough;
+        ctx.fillRect(-s, -s, s * 2, s * 2);
+        ctx.strokeRect(-s, -s, s * 2, s * 2);
+        ctx.restore();
+      }
+    }
+
+    class Threat extends Entity {
+      constructor(x, y) {
+        super(x, y, 8, "#eb5757");
+        this.speed = settings.threat.speed * settings.threat.aggressiveness;
+        this.wander = rand(0, Math.PI * 2);
+      }
+
+      nearestAgent() {
+        let best = null;
+        let bestD = settings.threat.vision;
+        for (const a of agents) {
+          const d = this.distanceTo(a);
+          if (d < bestD) {
+            bestD = d;
+            best = a;
+          }
+        }
+        return best;
+      }
+
+      move(dt) {
+        const target = this.nearestAgent();
+        this.speed = settings.threat.speed * settings.threat.aggressiveness;
+        if (target) {
+          const dx = target.x - this.x;
+          const dy = target.y - this.y;
+          const d = Math.max(1, hypot(dx, dy));
+          this.vx += (dx / d) * 0.34 * settings.threat.aggressiveness;
+          this.vy += (dy / d) * 0.34 * settings.threat.aggressiveness;
+          addField(this.x, this.y, "danger", 0.06);
+        } else {
+          this.wander += rand(-0.45, 0.45);
+          this.vx += Math.cos(this.wander) * 0.22;
+          this.vy += Math.sin(this.wander) * 0.22;
+        }
+
+        this.avoidObstacles(1.6);
+        const max = this.speed;
+        const mag = Math.max(1, hypot(this.vx, this.vy));
+        if (mag > max) {
+          this.vx = this.vx / mag * max;
+          this.vy = this.vy / mag * max;
+        }
+        this.x += this.vx * dt * 60;
+        this.y += this.vy * dt * 60;
+        this.vx *= 0.93;
+        this.vy *= 0.93;
+        this.keepWithinBounds();
+      }
+
+      draw() {
+        ctx.fillStyle = "rgba(235,87,87,0.18)";
+        ctx.beginPath();
+        ctx.arc(this.x, this.y, this.size * 3.1, 0, Math.PI * 2);
+        ctx.fill();
+        this.drawCircle("#eb5757", "rgba(255,255,255,0.42)");
+      }
+    }
+
+    class Agent extends Entity {
+      constructor(x, y, genome = null, brain = null) {
+        super(x, y, 5, "#2d9cdb");
+        this.id = Agent.nextId++;
+        this.age = 0;
+        this.health = settings.agent.maxHealth;
+        this.energy = settings.agent.maxEnergy * rand(0.65, 1);
+        this.score = 0;
+        this.foodEaten = 0;
+        this.tasksDone = 0;
+        this.generation = genome?.generation || 1;
+        this.memory = [];
+        this.visited = new Set();
+        this.trail = [];
+        this.lastReproduction = 0;
+        this.isPreTrained = true;
+
+        this.genome = genome || {
+          maxSpeed: rand(1.4, settings.agent.maxSpeed),
+          vision: rand(80, settings.agent.visionRadius),
+          risk: rand(0, 1),
+          curiosity: rand(0.2, 1),
+          sociability: rand(0, 1),
+          metabolism: rand(0.75, 1.25),
+          sustainability: rand(0.1, 1),
+          cooperation: rand(0, 1),
+          plasticity: rand(0.15, 1),
+          stressMemory: 0,
+          generation: 1,
+          lineage: this.id,
+          specialization: ["forager", "mapper", "risk-taker", "social", "restorer"][randInt(0, 4)]
+        };
+        if (!this.genome.lineage) this.genome.lineage = this.id;
+        if (!this.genome.specialization) this.genome.specialization = "adaptive";
+        if (this.genome.cooperation === undefined) this.genome.cooperation = rand(0, 1);
+        if (this.genome.plasticity === undefined) this.genome.plasticity = rand(0.15, 1);
+        if (this.genome.stressMemory === undefined) this.genome.stressMemory = 0;
+
+        this.brain = brain || new TinyBrain();
+        this.decisionConfidence = 0;
+      }
+
+      static nextId = 1;
+
+      get visionRadius() {
+        const nightFactor = (timeOfDay >= 18 || timeOfDay <= 6) ? 0.55 : 1;
+        return this.genome.vision * nightFactor;
+      }
+
+      get speed() {
+        const bias = settings.agent.speedBias / 5;
+        return clamp(this.genome.maxSpeed * bias, 0.2, settings.agent.maxSpeed);
+      }
+
+      findNearest(entities, radius = Infinity) {
+        let minDist = radius;
+        let nearest = null;
+        for (const entity of entities) {
+          const d = this.distanceTo(entity);
+          if (d < minDist) {
+            minDist = d;
+            nearest = entity;
+          }
+        }
+        return nearest;
+      }
+
+      senseEnvironment() {
+        const nearestThreat = this.findNearest(threats, this.visionRadius);
+        const nearestFood = this.findNearest(foods, this.visionRadius);
+        const nearestTask = this.findNearest(tasks, this.visionRadius * 1.1);
+        const idx = fieldIndexFromXY(this.x, this.y);
+        const crowd = this.localCrowd();
+
+        return [
+          nearestThreat ? (nearestThreat.x - this.x) / viewW : 0,
+          nearestThreat ? (nearestThreat.y - this.y) / viewH : 0,
+          nearestFood ? (nearestFood.x - this.x) / viewW : 0,
+          nearestFood ? (nearestFood.y - this.y) / viewH : 0,
+          nearestTask ? (nearestTask.x - this.x) / viewW : 0,
+          nearestTask ? (nearestTask.y - this.y) / viewH : 0,
+          this.energy / settings.agent.maxEnergy,
+          field.nutrient[idx],
+          field.danger[idx],
+          field.trail[idx],
+          clamp(crowd + (field.hormone ? field.hormone[idx] * 0.35 : 0), 0, 1.5)
+        ];
+      }
+
+      localCrowd() {
+        let count = 0;
+        for (const a of agents) {
+          if (a !== this && this.distanceTo(a) < 50) count++;
+        }
+        return clamp(count / 8, 0, 1);
+      }
+
+      computeCuriosityVector() {
+        let best = null;
+        let bestScore = -Infinity;
+        for (let i = 0; i < 10; i++) {
+          const a = (Math.PI * 2 * i) / 10;
+          const x = clamp(this.x + Math.cos(a) * this.visionRadius * 0.55, 0, viewW);
+          const y = clamp(this.y + Math.sin(a) * this.visionRadius * 0.55, 0, viewH);
+          const cell = `${Math.floor(x / 32)}:${Math.floor(y / 32)}`;
+          const idx = fieldIndexFromXY(x, y);
+          const score = (this.visited.has(cell) ? -0.2 : 0.7) + field.fertility[idx] * 0.25 - field.danger[idx] * 0.45 + Math.random() * 0.16;
+          if (score > bestScore) {
+            bestScore = score;
+            best = { x, y };
+          }
+        }
+        if (!best) return [0, 0];
+        const dx = best.x - this.x;
+        const dy = best.y - this.y;
+        const d = Math.max(1, hypot(dx, dy));
+        return [dx / d, dy / d];
+      }
+
+      computeSignalVector() {
+        let best = null;
+        let bestScore = -Infinity;
+        for (let i = 0; i < 8; i++) {
+          const a = (Math.PI * 2 * i) / 8;
+          const x = clamp(this.x + Math.cos(a) * this.visionRadius * 0.45, 0, viewW);
+          const y = clamp(this.y + Math.sin(a) * this.visionRadius * 0.45, 0, viewH);
+          const idx = fieldIndexFromXY(x, y);
+          const score = (field.signal ? field.signal[idx] : 0) + field.trail[idx] * 0.35 - field.danger[idx] * 0.6 + Math.random() * 0.05;
+          if (score > bestScore) { bestScore = score; best = { x, y }; }
+        }
+        if (!best || bestScore <= 0.02) return [0, 0];
+        const dx = best.x - this.x;
+        const dy = best.y - this.y;
+        const d = Math.max(1, hypot(dx, dy));
+        return [dx / d, dy / d];
+      }
+
+      computeGuildVector() {
+        let cx = 0, cy = 0, n = 0;
+        for (const other of agents) {
+          if (other === this) continue;
+          const differentGuild = other.genome.specialization !== this.genome.specialization;
+          const helpful = differentGuild && other.energy > this.energy * 0.72 && other.score > this.score - 8;
+          if (helpful && this.distanceTo(other) < 120) {
+            cx += other.x;
+            cy += other.y;
+            n++;
+          }
+        }
+        if (!n) return [0, 0];
+        cx /= n; cy /= n;
+        const dx = cx - this.x;
+        const dy = cy - this.y;
+        const d = Math.max(1, hypot(dx, dy));
+        return [dx / d, dy / d];
+      }
+
+      decideMove() {
+        const predictions = [];
+        const sensed = this.senseEnvironment();
+        for (const key of transformKeys) {
+          const transformedInput = transformations[key](sensed);
+          const data = this.brain.forward(transformedInput);
+          predictions.push({ key, data });
+        }
+
+        let steerX = 0;
+        let steerY = 0;
+        for (const pred of predictions) {
+          steerX += pred.data[0];
+          steerY += pred.data[1];
+        }
+        steerX /= predictions.length;
+        steerY /= predictions.length;
+        this.decisionConfidence = clamp(hypot(steerX, steerY), 0, 1);
+
+        const nearestThreat = this.findNearest(threats, this.visionRadius);
+        if (nearestThreat) {
+          const dx = this.x - nearestThreat.x;
+          const dy = this.y - nearestThreat.y;
+          const d = Math.max(1, hypot(dx, dy));
+          const fear = 1.15 - this.genome.risk * 0.7;
+          steerX += (dx / d) * fear;
+          steerY += (dy / d) * fear;
+        }
+
+        const nearestFood = this.findNearest(foods, this.visionRadius);
+        if (nearestFood && this.energy < settings.agent.maxEnergy * (0.75 + this.genome.sustainability * 0.15)) {
+          const dx = nearestFood.x - this.x;
+          const dy = nearestFood.y - this.y;
+          const d = Math.max(1, hypot(dx, dy));
+          steerX += (dx / d) * (0.75 + (1 - this.genome.sustainability) * 0.25);
+          steerY += (dy / d) * (0.75 + (1 - this.genome.sustainability) * 0.25);
+        }
+
+        const nearestTask = this.findNearest(tasks, this.visionRadius * 1.25);
+        if (nearestTask && this.energy > 36) {
+          const dx = nearestTask.x - this.x;
+          const dy = nearestTask.y - this.y;
+          const d = Math.max(1, hypot(dx, dy));
+          steerX += (dx / d) * (0.25 + this.genome.curiosity * 0.5);
+          steerY += (dy / d) * (0.25 + this.genome.curiosity * 0.5);
+        }
+
+        const curiosity = this.computeCuriosityVector();
+        steerX += curiosity[0] * this.genome.curiosity * 0.55;
+        steerY += curiosity[1] * this.genome.curiosity * 0.55;
+
+        if (settings.director.signalComms && this.genome.sociability > 0.18) {
+          const signal = this.computeSignalVector();
+          steerX += signal[0] * this.genome.sociability * 0.42;
+          steerY += signal[1] * this.genome.sociability * 0.42;
+        }
+
+        if (settings.director.symbiosis && this.genome.cooperation > 0.22) {
+          const guild = this.computeGuildVector();
+          steerX += guild[0] * this.genome.cooperation * 0.38;
+          steerY += guild[1] * this.genome.cooperation * 0.38;
+        }
+
+        // Social cohesion: soft grouping, not full flocking, to keep emergent trails.
+        if (this.genome.sociability > 0.2) {
+          let cx = 0, cy = 0, n = 0;
+          for (const other of agents) {
+            if (other !== this && this.distanceTo(other) < 70) {
+              cx += other.x;
+              cy += other.y;
+              n++;
+            }
+          }
+          if (n) {
+            cx /= n; cy /= n;
+            const dx = cx - this.x;
+            const dy = cy - this.y;
+            const d = Math.max(1, hypot(dx, dy));
+            steerX += (dx / d) * this.genome.sociability * 0.18;
+            steerY += (dy / d) * this.genome.sociability * 0.18;
+          }
+        }
+
+        const mag = Math.max(1, hypot(steerX, steerY));
+        this.vx += (steerX / mag) * 0.22 * this.speed;
+        this.vy += (steerY / mag) * 0.22 * this.speed;
+      }
+
+      learn() {
+        if (this.memory.length < 5) return;
+        const augmentedMemory = [];
+        for (const mem of this.memory) {
+          for (const key of transformKeys) {
+            augmentedMemory.push({
+              input: transformations[key](mem.input),
+              label: transformations[key](mem.label)
+            });
+          }
+        }
+
+        for (const mem of augmentedMemory) {
+          this.brain.reinforce(mem.input, mem.label, settings.qLearning.learningRate * 0.035);
+        }
+        this.memory.length = 0;
+        logEvent("Agents updated neural micro-policies with augmented experience.", "learn", 4);
+      }
+
+      rememberSteer(targetX, targetY, away = false) {
+        const input = this.senseEnvironment();
+        const dx = targetX - this.x;
+        const dy = targetY - this.y;
+        const d = Math.max(1, hypot(dx, dy));
+        const label = away ? [-(dx / d), -(dy / d)] : [dx / d, dy / d];
+        this.memory.push({ input, label });
+      }
+
+      mutateGenome() {
+        const g = { ...this.genome };
+        const m = settings.agent.mutationRate;
+        g.maxSpeed = clamp(g.maxSpeed + rand(-m * 8, m * 8), 0.8, settings.agent.maxSpeed);
+        g.vision = clamp(g.vision + rand(-m * 90, m * 90), 45, 230);
+        g.risk = clamp(g.risk + rand(-m, m), 0, 1);
+        g.curiosity = clamp(g.curiosity + rand(-m, m), 0, 1.3);
+        g.sociability = clamp(g.sociability + rand(-m, m), 0, 1.2);
+        g.metabolism = clamp(g.metabolism + rand(-m, m), 0.55, 1.6);
+        g.sustainability = clamp(g.sustainability + rand(-m, m), 0, 1.2);
+        g.cooperation = clamp((g.cooperation ?? 0.5) + rand(-m, m), 0, 1.3);
+        g.plasticity = clamp((g.plasticity ?? 0.5) + rand(-m, m), 0.05, 1.4);
+        g.stressMemory = clamp((g.stressMemory ?? 0) * rand(0.4, 0.9), 0, 1);
+        g.generation = this.generation + 1;
+        g.lineage = this.genome.lineage || this.id;
+        if (Math.random() < settings.agent.mutationRate * 0.35) {
+          g.specialization = ["forager", "mapper", "risk-taker", "social", "restorer"][randInt(0, 4)];
+        }
+        return g;
+      }
+
+      tryReproduce() {
+        const ready = this.energy > 108 && this.health > 95 && agents.length < settings.agent.maxCount && this.age - this.lastReproduction > 8;
+        if (!ready) return;
+
+        const chance = settings.agent.reproductionRate * (0.4 + this.score / 220);
+        if (Math.random() > chance * 0.03) return;
+
+        this.lastReproduction = this.age;
+        this.energy *= 0.62;
+        const childGenome = this.mutateGenome();
+        const childBrain = this.brain.clone(settings.agent.mutationRate * 0.7 + 0.015);
+        const child = new Agent(
+          clamp(this.x + rand(-18, 18), 10, viewW - 10),
+          clamp(this.y + rand(-18, 18), 10, viewH - 10),
+          childGenome,
+          childBrain
+        );
+        child.energy = settings.agent.maxEnergy * 0.58;
+        agents.push(child);
+        addParticles(this.x, this.y, "#8cff7a", 10);
+        logEvent(`New agent born: generation ${child.generation}.`, "birth", 1.2);
+      }
+
+      interact() {
+        for (const threat of threats) {
+          if (this.distanceTo(threat) < this.size + threat.size) {
+            this.health -= 18 + settings.threat.aggressiveness * 2;
+            this.energy -= 8;
+            this.rememberSteer(threat.x, threat.y, true);
+            addParticles(this.x, this.y, "#eb5757", 8);
+            logEvent(`Agent encountered a threat. Health: ${Math.round(this.health)}.`, "threatHit", 0.8);
+            if (this.health <= 0 || this.energy <= -20) {
+              this.isAlive = false;
+              addField(this.x, this.y, "nutrient", 0.5);
+              logEvent("An agent died and returned nutrients to the field.", "death", 1);
+            }
+          }
+        }
+
+        for (let i = foods.length - 1; i >= 0; i--) {
+          const food = foods[i];
+          if (this.distanceTo(food) < this.size + food.size) {
+            this.health = Math.min(this.health + 8, settings.agent.maxHealth);
+            this.energy = Math.min(this.energy + food.nutrition, settings.agent.maxEnergy);
+            this.foodEaten++;
+            this.score += 8;
+            this.rememberSteer(food.x, food.y, false);
+            addField(food.x, food.y, "nutrient", -0.15);
+            field.fertility[fieldIndexFromXY(food.x, food.y)] *= 0.96 + this.genome.sustainability * 0.03;
+            foods.splice(i, 1);
+            addParticles(food.x, food.y, "#27ae60", 8);
+            logEvent(`Agent found food. Energy: ${Math.round(this.energy)}.`, "food", 0.8);
+          }
+        }
+
+        for (let i = tasks.length - 1; i >= 0; i--) {
+          const task = tasks[i];
+          const d = this.distanceTo(task);
+          if (d < this.size + task.size + 7) {
+            task.progress += 1 + this.genome.curiosity * 0.7 + this.genome.sociability * this.localCrowd() * 0.6;
+            this.energy -= 0.12;
+            this.score += 0.15;
+            this.rememberSteer(task.x, task.y, false);
+            if (task.progress >= task.difficulty) {
+              this.energy = Math.min(this.energy + settings.task.completionReward, settings.agent.maxEnergy);
+              this.health = Math.min(this.health + 16, settings.agent.maxHealth);
+              this.tasksDone++;
+              tasksCompletedTotal++;
+              this.score += 35;
+              bestScoreEver = Math.max(bestScoreEver, this.score);
+              addField(task.x, task.y, "fertility", 0.22);
+              addParticles(task.x, task.y, "#f2c94c", 22);
+              tasks.splice(i, 1);
+              settings.task.count = tasks.length;
+              logEvent(`Environmental ${task.kind} task completed.`, "taskDone", 0.6);
+            }
+          }
+        }
+      }
+
+      update(dt) {
+        this.age += dt;
+        this.decideMove();
+        this.avoidObstacles(1.35);
+
+        const max = this.speed * (this.energy < 18 ? 0.45 : 1);
+        const mag = Math.max(1, hypot(this.vx, this.vy));
+        if (mag > max) {
+          this.vx = this.vx / mag * max;
+          this.vy = this.vy / mag * max;
+        }
+
+        this.x += this.vx * dt * 60;
+        this.y += this.vy * dt * 60;
+        this.vx *= 0.90;
+        this.vy *= 0.90;
+        this.keepWithinBounds();
+
+        const cell = `${Math.floor(this.x / 32)}:${Math.floor(this.y / 32)}`;
+        if (!this.visited.has(cell)) {
+          this.visited.add(cell);
+          globalVisited.add(cell);
+          this.score += this.genome.curiosity * 0.4;
+          this.energy += this.genome.curiosity * 0.03;
+        }
+
+        addField(this.x, this.y, "trail", 0.018 + this.genome.sociability * 0.01);
+        if (settings.director.symbiosis && this.genome.cooperation > 0.35) addField(this.x, this.y, "hormone", 0.006 + this.genome.cooperation * 0.006);
+
+        this.energy -= settings.agent.energyDecay * this.genome.metabolism * dt * 7.5;
+        if (weather === "Drought") this.energy -= 0.012 * dt * 60;
+        if (weather === "Storm") this.health -= 0.005 * dt * 60;
+
+        if (this.energy <= 0) this.health += this.energy * 0.012 * dt * 60;
+        if (this.health <= 0) {
+          this.isAlive = false;
+          addField(this.x, this.y, "nutrient", 0.35);
+        }
+
+        if (Math.random() < 0.018) this.learn();
+        this.interact();
+        this.tryReproduce();
+        bestScoreEver = Math.max(bestScoreEver, this.score);
+        updateArchive(this);
+
+        this.trail.push({ x: this.x, y: this.y });
+        if (this.trail.length > 18) this.trail.shift();
+      }
+
+      draw() {
+        const hue = (this.generation * 24 + this.genome.curiosity * 100 + this.genome.risk * 70) % 360;
+        this.color = `hsl(${hue}, 88%, 58%)`;
+
+        if (settings.overlays.showTrails && this.trail.length > 1) {
+          ctx.strokeStyle = `hsla(${hue}, 90%, 65%, 0.24)`;
+          ctx.lineWidth = 1.5;
+          ctx.beginPath();
+          ctx.moveTo(this.trail[0].x, this.trail[0].y);
+          for (let i = 1; i < this.trail.length; i++) ctx.lineTo(this.trail[i].x, this.trail[i].y);
+          ctx.stroke();
+        }
+
+        if (settings.overlays.showVision) {
+          ctx.strokeStyle = `hsla(${hue}, 90%, 70%, 0.10)`;
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          ctx.arc(this.x, this.y, this.visionRadius, 0, Math.PI * 2);
+          ctx.stroke();
+        }
+
+        ctx.fillStyle = `hsla(${hue}, 90%, 65%, 0.18)`;
+        ctx.beginPath();
+        ctx.arc(this.x, this.y, this.size * 2.4, 0, Math.PI * 2);
+        ctx.fill();
+
+        this.drawCircle(this.color, "rgba(255,255,255,0.55)");
+
+        const w = 14;
+        const e = clamp(this.energy / settings.agent.maxEnergy, 0, 1);
+        const h = clamp(this.health / settings.agent.maxHealth, 0, 1);
+        ctx.fillStyle = "rgba(0,0,0,0.35)";
+        ctx.fillRect(this.x - w / 2, this.y - this.size - 8, w, 3);
+        ctx.fillStyle = "#8cff7a";
+        ctx.fillRect(this.x - w / 2, this.y - this.size - 8, w * e, 3);
+        ctx.fillStyle = "rgba(0,0,0,0.35)";
+        ctx.fillRect(this.x - w / 2, this.y - this.size - 4, w, 2);
+        ctx.fillStyle = "#ff5c7a";
+        ctx.fillRect(this.x - w / 2, this.y - this.size - 4, w * h, 2);
+      }
+    }
+
+    function addParticles(x, y, color, count = 8) {
+      for (let i = 0; i < count; i++) {
+        particles.push({
+          x, y,
+          vx: rand(-1.5, 1.5),
+          vy: rand(-1.5, 1.5),
+          life: rand(0.35, 0.85),
+          color
+        });
+      }
+    }
+
+    function updateParticles(dt) {
+      for (const p of particles) {
+        p.x += p.vx * dt * 60;
+        p.y += p.vy * dt * 60;
+        p.vx *= 0.96;
+        p.vy *= 0.96;
+        p.life -= dt;
+      }
+      particles = particles.filter(p => p.life > 0);
+    }
+
+    function drawParticles() {
+      for (const p of particles) {
+        ctx.globalAlpha = clamp(p.life, 0, 1);
+        ctx.fillStyle = p.color;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, 2.2, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.globalAlpha = 1;
+    }
+
+    function updateArchive(agent) {
+      if (agent.score < 15) return;
+      const speedBin = clamp(Math.floor(agent.genome.maxSpeed / settings.agent.maxSpeed * 5), 0, 4);
+      const curiosityBin = clamp(Math.floor(agent.genome.curiosity * 4), 0, 4);
+      const riskBin = clamp(Math.floor(agent.genome.risk * 4), 0, 4);
+      const key = `${speedBin}-${curiosityBin}-${riskBin}`;
+      const existing = archive.get(key);
+      const fitness = agent.score + agent.tasksDone * 20 + agent.foodEaten * 3 + agent.generation * 1.5;
+      if (!existing || fitness > existing.fitness) {
+        archive.set(key, {
+          fitness,
+          genome: { ...agent.genome },
+          brain: agent.brain.clone(0.005),
+          born: performance.now()
+        });
+      }
+    }
+
+    function seedFromArchive() {
+      if (!archive.size) return null;
+      const elites = Array.from(archive.values()).sort((a, b) => b.fitness - a.fitness);
+      const elite = elites[Math.floor(Math.random() * Math.min(8, elites.length))];
+      const g = { ...elite.genome, generation: elite.genome.generation + 1 };
+      return new Agent(rand(15, viewW - 15), rand(15, viewH - 15), g, elite.brain.clone(settings.agent.mutationRate));
+    }
+
+    function randomOpenPosition(margin = 20) {
+      for (let i = 0; i < 50; i++) {
+        const x = rand(margin, viewW - margin);
+        const y = rand(margin, viewH - margin);
+        if (!obstacles.some(o => hypot(o.x - x, o.y - y) < o.size + margin)) return { x, y };
+      }
+      return { x: rand(margin, viewW - margin), y: rand(margin, viewH - margin) };
+    }
+
+    function generatePreTrainingTasks() {
+      const tasks = [];
+      for (let i = 0; i < 120; i++) {
+        const agentX = Math.random() * viewW;
+        const agentY = Math.random() * viewH;
+        const threatX = Math.random() * viewW;
+        const threatY = Math.random() * viewH;
+        const foodX = Math.random() * viewW;
+        const foodY = Math.random() * viewH;
+        const taskX = Math.random() * viewW;
+        const taskY = Math.random() * viewH;
+        const input = [
+          (threatX - agentX) / viewW,
+          (threatY - agentY) / viewH,
+          (foodX - agentX) / viewW,
+          (foodY - agentY) / viewH,
+          (taskX - agentX) / viewW,
+          (taskY - agentY) / viewH,
+          Math.random(),
+          Math.random() * 0.5,
+          Math.random() * 0.8,
+          Math.random() * 0.4,
+          Math.random() * 0.4
+        ];
+        const label = [
+          ((agentX - threatX) * 1.2 + (foodX - agentX) + (taskX - agentX) * 0.35) / viewW,
+          ((agentY - threatY) * 1.2 + (foodY - agentY) + (taskY - agentY) * 0.35) / viewH
+        ];
+        tasks.push({ input, label });
+      }
+      return tasks;
+    }
+
+    function preTrainBrain(brain) {
+      const examples = generatePreTrainingTasks();
+      for (let epoch = 0; epoch < 2; epoch++) {
+        for (const ex of examples) brain.reinforce(ex.input, ex.label, 0.025);
+      }
+      return brain;
+    }
+
+    function syncCounts() {
+      while (foods.length < settings.food.count) {
+        const p = randomOpenPosition();
+        foods.push(new Food(p.x, p.y));
+      }
+      while (foods.length > settings.food.count) foods.pop();
+
+      while (threats.length < settings.threat.count) {
+        const p = randomOpenPosition();
+        threats.push(new Threat(p.x, p.y));
+      }
+      while (threats.length > settings.threat.count) threats.pop();
+
+      while (obstacles.length < settings.obstacle.count) {
+        const p = randomOpenPosition();
+        obstacles.push(new Obstacle(p.x, p.y));
+      }
+      while (obstacles.length > settings.obstacle.count) obstacles.pop();
+    }
+
+    function initSimulation({ keepArchive = false } = {}) {
+      resizeCanvas();
+      initField();
+      agents = [];
+      threats = [];
+      foods = [];
+      tasks = [];
+      obstacles = [];
+      particles = [];
+      globalVisited = new Set();
+      if (!keepArchive) archive = new Map();
+      Agent.nextId = 1;
+      timeOfDay = 12;
+      weather = "Clear";
+      tasksCompletedTotal = 0;
+      bestScoreEver = 0;
+      selectedAgent = null;
+      settings.task.count = 0;
+
+      const sharedStartBrain = preTrainBrain(new TinyBrain());
+      for (let i = 0; i < settings.agent.count; i++) {
+        const p = randomOpenPosition();
+        let agent = null;
+        if (keepArchive && Math.random() < 0.25) agent = seedFromArchive();
+        agents.push(agent || new Agent(p.x, p.y, null, sharedStartBrain.clone(0.12)));
+      }
+      for (let i = 0; i < settings.threat.count; i++) {
+        const p = randomOpenPosition();
+        threats.push(new Threat(p.x, p.y));
+      }
+      for (let i = 0; i < settings.food.count; i++) {
+        const p = randomOpenPosition();
+        foods.push(new Food(p.x, p.y));
+        addField(p.x, p.y, "nutrient", 0.45);
+      }
+      for (let i = 0; i < settings.obstacle.count; i++) {
+        const p = randomOpenPosition();
+        obstacles.push(new Obstacle(p.x, p.y));
+      }
+      history = [];
+      logEvent("Simulation initialized with pre-trained evolvable neural micro-brains.", "init", 0);
+      updateStats();
+    }
+
+    window.resetSimulation = function resetSimulation() {
+      initSimulation({ keepArchive: false });
+    };
+
+    window.createEnvironmentalTask = function createEnvironmentalTask() {
+      const p = randomOpenPosition();
+      tasks.push(new Task(p.x, p.y));
+      settings.task.count = tasks.length;
+      addField(p.x, p.y, "fertility", 0.08);
+      logEvent("New environmental task created.", "createTask", 0.2);
+      updateStats();
+    };
+
+    function triggerEvent(forced = false) {
+      const events = ["Bloom", "Drought", "Storm", "Migration", "Predator Pulse", "Obstacle Shift", "Curriculum Burst", "Habitat Experiment", "Symbiosis Summit"];
+      const event = events[randInt(0, events.length - 1)];
+      weather = ["Drought", "Storm"].includes(event) ? event : "Clear";
+
+      if (event === "Bloom") {
+        for (let i = 0; i < 18; i++) {
+          const p = randomOpenPosition();
+          foods.push(new Food(p.x, p.y));
+          addField(p.x, p.y, "nutrient", 0.75);
+          addField(p.x, p.y, "fertility", 0.28);
+        }
+      } else if (event === "Drought") {
+        settings.food.count = Math.max(5, settings.food.count - 6);
+        for (let i = 0; i < field.fertility.length; i++) field.fertility[i] *= 0.985;
+      } else if (event === "Storm") {
+        for (let i = 0; i < 10; i++) {
+          const p = randomOpenPosition();
+          addParticles(p.x, p.y, "#00d2ff", 12);
+          addField(p.x, p.y, "danger", 0.15);
+        }
+      } else if (event === "Migration") {
+        const migrants = Math.min(8, settings.agent.maxCount - agents.length);
+        for (let i = 0; i < migrants; i++) {
+          const elite = seedFromArchive();
+          const p = randomOpenPosition();
+          agents.push(elite || new Agent(p.x, p.y));
+        }
+      } else if (event === "Predator Pulse") {
+        const add = Math.min(5, 30 - threats.length);
+        for (let i = 0; i < add; i++) {
+          const p = randomOpenPosition();
+          threats.push(new Threat(p.x, p.y));
+        }
+        settings.threat.count = threats.length;
+      } else if (event === "Obstacle Shift") {
+        for (let i = 0; i < Math.min(10, obstacles.length); i++) {
+          const o = obstacles[randInt(0, obstacles.length - 1)];
+          o.x = clamp(o.x + rand(-80, 80), o.size, viewW - o.size);
+          o.y = clamp(o.y + rand(-80, 80), o.size, viewH - o.size);
+          o.angle += rand(-1, 1);
+        }
+      } else if (event === "Curriculum Burst") {
+        for (let i = 0; i < 5; i++) window.createEnvironmentalTask();
+      } else if (event === "Habitat Experiment") {
+        seedHabitatCluster("event");
+      } else if (event === "Symbiosis Summit") {
+        for (const a of agents) {
+          a.genome.cooperation = clamp((a.genome.cooperation ?? 0.5) + rand(0.02, 0.08), 0, 1.3);
+          a.genome.sociability = clamp(a.genome.sociability + rand(0.01, 0.04), 0, 1.3);
+          addField(a.x, a.y, "hormone", 0.08);
+        }
+      }
+      syncCounts();
+      bindOutputs();
+      logEvent(`${forced ? "Forced" : "Auto"} experimental event: ${event}.`, "event-" + event, 0);
+    }
+
+    function applyScenario(name) {
+      settings.scenario = name;
+      if (name === "scarcity") {
+        settings.food.count = 10;
+        settings.threat.count = 8;
+        settings.obstacle.count = 28;
+        settings.agent.mutationRate = 0.12;
+      } else if (name === "predators") {
+        settings.food.count = 28;
+        settings.threat.count = 18;
+        settings.obstacle.count = 16;
+        settings.threat.aggressiveness = 4;
+      } else if (name === "maze") {
+        settings.food.count = 28;
+        settings.threat.count = 6;
+        settings.obstacle.count = 60;
+      } else if (name === "bloom") {
+        settings.food.count = 70;
+        settings.threat.count = 5;
+        settings.obstacle.count = 10;
+        settings.agent.mutationRate = 0.05;
+      } else if (name === "frontier") {
+        settings.food.count = 24;
+        settings.threat.count = 9;
+        settings.obstacle.count = 36;
+        settings.agent.mutationRate = 0.11;
+        settings.director.adaptiveCurriculum = true;
+      } else if (name === "symbiosis") {
+        settings.food.count = 16;
+        settings.threat.count = 12;
+        settings.obstacle.count = 22;
+        settings.agent.mutationRate = 0.09;
+        settings.director.symbiosis = true;
+        settings.director.socialLearning = true;
+      } else {
+        settings.food.count = 20;
+        settings.threat.count = 10;
+        settings.obstacle.count = 20;
+        settings.threat.aggressiveness = 3;
+        settings.agent.mutationRate = 0.08;
+      }
+      initSimulation({ keepArchive: true });
+      logEvent(`Scenario applied: ${name}.`, "scenario", 0);
+      bindOutputs();
+    }
+
+    function drawBackground() {
+      const isNight = timeOfDay >= 18 || timeOfDay <= 6;
+      const grad = ctx.createLinearGradient(0, 0, 0, viewH);
+      if (isNight) {
+        grad.addColorStop(0, "#060b1a");
+        grad.addColorStop(1, "#101820");
+      } else {
+        grad.addColorStop(0, "#11202e");
+        grad.addColorStop(1, "#0c151f");
+      }
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, 0, viewW, viewH);
+
+      ctx.globalAlpha = 0.14;
+      ctx.strokeStyle = "#ffffff";
+      ctx.lineWidth = 1;
+      const grid = 40;
+      for (let x = 0; x < viewW; x += grid) {
+        ctx.beginPath();
+        ctx.moveTo(x, 0);
+        ctx.lineTo(x, viewH);
+        ctx.stroke();
+      }
+      for (let y = 0; y < viewH; y += grid) {
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.lineTo(viewW, y);
+        ctx.stroke();
+      }
+      ctx.globalAlpha = 1;
+
+      if (weather === "Storm") {
+        ctx.fillStyle = "rgba(0, 210, 255, 0.06)";
+        ctx.fillRect(0, 0, viewW, viewH);
+      } else if (weather === "Drought") {
+        ctx.fillStyle = "rgba(242, 153, 74, 0.08)";
+        ctx.fillRect(0, 0, viewW, viewH);
+      }
+
+      if (isNight) {
+        ctx.fillStyle = "rgba(0, 0, 55, 0.24)";
+        ctx.fillRect(0, 0, viewW, viewH);
+      }
+    }
+
+    function drawFields(targetCtx = ctx, w = viewW, h = viewH) {
+      const cols = settings.field.cols;
+      const rows = settings.field.rows;
+      const cw = w / cols;
+      const ch = h / rows;
+      targetCtx.save();
+      targetCtx.globalCompositeOperation = "lighter";
+      for (let r = 0; r < rows; r++) {
+        for (let c = 0; c < cols; c++) {
+          const i = r * cols + c;
+          const n = field.nutrient[i];
+          const d = field.danger[i];
+          const t = field.trail[i];
+          const sig = field.signal ? field.signal[i] : 0;
+          const horm = field.hormone ? field.hormone[i] : 0;
+          if (n + d + t + sig + horm < 0.035) continue;
+          const alpha = clamp((n + d + t + sig + horm) * 0.18, 0, 0.36);
+          const red = Math.floor(clamp(d * 255 + sig * 90 + horm * 145, 0, 255));
+          const green = Math.floor(clamp(n * 230 + sig * 50 + horm * 140, 0, 240));
+          const blue = Math.floor(clamp(t * 210 + sig * 255 + horm * 65, 0, 255));
+          targetCtx.fillStyle = `rgba(${red},${green},${blue},${alpha})`;
+          targetCtx.fillRect(c * cw, r * ch, cw + 1, ch + 1);
+        }
+      }
+      targetCtx.restore();
+    }
+
+    function drawArchiveOverlay() {
+      if (!settings.overlays.showArchive || !archive.size) return;
+      const size = 88;
+      const x0 = viewW - size - 12;
+      const y0 = viewH - size - 12;
+      ctx.fillStyle = "rgba(0,0,0,0.45)";
+      ctx.fillRect(x0 - 8, y0 - 22, size + 16, size + 30);
+      ctx.fillStyle = "rgba(255,255,255,0.78)";
+      ctx.font = "11px Segoe UI";
+      ctx.fillText("QD niche archive", x0, y0 - 8);
+
+      const cell = size / 5;
+      ctx.strokeStyle = "rgba(255,255,255,0.18)";
+      for (let r = 0; r < 5; r++) {
+        for (let c = 0; c < 5; c++) {
+          ctx.strokeRect(x0 + c * cell, y0 + r * cell, cell, cell);
+        }
+      }
+
+      for (const [key, elite] of archive) {
+        const [speedBin, curiosityBin, riskBin] = key.split("-").map(Number);
+        const x = x0 + speedBin * cell;
+        const y = y0 + curiosityBin * cell;
+        const alpha = clamp(elite.fitness / 230, 0.15, 0.95);
+        ctx.fillStyle = `hsla(${riskBin * 62}, 85%, 60%, ${alpha})`;
+        ctx.fillRect(x + 2, y + 2, cell - 4, cell - 4);
+      }
+    }
+
+    function drawWorld(targetCtx = ctx, w = viewW, h = viewH, miniature = false) {
+      if (targetCtx === ctx) drawBackground();
+      else {
+        targetCtx.fillStyle = "#101820";
+        targetCtx.fillRect(0, 0, w, h);
+      }
+
+      if (settings.overlays.showFields && settings.field.enabled) {
+        drawFields(targetCtx, w, h);
+      }
+
+      const sx = w / viewW;
+      const sy = h / viewH;
+      targetCtx.save();
+      targetCtx.scale(sx, sy);
+
+      obstacles.forEach(o => o.draw());
+      tasks.forEach(t => t.draw());
+      foods.forEach(f => f.draw());
+      agents.forEach(a => a.draw());
+      threats.forEach(t => t.draw());
+      drawParticles();
+
+      targetCtx.restore();
+
+      if (!miniature) drawArchiveOverlay();
+    }
+
+    function updateTime(dt) {
+      if (settings.dayNightCycle.enabled) {
+        timeOfDay += settings.dayNightCycle.timeIncrement * dt * 60;
+        if (timeOfDay >= 24) timeOfDay -= 24;
+      }
+    }
+
+
+    function computeDiversityScore() {
+      if (!agents.length) return 0;
+      const lineages = new Set();
+      const specs = new Set();
+      let traitSpread = 0;
+      for (const a of agents) {
+        lineages.add(a.genome.lineage || a.id);
+        specs.add(a.genome.specialization || "adaptive");
+        traitSpread += Math.abs(a.genome.curiosity - a.genome.risk) + Math.abs(a.genome.sociability - a.genome.sustainability);
+      }
+      return clamp((lineages.size / Math.max(1, agents.length)) * 42 + specs.size * 7 + (traitSpread / agents.length) * 22 + archive.size * 0.35, 0, 100);
+    }
+
+    function evaluateWorldPressure() {
+      const alive = agents.length;
+      const avgEnergy = alive ? agents.reduce((s, a) => s + a.energy, 0) / alive : 0;
+      const novelty = alive ? agents.reduce((s, a) => s + a.visited.size, 0) / alive : 0;
+      const foodRatio = foods.length / Math.max(1, settings.food.count);
+      const diversity = computeDiversityScore();
+      return { alive, avgEnergy, novelty, foodRatio, diversity };
+    }
+
+    function directorPulse(reason = "manual") {
+      const p = evaluateWorldPressure();
+      let goal = "Stabilise";
+      if (p.alive < settings.agent.count * 0.45 || p.avgEnergy < settings.agent.maxEnergy * 0.28) goal = "Rescue";
+      else if (p.novelty < 18) goal = "Explore";
+      else if (archive.size < 18 || p.diversity < 42) goal = "Diversify";
+      else if (tasks.length < 3) goal = "Curriculum";
+      else if (p.foodRatio > 0.85 && p.alive > settings.agent.count * 0.85) goal = "Challenge";
+      currentDirectorGoal = goal;
+
+      if (goal === "Rescue") {
+        for (let i = 0; i < 5; i++) {
+          const pt = randomOpenPosition();
+          foods.push(new Food(pt.x, pt.y));
+          addField(pt.x, pt.y, "nutrient", 0.35);
+          addField(pt.x, pt.y, "fertility", 0.18);
+        }
+        if (agents.length < settings.agent.count * 0.55) insertAgent(randomOpenPosition(), archive.size > 0);
+        weather = "Clear";
+      } else if (goal === "Explore") {
+        for (let i = 0; i < 3; i++) {
+          const pt = randomOpenPosition();
+          const task = new Task(pt.x, pt.y);
+          task.kind = "exploration beacon";
+          task.difficulty *= 0.75;
+          tasks.push(task);
+          addParticles(pt.x, pt.y, "#9b51e0", 14);
+        }
+      } else if (goal === "Diversify") {
+        const specs = ["forager", "mapper", "risk-taker", "social", "restorer"];
+        for (let i = 0; i < 2; i++) {
+          const pt = randomOpenPosition();
+          const a = new Agent(pt.x, pt.y, null, preTrainBrain(new TinyBrain()));
+          a.genome.specialization = specs[randInt(0, specs.length - 1)];
+          a.genome.curiosity = clamp(rand(0.45, 1.1), 0, 1.25);
+          a.genome.sociability = clamp(rand(0.25, 1.0), 0, 1.25);
+          agents.push(a);
+        }
+      } else if (goal === "Curriculum") {
+        const pts = ghostProbeCurriculum(4);
+        for (const pt of pts) {
+          const task = new Task(pt.x, pt.y);
+          task.kind = "counterfactual curriculum";
+          task.difficulty *= rand(0.8, 1.25);
+          tasks.push(task);
+          addField(pt.x, pt.y, "signal", 0.55);
+          addParticles(pt.x, pt.y, "#f2c94c", 16);
+        }
+      } else if (goal === "Challenge") {
+        const pt = randomOpenPosition();
+        threats.push(new Threat(pt.x, pt.y));
+        addField(pt.x, pt.y, "danger", 0.55);
+        weather = Math.random() < 0.5 ? "Storm" : "Drought";
+      }
+
+      settings.task.count = tasks.length;
+      logEvent(`Research director pulse (${reason}): ${goal}.`, "director" + reason, 0.3);
+    }
+
+    function ghostProbeCurriculum(count = 3) {
+      const picks = [];
+      let totalScore = 0;
+      for (let k = 0; k < count; k++) {
+        let best = null;
+        let bestScore = -Infinity;
+        for (let i = 0; i < 36; i++) {
+          const x = Math.random() * viewW;
+          const y = Math.random() * viewH;
+          const idx = fieldIndexFromXY(x, y);
+          const cell = `${Math.floor(x / 32)}:${Math.floor(y / 32)}`;
+          const nearestAgent = agents.length ? Math.min(...agents.map(a => hypot(a.x - x, a.y - y))) : 999;
+          const score =
+            (globalVisited.has(cell) ? -0.3 : 0.9) +
+            field.fertility[idx] * 0.35 +
+            field.nutrient[idx] * 0.25 -
+            field.danger[idx] * 0.75 +
+            clamp(nearestAgent / 240, 0, 1) * 0.5 +
+            Math.random() * 0.2;
+          if (score > bestScore) { bestScore = score; best = { x, y }; }
+        }
+        if (best) {
+          picks.push(best);
+          totalScore += bestScore;
+        }
+      }
+      ghostProbeScore = picks.length ? totalScore / picks.length : 0;
+      return picks;
+    }
+
+    function updateResearchDirector(dt) {
+      if (!settings.director.enabled) return;
+      directorClock += dt;
+      if (settings.director.ghostProbes && Math.random() < dt * 0.10) ghostProbeCurriculum(1);
+      if (directorClock > settings.director.pulseEvery) {
+        directorClock = 0;
+        directorPulse("auto");
+      }
+    }
+
+    function updateRedQueenPressure(dt) {
+      if (!settings.director.redQueen) return;
+      const p = evaluateWorldPressure();
+      const dominance = (p.alive / Math.max(1, settings.agent.count)) * 0.45 + (p.avgEnergy / settings.agent.maxEnergy) * 0.35 + (archive.size / 50) * 0.20;
+      redQueenLevel = clamp(redQueenLevel + (dominance - 0.52) * dt * 0.12, 0, 1.25);
+      for (const t of threats) {
+        t.speed = settings.threat.speed * settings.threat.aggressiveness * (1 + redQueenLevel * 0.28);
+        t.vision = settings.threat.vision * (1 + redQueenLevel * 0.18);
+      }
+      if (redQueenLevel > 0.75 && threats.length < settings.threat.count + 5 && Math.random() < dt * 0.035) {
+        const pt = randomOpenPosition();
+        threats.push(new Threat(pt.x, pt.y));
+        addField(pt.x, pt.y, "danger", 0.5);
+        logEvent("Red Queen pressure spawned an adaptive threat.", "redqueenSpawn", 3);
+      }
+    }
+
+    function socialLearningStep(dt) {
+      if (!settings.director.socialLearning || agents.length < 2 || Math.random() > dt * 1.8) return;
+      const learner = agents[randInt(0, agents.length - 1)];
+      let mentor = null;
+      let best = -Infinity;
+      for (const other of agents) {
+        if (other === learner) continue;
+        const d = learner.distanceTo(other);
+        const score = other.score - d * 0.08 + other.energy * 0.05;
+        if (d < 95 && score > best) { best = score; mentor = other; }
+      }
+      if (!mentor || mentor.score <= learner.score) return;
+      learner.genome.curiosity = lerp(learner.genome.curiosity, mentor.genome.curiosity, 0.035 * learner.genome.sociability);
+      learner.genome.sociability = lerp(learner.genome.sociability, mentor.genome.sociability, 0.025);
+      learner.genome.sustainability = lerp(learner.genome.sustainability, mentor.genome.sustainability, 0.02);
+      learner.score += 0.08;
+      addField(learner.x, learner.y, "signal", 0.08);
+    }
+
+    function signalCommunicationStep(dt) {
+      if (!settings.director.signalComms) return;
+      for (const a of agents) {
+        if (Math.random() < dt * 0.25 * (0.3 + a.genome.sociability)) {
+          const signal = (a.energy / settings.agent.maxEnergy) * 0.06 + a.genome.sociability * 0.025;
+          addField(a.x, a.y, "signal", signal);
+          addField(a.x, a.y, "trail", signal * 0.35);
+        }
+      }
+    }
+
+
+    function computeSpeciesCount() {
+      if (!agents.length) return 0;
+      const species = new Set();
+      for (const a of agents) {
+        const g = a.genome;
+        const c = Math.floor(clamp(g.curiosity, 0, 1.4) * 3);
+        const r = Math.floor(clamp(g.risk, 0, 1.2) * 3);
+        const s = Math.floor(clamp(g.sustainability, 0, 1.2) * 3);
+        const co = Math.floor(clamp(g.cooperation ?? 0, 0, 1.3) * 2);
+        species.add(`${g.specialization || "adaptive"}:${c}:${r}:${s}:${co}`);
+      }
+      lastSpeciesCount = species.size;
+      return species.size;
+    }
+
+    function epigeneticPlasticityStep(dt) {
+      if (!settings.director.epigenetics || !agents.length) return;
+      epigeneticClock += dt;
+      if (epigeneticClock < 0.25) return;
+      epigeneticClock = 0;
+      for (const a of agents) {
+        const idx = fieldIndexFromXY(a.x, a.y);
+        const danger = field.danger[idx] || 0;
+        const nutrient = field.nutrient[idx] || 0;
+        const hunger = 1 - clamp(a.energy / settings.agent.maxEnergy, 0, 1);
+        const stress = clamp(danger * 0.65 + hunger * 0.35, 0, 1);
+        a.genome.stressMemory = lerp(a.genome.stressMemory ?? 0, stress, 0.015 + (a.genome.plasticity ?? 0.5) * 0.025);
+        const plastic = (a.genome.plasticity ?? 0.5) * 0.006;
+        if (a.genome.stressMemory > 0.55) {
+          a.genome.risk = clamp(a.genome.risk - plastic, 0, 1.2);
+          a.genome.sociability = clamp(a.genome.sociability + plastic * 0.75, 0, 1.3);
+        } else if (nutrient > 0.15 && a.energy > settings.agent.maxEnergy * 0.65) {
+          a.genome.curiosity = clamp(a.genome.curiosity + plastic * 0.45, 0, 1.35);
+        }
+      }
+    }
+
+    function symbioticGuildStep(dt) {
+      if (!settings.director.symbiosis || agents.length < 2 || Math.random() > dt * 2.2) return;
+      symbiosisLinks = 0;
+      for (let tries = 0; tries < Math.min(18, agents.length); tries++) {
+        const a = agents[randInt(0, agents.length - 1)];
+        let partner = null;
+        let best = Infinity;
+        for (const b of agents) {
+          if (a === b) continue;
+          if ((a.genome.specialization || "") === (b.genome.specialization || "")) continue;
+          const d = a.distanceTo(b);
+          if (d < best && d < 95) { best = d; partner = b; }
+        }
+        if (!partner) continue;
+        symbiosisLinks++;
+        const cooperation = ((a.genome.cooperation ?? 0.5) + (partner.genome.cooperation ?? 0.5)) * 0.5;
+        const avgEnergy = (a.energy + partner.energy) * 0.5;
+        a.energy = lerp(a.energy, avgEnergy, 0.010 * cooperation);
+        partner.energy = lerp(partner.energy, avgEnergy, 0.010 * cooperation);
+        a.score += 0.025 * cooperation;
+        partner.score += 0.025 * cooperation;
+        addField((a.x + partner.x) * 0.5, (a.y + partner.y) * 0.5, "hormone", 0.08 * cooperation);
+      }
+    }
+
+    function habitatEngineeringStep(dt) {
+      if (!settings.director.habitatEngineer) return;
+      habitatClock += dt;
+      if (habitatClock < 0.8) return;
+      habitatClock = 0;
+      for (const a of agents) {
+        if (a.energy < settings.agent.maxEnergy * 0.62 || a.genome.sustainability < 0.55) continue;
+        if (Math.random() > 0.18 * a.genome.sustainability) continue;
+        const idx = fieldIndexFromXY(a.x, a.y);
+        field.fertility[idx] = clamp(field.fertility[idx] + 0.05 * a.genome.sustainability, 0, 1.5);
+        field.nutrient[idx] = clamp(field.nutrient[idx] + 0.025, 0, 1.5);
+        a.energy -= 0.18;
+        habitatProjects++;
+        if (Math.random() < 0.08 && tasks.length < 18) {
+          const task = new Task(clamp(a.x + rand(-45, 45), 10, viewW - 10), clamp(a.y + rand(-45, 45), 10, viewH - 10));
+          task.kind = "habitat restoration";
+          task.difficulty *= 0.8;
+          tasks.push(task);
+        }
+      }
+    }
+
+    function launchMicroExperiment(reason = "manual") {
+      microExperimentCount++;
+      const pressure = evaluateWorldPressure();
+      const pts = ghostProbeCurriculum(3);
+      for (const pt of pts) {
+        const task = new Task(pt.x, pt.y);
+        task.kind = reason === "manual" ? "manual micro-experiment" : "referee micro-experiment";
+        task.difficulty *= pressure.alive < settings.agent.count * 0.55 ? 0.65 : rand(0.85, 1.35);
+        tasks.push(task);
+        addField(pt.x, pt.y, "signal", 0.5);
+        addField(pt.x, pt.y, "hormone", 0.28);
+        addParticles(pt.x, pt.y, "#c792ea", 18);
+      }
+      settings.task.count = tasks.length;
+      logEvent(`Micro-experiment ${microExperimentCount} launched (${reason}).`, "microExperiment", 0.4);
+    }
+
+    function seedHabitatCluster(reason = "manual") {
+      const center = randomOpenPosition(60);
+      for (let i = 0; i < 7; i++) {
+        const x = clamp(center.x + rand(-70, 70), 10, viewW - 10);
+        const y = clamp(center.y + rand(-70, 70), 10, viewH - 10);
+        addField(x, y, "fertility", 0.45);
+        addField(x, y, "nutrient", 0.4);
+        addField(x, y, "hormone", 0.16);
+        if (i % 2 === 0) foods.push(new Food(x, y));
+      }
+      habitatProjects += 7;
+      logEvent(`Habitat cluster seeded (${reason}).`, "habitatSeed", 0.4);
+    }
+
+    function anomalyGuardStep(dt) {
+      if (!settings.director.anomalyGuard) return;
+      refereeClock += dt;
+      if (refereeClock < 1.2) return;
+      refereeClock = 0;
+      const p = evaluateWorldPressure();
+      const stagnation = history.length > 40 ? Math.abs((history.at(-1)?.archive || 0) - (history.at(-40)?.archive || 0)) < 1 : false;
+      stabilityScore = Math.round(clamp(
+        (p.alive / Math.max(1, settings.agent.count)) * 34 +
+        (p.avgEnergy / settings.agent.maxEnergy) * 28 +
+        (p.foodRatio) * 18 +
+        (p.diversity / 100) * 20 -
+        redQueenLevel * 10 -
+        (stagnation ? 10 : 0),
+        0, 100
+      ));
+      if (p.alive < settings.agent.count * 0.35 || p.avgEnergy < settings.agent.maxEnergy * 0.22) anomalyState = "Collapse risk";
+      else if (stagnation && archive.size > 8) anomalyState = "Stagnation";
+      else if (redQueenLevel > 1.05) anomalyState = "Over-challenge";
+      else anomalyState = "Nominal";
+
+      if (anomalyState === "Collapse risk") {
+        seedHabitatCluster("guard rescue");
+        if (agents.length < settings.agent.count * 0.5) insertAgent(randomOpenPosition(), archive.size > 0);
+      } else if (anomalyState === "Stagnation" && settings.director.adaptiveCurriculum) {
+        launchMicroExperiment("stagnation probe");
+      } else if (anomalyState === "Over-challenge") {
+        weather = "Clear";
+        redQueenLevel *= 0.82;
+        for (let i = 0; i < 3; i++) foods.push(new Food(rand(20, viewW - 20), rand(20, viewH - 20)));
+      }
+      if (anomalyState !== "Nominal") logEvent(`Experiment referee: ${anomalyState}; stability ${stabilityScore}.`, "anomaly" + anomalyState, 5);
+    }
+
+    function updateSimulationStep(dt) {
+      updateTime(dt);
+      updateField(dt);
+      updateResearchDirector(dt);
+      updateRedQueenPressure(dt);
+      socialLearningStep(dt);
+      signalCommunicationStep(dt);
+      epigeneticPlasticityStep(dt);
+      symbioticGuildStep(dt);
+      habitatEngineeringStep(dt);
+      anomalyGuardStep(dt);
+
+      eventClock += dt;
+      if (settings.autoEvents && eventClock > rand(19, 34)) {
+        eventClock = 0;
+        triggerEvent(false);
+      }
+
+      syncCounts();
+
+      agents = agents.filter(agent => agent.isAlive);
+      if (agents.length < Math.max(8, settings.agent.count * 0.35)) {
+        const elite = seedFromArchive();
+        const p = randomOpenPosition();
+        agents.push(elite || new Agent(p.x, p.y, null, preTrainBrain(new TinyBrain())));
+        logEvent("Population rescue: archive or fresh genome seeded.", "rescue", 2);
+      }
+
+      for (const food of foods) {
+        addField(food.x, food.y, "nutrient", 0.004 * dt * 60);
+      }
+
+      agents.forEach(agent => agent.update(dt));
+      threats.forEach(threat => threat.move(dt));
+      updateParticles(dt);
+
+      // Weather recovers slowly after events.
+      if (weather !== "Clear" && Math.random() < dt * 0.018) weather = "Clear";
+
+      statClock += dt;
+      if (statClock > 0.35) {
+        statClock = 0;
+        updateStats();
+        updateHistory();
+      }
+    }
+
+    function updateSimulation(currentTime) {
+      const rawDelta = (currentTime - lastTime) / 1000;
+      lastTime = currentTime;
+      const deltaTime = clamp(rawDelta, 0.001, 0.06);
+      fps = 1 / deltaTime;
+
+      const stepStart = performance.now();
+      if (simulationRunning) {
+        accumulator += deltaTime * settings.simulation.speed;
+        const fixed = 1 / 60;
+        let safety = 0;
+        while (accumulator >= fixed && safety < 5) {
+          updateSimulationStep(fixed);
+          accumulator -= fixed;
+          safety++;
+        }
+      }
+      lastStepCostMs = performance.now() - stepStart;
+
+      drawWorld();
+      updateBadges();
+      requestAnimationFrame(updateSimulation);
+    }
+
+    function updateBadges() {
+      document.getElementById("runBadge").textContent = simulationRunning ? "Running" : "Paused";
+      const hour = Math.floor(timeOfDay);
+      const minute = Math.floor((timeOfDay % 1) * 60);
+      const dayState = (timeOfDay >= 18 || timeOfDay <= 6) ? "Night" : "Day";
+      document.getElementById("timeBadge").textContent = `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")} ${dayState}`;
+      document.getElementById("weatherBadge").textContent = `Weather: ${weather}`;
+      document.getElementById("tfBadge").textContent = window.tf ? `TF.js: ${tf.version.tfjs} · warm-start ${warmStartStatus}` : `Micro-brain · warm-start ${warmStartStatus}`;
+      document.getElementById("brushBadge").textContent = `Brush: ${(settings.brushMode || "food").replace(/^./, c => c.toUpperCase())}`;
+      document.getElementById("directorBadge").textContent = `Director: ${currentDirectorGoal}`;
+      document.getElementById("anomalyBadge").textContent = `Stability: ${anomalyState}`;
+    }
+
+    function updateStats() {
+      const alive = agents.filter(a => a.isAlive);
+      const avgEnergy = alive.length ? alive.reduce((s, a) => s + a.energy, 0) / alive.length : 0;
+      const maxGen = alive.length ? Math.max(...alive.map(a => a.generation)) : 0;
+      const avgNovelty = alive.length ? alive.reduce((s, a) => s + a.visited.size, 0) / alive.length : 0;
+      const lineages = new Set(alive.map(a => a.genome.lineage || a.id)).size;
+      const bestLive = alive.length ? Math.max(...alive.map(a => a.score)) : 0;
+      bestScoreEver = Math.max(bestScoreEver, bestLive);
+      const diversity = Math.round(computeDiversityScore());
+      const speciesCount = computeSpeciesCount();
+      const worldHealth = Math.round(clamp(
+        (alive.length / Math.max(1, settings.agent.count)) * 35 +
+        (avgEnergy / settings.agent.maxEnergy) * 30 +
+        (archive.size / 40) * 20 +
+        (foods.length / Math.max(1, settings.food.count)) * 15 -
+        (threats.length / 30) * 8,
+        0, 100
+      ));
+
+      document.getElementById("agentCount").textContent = alive.length;
+      document.getElementById("threatCountStat").textContent = threats.length;
+      document.getElementById("foodCountStat").textContent = foods.length;
+      document.getElementById("taskCount").textContent = tasks.length;
+      document.getElementById("fps").textContent = Math.round(fps);
+      document.getElementById("stepTime").textContent = lastStepCostMs.toFixed(1);
+      document.getElementById("generationStat").textContent = maxGen;
+      document.getElementById("energyStat").textContent = Math.round(avgEnergy);
+      document.getElementById("archiveStat").textContent = archive.size;
+      document.getElementById("noveltyStat").textContent = Math.round(avgNovelty);
+      document.getElementById("lineageStat").textContent = lineages;
+      document.getElementById("bestScoreStat").textContent = Math.round(bestScoreEver);
+      document.getElementById("tasksDoneStat").textContent = tasksCompletedTotal;
+      document.getElementById("worldHealthStat").textContent = worldHealth;
+      document.getElementById("directorGoalStat").textContent = currentDirectorGoal;
+      document.getElementById("redQueenStat").textContent = redQueenLevel.toFixed(2);
+      document.getElementById("diversityStat").textContent = diversity;
+      document.getElementById("ghostStat").textContent = ghostProbeScore.toFixed(2);
+      document.getElementById("speciesStat").textContent = speciesCount;
+      document.getElementById("symbiosisStat").textContent = symbiosisLinks;
+      document.getElementById("stabilityStat").textContent = stabilityScore;
+      document.getElementById("habitatStat").textContent = habitatProjects;
+      document.getElementById("alarmStat").textContent = anomalyState;
+      updateInspectorPanel();
+    }
+
+    function updateHistory() {
+      const alive = agents.length;
+      const avgEnergy = alive ? agents.reduce((s, a) => s + a.energy, 0) / alive : 0;
+      history.push({ agents: alive, food: foods.length, energy: avgEnergy, archive: archive.size, stability: stabilityScore, species: lastSpeciesCount });
+      if (history.length > 180) history.shift();
+      drawSparkline();
+      drawSnapshot();
+    }
+
+    function drawSparkline() {
+      const w = sparklineCanvas.width;
+      const h = sparklineCanvas.height;
+      sparkCtx.clearRect(0, 0, w, h);
+      sparkCtx.fillStyle = getComputedStyle(document.body).getPropertyValue("--panel-strong");
+      sparkCtx.fillRect(0, 0, w, h);
+      if (history.length < 2) return;
+
+      function line(key, max, color) {
+        sparkCtx.strokeStyle = color;
+        sparkCtx.lineWidth = 2;
+        sparkCtx.beginPath();
+        history.forEach((p, i) => {
+          const x = i / (history.length - 1) * w;
+          const y = h - clamp(p[key] / max, 0, 1) * (h - 18) - 9;
+          if (i === 0) sparkCtx.moveTo(x, y);
+          else sparkCtx.lineTo(x, y);
+        });
+        sparkCtx.stroke();
+      }
+
+      line("agents", settings.agent.maxCount, "rgba(45,156,219,0.9)");
+      line("food", Math.max(100, settings.food.count), "rgba(39,174,96,0.9)");
+      line("energy", settings.agent.maxEnergy, "rgba(242,201,76,0.9)");
+      line("archive", 125, "rgba(155,81,224,0.9)");
+
+      sparkCtx.fillStyle = "rgba(255,255,255,0.75)";
+      sparkCtx.font = "12px Segoe UI";
+      sparkCtx.fillText("blue agents · green food · yellow avg energy · purple archive", 12, 18);
+    }
+
+    function drawSnapshot() {
+      const w = snapshotCanvas.width;
+      const h = snapshotCanvas.height;
+      const sx = w / viewW;
+      const sy = h / viewH;
+      snapshotCtx.clearRect(0, 0, w, h);
+      snapshotCtx.fillStyle = "#101820";
+      snapshotCtx.fillRect(0, 0, w, h);
+      if (settings.overlays.showFields && settings.field.enabled) drawFields(snapshotCtx, w, h);
+
+      function dot(entity, color, radius = 3) {
+        snapshotCtx.fillStyle = color;
+        snapshotCtx.beginPath();
+        snapshotCtx.arc(entity.x * sx, entity.y * sy, radius, 0, Math.PI * 2);
+        snapshotCtx.fill();
+      }
+      for (const o of obstacles) {
+        snapshotCtx.save();
+        snapshotCtx.translate(o.x * sx, o.y * sy);
+        snapshotCtx.rotate(o.angle || 0);
+        snapshotCtx.fillStyle = "#7f8c8d";
+        snapshotCtx.fillRect(-o.size * sx, -o.size * sy, o.size * 2 * sx, o.size * 2 * sy);
+        snapshotCtx.restore();
+      }
+      tasks.forEach(t => dot(t, "#f2c94c", 3.5));
+      foods.forEach(f => dot(f, "#27ae60", 2.4));
+      agents.forEach(a => dot(a, a.color || "#2d9cdb", 2.2));
+      threats.forEach(t => dot(t, "#eb5757", 3.2));
+
+      snapshotCtx.fillStyle = "rgba(255,255,255,0.78)";
+      snapshotCtx.font = "12px Segoe UI";
+      snapshotCtx.fillText(`${agents.length} agents · ${foods.length} food · ${archive.size} niches`, 10, 18);
+    }
+
+    function downloadSnapshot() {
+      const a = document.createElement("a");
+      a.download = "simulation-snapshot.png";
+      a.href = canvas.toDataURL("image/png");
+      a.click();
+      logEvent("Snapshot exported.", "snapshot", 0.4);
+    }
+
+    function serializeState() {
+      return {
+        settings,
+        timeOfDay,
+        weather,
+        tasksCompletedTotal,
+        bestScoreEver,
+        currentDirectorGoal,
+        redQueenLevel,
+        ghostProbeScore,
+        anomalyState,
+        stabilityScore,
+        habitatProjects,
+        symbiosisLinks,
+        microExperimentCount,
+        eventLogStore,
+        archive: Array.from(archive.entries()).map(([key, v]) => [key, { fitness: v.fitness, genome: v.genome }]),
+        agents: agents.slice(0, 80).map(a => ({
+          x: a.x, y: a.y, energy: a.energy, health: a.health, score: a.score,
+          generation: a.generation, genome: a.genome
+        })),
+        threats: threats.map(t => ({ x: t.x, y: t.y })),
+        foods: foods.map(f => ({ x: f.x, y: f.y })),
+        tasks: tasks.map(t => ({ x: t.x, y: t.y, progress: t.progress, difficulty: t.difficulty, kind: t.kind })),
+        obstacles: obstacles.map(o => ({ x: o.x, y: o.y, size: o.size, angle: o.angle }))
+      };
+    }
+
+    function saveSimulation() {
+      localStorage.setItem("advanced-sim-research-lab-v5", JSON.stringify(serializeState()));
+      logEvent("Simulation saved to localStorage.", "save", 0.2);
+    }
+
+    function loadSimulation() {
+      const raw = localStorage.getItem("advanced-sim-research-lab-v5") || localStorage.getItem("advanced-sim-research-lab-v4") || localStorage.getItem("advanced-sim-research-lab-v3");
+      if (!raw) {
+        logEvent("No saved simulation found.", "loadMissing", 0.2);
+        return;
+      }
+      try {
+        applyStateData(JSON.parse(raw));
+        logEvent("Simulation loaded from localStorage.", "load", 0.2);
+      } catch (err) {
+        console.error(err);
+        logEvent("Could not load saved simulation. Save data may be old or corrupt.", "loadError", 0.2);
+      }
+    }
+
+    function clearLog() {
+      const panel = document.getElementById("logPanel");
+      if (panel) panel.innerHTML = "";
+      logEvent("Log cleared.", "clearLog", 0.2);
+    }
+
+    function toggleMinimalHud(force) {
+      const enable = typeof force === "boolean" ? force : !document.body.classList.contains("minimal-hud");
+      document.body.classList.toggle("minimal-hud", enable);
+      minimalHud = enable;
+      if (enable && document.body.classList.contains("theater")) document.body.classList.remove("theater");
+      setTimeout(() => { resizeCanvas(); syncCounts(); }, 50);
+      logEvent(enable ? "Minimal HUD enabled." : "Minimal HUD disabled.", "minimalHud", 0.2);
+    }
+
+    function toggleTheaterView(force) {
+      const enable = typeof force === "boolean" ? force : !document.body.classList.contains("theater");
+      document.body.classList.toggle("theater", enable);
+      if (enable && document.body.classList.contains("minimal-hud")) document.body.classList.remove("minimal-hud");
+      minimalHud = document.body.classList.contains("minimal-hud");
+      setTimeout(() => {
+        resizeCanvas();
+        syncCounts();
+      }, 60);
+      logEvent(enable ? "Theater view enabled." : "Theater view disabled.", "theater", 0.2);
+    }
+
+    function exportSimulationJSON() {
+      const blob = new Blob([JSON.stringify(serializeState(), null, 2)], { type: "application/json" });
+      const a = document.createElement("a");
+      const url = URL.createObjectURL(blob);
+      a.download = "advanced-sim-research-lab-v5-state.json";
+      a.href = url;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(url), 500);
+      logEvent("Simulation state exported as JSON.", "export", 0.2);
+    }
+
+    function applyStateData(data) {
+      Object.assign(settings.agent, data.settings?.agent || {});
+      Object.assign(settings.threat, data.settings?.threat || {});
+      Object.assign(settings.food, data.settings?.food || {});
+      Object.assign(settings.obstacle, data.settings?.obstacle || {});
+      Object.assign(settings.simulation, data.settings?.simulation || {});
+      Object.assign(settings.overlays, data.settings?.overlays || {});
+      Object.assign(settings.director, data.settings?.director || {});
+      if (data.settings?.scenario) settings.scenario = data.settings.scenario;
+      if (data.settings?.brushMode) settings.brushMode = data.settings.brushMode;
+      timeOfDay = data.timeOfDay || 12;
+      weather = data.weather || "Clear";
+      tasksCompletedTotal = data.tasksCompletedTotal || 0;
+      bestScoreEver = data.bestScoreEver || 0;
+      currentDirectorGoal = data.currentDirectorGoal || "Stabilise";
+      redQueenLevel = Number(data.redQueenLevel || 0);
+      ghostProbeScore = Number(data.ghostProbeScore || 0);
+      anomalyState = data.anomalyState || "Nominal";
+      stabilityScore = Number(data.stabilityScore || 100);
+      habitatProjects = Number(data.habitatProjects || 0);
+      symbiosisLinks = Number(data.symbiosisLinks || 0);
+      microExperimentCount = Number(data.microExperimentCount || 0);
+      eventLogStore = Array.isArray(data.eventLogStore) ? data.eventLogStore.slice(-160) : [];
+      initField();
+
+      archive = new Map();
+      if (Array.isArray(data.archive)) {
+        for (const [key, v] of data.archive) {
+          archive.set(key, { fitness: v.fitness, genome: v.genome, brain: new TinyBrain(), born: performance.now() });
+        }
+      }
+
+      agents = (data.agents || []).map(a => {
+        const agent = new Agent(a.x, a.y, a.genome, preTrainBrain(new TinyBrain()));
+        agent.energy = a.energy;
+        agent.health = a.health;
+        agent.score = a.score;
+        agent.generation = a.generation;
+        return agent;
+      });
+      threats = (data.threats || []).map(t => new Threat(t.x, t.y));
+      foods = (data.foods || []).map(f => new Food(f.x, f.y));
+      tasks = (data.tasks || []).map(t => {
+        const task = new Task(t.x, t.y);
+        task.progress = t.progress;
+        task.difficulty = t.difficulty;
+        task.kind = t.kind;
+        return task;
+      });
+      obstacles = (data.obstacles || []).map(o => {
+        const ob = new Obstacle(o.x, o.y);
+        ob.size = o.size;
+        ob.angle = o.angle;
+        return ob;
+      });
+
+      selectedAgent = null;
+      bindInputsFromSettings();
+      bindOutputs();
+      updateStats();
+    }
+
+    function importSimulationJSON(event) {
+      const file = event.target.files?.[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = () => {
+        try {
+          const data = JSON.parse(reader.result);
+          applyStateData(data);
+          logEvent("Simulation state imported from JSON.", "import", 0.2);
+        } catch (err) {
+          console.error(err);
+          logEvent("Import failed. JSON could not be read.", "importError", 0.2);
+        }
+      };
+      reader.readAsText(file);
+      event.target.value = "";
+    }
+
+    function getCanvasPoint(event) {
+      const rect = canvas.getBoundingClientRect();
+      return {
+        x: clamp((event.clientX - rect.left) / rect.width * viewW, 0, viewW),
+        y: clamp((event.clientY - rect.top) / rect.height * viewH, 0, viewH)
+      };
+    }
+
+    function nearestEntityAt(p, groups = [agents, foods, threats, tasks, obstacles], radius = 34) {
+      let best = null;
+      let bestGroup = null;
+      let bestD = radius;
+      for (const group of groups) {
+        for (const entity of group) {
+          const d = hypot(entity.x - p.x, entity.y - p.y);
+          if (d < bestD) {
+            best = entity;
+            bestGroup = group;
+            bestD = d;
+          }
+        }
+      }
+      return { entity: best, group: bestGroup, distance: bestD };
+    }
+
+    function inspectNearestAgent(p) {
+      const hit = nearestEntityAt(p, [agents], 58);
+      selectedAgent = hit.entity || null;
+      if (selectedAgent) logEvent(`Inspecting agent ${selectedAgent.id}, lineage ${selectedAgent.genome.lineage}.`, "inspect", 0.2);
+      else logEvent("No nearby agent to inspect.", "inspectMissing", 0.2);
+      updateInspectorPanel();
+    }
+
+    function eraseNearest(p) {
+      const hit = nearestEntityAt(p, [agents, foods, threats, tasks, obstacles], 42);
+      if (!hit.entity || !hit.group) {
+        logEvent("Nothing close enough to erase.", "eraseMissing", 0.2);
+        return;
+      }
+      const idx = hit.group.indexOf(hit.entity);
+      if (idx >= 0) hit.group.splice(idx, 1);
+      settings.food.count = foods.length;
+      settings.threat.count = threats.length;
+      settings.obstacle.count = obstacles.length;
+      settings.task.count = tasks.length;
+      if (selectedAgent === hit.entity) selectedAgent = null;
+      logEvent("Nearest entity erased.", "erase", 0.2);
+      bindOutputs();
+    }
+
+    function insertAgent(p, fromArchive = false) {
+      let agent = null;
+      if (fromArchive) agent = seedFromArchive();
+      if (agent) {
+        agent.x = p.x;
+        agent.y = p.y;
+      } else {
+        agent = new Agent(p.x, p.y, null, preTrainBrain(new TinyBrain()));
+      }
+      agents.push(agent);
+      addParticles(p.x, p.y, "#00d2ff", 12);
+      logEvent(fromArchive ? "Elite/archive agent seeded." : "Manual agent inserted.", "insertAgent", 0.2);
+    }
+
+    function handleCanvasClick(event) {
+      const p = getCanvasPoint(event);
+      let mode = settings.brushMode || "food";
+      if (event.altKey) mode = "threat";
+      else if (event.shiftKey) mode = "task";
+      else if (event.ctrlKey || event.metaKey) mode = "obstacle";
+      if (mode === "threat") {
+        threats.push(new Threat(p.x, p.y));
+        settings.threat.count = threats.length;
+        logEvent("Manual threat inserted.", "manualThreat", 0.2);
+      } else if (mode === "task") {
+        tasks.push(new Task(p.x, p.y));
+        settings.task.count = tasks.length;
+        logEvent("Manual task inserted.", "manualTask", 0.2);
+      } else if (mode === "obstacle") {
+        obstacles.push(new Obstacle(p.x, p.y));
+        settings.obstacle.count = obstacles.length;
+        logEvent("Manual obstacle inserted.", "manualObstacle", 0.2);
+      } else if (mode === "agent") {
+        insertAgent(p, false);
+      } else if (mode === "erase") {
+        eraseNearest(p);
+      } else if (mode === "inspect") {
+        inspectNearestAgent(p);
+      } else {
+        foods.push(new Food(p.x, p.y));
+        settings.food.count = foods.length;
+        addField(p.x, p.y, "nutrient", 0.5);
+        logEvent("Manual food inserted.", "manualFood", 0.2);
+      }
+      bindInputsFromSettings();
+      bindOutputs();
+      updateStats();
+    }
+
+    function cycleBrush() {
+      const order = ["food", "task", "threat", "obstacle", "agent", "erase", "inspect"];
+      const next = order[(order.indexOf(settings.brushMode) + 1) % order.length] || "food";
+      settings.brushMode = next;
+      bindInputsFromSettings();
+      bindOutputs();
+      logEvent(`Brush changed to ${next}.`, "brush", 0.2);
+    }
+
+    function updateInspectorPanel() {
+      const panel = document.getElementById("inspectorPanel");
+      if (!panel) return;
+      if (!selectedAgent || !agents.includes(selectedAgent)) {
+        selectedAgent = null;
+        panel.innerHTML = "Inspect brush: click an agent to see lineage, genome traits, score, energy, and behavioural niche.";
+        return;
+      }
+      const a = selectedAgent;
+      const g = a.genome;
+      const niche = `${clamp(Math.floor(g.maxSpeed / settings.agent.maxSpeed * 5), 0, 4)}-${clamp(Math.floor(g.curiosity * 4), 0, 4)}-${clamp(Math.floor(g.risk * 4), 0, 4)}`;
+      panel.innerHTML = `<strong>Agent ${a.id}</strong> · lineage ${g.lineage} · gen ${a.generation} · ${g.specialization}<br>` +
+        `energy ${Math.round(a.energy)} · health ${Math.round(a.health)} · score ${Math.round(a.score)} · niche ${niche}<br>` +
+        `speed ${g.maxSpeed.toFixed(2)} · vision ${Math.round(g.vision)} · curiosity ${g.curiosity.toFixed(2)} · risk ${g.risk.toFixed(2)} · social ${g.sociability.toFixed(2)} · coop ${(g.cooperation ?? 0).toFixed(2)} · plastic ${(g.plasticity ?? 0).toFixed(2)} · stress ${(g.stressMemory ?? 0).toFixed(2)} · confidence ${a.decisionConfidence.toFixed(2)}`;
+    }
+
+    function bindOutputs() {
+      const out = (id, text) => { const el = document.getElementById(id); if (el) el.textContent = text; };
+      out("simulationSpeedOut", settings.simulation.speed.toFixed(1) + "×");
+      out("agentSpeedOut", settings.agent.speedBias);
+      out("maxSpeedOut", settings.agent.maxSpeed);
+      out("energyDecayOut", settings.agent.energyDecay.toFixed(2));
+      out("mutationRateOut", settings.agent.mutationRate.toFixed(2));
+      out("foodCountOut", settings.food.count);
+      out("threatCountOut", settings.threat.count);
+      out("obstacleCountOut", settings.obstacle.count);
+      out("threatAggressivenessOut", settings.threat.aggressiveness);
+      out("dayRateOut", settings.dayNightCycle.timeIncrement.toFixed(3));
+      out("scenarioOut", document.querySelector(`#scenarioSelect option[value="${settings.scenario}"]`)?.textContent || settings.scenario);
+      out("brushModeOut", document.querySelector(`#brushMode option[value="${settings.brushMode}"]`)?.textContent || settings.brushMode);
+    }
+
+    function bindInputsFromSettings() {
+      const setVal = (id, value) => { const el = document.getElementById(id); if (el) el.value = value; };
+      setVal("simulationSpeed", settings.simulation.speed);
+      setVal("agentSpeed", settings.agent.speedBias);
+      setVal("maxSpeed", settings.agent.maxSpeed);
+      setVal("energyDecay", settings.agent.energyDecay);
+      setVal("mutationRate", settings.agent.mutationRate);
+      setVal("foodCount", settings.food.count);
+      setVal("threatCount", settings.threat.count);
+      setVal("obstacleCount", settings.obstacle.count);
+      setVal("threatAggressiveness", settings.threat.aggressiveness);
+      setVal("dayRate", settings.dayNightCycle.timeIncrement);
+      setVal("scenarioSelect", settings.scenario);
+      setVal("brushMode", settings.brushMode || "food");
+      document.getElementById("showFields").checked = settings.overlays.showFields;
+      document.getElementById("showVision").checked = settings.overlays.showVision;
+      document.getElementById("showTrails").checked = settings.overlays.showTrails;
+      document.getElementById("showArchive").checked = settings.overlays.showArchive;
+      document.getElementById("autoEvents").checked = settings.autoEvents;
+      document.getElementById("openDirector").checked = settings.director.enabled;
+      document.getElementById("redQueen").checked = settings.director.redQueen;
+      document.getElementById("socialLearning").checked = settings.director.socialLearning;
+      document.getElementById("signalComms").checked = settings.director.signalComms;
+      document.getElementById("ghostProbes").checked = settings.director.ghostProbes;
+      document.getElementById("symbiosis").checked = settings.director.symbiosis;
+      document.getElementById("epigenetics").checked = settings.director.epigenetics;
+      document.getElementById("anomalyGuard").checked = settings.director.anomalyGuard;
+      document.getElementById("habitatEngineer").checked = settings.director.habitatEngineer;
+    }
+
+    function setupControls() {
+      const inputMap = [
+        ["simulationSpeed", v => settings.simulation.speed = Number(v)],
+        ["agentSpeed", v => settings.agent.speedBias = Number(v)],
+        ["maxSpeed", v => settings.agent.maxSpeed = Number(v)],
+        ["energyDecay", v => settings.agent.energyDecay = Number(v)],
+        ["mutationRate", v => settings.agent.mutationRate = Number(v)],
+        ["foodCount", v => settings.food.count = Number(v)],
+        ["threatCount", v => settings.threat.count = Number(v)],
+        ["obstacleCount", v => settings.obstacle.count = Number(v)],
+        ["threatAggressiveness", v => settings.threat.aggressiveness = Number(v)],
+        ["dayRate", v => settings.dayNightCycle.timeIncrement = Number(v)]
+      ];
+
+      for (const [id, setter] of inputMap) {
+        document.getElementById(id).addEventListener("input", function () {
+          setter(this.value);
+          if (["foodCount", "threatCount", "obstacleCount"].includes(id)) syncCounts();
+          bindOutputs();
+        });
+      }
+
+      document.getElementById("showFields").addEventListener("change", e => settings.overlays.showFields = e.target.checked);
+      document.getElementById("showVision").addEventListener("change", e => settings.overlays.showVision = e.target.checked);
+      document.getElementById("showTrails").addEventListener("change", e => settings.overlays.showTrails = e.target.checked);
+      document.getElementById("showArchive").addEventListener("change", e => settings.overlays.showArchive = e.target.checked);
+      document.getElementById("autoEvents").addEventListener("change", e => settings.autoEvents = e.target.checked);
+      document.getElementById("openDirector").addEventListener("change", e => settings.director.enabled = e.target.checked);
+      document.getElementById("redQueen").addEventListener("change", e => settings.director.redQueen = e.target.checked);
+      document.getElementById("socialLearning").addEventListener("change", e => settings.director.socialLearning = e.target.checked);
+      document.getElementById("signalComms").addEventListener("change", e => settings.director.signalComms = e.target.checked);
+      document.getElementById("ghostProbes").addEventListener("change", e => settings.director.ghostProbes = e.target.checked);
+      document.getElementById("symbiosis").addEventListener("change", e => settings.director.symbiosis = e.target.checked);
+      document.getElementById("epigenetics").addEventListener("change", e => settings.director.epigenetics = e.target.checked);
+      document.getElementById("anomalyGuard").addEventListener("change", e => settings.director.anomalyGuard = e.target.checked);
+      document.getElementById("habitatEngineer").addEventListener("change", e => settings.director.habitatEngineer = e.target.checked);
+      document.getElementById("themeToggle").addEventListener("change", e => {
+        document.body.dataset.theme = e.target.checked ? "dark" : "light";
+      });
+
+      document.getElementById("pauseBtn").addEventListener("click", togglePause);
+      document.getElementById("eventBtn").addEventListener("click", () => triggerEvent(true));
+      document.getElementById("saveBtn").addEventListener("click", saveSimulation);
+      document.getElementById("loadBtn").addEventListener("click", loadSimulation);
+      document.getElementById("snapshotBtn").addEventListener("click", downloadSnapshot);
+      document.getElementById("theaterBtn").addEventListener("click", toggleTheaterView);
+      document.getElementById("minimalBtn").addEventListener("click", toggleMinimalHud);
+      document.getElementById("directorPulseBtn").addEventListener("click", () => directorPulse("manual"));
+      document.getElementById("microExperimentBtn").addEventListener("click", () => launchMicroExperiment("manual"));
+      document.getElementById("habitatSeedBtn").addEventListener("click", () => seedHabitatCluster("manual"));
+      document.getElementById("seedEliteBtn").addEventListener("click", () => insertAgent({ x: viewW / 2, y: viewH / 2 }, true));
+      document.getElementById("exportBtn").addEventListener("click", exportSimulationJSON);
+      document.getElementById("importBtn").addEventListener("click", () => document.getElementById("importFile").click());
+      document.getElementById("importFile").addEventListener("change", importSimulationJSON);
+      document.getElementById("clearLogBtn").addEventListener("click", clearLog);
+      document.getElementById("brushMode").addEventListener("change", function () { settings.brushMode = this.value; bindOutputs(); });
+      document.getElementById("applyScenarioBtn").addEventListener("click", () => applyScenario(document.getElementById("scenarioSelect").value));
+      document.getElementById("scenarioSelect").addEventListener("change", function () {
+        settings.scenario = this.value;
+        bindOutputs();
+      });
+
+      canvas.addEventListener("click", handleCanvasClick);
+      canvas.addEventListener("pointermove", e => pointer = { ...getCanvasPoint(e), down: pointer.down });
+      canvas.addEventListener("pointerdown", e => { pointer.down = true; pointer = { ...getCanvasPoint(e), down: true }; });
+      window.addEventListener("pointerup", () => pointer.down = false);
+
+      document.addEventListener("keydown", function (e) {
+        if (e.target && ["INPUT", "SELECT", "TEXTAREA"].includes(e.target.tagName)) return;
+        if (e.code === "Space") { e.preventDefault(); togglePause(); }
+        if (e.key.toLowerCase() === "r") window.resetSimulation();
+        if (e.key.toLowerCase() === "t") window.createEnvironmentalTask();
+        if (e.key.toLowerCase() === "e") triggerEvent(true);
+        if (e.key.toLowerCase() === "d") directorPulse("keyboard");
+        if (e.key.toLowerCase() === "x") launchMicroExperiment("keyboard");
+        if (e.key.toLowerCase() === "h") seedHabitatCluster("keyboard");
+        if (e.key.toLowerCase() === "m") toggleMinimalHud();
+        if (e.key.toLowerCase() === "s") saveSimulation();
+        if (e.key.toLowerCase() === "l") loadSimulation();
+        if (e.key.toLowerCase() === "b") cycleBrush();
+        if (e.key === "Escape" && document.body.classList.contains("theater")) toggleTheaterView(false);
+        if (e.key === "Escape" && document.body.classList.contains("minimal-hud")) toggleMinimalHud(false);
+      });
+
+      window.addEventListener("resize", () => {
+        resizeCanvas();
+        syncCounts();
+      });
+
+      bindInputsFromSettings();
+      bindOutputs();
+    }
+
+    function togglePause() {
+      simulationRunning = !simulationRunning;
+      lastTime = performance.now();
+      logEvent(simulationRunning ? "Simulation resumed." : "Simulation paused.", "pause", 0.2);
+    }
+
+    setupControls();
+    resizeCanvas();
+    initSimulation();
+    updateBadges();
+    requestAnimationFrame(updateSimulation);
+  </script>
+</body>
+</html>
