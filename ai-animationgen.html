@@ -1,0 +1,1379 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Scrolling Neural Network Animation Generator — HyperLab</title>
+  <style>
+    :root{
+      --bg:#070a10;
+      --panel:rgba(8,15,24,.86);
+      --panel-strong:rgba(5,10,18,.96);
+      --line:rgba(255,255,255,.08);
+      --accent:#22c1c3;
+      --accent-2:#7c4dff;
+      --good:#8cffb2;
+      --warn:#ffcf66;
+      --bad:#ff6b91;
+      --muted:#9aa4ae;
+      --ink:#e6eef3;
+      --shadow:0 18px 60px rgba(0,0,0,.55);
+    }
+    *{box-sizing:border-box}
+    html,body{height:100%;margin:0;background:var(--bg);color:var(--ink);font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;overflow:hidden}
+    #app{position:fixed;inset:0;background:radial-gradient(circle at 30% 20%,rgba(34,193,195,.08),transparent 32%),linear-gradient(180deg,#07101a 0%,#02070c 100%)}
+    #animationCanvas{position:absolute;inset:0;display:block;width:100%;height:100%}
+    #domLayer{position:absolute;inset:0;pointer-events:none;overflow:hidden;display:none;will-change:transform;contain:layout paint style}
+    .dom-shape{position:absolute;pointer-events:none;will-change:transform,opacity;filter:drop-shadow(0 0 14px currentColor);mix-blend-mode:screen}
+    .dom-circle{border-radius:50%}
+    .dom-ring{border-radius:50%;background:transparent!important;border:3px solid currentColor}
+    .dom-rect{border-radius:18px}
+    .dom-triangle{width:0!important;height:0!important;background:transparent!important;border-left:var(--s) solid transparent;border-right:var(--s) solid transparent;border-bottom:calc(var(--s) * 1.8) solid currentColor}
+    .dom-star{clip-path:polygon(50% 0%,61% 34%,98% 35%,68% 56%,79% 91%,50% 70%,21% 91%,32% 56%,2% 35%,39% 34%)}
+    #controls{position:fixed;right:18px;top:18px;width:min(390px,calc(100vw - 36px));max-height:calc(100vh - 36px);overflow:auto;background:linear-gradient(180deg,rgba(8,18,28,.92),rgba(5,10,16,.92));border:1px solid var(--line);padding:12px;border-radius:16px;box-shadow:var(--shadow);backdrop-filter:blur(16px)}
+    #controls::-webkit-scrollbar{width:9px}#controls::-webkit-scrollbar-thumb{background:rgba(255,255,255,.14);border-radius:99px}#controls::-webkit-scrollbar-track{background:transparent}
+    #controls h2{margin:2px 0 4px;font-size:15px;letter-spacing:.2px}
+    #controls .subtitle{font-size:12px;color:var(--muted);margin-bottom:10px;line-height:1.35}
+    .row{display:flex;gap:8px;align-items:center;margin-bottom:8px}
+    .row.tight{margin-bottom:5px}.row.wrap{flex-wrap:wrap}
+    label{font-size:12px;color:var(--muted);width:112px;flex:0 0 112px}
+    input[type=range]{flex:1;accent-color:var(--accent);min-width:80px}
+    input[type=number],select,input[type=text],textarea{background:#071520;border:1px solid rgba(255,255,255,.07);color:#dfe9ef;padding:7px 8px;border-radius:8px;font-size:13px;outline:none}
+    input[type=number]{width:86px}select{flex:1;min-width:0}input[type=text]{min-width:0}
+    input:focus,select:focus,textarea:focus{border-color:rgba(34,193,195,.45);box-shadow:0 0 0 3px rgba(34,193,195,.08)}
+    button{background:linear-gradient(90deg,var(--accent),#1e8fb0);border:none;padding:8px 10px;color:#021018;border-radius:9px;cursor:pointer;font-weight:750;box-shadow:0 6px 16px rgba(34,193,195,.14);transition:transform .14s ease,filter .14s ease,opacity .14s ease}
+    button:hover{filter:brightness(1.08);transform:translateY(-1px)}button:active{transform:translateY(0)}button:disabled{opacity:.45;cursor:not-allowed;transform:none;filter:grayscale(.3)}
+    .ghost{background:rgba(255,255,255,.08);color:#dfe9ef;box-shadow:none;border:1px solid rgba(255,255,255,.08)}
+    .danger{background:linear-gradient(90deg,#ff6b91,#ff9f7a);color:#19050a}.good{background:linear-gradient(90deg,#8cffb2,#22c1c3)}
+    .small{font-size:12px;color:var(--muted);min-width:56px;text-align:right}.readout{font-variant-numeric:tabular-nums;color:#cfe9ef}
+    .panel-section{padding:10px 0;border-top:1px dashed rgba(255,255,255,.07)}
+    .panel-section:first-of-type{border-top:0;padding-top:0}
+    .section-title{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;color:#dfe9ef;font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.08em}
+    .preset-list{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}.chip{background:#071920;padding:6px 8px;border-radius:999px;font-size:12px;border:1px solid rgba(255,255,255,.06);cursor:pointer;color:#cfe9ef;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.chip:hover{border-color:rgba(34,193,195,.5)}
+    #hud{position:fixed;left:16px;top:16px;display:grid;gap:6px;min-width:240px;pointer-events:none}.hud-card{background:rgba(3,9,15,.45);border:1px solid rgba(255,255,255,.06);backdrop-filter:blur(10px);border-radius:14px;padding:9px 10px;box-shadow:0 10px 30px rgba(0,0,0,.2)}
+    .hud-title{font-size:11px;text-transform:uppercase;letter-spacing:.12em;color:rgba(230,238,243,.72);margin-bottom:4px}.hud-line{display:flex;justify-content:space-between;gap:10px;font-size:12px;color:#dceaf0}.hud-line span:last-child{font-variant-numeric:tabular-nums;color:#8eeef0}
+    #status{position:fixed;left:16px;bottom:14px;max-width:min(560px,calc(100vw - 32px));color:rgba(255,255,255,.72);font-size:12px;background:rgba(3,9,15,.36);border:1px solid rgba(255,255,255,.06);backdrop-filter:blur(8px);padding:8px 10px;border-radius:12px;pointer-events:none}
+    #keyboardHelp{font-size:11px;line-height:1.45;color:var(--muted);margin-top:8px}.hidden-file{display:none}.two{display:grid;grid-template-columns:1fr 1fr;gap:8px}.three{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px}.grow{flex:1}.full{width:100%}
+    @media(max-width:860px){#controls{right:10px;top:10px;width:350px;max-height:calc(100vh - 20px)}#hud{left:10px;top:10px;min-width:210px}}
+    @media(max-width:620px){#controls{left:10px;right:10px;top:auto;bottom:10px;width:auto;max-height:54vh}#hud{display:none}#status{left:10px;bottom:calc(54vh + 20px)}}
+  </style>
+</head>
+<body>
+  <div id="app">
+    <canvas id="animationCanvas"></canvas>
+    <div id="domLayer" aria-hidden="true"></div>
+  </div>
+
+  <div id="hud">
+    <div class="hud-card">
+      <div class="hud-title">Live neural renderer</div>
+      <div class="hud-line"><span>FPS</span><span id="fpsHud">0</span></div>
+      <div class="hud-line"><span>Live shapes</span><span id="shapeHud">0</span></div>
+      <div class="hud-line"><span>Network</span><span id="netHud">GRU-Attention</span></div>
+      <div class="hud-line"><span>Audio energy</span><span id="audioHud">0.00</span></div>
+    </div>
+  </div>
+
+  <div id="controls">
+    <h2>Scrolling Neural Network Animation — HyperLab</h2>
+    <div class="subtitle">Single-file generative animation lab with deterministic neural seeds, GRU/attention engines, legacy DOM mode, local presets, snapshots and WebM recording.</div>
+
+    <div class="panel-section">
+      <div class="section-title">Core engine <span class="readout" id="stateReadout">Idle</span></div>
+      <div class="row"><label>Mode</label><select id="modeSelect"><option value="canvas">Canvas (fast)</option><option value="dom">DOM (legacy)</option></select></div>
+      <div class="row"><label>Network</label><select id="networkSelect"><option value="gru">GRU-Attention</option><option value="rnn">Classic RNN</option><option value="hybrid">Hybrid Memory</option></select></div>
+      <div class="row"><label>Spawn rate</label><input id="spawnRate" type="range" min="0" max="90" value="8"><div class="small" id="spawnRateLabel">8 /s</div></div>
+      <div class="row"><label>Scroll speed</label><input id="scrollSpeed" type="range" min="0" max="12" step="0.1" value="0.6"><div class="small" id="scrollSpeedLabel">0.6 px/fr</div></div>
+      <div class="row"><label>Max shapes</label><input id="maxShapes" type="number" min="10" max="5000" value="300"><div class="small">live</div></div>
+      <div class="row"><label>Opacity decay</label><input id="decay" type="range" min="0.000" max="0.030" step="0.0005" value="0.005"><div class="small" id="decayLabel">0.0050</div></div>
+    </div>
+
+    <div class="panel-section">
+      <div class="section-title">Neural style</div>
+      <div class="row"><label>Palette</label><select id="paletteSelect"><option value="neon">Neon</option><option value="pastel">Pastel</option><option value="mono">Monochrome</option><option value="vintage">Vintage</option><option value="aurora">Aurora</option><option value="ember">Ember</option><option value="bio">Bio Lab</option><option value="ice">Ice Glass</option></select></div>
+      <div class="row"><label>Seed</label><input id="seedInput" class="grow" type="text" placeholder="optional seed"></div>
+      <div class="row"><label>Temperature</label><input id="temperature" type="range" min="0.1" max="3.5" step="0.05" value="1"><div class="small" id="tempLabel">1.00</div></div>
+      <div class="row"><label>Hidden size</label><select id="hiddenSizeSelect"><option>16</option><option selected>32</option><option>64</option></select></div>
+      <div class="row"><label>Shape cap</label><input id="shapeCap" type="number" min="1" max="5000" value="300"><div class="small">safety</div></div>
+      <div class="row"><label>Grammar</label><select id="grammarSelect"><option value="all">All shapes</option><option value="neurons">Neurons only</option><option value="geometry">Geometry</option><option value="glyphs">Glyphs / symbols</option><option value="wires">Wires + nodes</option></select></div>
+      <div class="row"><label>Symmetry</label><select id="symmetrySelect"><option value="none">None</option><option value="mirror-y">Vertical mirror</option><option value="mirror-x">Horizontal mirror</option><option value="quad">Quad mirror</option><option value="kaleido">Kaleidoscope</option></select></div>
+    </div>
+
+    <div class="panel-section">
+      <div class="section-title">Visual physics</div>
+      <div class="row"><label>Trails</label><input id="trailStrength" type="range" min="0" max="0.96" step="0.01" value="0.10"><div class="small" id="trailLabel">0.10</div></div>
+      <div class="row"><label>Links</label><input id="linkStrength" type="range" min="0" max="1" step="0.01" value="0.28"><div class="small" id="linkLabel">0.28</div></div>
+      <div class="row"><label>Flow field</label><input id="flowStrength" type="range" min="0" max="3" step="0.05" value="0.65"><div class="small" id="flowLabel">0.65</div></div>
+      <div class="row"><label>Glow</label><input id="glowStrength" type="range" min="0" max="40" step="1" value="16"><div class="small" id="glowLabel">16</div></div>
+      <div class="row"><label>Background</label><select id="backgroundSelect"><option value="deep">Deep space</option><option value="grid">Blueprint grid</option><option value="aurora">Aurora wash</option><option value="void">Minimal void</option></select></div>
+      <div class="row"><label>Blend</label><select id="blendSelect"><option value="screen">Screen</option><option value="lighter">Lighter</option><option value="source-over">Normal</option><option value="overlay">Overlay</option></select></div>
+      <div class="row"><label>Mouse force</label><select id="mouseMode"><option value="none">None</option><option value="attract">Attract</option><option value="repel">Repel</option><option value="orbit">Orbit</option></select></div>
+    </div>
+
+    <div class="panel-section">
+      <div class="section-title">Actions</div>
+      <div class="three">
+        <button id="toggleAnimation">Start</button>
+        <button id="resetNetwork" class="ghost">Reset NN</button>
+        <button id="clearCanvas" class="danger">Clear</button>
+      </div>
+      <div class="three" style="margin-top:8px">
+        <button id="startRecord">Record</button>
+        <button id="stopRecord" disabled>Stop</button>
+        <button id="downloadLast" disabled>Download</button>
+      </div>
+      <div class="three" style="margin-top:8px">
+        <button id="snapshotPng" class="ghost">PNG</button>
+        <button id="toggleMic" class="ghost">Mic reactive</button>
+        <button id="fullscreenBtn" class="ghost">Fullscreen</button>
+      </div>
+      <div id="keyboardHelp">Keys: <strong>Space</strong> start/stop, <strong>R</strong> record, <strong>C</strong> clear, <strong>S</strong> snapshot, <strong>F</strong> fullscreen. Right-click a preset to delete it.</div>
+    </div>
+
+    <div class="panel-section">
+      <div class="section-title">Presets + configs</div>
+      <div class="preset-list" id="presetList"></div>
+      <div class="row" style="margin-top:8px"><input id="presetName" type="text" placeholder="preset name" class="grow"><button id="savePreset">Save</button></div>
+      <div class="two" style="margin-top:8px">
+        <button id="exportConfig" class="ghost">Export JSON</button>
+        <button id="importConfig" class="ghost">Import JSON</button>
+      </div>
+      <input id="importFile" class="hidden-file" type="file" accept="application/json,.json">
+    </div>
+  </div>
+
+  <div id="status">Ready. Press Start to generate.</div>
+
+  <script>
+  (function(){
+    'use strict';
+
+    // ------------------------------------------------------------
+    // Utilities
+    // ------------------------------------------------------------
+    const $ = id => document.getElementById(id);
+    const clamp = (v,a,b) => Math.max(a, Math.min(b, v));
+    const lerp = (a,b,t) => a + (b-a) * t;
+    const TAU = Math.PI * 2;
+
+    function hashSeed(seed){
+      const text = String(seed || 'hyperlab-' + Date.now());
+      let h = 2166136261 >>> 0;
+      for(let i=0;i<text.length;i++) h = Math.imul(h ^ text.charCodeAt(i), 16777619) >>> 0;
+      return h >>> 0;
+    }
+
+    function createSeededRNG(seed){
+      let state = (hashSeed(seed) + 0x6D2B79F5) >>> 0;
+      return function(){
+        state = (state + 0x6D2B79F5) >>> 0;
+        let t = state;
+        t = Math.imul(t ^ (t >>> 15), t | 1);
+        t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+        return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+      };
+    }
+
+    function randn(rng){
+      const u = 1 - rng();
+      const v = 1 - rng();
+      return Math.sqrt(-2 * Math.log(u)) * Math.cos(TAU * v);
+    }
+
+    function squash(v){ return (Math.tanh(v) + 1) * 0.5; }
+    function sigmoid(v){ return 1 / (1 + Math.exp(-v)); }
+    function nowSeconds(){ return performance.now() / 1000; }
+    function isEditableTarget(e){ return e.target && ['INPUT','TEXTAREA','SELECT'].includes(e.target.tagName); }
+
+    function downloadBlob(blob, filename){
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(()=>URL.revokeObjectURL(url), 1500);
+    }
+
+    // ------------------------------------------------------------
+    // Vector/matrix helpers for small neural networks
+    // ------------------------------------------------------------
+    function randomMatrix(rows, cols, rng, scale){
+      const s = scale == null ? 0.55 : scale;
+      const out = new Array(rows);
+      for(let r=0;r<rows;r++){
+        const row = new Array(cols);
+        for(let c=0;c<cols;c++) row[c] = randn(rng) * s / Math.sqrt(cols || 1);
+        out[r] = row;
+      }
+      return out;
+    }
+
+    function randomVector(size, rng, scale){
+      const s = scale == null ? 0.16 : scale;
+      const out = new Array(size);
+      for(let i=0;i<size;i++) out[i] = randn(rng) * s;
+      return out;
+    }
+
+    function matVec(W, v){
+      const out = new Array(W.length);
+      for(let r=0;r<W.length;r++){
+        const row = W[r];
+        let sum = 0;
+        for(let c=0;c<row.length;c++) sum += row[c] * v[c];
+        out[r] = sum;
+      }
+      return out;
+    }
+
+    function vecAdd(a,b){
+      const out = new Array(a.length);
+      for(let i=0;i<a.length;i++) out[i] = a[i] + b[i];
+      return out;
+    }
+
+    function vecMul(a,b){
+      const out = new Array(a.length);
+      for(let i=0;i<a.length;i++) out[i] = a[i] * b[i];
+      return out;
+    }
+
+    function vecScale(a,s){
+      const out = new Array(a.length);
+      for(let i=0;i<a.length;i++) out[i] = a[i] * s;
+      return out;
+    }
+
+    function vecBlend(a,b,t){
+      const out = new Array(a.length);
+      for(let i=0;i<a.length;i++) out[i] = lerp(a[i], b[i], t);
+      return out;
+    }
+
+    function vecTanh(a){
+      const out = new Array(a.length);
+      for(let i=0;i<a.length;i++) out[i] = Math.tanh(a[i]);
+      return out;
+    }
+
+    function vecSigmoid(a){
+      const out = new Array(a.length);
+      for(let i=0;i<a.length;i++) out[i] = sigmoid(a[i]);
+      return out;
+    }
+
+    function dot(a,b){
+      let s = 0;
+      for(let i=0;i<a.length;i++) s += a[i] * b[i];
+      return s;
+    }
+
+    function softmax(scores){
+      let max = -Infinity;
+      for(const s of scores) if(s > max) max = s;
+      const exps = scores.map(s => Math.exp(s - max));
+      const total = exps.reduce((a,b)=>a+b, 0) || 1;
+      return exps.map(v => v / total);
+    }
+
+    // ------------------------------------------------------------
+    // Neural engines: Classic RNN, GRU-Attention, Hybrid Memory
+    // ------------------------------------------------------------
+    class GenerativeNetwork{
+      constructor(type, inputSize, hiddenSize, outputSize, rng){
+        this.type = type;
+        this.inputSize = inputSize;
+        this.hiddenSize = hiddenSize;
+        this.outputSize = outputSize;
+        this.rng = rng;
+        this.memory = [];
+        this.memoryLimit = type === 'hybrid' ? 18 : 10;
+
+        this.Wxh = randomMatrix(hiddenSize, inputSize, rng, 0.9);
+        this.Whh = randomMatrix(hiddenSize, hiddenSize, rng, 0.72);
+        this.bh = randomVector(hiddenSize, rng, 0.08);
+
+        this.Wz = randomMatrix(hiddenSize, inputSize, rng, 0.75);
+        this.Uz = randomMatrix(hiddenSize, hiddenSize, rng, 0.65);
+        this.bz = randomVector(hiddenSize, rng, 0.05);
+        this.Wr = randomMatrix(hiddenSize, inputSize, rng, 0.75);
+        this.Ur = randomMatrix(hiddenSize, hiddenSize, rng, 0.65);
+        this.br = randomVector(hiddenSize, rng, 0.05);
+        this.Wh = randomMatrix(hiddenSize, inputSize, rng, 0.82);
+        this.Uh = randomMatrix(hiddenSize, hiddenSize, rng, 0.72);
+        this.bhh = randomVector(hiddenSize, rng, 0.06);
+
+        this.Wq = randomMatrix(hiddenSize, hiddenSize, rng, 0.55);
+        this.Wk = randomMatrix(hiddenSize, hiddenSize, rng, 0.55);
+        this.Wv = randomMatrix(hiddenSize, hiddenSize, rng, 0.55);
+        this.Why = randomMatrix(outputSize, hiddenSize, rng, 1.15);
+        this.by = randomVector(outputSize, rng, 0.22);
+      }
+
+      initialHidden(){ return randomVector(this.hiddenSize, this.rng, 0.2); }
+
+      step(input, hidden){
+        let h;
+        if(this.type === 'rnn'){
+          h = vecTanh(vecAdd(vecAdd(matVec(this.Wxh, input), matVec(this.Whh, hidden)), this.bh));
+        } else {
+          const z = vecSigmoid(vecAdd(vecAdd(matVec(this.Wz, input), matVec(this.Uz, hidden)), this.bz));
+          const r = vecSigmoid(vecAdd(vecAdd(matVec(this.Wr, input), matVec(this.Ur, hidden)), this.br));
+          const candidate = vecTanh(vecAdd(vecAdd(matVec(this.Wh, input), matVec(this.Uh, vecMul(r, hidden))), this.bhh));
+          h = new Array(this.hiddenSize);
+          for(let i=0;i<this.hiddenSize;i++) h[i] = (1 - z[i]) * hidden[i] + z[i] * candidate[i];
+        }
+
+        this.memory.push(h.slice());
+        while(this.memory.length > this.memoryLimit) this.memory.shift();
+
+        let mixed = h;
+        if(this.type !== 'rnn' && this.memory.length > 1){
+          const q = matVec(this.Wq, h);
+          const keys = this.memory.map(m => matVec(this.Wk, m));
+          const vals = this.memory.map(m => matVec(this.Wv, m));
+          const scores = keys.map(k => dot(q, k) / Math.sqrt(this.hiddenSize));
+          const weights = softmax(scores);
+          const ctx = new Array(this.hiddenSize).fill(0);
+          for(let i=0;i<vals.length;i++){
+            for(let j=0;j<this.hiddenSize;j++) ctx[j] += vals[i][j] * weights[i];
+          }
+          mixed = vecBlend(h, ctx, this.type === 'hybrid' ? 0.42 : 0.28);
+        }
+
+        if(this.type === 'hybrid'){
+          const t = nowSeconds();
+          mixed = mixed.map((v,i) => v + 0.08 * Math.sin(t * 0.7 + i * 0.618) + 0.035 * Math.cos(t * 0.21 + i));
+        }
+
+        const y = vecAdd(matVec(this.Why, mixed), this.by);
+        return [y, h];
+      }
+    }
+
+    // ------------------------------------------------------------
+    // DOM references and app state
+    // ------------------------------------------------------------
+    const canvas = $('animationCanvas');
+    const ctx = canvas.getContext('2d', { alpha:true });
+    const domLayer = $('domLayer');
+    const statusEl = $('status');
+    const fpsHud = $('fpsHud');
+    const shapeHud = $('shapeHud');
+    const netHud = $('netHud');
+    const audioHud = $('audioHud');
+    const stateReadout = $('stateReadout');
+
+    const controls = {
+      modeSelect:$('modeSelect'), networkSelect:$('networkSelect'), spawnRate:$('spawnRate'), spawnRateLabel:$('spawnRateLabel'),
+      scrollSpeed:$('scrollSpeed'), scrollSpeedLabel:$('scrollSpeedLabel'), maxShapes:$('maxShapes'), decay:$('decay'), decayLabel:$('decayLabel'),
+      paletteSelect:$('paletteSelect'), seedInput:$('seedInput'), temperature:$('temperature'), tempLabel:$('tempLabel'), hiddenSizeSelect:$('hiddenSizeSelect'),
+      shapeCap:$('shapeCap'), grammarSelect:$('grammarSelect'), symmetrySelect:$('symmetrySelect'), trailStrength:$('trailStrength'), trailLabel:$('trailLabel'),
+      linkStrength:$('linkStrength'), linkLabel:$('linkLabel'), flowStrength:$('flowStrength'), flowLabel:$('flowLabel'), glowStrength:$('glowStrength'), glowLabel:$('glowLabel'),
+      backgroundSelect:$('backgroundSelect'), blendSelect:$('blendSelect'), mouseMode:$('mouseMode'), toggleAnimation:$('toggleAnimation'), resetNetwork:$('resetNetwork'),
+      clearCanvas:$('clearCanvas'), startRecord:$('startRecord'), stopRecord:$('stopRecord'), downloadLast:$('downloadLast'), snapshotPng:$('snapshotPng'),
+      toggleMic:$('toggleMic'), fullscreenBtn:$('fullscreenBtn'), presetList:$('presetList'), presetName:$('presetName'), savePreset:$('savePreset'),
+      exportConfig:$('exportConfig'), importConfig:$('importConfig'), importFile:$('importFile')
+    };
+
+    const palettes = {
+      neon:['#00f5ff','#00ffd5','#7c4dff','#ff2d95','#00ffd1','#00b3ff','#f5ff4d'],
+      pastel:['#ffd1dc','#bfe4ff','#e7ffd9','#fff1b8','#f6d7ff','#cfe8ff','#d3ffe8'],
+      mono:['#e6eef3','#b9c6d0','#8fa3b3','#6d8290','#495a66','#27343a','#ffffff'],
+      vintage:['#ffb88c','#ffd7a8','#d4b483','#b08b57','#8c5a3c','#6e3a2c','#f7e7c4'],
+      aurora:['#69f0ae','#40c4ff','#7c4dff','#ff80ab','#b2ff59','#18ffff','#e040fb'],
+      ember:['#ffd166','#ff9f1c','#ff4d6d','#d90429','#8d0801','#ffba08','#f48c06'],
+      bio:['#b8ff5c','#44ff99','#19d3a2','#00a896','#65def1','#d8ff3e','#00f5d4'],
+      ice:['#ffffff','#caf0f8','#90e0ef','#48cae4','#00b4d8','#ade8f4','#e0fbfc']
+    };
+
+    const state = {
+      running:false,
+      mode:'canvas',
+      rng:createSeededRNG('boot'),
+      network:null,
+      hidden:null,
+      spawnAccumulator:0,
+      shapes:[],
+      scrollX:0,
+      lastTime:0,
+      frames:0,
+      fps:0,
+      fpsTime:0,
+      totalSpawned:0,
+      recorder:null,
+      recordedBlobs:[],
+      lastRecordingURL:null,
+      audioCtx:null,
+      analyser:null,
+      micStream:null,
+      audioEnergy:0,
+      pointer:{x:innerWidth/2,y:innerHeight/2,down:false,inside:false},
+      bootedAt:nowSeconds(),
+      wasRunningBeforeHidden:false
+    };
+
+    const INPUT_SIZE = 8;
+    const OUTPUT_SIZE = 34;
+    let DPR = Math.max(1, window.devicePixelRatio || 1);
+
+    // ------------------------------------------------------------
+    // Canvas sizing and status
+    // ------------------------------------------------------------
+    function logicalWidth(){ return canvas.width / DPR; }
+    function logicalHeight(){ return canvas.height / DPR; }
+
+    function resizeCanvas(){
+      DPR = Math.max(1, Math.min(2.5, window.devicePixelRatio || 1));
+      const w = Math.max(1, window.innerWidth);
+      const h = Math.max(1, window.innerHeight);
+      canvas.width = Math.round(w * DPR);
+      canvas.height = Math.round(h * DPR);
+      canvas.style.width = w + 'px';
+      canvas.style.height = h + 'px';
+      ctx.setTransform(DPR,0,0,DPR,0,0);
+      ctx.imageSmoothingEnabled = true;
+      paintHardBackground();
+    }
+
+    function setStatus(msg){
+      statusEl.textContent = msg;
+      console.log('[HyperLab]', msg);
+    }
+
+    function paintHardBackground(){
+      const W = logicalWidth();
+      const H = logicalHeight();
+      ctx.save();
+      ctx.globalCompositeOperation = 'source-over';
+      const bg = ctx.createLinearGradient(0,0,0,H);
+      bg.addColorStop(0,'#07101a');
+      bg.addColorStop(1,'#02070c');
+      ctx.fillStyle = bg;
+      ctx.fillRect(0,0,W,H);
+      ctx.restore();
+    }
+
+    window.addEventListener('resize', resizeCanvas);
+    resizeCanvas();
+
+    // ------------------------------------------------------------
+    // Config persistence
+    // ------------------------------------------------------------
+    const configIds = [
+      'modeSelect','networkSelect','spawnRate','scrollSpeed','maxShapes','decay','paletteSelect','seedInput','temperature','hiddenSizeSelect','shapeCap','grammarSelect','symmetrySelect','trailStrength','linkStrength','flowStrength','glowStrength','backgroundSelect','blendSelect','mouseMode'
+    ];
+
+    function currentConfig(){
+      const cfg = {};
+      for(const id of configIds) cfg[id] = $(id).value;
+      cfg.version = 2;
+      return cfg;
+    }
+
+    function applyConfig(cfg){
+      if(!cfg) return;
+      for(const id of configIds){
+        const el = $(id);
+        if(el && cfg[id] != null) el.value = cfg[id];
+      }
+      updateLabels();
+      applyMode();
+      initNetwork(false);
+      saveSession();
+    }
+
+    function saveSession(){
+      localStorage.setItem('hyperlab_session', JSON.stringify(currentConfig()));
+    }
+
+    function loadSession(){
+      try{
+        const raw = localStorage.getItem('hyperlab_session');
+        if(raw) applyConfig(JSON.parse(raw));
+      }catch(err){ console.warn(err); }
+    }
+
+    function loadPresets(){
+      try{ return JSON.parse(localStorage.getItem('hyperlab_presets') || '[]'); }
+      catch(err){ return []; }
+    }
+
+    function savePresets(list){ localStorage.setItem('hyperlab_presets', JSON.stringify(list)); }
+
+    function renderPresetList(){
+      controls.presetList.innerHTML = '';
+      const presets = loadPresets();
+      if(!presets.length){
+        const empty = document.createElement('div');
+        empty.className = 'small';
+        empty.style.textAlign = 'left';
+        empty.textContent = 'No saved presets yet.';
+        controls.presetList.appendChild(empty);
+        return;
+      }
+      presets.forEach((preset, idx) => {
+        const chip = document.createElement('div');
+        chip.className = 'chip';
+        chip.title = 'Click to load. Right-click to delete.';
+        chip.textContent = preset.name || ('Preset ' + (idx + 1));
+        chip.addEventListener('click', () => {
+          applyConfig(preset.config || preset);
+          setStatus('Loaded preset: ' + chip.textContent);
+        });
+        chip.addEventListener('contextmenu', e => {
+          e.preventDefault();
+          if(confirm('Delete preset "' + chip.textContent + '"?')){
+            const list = loadPresets();
+            list.splice(idx, 1);
+            savePresets(list);
+            renderPresetList();
+          }
+        });
+        controls.presetList.appendChild(chip);
+      });
+    }
+
+    // ------------------------------------------------------------
+    // Neural init and input construction
+    // ------------------------------------------------------------
+    function initNetwork(resetShapes){
+      const seed = controls.seedInput.value.trim() || ('unseeded-' + Math.random().toString(36).slice(2));
+      state.rng = createSeededRNG(seed);
+      const hiddenSize = parseInt(controls.hiddenSizeSelect.value, 10) || 32;
+      const type = controls.networkSelect.value;
+      state.network = new GenerativeNetwork(type, INPUT_SIZE, hiddenSize, OUTPUT_SIZE, state.rng);
+      state.hidden = state.network.initialHidden();
+      state.spawnAccumulator = 0;
+      state.totalSpawned = 0;
+      if(resetShapes) clearAll();
+      netHud.textContent = controls.networkSelect.options[controls.networkSelect.selectedIndex].text;
+      setStatus('Neural engine initialized: ' + netHud.textContent + ' / hidden ' + hiddenSize + (controls.seedInput.value.trim() ? ' / seed "' + controls.seedInput.value.trim() + '"' : ' / random seed'));
+    }
+
+    function buildInputVector(){
+      const t = nowSeconds() - state.bootedAt;
+      const W = Math.max(1, logicalWidth());
+      const H = Math.max(1, logicalHeight());
+      const audio = state.audioEnergy;
+      return [
+        state.rng() * 2 - 1,
+        Math.sin(t * 0.73),
+        Math.cos(t * 0.37),
+        ((state.scrollX / W) % 2) - 1,
+        (state.pointer.x / W) * 2 - 1,
+        (state.pointer.y / H) * 2 - 1,
+        audio * 2 - 1,
+        clamp(state.shapes.length / Math.max(1, parseInt(controls.maxShapes.value, 10)), 0, 1) * 2 - 1
+      ];
+    }
+
+    // ------------------------------------------------------------
+    // Shape mapping and spawning
+    // ------------------------------------------------------------
+    function getPalette(){ return palettes[controls.paletteSelect.value] || palettes.neon; }
+
+    function colorFromOutput(out, offset){
+      const pal = getPalette();
+      const temp = parseFloat(controls.temperature.value) || 1;
+      const idx = Math.floor(clamp(squash(out[offset] * temp), 0, 0.9999) * pal.length);
+      return pal[idx % pal.length];
+    }
+
+    function shapeTypeFromGrammar(raw){
+      const grammar = controls.grammarSelect.value;
+      const n = clamp(Math.floor(squash(raw) * 8), 0, 7);
+      if(grammar === 'neurons') return [0,3,6][n % 3];
+      if(grammar === 'geometry') return [0,1,2,3,4,7][n % 6];
+      if(grammar === 'glyphs') return [2,4,7,8][n % 4];
+      if(grammar === 'wires') return [3,5,6][n % 3];
+      return n;
+    }
+
+    function liveLimit(){
+      const a = parseInt(controls.maxShapes.value, 10) || 300;
+      const b = parseInt(controls.shapeCap.value, 10) || a;
+      return clamp(Math.min(a,b), 1, 5000);
+    }
+
+    function spawnFromNetwork(dt){
+      if(!state.network) initNetwork(false);
+      const baseRate = parseFloat(controls.spawnRate.value) || 0;
+      const audioBoost = state.audioEnergy * 30;
+      const spawnRate = baseRate + audioBoost;
+      state.spawnAccumulator += spawnRate * dt;
+      const count = Math.min(16, Math.floor(state.spawnAccumulator));
+      state.spawnAccumulator -= count;
+      for(let i=0;i<count;i++){
+        if(state.shapes.length >= liveLimit()) break;
+        const input = buildInputVector();
+        const result = state.network.step(input, state.hidden);
+        const out = result[0];
+        state.hidden = result[1];
+        createShape(out);
+      }
+    }
+
+    function createShape(rawOut, cloneOptions){
+      const temp = parseFloat(controls.temperature.value) || 1;
+      const out = rawOut.map(v => v * temp);
+      const W = logicalWidth();
+      const H = logicalHeight();
+      const sideBand = W * (0.12 + 0.9 * squash(out[4]));
+      const x = cloneOptions && cloneOptions.x != null ? cloneOptions.x : state.scrollX + W + sideBand;
+      const y = cloneOptions && cloneOptions.y != null ? cloneOptions.y : clamp(squash(out[5]) * H, -80, H + 80);
+      const audioScale = 1 + state.audioEnergy * 1.8;
+      const size = clamp(8 + Math.abs(out[6]) * 92 * audioScale, 4, 260);
+      const shapeType = cloneOptions && cloneOptions.shapeType != null ? cloneOptions.shapeType : shapeTypeFromGrammar(out[7]);
+      const animType = clamp(Math.floor(squash(out[8]) * 5), 0, 4);
+      const duration = clamp(0.55 + Math.abs(out[9]) * 6, 0.35, 14);
+      const opacity = clamp(0.08 + Math.abs(out[10]) * 0.75, 0.035, 0.98);
+      const rotate = out[11] * Math.PI;
+      const rotSpeed = out[12] * 1.4;
+      const scaleX = clamp(0.25 + Math.abs(out[13]) * 1.4, 0.16, 3.2);
+      const scaleY = clamp(0.25 + Math.abs(out[14]) * 1.4, 0.16, 3.2);
+      const skew = out[15] * 0.55;
+      const vx = -parseFloat(controls.scrollSpeed.value || 0) * 0.10 + out[16] * 8;
+      const vy = out[17] * 10;
+      const hueShift = squash(out[18]);
+      const secondary = colorFromOutput(out, 19);
+      const tertiary = colorFromOutput(out, 20);
+      const fill = colorFromOutput(out, 1);
+      const lifespan = clamp(2.4 + Math.abs(out[21]) * 24, 2, 42);
+      const connectionRadius = clamp(40 + Math.abs(out[22]) * 170, 30, 260);
+      const wobble = clamp(Math.abs(out[23]) * 2.4, 0, 4);
+      const lineWidth = clamp(0.8 + Math.abs(out[24]) * 5, 0.5, 9);
+      const sides = 3 + Math.floor(squash(out[25]) * 7);
+      const neuralWeight = squash(out[26]);
+      const dash = squash(out[27]) > 0.58;
+      const spinPhase = out[28] * Math.PI;
+      const glyphCode = Math.floor(squash(out[29]) * 12);
+      const gradientBias = squash(out[30]);
+      const orbit = out[31] * 0.8;
+      const seedJitter = out[32];
+      const linkBias = squash(out[33]);
+
+      const shape = {
+        id:state.totalSpawned++, x, y, baseY:y, vx, vy, size, shapeType, animType, duration, opacity, fill, secondary, tertiary,
+        rotate, rotSpeed, scaleX, scaleY, skew, born:nowSeconds(), age:0, lifespan, connectionRadius, wobble, lineWidth, sides,
+        neuralWeight, dash, spinPhase, glyphCode, gradientBias, orbit, seedJitter, linkBias, element:null
+      };
+
+      state.shapes.push(shape);
+      if(state.mode === 'dom') createDomElement(shape);
+
+      const symmetry = cloneOptions ? 'none' : controls.symmetrySelect.value;
+      if(symmetry !== 'none' && state.shapes.length < liveLimit()) spawnSymmetryClones(shape, rawOut, symmetry, W, H);
+    }
+
+    function spawnSymmetryClones(shape, rawOut, symmetry, W, H){
+      const screenX = shape.x - state.scrollX;
+      const clones = [];
+      if(symmetry === 'mirror-y' || symmetry === 'quad') clones.push({ x: state.scrollX + (W - screenX), y: shape.y });
+      if(symmetry === 'mirror-x' || symmetry === 'quad') clones.push({ x: shape.x, y: H - shape.y });
+      if(symmetry === 'quad') clones.push({ x: state.scrollX + (W - screenX), y: H - shape.y });
+      if(symmetry === 'kaleido'){
+        const cx = state.scrollX + W / 2;
+        const cy = H / 2;
+        for(let i=1;i<6;i++){
+          const a = (TAU / 6) * i;
+          const dx = shape.x - cx;
+          const dy = shape.y - cy;
+          clones.push({ x: cx + dx * Math.cos(a) - dy * Math.sin(a), y: cy + dx * Math.sin(a) + dy * Math.cos(a) });
+        }
+      }
+      for(const c of clones){
+        if(state.shapes.length >= liveLimit()) break;
+        createShape(rawOut, { x:c.x, y:c.y, shapeType:shape.shapeType });
+      }
+    }
+
+    function createDomElement(shape){
+      const el = document.createElement('div');
+      el.className = 'dom-shape';
+      const typeClass = shape.shapeType === 0 ? 'dom-circle' : shape.shapeType === 2 ? 'dom-triangle' : shape.shapeType === 3 ? 'dom-ring' : shape.shapeType === 4 || shape.shapeType === 8 ? 'dom-star' : 'dom-rect';
+      el.classList.add(typeClass);
+      const s = Math.max(3, shape.size / 2);
+      el.style.setProperty('--s', s + 'px');
+      el.style.left = shape.x + 'px';
+      el.style.top = shape.y + 'px';
+      el.style.width = shape.size + 'px';
+      el.style.height = shape.size + 'px';
+      el.style.marginLeft = (-shape.size / 2) + 'px';
+      el.style.marginTop = (-shape.size / 2) + 'px';
+      el.style.background = shape.fill;
+      el.style.color = shape.fill;
+      el.style.opacity = shape.opacity;
+      domLayer.appendChild(el);
+      shape.element = el;
+    }
+
+    // ------------------------------------------------------------
+    // Physics update
+    // ------------------------------------------------------------
+    function updateShapes(dt){
+      const W = logicalWidth();
+      const H = logicalHeight();
+      const speed = parseFloat(controls.scrollSpeed.value) || 0;
+      const flow = parseFloat(controls.flowStrength.value) || 0;
+      const decay = parseFloat(controls.decay.value) || 0;
+      const mouseMode = controls.mouseMode.value;
+      const mouseWorldX = state.scrollX + state.pointer.x;
+      const mouseY = state.pointer.y;
+
+      state.scrollX += speed * dt * 60;
+
+      for(let i=0;i<state.shapes.length;i++){
+        const s = state.shapes[i];
+        s.age = nowSeconds() - s.born;
+        const screenX = s.x - state.scrollX;
+
+        if(flow > 0){
+          const n1 = Math.sin((s.x * 0.003) + (s.y * 0.007) + nowSeconds() * 0.8 + s.seedJitter);
+          const n2 = Math.cos((s.x * 0.005) - (s.y * 0.004) + nowSeconds() * 0.55 + s.seedJitter);
+          s.vx += n1 * flow * dt * 3.2;
+          s.vy += n2 * flow * dt * 3.2;
+        }
+
+        if(mouseMode !== 'none' && state.pointer.inside){
+          const dx = mouseWorldX - s.x;
+          const dy = mouseY - s.y;
+          const d2 = dx*dx + dy*dy + 80;
+          const d = Math.sqrt(d2);
+          const force = clamp(28000 / d2, 0, 18) * dt;
+          if(mouseMode === 'attract'){
+            s.vx += (dx / d) * force;
+            s.vy += (dy / d) * force;
+          } else if(mouseMode === 'repel'){
+            s.vx -= (dx / d) * force;
+            s.vy -= (dy / d) * force;
+          } else if(mouseMode === 'orbit'){
+            s.vx += (-dy / d) * force * 0.8 + (dx / d) * force * 0.08;
+            s.vy += ( dx / d) * force * 0.8 + (dy / d) * force * 0.08;
+          }
+        }
+
+        s.x += s.vx * dt;
+        s.y += s.vy * dt;
+        s.vx *= Math.pow(0.985, dt * 60);
+        s.vy *= Math.pow(0.985, dt * 60);
+        s.y += Math.sin(s.age * (0.8 + s.wobble) + s.spinPhase) * s.orbit;
+        s.rotate += s.rotSpeed * dt;
+
+        const faded = s.opacity - decay * s.age * 8;
+        const expired = s.age > s.lifespan || faded <= 0.008 || screenX < -420 || s.y < -520 || s.y > H + 520;
+        if(expired){
+          if(s.element) s.element.remove();
+          state.shapes.splice(i,1);
+          i--;
+        }
+      }
+
+      if(state.mode === 'dom'){
+        domLayer.style.transform = 'translate3d(' + (-state.scrollX) + 'px,0,0)';
+        for(const s of state.shapes){
+          if(!s.element) continue;
+          const localOpacity = clamp(s.opacity - (parseFloat(controls.decay.value) || 0) * s.age * 8, 0, 1);
+          const pulse = pulseForShape(s);
+          s.element.style.opacity = localOpacity.toFixed(3);
+          s.element.style.transform = 'translate3d(0,0,0) rotate(' + s.rotate + 'rad) scale(' + (s.scaleX * pulse) + ',' + (s.scaleY * pulse) + ') skewX(' + s.skew + 'rad)';
+        }
+      }
+    }
+
+    function pulseForShape(s){
+      if(s.animType === 0) return 1;
+      if(s.animType === 1) return 1 + 0.13 * Math.sin((s.age / s.duration) * TAU + s.spinPhase);
+      if(s.animType === 2) return 0.88 + 0.28 * squash(Math.sin((s.age / s.duration) * TAU));
+      if(s.animType === 3) return 1 + 0.08 * Math.sin(s.age * 8 + s.seedJitter * 10);
+      return 1 + state.audioEnergy * 0.55;
+    }
+
+    // ------------------------------------------------------------
+    // Rendering
+    // ------------------------------------------------------------
+    function drawFrame(dt){
+      const W = logicalWidth();
+      const H = logicalHeight();
+      const trail = parseFloat(controls.trailStrength.value) || 0;
+      const hold = clamp(trail, 0, 0.96);
+      ctx.save();
+      ctx.globalCompositeOperation = 'source-over';
+      if(hold <= 0.001){
+        ctx.clearRect(0,0,W,H);
+        drawBackground(W,H,1);
+      } else {
+        drawBackground(W,H,1 - hold);
+      }
+      ctx.restore();
+
+      if(controls.linkStrength.value > 0.001) drawLinks(W,H);
+
+      ctx.save();
+      ctx.globalCompositeOperation = controls.blendSelect.value;
+      for(const s of state.shapes){
+        const screenX = s.x - state.scrollX;
+        if(screenX < -320 || screenX > W + 320) continue;
+        drawShape(s, screenX, s.y);
+      }
+      ctx.restore();
+
+      drawForeground(W,H);
+    }
+
+    function drawBackground(W,H,alpha){
+      const mode = controls.backgroundSelect.value;
+      const pal = getPalette();
+      ctx.save();
+      ctx.globalAlpha = clamp(alpha, 0.02, 1);
+      if(mode === 'void'){
+        ctx.fillStyle = 'rgba(2,7,12,.96)';
+        ctx.fillRect(0,0,W,H);
+      } else if(mode === 'aurora'){
+        const g = ctx.createLinearGradient(0,0,W,H);
+        g.addColorStop(0,'rgba(2,10,18,.95)');
+        g.addColorStop(.45,'rgba(5,18,30,.92)');
+        g.addColorStop(1,'rgba(2,5,10,.96)');
+        ctx.fillStyle = g;
+        ctx.fillRect(0,0,W,H);
+        ctx.globalAlpha *= 0.20;
+        for(let i=0;i<4;i++){
+          const rg = ctx.createRadialGradient(W*(0.15+i*.28), H*(0.25+0.1*Math.sin(nowSeconds()+i)), 0, W*(0.15+i*.28), H*.45, W*.55);
+          rg.addColorStop(0, pal[i % pal.length]);
+          rg.addColorStop(1, 'transparent');
+          ctx.fillStyle = rg;
+          ctx.fillRect(0,0,W,H);
+        }
+      } else {
+        const g = ctx.createLinearGradient(0,0,0,H);
+        g.addColorStop(0, mode === 'grid' ? 'rgba(5,18,26,.97)' : 'rgba(5,12,22,.98)');
+        g.addColorStop(1, 'rgba(1,5,10,.98)');
+        ctx.fillStyle = g;
+        ctx.fillRect(0,0,W,H);
+      }
+
+      if(mode === 'grid' || mode === 'deep'){
+        const grid = mode === 'grid' ? 38 : 64;
+        const offset = -((state.scrollX * 0.25) % grid);
+        ctx.globalAlpha = (mode === 'grid' ? 0.18 : 0.06) * clamp(alpha + 0.2, 0, 1);
+        ctx.strokeStyle = '#9eeeff';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        for(let x=offset;x<W;x+=grid){ ctx.moveTo(x,0); ctx.lineTo(x,H); }
+        for(let y=0;y<H;y+=grid){ ctx.moveTo(0,y); ctx.lineTo(W,y); }
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+
+    function drawLinks(W,H){
+      const strength = parseFloat(controls.linkStrength.value) || 0;
+      const maxPairs = state.shapes.length > 650 ? 2400 : 5200;
+      let pairs = 0;
+      ctx.save();
+      ctx.globalCompositeOperation = 'screen';
+      ctx.lineWidth = 1;
+      for(let i=0;i<state.shapes.length;i++){
+        const a = state.shapes[i];
+        const ax = a.x - state.scrollX;
+        if(ax < -260 || ax > W + 260) continue;
+        for(let j=i+1;j<state.shapes.length;j++){
+          if(pairs++ > maxPairs) break;
+          const b = state.shapes[j];
+          const bx = b.x - state.scrollX;
+          if(bx < -260 || bx > W + 260) continue;
+          const dx = ax - bx;
+          const dy = a.y - b.y;
+          const d2 = dx*dx + dy*dy;
+          const radius = (a.connectionRadius + b.connectionRadius) * 0.5 * (0.72 + a.linkBias * 0.8);
+          if(d2 < radius * radius){
+            const d = Math.sqrt(d2);
+            const alpha = (1 - d / radius) * strength * 0.34 * (0.5 + a.neuralWeight);
+            const grad = ctx.createLinearGradient(ax,a.y,bx,b.y);
+            grad.addColorStop(0, a.secondary);
+            grad.addColorStop(1, b.tertiary);
+            ctx.globalAlpha = clamp(alpha,0,0.48);
+            ctx.strokeStyle = grad;
+            ctx.beginPath();
+            const mx = (ax + bx) * 0.5;
+            const my = (a.y + b.y) * 0.5 + Math.sin(nowSeconds() + a.id * 0.1) * 12;
+            ctx.moveTo(ax,a.y);
+            ctx.quadraticCurveTo(mx,my,bx,b.y);
+            ctx.stroke();
+          }
+        }
+      }
+      ctx.restore();
+    }
+
+    function drawShape(s, x, y){
+      const localOpacity = clamp(s.opacity - (parseFloat(controls.decay.value) || 0) * s.age * 8, 0, 1);
+      const pulse = pulseForShape(s);
+      const size = s.size * pulse;
+      const glow = parseFloat(controls.glowStrength.value) || 0;
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.rotate(s.rotate + Math.sin(s.age * 0.6 + s.spinPhase) * 0.06 * s.wobble);
+      if(Math.abs(s.skew) > 0.001) ctx.transform(1, 0, Math.tan(s.skew), 1, 0, 0);
+      ctx.scale(s.scaleX, s.scaleY);
+      ctx.globalAlpha = localOpacity;
+      ctx.shadowBlur = glow * (0.4 + s.neuralWeight);
+      ctx.shadowColor = s.fill;
+      ctx.lineWidth = s.lineWidth;
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      if(s.dash) ctx.setLineDash([s.lineWidth * 2.2, s.lineWidth * 2.8]);
+
+      const grad = ctx.createRadialGradient(-size*.18,-size*.24,1,0,0,size*.78);
+      grad.addColorStop(0, s.tertiary);
+      grad.addColorStop(clamp(s.gradientBias, .1, .9), s.fill);
+      grad.addColorStop(1, s.secondary);
+      ctx.fillStyle = grad;
+      ctx.strokeStyle = s.secondary;
+
+      switch(s.shapeType){
+        case 0: drawCircle(size); break;
+        case 1: drawRoundedRect(size); break;
+        case 2: drawTriangle(size); break;
+        case 3: drawRing(size); break;
+        case 4: drawStar(size, 5 + (s.sides % 4)); break;
+        case 5: drawWire(size, s); break;
+        case 6: drawNeuron(size, s); break;
+        case 7: drawPolygon(size, s.sides); break;
+        default: drawGlyph(size, s.glyphCode); break;
+      }
+      ctx.restore();
+    }
+
+    function drawCircle(size){ ctx.beginPath(); ctx.arc(0,0,size/2,0,TAU); ctx.fill(); }
+
+    function drawRoundedRect(size){
+      const r = Math.min(size * 0.28, 28);
+      ctx.beginPath();
+      ctx.moveTo(-size/2 + r, -size/2);
+      ctx.arcTo(size/2, -size/2, size/2, size/2, r);
+      ctx.arcTo(size/2, size/2, -size/2, size/2, r);
+      ctx.arcTo(-size/2, size/2, -size/2, -size/2, r);
+      ctx.arcTo(-size/2, -size/2, size/2, -size/2, r);
+      ctx.closePath();
+      ctx.fill();
+    }
+
+    function drawTriangle(size){
+      ctx.beginPath();
+      ctx.moveTo(0, -size/2);
+      ctx.lineTo(size/2, size/2);
+      ctx.lineTo(-size/2, size/2);
+      ctx.closePath();
+      ctx.fill();
+    }
+
+    function drawRing(size){
+      ctx.beginPath();
+      ctx.arc(0,0,size/2,0,TAU);
+      ctx.stroke();
+      ctx.globalAlpha *= .45;
+      ctx.beginPath();
+      ctx.arc(0,0,size*0.29,0,TAU);
+      ctx.stroke();
+    }
+
+    function drawStar(size, points){
+      const outer = size / 2;
+      const inner = outer * 0.45;
+      ctx.beginPath();
+      for(let i=0;i<points*2;i++){
+        const r = i % 2 ? inner : outer;
+        const a = -Math.PI/2 + i * Math.PI / points;
+        const x = Math.cos(a) * r;
+        const y = Math.sin(a) * r;
+        if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+      }
+      ctx.closePath();
+      ctx.fill();
+    }
+
+    function drawWire(size, s){
+      const n = 3 + (s.sides % 5);
+      ctx.beginPath();
+      for(let i=0;i<n;i++){
+        const a = (i/(n-1)-0.5) * Math.PI;
+        const px = Math.cos(a) * size * 0.55;
+        const py = Math.sin(a) * size * 0.35;
+        if(i===0) ctx.moveTo(px,py); else ctx.lineTo(px,py);
+      }
+      ctx.stroke();
+      for(let i=0;i<n;i++){
+        const a = (i/(n-1)-0.5) * Math.PI;
+        const px = Math.cos(a) * size * 0.55;
+        const py = Math.sin(a) * size * 0.35;
+        ctx.beginPath();
+        ctx.arc(px,py,Math.max(2,size*.045),0,TAU);
+        ctx.fill();
+      }
+    }
+
+    function drawNeuron(size, s){
+      const arms = 4 + (s.sides % 6);
+      ctx.strokeStyle = s.secondary;
+      for(let i=0;i<arms;i++){
+        const a = i / arms * TAU + Math.sin(s.age + i) * 0.15;
+        const r1 = size * 0.16;
+        const r2 = size * (0.45 + 0.16 * Math.sin(s.age * 0.8 + i));
+        ctx.beginPath();
+        ctx.moveTo(Math.cos(a)*r1, Math.sin(a)*r1);
+        ctx.quadraticCurveTo(Math.cos(a+.35)*size*.32, Math.sin(a+.35)*size*.32, Math.cos(a)*r2, Math.sin(a)*r2);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.arc(Math.cos(a)*r2, Math.sin(a)*r2, Math.max(2,size*.045), 0, TAU);
+        ctx.fill();
+      }
+      ctx.beginPath();
+      ctx.arc(0,0,size*.19,0,TAU);
+      ctx.fill();
+      ctx.globalAlpha *= .35;
+      ctx.beginPath();
+      ctx.arc(0,0,size*.31,0,TAU);
+      ctx.stroke();
+    }
+
+    function drawPolygon(size, sides){
+      const n = clamp(sides || 6, 3, 12);
+      ctx.beginPath();
+      for(let i=0;i<n;i++){
+        const a = -Math.PI/2 + i / n * TAU;
+        const x = Math.cos(a) * size / 2;
+        const y = Math.sin(a) * size / 2;
+        if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+      }
+      ctx.closePath();
+      ctx.fill();
+    }
+
+    function drawGlyph(size, code){
+      const glyphs = ['✦','✧','◈','◆','⬡','⌁','∞','✺','✹','⟡','◌','✶'];
+      ctx.save();
+      ctx.shadowBlur *= 1.4;
+      ctx.font = '900 ' + Math.max(12, size) + 'px system-ui, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(glyphs[code % glyphs.length], 0, 0);
+      ctx.restore();
+    }
+
+    function drawForeground(W,H){
+      ctx.save();
+      ctx.globalCompositeOperation = 'source-over';
+      const vignette = ctx.createRadialGradient(W/2,H/2,Math.min(W,H)*0.15,W/2,H/2,Math.max(W,H)*0.7);
+      vignette.addColorStop(0,'rgba(0,0,0,0)');
+      vignette.addColorStop(1,'rgba(0,0,0,.34)');
+      ctx.fillStyle = vignette;
+      ctx.fillRect(0,0,W,H);
+      ctx.restore();
+    }
+
+    // ------------------------------------------------------------
+    // Audio analysis
+    // ------------------------------------------------------------
+    async function toggleMic(){
+      if(state.micStream){
+        state.micStream.getTracks().forEach(t => t.stop());
+        state.micStream = null;
+        state.analyser = null;
+        controls.toggleMic.textContent = 'Mic reactive';
+        setStatus('Microphone reactivity off.');
+        return;
+      }
+      try{
+        const stream = await navigator.mediaDevices.getUserMedia({audio:true});
+        const AudioContext = window.AudioContext || window.webkitAudioContext;
+        state.audioCtx = state.audioCtx || new AudioContext();
+        const source = state.audioCtx.createMediaStreamSource(stream);
+        const analyser = state.audioCtx.createAnalyser();
+        analyser.fftSize = 512;
+        analyser.smoothingTimeConstant = 0.86;
+        source.connect(analyser);
+        state.micStream = stream;
+        state.analyser = analyser;
+        controls.toggleMic.textContent = 'Mic on';
+        setStatus('Microphone reactivity enabled. Audio energy now modulates spawn rate and size.');
+      }catch(err){
+        setStatus('Could not enable microphone: ' + (err.message || err));
+      }
+    }
+
+    function updateAudio(){
+      if(!state.analyser){
+        state.audioEnergy *= 0.92;
+        return;
+      }
+      const data = new Uint8Array(state.analyser.frequencyBinCount);
+      state.analyser.getByteFrequencyData(data);
+      let sum = 0;
+      for(let i=0;i<data.length;i++) sum += data[i];
+      const raw = sum / (data.length * 255);
+      state.audioEnergy = lerp(state.audioEnergy, clamp(raw * 2.2, 0, 1), 0.18);
+    }
+
+    // ------------------------------------------------------------
+    // Controls and actions
+    // ------------------------------------------------------------
+    function updateLabels(){
+      controls.spawnRateLabel.textContent = controls.spawnRate.value + ' /s';
+      controls.scrollSpeedLabel.textContent = Number(controls.scrollSpeed.value).toFixed(1) + ' px/fr';
+      controls.decayLabel.textContent = Number(controls.decay.value).toFixed(4);
+      controls.tempLabel.textContent = Number(controls.temperature.value).toFixed(2);
+      controls.trailLabel.textContent = Number(controls.trailStrength.value).toFixed(2);
+      controls.linkLabel.textContent = Number(controls.linkStrength.value).toFixed(2);
+      controls.flowLabel.textContent = Number(controls.flowStrength.value).toFixed(2);
+      controls.glowLabel.textContent = controls.glowStrength.value;
+    }
+
+    function applyMode(){
+      state.mode = controls.modeSelect.value;
+      domLayer.style.display = state.mode === 'dom' ? 'block' : 'none';
+      if(state.mode === 'canvas'){
+        for(const s of state.shapes){ if(s.element){ s.element.remove(); s.element = null; } }
+      } else {
+        for(const s of state.shapes){ if(!s.element) createDomElement(s); }
+        setStatus('DOM legacy mode enabled. Recording captures the canvas background only; switch to Canvas mode for full WebM capture.');
+      }
+    }
+
+    function clearAll(){
+      for(const s of state.shapes){ if(s.element) s.element.remove(); }
+      state.shapes.length = 0;
+      domLayer.innerHTML = '';
+      state.scrollX = 0;
+      state.spawnAccumulator = 0;
+      paintHardBackground();
+      shapeHud.textContent = '0';
+    }
+
+    function startStop(){
+      state.running = !state.running;
+      controls.toggleAnimation.textContent = state.running ? 'Stop' : 'Start';
+      controls.toggleAnimation.classList.toggle('good', state.running);
+      stateReadout.textContent = state.running ? 'Running' : 'Idle';
+      if(state.running && !state.network) initNetwork(false);
+      setStatus(state.running ? 'Animation running.' : 'Animation stopped.');
+    }
+
+    function snapshot(){
+      canvas.toBlob(blob => {
+        if(blob) downloadBlob(blob, 'hyperlab_snapshot_' + Date.now() + '.png');
+      }, 'image/png');
+    }
+
+    function recorderMimeType(){
+      const types = ['video/webm;codecs=vp9','video/webm;codecs=vp8','video/webm'];
+      return types.find(t => window.MediaRecorder && MediaRecorder.isTypeSupported(t)) || '';
+    }
+
+    function startRecording(){
+      if(state.recorder) return;
+      if(!canvas.captureStream || !window.MediaRecorder){
+        setStatus('Recording is not supported in this browser.');
+        return;
+      }
+      if(state.mode === 'dom') setStatus('Recording started, but DOM shapes are not included. Switch to Canvas mode for full capture.');
+      const stream = canvas.captureStream(60);
+      const mimeType = recorderMimeType();
+      const options = mimeType ? {mimeType} : undefined;
+      try{
+        const rec = new MediaRecorder(stream, options);
+        state.recordedBlobs = [];
+        rec.ondataavailable = e => { if(e.data && e.data.size) state.recordedBlobs.push(e.data); };
+        rec.onstop = () => {
+          controls.stopRecord.disabled = true;
+          controls.startRecord.disabled = false;
+          controls.downloadLast.disabled = false;
+          if(state.lastRecordingURL) URL.revokeObjectURL(state.lastRecordingURL);
+          state.lastRecordingURL = URL.createObjectURL(new Blob(state.recordedBlobs, {type:'video/webm'}));
+          setStatus('Recording ready. Click Download.');
+        };
+        rec.start(250);
+        state.recorder = rec;
+        controls.startRecord.disabled = true;
+        controls.stopRecord.disabled = false;
+        controls.downloadLast.disabled = true;
+        setStatus('Recording started.');
+      }catch(err){
+        setStatus('Could not start recording: ' + (err.message || err));
+      }
+    }
+
+    function stopRecording(){
+      if(!state.recorder) return;
+      state.recorder.stop();
+      state.recorder = null;
+    }
+
+    function downloadRecording(){
+      if(!state.lastRecordingURL) return;
+      const a = document.createElement('a');
+      a.href = state.lastRecordingURL;
+      a.download = 'hyperlab_animation_' + Date.now() + '.webm';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+    }
+
+    function exportConfig(){
+      const payload = { name:'HyperLab Config', exportedAt:new Date().toISOString(), config:currentConfig() };
+      downloadBlob(new Blob([JSON.stringify(payload, null, 2)], {type:'application/json'}), 'hyperlab_config.json');
+    }
+
+    function importConfigFile(file){
+      const reader = new FileReader();
+      reader.onload = () => {
+        try{
+          const data = JSON.parse(String(reader.result));
+          applyConfig(data.config || data);
+          setStatus('Imported config.');
+        }catch(err){ setStatus('Import failed: invalid JSON.'); }
+      };
+      reader.readAsText(file);
+    }
+
+    function toggleFullscreen(){
+      if(!document.fullscreenElement){
+        document.documentElement.requestFullscreen?.();
+      } else {
+        document.exitFullscreen?.();
+      }
+    }
+
+    function wireControls(){
+      updateLabels();
+      for(const id of configIds){
+        const el = $(id);
+        el.addEventListener('input', () => {
+          updateLabels();
+          if(id === 'modeSelect') applyMode();
+          if(['networkSelect','hiddenSizeSelect','seedInput'].includes(id)) initNetwork(false);
+          saveSession();
+        });
+        el.addEventListener('change', () => {
+          updateLabels();
+          if(id === 'modeSelect') applyMode();
+          if(['networkSelect','hiddenSizeSelect','seedInput'].includes(id)) initNetwork(false);
+          saveSession();
+        });
+      }
+
+      controls.toggleAnimation.addEventListener('click', startStop);
+      controls.resetNetwork.addEventListener('click', () => initNetwork(false));
+      controls.clearCanvas.addEventListener('click', () => { clearAll(); setStatus('Canvas cleared.'); });
+      controls.startRecord.addEventListener('click', startRecording);
+      controls.stopRecord.addEventListener('click', stopRecording);
+      controls.downloadLast.addEventListener('click', downloadRecording);
+      controls.snapshotPng.addEventListener('click', snapshot);
+      controls.toggleMic.addEventListener('click', toggleMic);
+      controls.fullscreenBtn.addEventListener('click', toggleFullscreen);
+
+      controls.savePreset.addEventListener('click', () => {
+        const presets = loadPresets();
+        const name = (controls.presetName.value || ('Preset ' + (presets.length + 1))).trim().slice(0, 60);
+        presets.push({ name, config:currentConfig(), savedAt:new Date().toISOString() });
+        savePresets(presets);
+        controls.presetName.value = '';
+        renderPresetList();
+        setStatus('Saved preset: ' + name);
+      });
+
+      controls.exportConfig.addEventListener('click', exportConfig);
+      controls.importConfig.addEventListener('click', () => controls.importFile.click());
+      controls.importFile.addEventListener('change', e => {
+        const file = e.target.files && e.target.files[0];
+        if(file) importConfigFile(file);
+        e.target.value = '';
+      });
+
+      window.addEventListener('keydown', e => {
+        if(isEditableTarget(e)) return;
+        const k = e.key.toLowerCase();
+        if(k === ' '){ e.preventDefault(); startStop(); }
+        else if(k === 'r'){ startRecording(); }
+        else if(k === 'c'){ clearAll(); setStatus('Canvas cleared.'); }
+        else if(k === 's'){ snapshot(); }
+        else if(k === 'f'){ toggleFullscreen(); }
+      });
+
+      window.addEventListener('pointermove', e => {
+        state.pointer.x = e.clientX;
+        state.pointer.y = e.clientY;
+        state.pointer.inside = true;
+      });
+      window.addEventListener('pointerdown', () => { state.pointer.down = true; state.pointer.inside = true; });
+      window.addEventListener('pointerup', () => { state.pointer.down = false; });
+      window.addEventListener('pointerleave', () => { state.pointer.inside = false; });
+
+      document.addEventListener('visibilitychange', () => {
+        if(document.hidden){
+          state.wasRunningBeforeHidden = state.running;
+          state.running = false;
+          stateReadout.textContent = 'Paused';
+        } else if(state.wasRunningBeforeHidden){
+          state.running = true;
+          state.lastTime = performance.now();
+          stateReadout.textContent = 'Running';
+        }
+      });
+    }
+
+    // ------------------------------------------------------------
+    // Main loop
+    // ------------------------------------------------------------
+    function updateHud(dt){
+      state.frames++;
+      state.fpsTime += dt;
+      if(state.fpsTime >= 0.5){
+        state.fps = Math.round(state.frames / state.fpsTime);
+        state.frames = 0;
+        state.fpsTime = 0;
+        fpsHud.textContent = state.fps;
+        shapeHud.textContent = state.shapes.length;
+        audioHud.textContent = state.audioEnergy.toFixed(2);
+      }
+    }
+
+    function loop(time){
+      if(!state.lastTime) state.lastTime = time;
+      const dt = Math.min(0.08, Math.max(0.001, (time - state.lastTime) / 1000));
+      state.lastTime = time;
+      updateAudio();
+      if(state.running){
+        spawnFromNetwork(dt);
+        updateShapes(dt);
+        if(state.mode === 'canvas') drawFrame(dt);
+        else {
+          const W = logicalWidth();
+          const H = logicalHeight();
+          drawBackground(W,H,0.18);
+          drawForeground(W,H);
+        }
+      } else {
+        if(parseFloat(controls.trailStrength.value) > 0.001 && state.mode === 'canvas') drawFrame(dt);
+      }
+      updateHud(dt);
+      requestAnimationFrame(loop);
+    }
+
+    // ------------------------------------------------------------
+    // Boot
+    // ------------------------------------------------------------
+    wireControls();
+    renderPresetList();
+    loadSession();
+    applyMode();
+    initNetwork(false);
+    paintHardBackground();
+    requestAnimationFrame(loop);
+    setStatus('Ready. Press Start to generate.');
+  })();
+  </script>
+</body>
+</html>
