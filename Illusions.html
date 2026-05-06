@@ -1,0 +1,670 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Advanced Illusion Engine V2</title>
+<style>
+:root{
+  --bg:#02040a;
+  --panel:rgba(8,12,22,.72);
+  --panel2:rgba(255,255,255,.075);
+  --text:#eef5ff;
+  --muted:#9aa8bd;
+  --accent:#65e7ff;
+  --danger:#ff5f86;
+  --border:rgba(255,255,255,.14);
+}
+*{box-sizing:border-box}
+html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#000;font-family:Inter,ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Arial;color:var(--text)}
+canvas{display:block;width:100vw;height:100vh;background:#000;cursor:crosshair;touch-action:none}
+#ui{position:fixed;inset:auto 14px 14px auto;width:min(390px,calc(100vw - 28px));max-height:calc(100vh - 28px);overflow:auto;background:linear-gradient(180deg,rgba(9,14,27,.82),rgba(4,6,12,.66));backdrop-filter:blur(18px) saturate(1.35);border:1px solid var(--border);border-radius:22px;box-shadow:0 20px 60px rgba(0,0,0,.5);padding:14px;transition:transform .25s ease,opacity .25s ease;z-index:10}
+#ui.hidden{transform:translateY(calc(100% + 24px));opacity:.15}
+.topbar{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px}
+h1{font-size:14px;letter-spacing:.08em;text-transform:uppercase;margin:0;color:#fff;font-weight:800}
+.badge{font-size:11px;color:#03131a;background:linear-gradient(90deg,#65e7ff,#b88cff);border-radius:999px;padding:5px 9px;font-weight:800;white-space:nowrap}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.field{background:var(--panel2);border:1px solid rgba(255,255,255,.09);border-radius:14px;padding:9px}
+.field.wide{grid-column:1/-1}
+label{display:flex;justify-content:space-between;gap:12px;font-size:11px;color:var(--muted);margin-bottom:7px;user-select:none}
+.value{color:#dff8ff;font-variant-numeric:tabular-nums}
+input[type=range]{width:100%;accent-color:var(--accent)}
+select,button{width:100%;border:1px solid rgba(255,255,255,.13);background:rgba(255,255,255,.09);color:var(--text);border-radius:12px;padding:9px 10px;outline:none}
+select option{background:#111827;color:white}
+button{cursor:pointer;font-weight:750;transition:.15s transform,.15s background}
+button:hover{background:rgba(255,255,255,.15);transform:translateY(-1px)}
+button:active{transform:translateY(0)}
+.row{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-top:8px}
+.help{font-size:11px;line-height:1.45;color:var(--muted);margin-top:10px;padding:10px;border-radius:14px;background:rgba(0,0,0,.18);border:1px solid rgba(255,255,255,.07)}
+#toast{position:fixed;left:50%;bottom:18px;transform:translateX(-50%) translateY(10px);opacity:0;background:rgba(3,8,18,.8);border:1px solid var(--border);box-shadow:0 10px 40px rgba(0,0,0,.55);backdrop-filter:blur(14px);border-radius:999px;color:white;padding:9px 14px;font-size:12px;pointer-events:none;transition:.2s ease;z-index:20}
+#toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+#fallback{display:none;position:fixed;inset:0;place-items:center;background:#05070c;color:white;padding:30px;text-align:center;z-index:30}
+#fps{position:fixed;left:12px;bottom:12px;font:12px/1.2 ui-monospace,SFMono-Regular,Menlo,monospace;color:rgba(255,255,255,.58);background:rgba(0,0,0,.28);border:1px solid rgba(255,255,255,.08);padding:7px 9px;border-radius:10px;z-index:5}
+@media (max-width:720px){#ui{inset:auto 10px 10px 10px;width:auto}.grid{grid-template-columns:1fr}.row{grid-template-columns:1fr 1fr}#fps{display:none}}
+</style>
+</head>
+<body>
+<canvas id="gl"></canvas>
+<div id="fps">FPS --</div>
+<div id="ui">
+  <div class="topbar">
+    <h1>Illusion Engine V2</h1>
+    <div class="badge">GPU OP-ART</div>
+  </div>
+  <div class="grid">
+    <div class="field wide">
+      <label>Mode <span class="value" id="modeName">Hyper Bulge</span></label>
+      <select id="mode">
+        <option value="0">Hyper Bulge Sphere</option>
+        <option value="1">Vortex Tunnel</option>
+        <option value="2">Impossible Checker Dome</option>
+        <option value="3">Liquid Moiré Field</option>
+        <option value="4">Neural Lattice Drift</option>
+        <option value="5">Kaleido Lens</option>
+      </select>
+    </div>
+    <div class="field">
+      <label>Intensity <span class="value" id="vIntensity">1.35</span></label>
+      <input id="intensity" type="range" min="0" max="4" step="0.01" value="1.35" />
+    </div>
+    <div class="field">
+      <label>Grid <span class="value" id="vGrid">34</span></label>
+      <input id="grid" type="range" min="10" max="90" step="1" value="34" />
+    </div>
+    <div class="field">
+      <label>Zoom <span class="value" id="vZoom">1.00</span></label>
+      <input id="zoom" type="range" min="0.45" max="2.7" step="0.01" value="1" />
+    </div>
+    <div class="field">
+      <label>Speed <span class="value" id="vSpeed">0.65</span></label>
+      <input id="speed" type="range" min="0" max="2.5" step="0.01" value="0.65" />
+    </div>
+    <div class="field">
+      <label>Chromatic <span class="value" id="vChroma">0.45</span></label>
+      <input id="chroma" type="range" min="0" max="2" step="0.01" value="0.45" />
+    </div>
+    <div class="field">
+      <label>Noise <span class="value" id="vNoise">0.12</span></label>
+      <input id="noise" type="range" min="0" max="1" step="0.01" value="0.12" />
+    </div>
+    <div class="field">
+      <label>Palette <span class="value" id="paletteName">Mono Cyan</span></label>
+      <select id="palette">
+        <option value="0">Mono Cyan</option>
+        <option value="1">Infrared Magenta</option>
+        <option value="2">Black / White</option>
+        <option value="3">Prismatic</option>
+        <option value="4">Amber Night</option>
+      </select>
+    </div>
+    <div class="field">
+      <label>Quality <span class="value" id="qualityName">Balanced</span></label>
+      <select id="quality">
+        <option value="1">Battery</option>
+        <option value="1.5" selected>Balanced</option>
+        <option value="2">Sharp</option>
+        <option value="3">Ultra</option>
+      </select>
+    </div>
+  </div>
+  <div class="row">
+    <button id="randomize">Randomize</button>
+    <button id="pause">Pause</button>
+    <button id="shot">PNG</button>
+    <button id="reset">Reset</button>
+    <button id="hide">Hide UI</button>
+    <button id="full">Fullscreen</button>
+  </div>
+  <div class="help">
+    Move pointer to steer the lens. Scroll changes intensity. Click/tap cycles mode. Keys: <b>Space</b> pause, <b>H</b> hide UI, <b>R</b> randomize, <b>S</b> save PNG, <b>F</b> fullscreen.
+  </div>
+</div>
+<div id="toast"></div>
+<div id="fallback"><div><h2>WebGL unavailable</h2><p>This illusion needs WebGL. Try a modern browser with hardware acceleration enabled.</p></div></div>
+
+<script>
+(() => {
+'use strict';
+
+const canvas = document.getElementById('gl');
+const fallback = document.getElementById('fallback');
+const fpsEl = document.getElementById('fps');
+const ui = document.getElementById('ui');
+const toastEl = document.getElementById('toast');
+
+const gl = canvas.getContext('webgl', {
+  alpha:false,
+  antialias:false,
+  depth:false,
+  stencil:false,
+  preserveDrawingBuffer:true,
+  powerPreference:'high-performance'
+});
+
+if (!gl) {
+  fallback.style.display = 'grid';
+  return;
+}
+
+const vertexShaderSource = `
+attribute vec2 a_position;
+varying vec2 v_uv;
+void main(){
+  v_uv = a_position * 0.5 + 0.5;
+  gl_Position = vec4(a_position, 0.0, 1.0);
+}`;
+
+const fragmentShaderSource = `
+precision highp float;
+
+uniform vec2  u_resolution;
+uniform vec2  u_mouse;
+uniform float u_time;
+uniform float u_intensity;
+uniform float u_grid;
+uniform float u_zoom;
+uniform float u_speed;
+uniform float u_chroma;
+uniform float u_noise;
+uniform int   u_mode;
+uniform int   u_palette;
+
+varying vec2 v_uv;
+
+#define PI 3.141592653589793
+#define TAU 6.283185307179586
+
+float hash21(vec2 p){
+  p = fract(p * vec2(123.34, 456.21));
+  p += dot(p, p + 45.32);
+  return fract(p.x * p.y);
+}
+
+float noise(vec2 p){
+  vec2 i = floor(p);
+  vec2 f = fract(p);
+  f = f*f*(3.0-2.0*f);
+  float a = hash21(i);
+  float b = hash21(i + vec2(1.0,0.0));
+  float c = hash21(i + vec2(0.0,1.0));
+  float d = hash21(i + vec2(1.0,1.0));
+  return mix(mix(a,b,f.x), mix(c,d,f.x), f.y);
+}
+
+float fbm(vec2 p){
+  float v = 0.0;
+  float a = 0.5;
+  mat2 r = mat2(0.80, -0.60, 0.60, 0.80);
+  for(int i=0;i<5;i++){
+    v += a * noise(p);
+    p = r * p * 2.03 + 17.13;
+    a *= 0.5;
+  }
+  return v;
+}
+
+mat2 rot(float a){
+  float s = sin(a), c = cos(a);
+  return mat2(c,-s,s,c);
+}
+
+float sat(float x){ return clamp(x, 0.0, 1.0); }
+float tri(float x){ return abs(fract(x) - 0.5) * 2.0; }
+float ridge(float x, float sharp){ return pow(1.0 - abs(x), sharp); }
+
+vec2 lens(vec2 p, vec2 m, float power){
+  vec2 d = p - m;
+  float r = length(d);
+  float sphere = exp(-r*r*1.85);
+  float pinch = power * sphere;
+  float ringWave = sin(r * 26.0 - u_time * 2.0 * u_speed) * 0.025 * power;
+  float twist = power * sphere * 1.65 + ringWave;
+  d = rot(twist) * d;
+  d *= 1.0 + pinch * 0.58 - smoothstep(0.25,1.25,r) * power * 0.10;
+  return m + d + normalize(d + 0.0001) * ringWave;
+}
+
+vec2 kaleido(vec2 p, float sides){
+  float a = atan(p.y,p.x);
+  float r = length(p);
+  float seg = TAU / sides;
+  a = mod(a + seg * 0.5, seg) - seg * 0.5;
+  a = abs(a);
+  return vec2(cos(a), sin(a)) * r;
+}
+
+float lineGrid(vec2 p, float scale){
+  vec2 g = abs(fract(p * scale) - 0.5);
+  float line = min(g.x, g.y);
+  float aa = 0.010 + 0.35 / scale;
+  return 1.0 - smoothstep(0.0, aa, line);
+}
+
+float checker(vec2 p, float scale){
+  vec2 c = floor(p * scale);
+  return mod(c.x + c.y, 2.0);
+}
+
+float rings(vec2 p, float scale){
+  return 0.5 + 0.5 * sin(length(p) * scale);
+}
+
+float moire(vec2 p, float scale){
+  float a = sin(p.x * scale + sin(p.y * 2.1) * 2.0);
+  float b = sin((rot(0.785) * p).x * (scale * 1.03));
+  float c = sin(length(p + 0.2 * sin(u_time * .3)) * scale * .74);
+  return (a + b + c) / 3.0;
+}
+
+float impossibleDome(vec2 p, float scale){
+  float r = length(p);
+  vec2 q = p / (0.45 + 0.85 * sqrt(max(0.0001, 1.35 - r*r)));
+  float ch = checker(q + 0.05 * sin(q.yx * 5.0 + u_time), scale);
+  float gr = lineGrid(q, scale);
+  float shade = 0.62 + 0.38 * dot(normalize(vec3(-p.x, -p.y, 0.75)), normalize(vec3(-0.55,0.7,0.65)));
+  return mix(ch, gr, 0.38) * shade;
+}
+
+float neuralLattice(vec2 p, float scale){
+  vec2 flow = vec2(
+    fbm(p * 2.0 + u_time * .12 * u_speed),
+    fbm(p * 2.0 - u_time * .10 * u_speed + 8.4)
+  ) - 0.5;
+  vec2 q = p + flow * (0.34 * u_intensity);
+  float lattice = lineGrid(q + 0.035 * sin(q.yx * 11.0 + u_time), scale);
+  float phase = sin((q.x + q.y) * scale * 0.7 + fbm(q*3.0)*TAU + u_time*u_speed);
+  return lattice * 0.8 + phase * 0.22;
+}
+
+float pattern(vec2 uv, float channelShift){
+  vec2 asp = vec2(u_resolution.x / u_resolution.y, 1.0);
+  vec2 p = (uv - 0.5) * asp * (2.35 / u_zoom);
+  vec2 m = (u_mouse / u_resolution - 0.5) * asp * (2.35 / u_zoom);
+
+  p += channelShift * vec2(1.0, -0.35) * (0.02 + 0.02 * u_intensity);
+
+  float t = u_time * u_speed;
+  float power = 0.22 + u_intensity * 0.42;
+  float scale = u_grid;
+  float outv = 0.0;
+
+  if(u_mode == 0){
+    vec2 q = lens(p, m, power);
+    float g = lineGrid(q + 0.04 * sin(q.yx * 7.0 + t), scale);
+    float r = length(q - m);
+    float shine = exp(-length(q - m - vec2(-.26,.22)) * 7.0) * .65;
+    float shadow = smoothstep(1.25, .05, r) * .18;
+    outv = g * (0.72 + shadow) + rings(q-m, 42.0) * .12 + shine;
+  }
+  else if(u_mode == 1){
+    vec2 d = p - m;
+    float r = length(d) + 0.0001;
+    float a = atan(d.y,d.x);
+    a += u_intensity * 1.4 / (0.4 + r) + t * .35;
+    vec2 q = vec2(cos(a), sin(a)) * (log(r + .22) * 1.45);
+    float tunnel = sin(q.x * scale * .34 + q.y * scale * .7 - t * 3.0);
+    float spokes = sin(a * 18.0 + r * 18.0 - t * 2.0);
+    outv = tunnel * .55 + spokes * .25 + rings(d, 70.0) * .22;
+  }
+  else if(u_mode == 2){
+    vec2 q = lens(p, m, power * .75);
+    outv = impossibleDome(q - m, max(8.0, scale * .36));
+    outv = outv * 1.7 - .62;
+  }
+  else if(u_mode == 3){
+    vec2 flow = vec2(fbm(p*1.9 + t*.18), fbm(p*1.9 - t*.15 + 4.0)) - 0.5;
+    vec2 q = lens(p + flow * u_intensity * .32, m, power * .45);
+    outv = moire(q, scale * 1.85) + .38 * moire(rot(.37 + .1*sin(t*.1))*q + flow*.4, scale * 1.21);
+  }
+  else if(u_mode == 4){
+    vec2 q = lens(p, m, power * .52);
+    outv = neuralLattice(q, scale * .92);
+  }
+  else{
+    vec2 q = p - m;
+    q = kaleido(rot(t*.11) * q, 7.0 + floor(mod(u_intensity*2.0, 5.0)));
+    q = lens(q, vec2(0.0), power * .45);
+    outv = lineGrid(q, scale * .9) + .35 * moire(q, scale * 1.4) + .24 * rings(q, 55.0);
+  }
+
+  float grain = (fbm(p * 22.0 + t) - 0.5) * u_noise;
+  return outv + grain;
+}
+
+vec3 palette(float v, int id){
+  v = sat(v);
+  if(id == 0){
+    return mix(vec3(0.015,0.025,0.045), vec3(0.85,0.98,1.0), v) + vec3(0.0,0.12,0.18) * smoothstep(.62,1.0,v);
+  }
+  if(id == 1){
+    return mix(vec3(0.035,0.0,0.026), vec3(1.0,0.52,0.88), v) + vec3(0.16,0.02,0.0) * smoothstep(.7,1.0,v);
+  }
+  if(id == 2){
+    return vec3(v);
+  }
+  if(id == 3){
+    return 0.5 + 0.5 * cos(TAU * (vec3(0.0, .33, .67) + v * .86 + vec3(.08,.0,-.08)));
+  }
+  return mix(vec3(0.04,0.018,0.0), vec3(1.0,0.74,0.32), v);
+}
+
+void main(){
+  vec2 uv = gl_FragCoord.xy / u_resolution.xy;
+
+  float ca = u_chroma * 0.012;
+  float vr = pattern(uv + vec2(ca, -ca*.4),  1.0);
+  float vg = pattern(uv,                         0.0);
+  float vb = pattern(uv - vec2(ca, -ca*.4), -1.0);
+
+  vec3 raw = vec3(vr, vg, vb);
+
+  // Perceptual contrast curve: pushes Mach-band-like edges without clipping too harshly.
+  raw = sign(raw) * pow(abs(raw), vec3(1.18));
+  vec3 mapped = 0.5 + 0.5 * raw;
+
+  vec3 col;
+  if(u_palette == 3){
+    col = vec3(
+      palette(mapped.r, 3).r,
+      palette(mapped.g, 3).g,
+      palette(mapped.b, 3).b
+    );
+  } else {
+    vec3 base = palette(mapped.g, u_palette);
+    vec3 aberr = vec3(mapped.r - mapped.g, 0.0, mapped.b - mapped.g) * (0.75 * u_chroma);
+    col = base + aberr;
+  }
+
+  vec2 p = uv - 0.5;
+  float vig = smoothstep(0.85, 0.18, length(p));
+  col *= 0.38 + 0.82 * vig;
+
+  // Subtle scan/interlace texture, just enough to add retinal instability.
+  col += sin(gl_FragCoord.y * PI) * 0.012 * u_noise;
+  col = clamp(col, 0.0, 1.0);
+
+  gl_FragColor = vec4(col, 1.0);
+}`;
+
+function compileShader(type, source){
+  const shader = gl.createShader(type);
+  gl.shaderSource(shader, source);
+  gl.compileShader(shader);
+  if(!gl.getShaderParameter(shader, gl.COMPILE_STATUS)){
+    const msg = gl.getShaderInfoLog(shader) || 'Unknown shader compile error';
+    gl.deleteShader(shader);
+    throw new Error(msg);
+  }
+  return shader;
+}
+
+function createProgram(vsSource, fsSource){
+  const vs = compileShader(gl.VERTEX_SHADER, vsSource);
+  const fs = compileShader(gl.FRAGMENT_SHADER, fsSource);
+  const program = gl.createProgram();
+  gl.attachShader(program, vs);
+  gl.attachShader(program, fs);
+  gl.linkProgram(program);
+  gl.deleteShader(vs);
+  gl.deleteShader(fs);
+  if(!gl.getProgramParameter(program, gl.LINK_STATUS)){
+    const msg = gl.getProgramInfoLog(program) || 'Unknown shader link error';
+    gl.deleteProgram(program);
+    throw new Error(msg);
+  }
+  return program;
+}
+
+let program;
+try {
+  program = createProgram(vertexShaderSource, fragmentShaderSource);
+} catch (err) {
+  fallback.style.display = 'grid';
+  fallback.innerHTML = `<div><h2>Shader error</h2><pre style="white-space:pre-wrap;text-align:left;max-width:900px">${String(err.message).replace(/[<>&]/g, s => ({'<':'&lt;','>':'&gt;','&':'&amp;'}[s]))}</pre></div>`;
+  return;
+}
+
+gl.useProgram(program);
+
+const quad = gl.createBuffer();
+gl.bindBuffer(gl.ARRAY_BUFFER, quad);
+gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([
+  -1,-1,  1,-1, -1, 1,
+  -1, 1,  1,-1,  1, 1
+]), gl.STATIC_DRAW);
+
+const loc = {
+  position: gl.getAttribLocation(program, 'a_position'),
+  resolution: gl.getUniformLocation(program, 'u_resolution'),
+  mouse: gl.getUniformLocation(program, 'u_mouse'),
+  time: gl.getUniformLocation(program, 'u_time'),
+  intensity: gl.getUniformLocation(program, 'u_intensity'),
+  grid: gl.getUniformLocation(program, 'u_grid'),
+  zoom: gl.getUniformLocation(program, 'u_zoom'),
+  speed: gl.getUniformLocation(program, 'u_speed'),
+  chroma: gl.getUniformLocation(program, 'u_chroma'),
+  noise: gl.getUniformLocation(program, 'u_noise'),
+  mode: gl.getUniformLocation(program, 'u_mode'),
+  palette: gl.getUniformLocation(program, 'u_palette')
+};
+
+gl.enableVertexAttribArray(loc.position);
+gl.vertexAttribPointer(loc.position, 2, gl.FLOAT, false, 0, 0);
+
+const controls = {
+  mode: document.getElementById('mode'),
+  intensity: document.getElementById('intensity'),
+  grid: document.getElementById('grid'),
+  zoom: document.getElementById('zoom'),
+  speed: document.getElementById('speed'),
+  chroma: document.getElementById('chroma'),
+  noise: document.getElementById('noise'),
+  palette: document.getElementById('palette'),
+  quality: document.getElementById('quality')
+};
+
+const labels = {
+  modeName: document.getElementById('modeName'),
+  paletteName: document.getElementById('paletteName'),
+  qualityName: document.getElementById('qualityName'),
+  intensity: document.getElementById('vIntensity'),
+  grid: document.getElementById('vGrid'),
+  zoom: document.getElementById('vZoom'),
+  speed: document.getElementById('vSpeed'),
+  chroma: document.getElementById('vChroma'),
+  noise: document.getElementById('vNoise')
+};
+
+const state = {
+  width: 1,
+  height: 1,
+  dpr: 1,
+  mouseX: 0.5,
+  mouseY: 0.5,
+  targetMouseX: 0.5,
+  targetMouseY: 0.5,
+  time: 0,
+  lastNow: performance.now(),
+  paused: false,
+  frameCount: 0,
+  fpsTime: performance.now()
+};
+
+function value(id){ return Number(controls[id].value); }
+function intValue(id){ return parseInt(controls[id].value, 10); }
+
+function toast(msg){
+  toastEl.textContent = msg;
+  toastEl.classList.add('show');
+  clearTimeout(toast._t);
+  toast._t = setTimeout(() => toastEl.classList.remove('show'), 1200);
+}
+
+function qualityName(v){
+  if(v < 1.25) return 'Battery';
+  if(v < 1.75) return 'Balanced';
+  if(v < 2.5) return 'Sharp';
+  return 'Ultra';
+}
+
+function syncLabels(){
+  labels.modeName.textContent = controls.mode.options[controls.mode.selectedIndex].textContent;
+  labels.paletteName.textContent = controls.palette.options[controls.palette.selectedIndex].textContent;
+  labels.qualityName.textContent = qualityName(value('quality'));
+  labels.intensity.textContent = value('intensity').toFixed(2);
+  labels.grid.textContent = value('grid').toFixed(0);
+  labels.zoom.textContent = value('zoom').toFixed(2);
+  labels.speed.textContent = value('speed').toFixed(2);
+  labels.chroma.textContent = value('chroma').toFixed(2);
+  labels.noise.textContent = value('noise').toFixed(2);
+}
+
+function resize(){
+  const q = Math.min(value('quality'), window.devicePixelRatio || 1);
+  state.dpr = q;
+  const w = Math.max(2, Math.floor(innerWidth * q));
+  const h = Math.max(2, Math.floor(innerHeight * q));
+  if(canvas.width !== w || canvas.height !== h){
+    canvas.width = w;
+    canvas.height = h;
+    state.width = w;
+    state.height = h;
+    gl.viewport(0,0,w,h);
+  }
+}
+
+function pointer(e){
+  const p = e.touches ? e.touches[0] : e;
+  state.targetMouseX = p.clientX / innerWidth;
+  state.targetMouseY = 1.0 - p.clientY / innerHeight;
+}
+
+function cycleMode(){
+  controls.mode.value = String((intValue('mode') + 1) % 6);
+  syncLabels();
+  toast(labels.modeName.textContent);
+}
+
+function randomize(){
+  controls.mode.value = String(Math.floor(Math.random() * 6));
+  controls.palette.value = String(Math.floor(Math.random() * 5));
+  controls.intensity.value = (0.55 + Math.random() * 2.8).toFixed(2);
+  controls.grid.value = String(Math.floor(16 + Math.random() * 64));
+  controls.zoom.value = (0.62 + Math.random() * 1.75).toFixed(2);
+  controls.speed.value = (0.15 + Math.random() * 1.75).toFixed(2);
+  controls.chroma.value = (Math.random() * 1.4).toFixed(2);
+  controls.noise.value = (Math.random() * 0.32).toFixed(2);
+  syncLabels(); resize(); toast('Randomized');
+}
+
+function reset(){
+  controls.mode.value = '0';
+  controls.palette.value = '0';
+  controls.quality.value = '1.5';
+  controls.intensity.value = '1.35';
+  controls.grid.value = '34';
+  controls.zoom.value = '1';
+  controls.speed.value = '0.65';
+  controls.chroma.value = '0.45';
+  controls.noise.value = '0.12';
+  state.time = 0;
+  syncLabels(); resize(); toast('Reset');
+}
+
+function savePNG(){
+  const a = document.createElement('a');
+  a.download = `illusion-engine-v2-${Date.now()}.png`;
+  a.href = canvas.toDataURL('image/png');
+  a.click();
+  toast('PNG saved');
+}
+
+function togglePause(){
+  state.paused = !state.paused;
+  document.getElementById('pause').textContent = state.paused ? 'Play' : 'Pause';
+  toast(state.paused ? 'Paused' : 'Playing');
+}
+
+function toggleUI(){
+  ui.classList.toggle('hidden');
+  toast(ui.classList.contains('hidden') ? 'UI hidden' : 'UI shown');
+}
+
+async function fullscreen(){
+  try{
+    if(!document.fullscreenElement) await document.documentElement.requestFullscreen();
+    else await document.exitFullscreen();
+  } catch(e){ toast('Fullscreen blocked'); }
+}
+
+window.addEventListener('resize', resize);
+window.addEventListener('mousemove', pointer, {passive:true});
+window.addEventListener('touchstart', pointer, {passive:true});
+window.addEventListener('touchmove', pointer, {passive:true});
+window.addEventListener('wheel', (e) => {
+  const next = Math.max(0, Math.min(4, value('intensity') + e.deltaY * -0.002));
+  controls.intensity.value = next.toFixed(2);
+  syncLabels();
+}, {passive:true});
+
+canvas.addEventListener('click', cycleMode);
+Object.values(controls).forEach(el => el.addEventListener('input', () => { syncLabels(); resize(); }));
+document.getElementById('randomize').addEventListener('click', randomize);
+document.getElementById('reset').addEventListener('click', reset);
+document.getElementById('shot').addEventListener('click', savePNG);
+document.getElementById('pause').addEventListener('click', togglePause);
+document.getElementById('hide').addEventListener('click', toggleUI);
+document.getElementById('full').addEventListener('click', fullscreen);
+
+window.addEventListener('keydown', (e) => {
+  const key = e.key.toLowerCase();
+  if(key === ' '){ e.preventDefault(); togglePause(); }
+  if(key === 'h') toggleUI();
+  if(key === 'r') randomize();
+  if(key === 's') savePNG();
+  if(key === 'f') fullscreen();
+  if(key === 'm') cycleMode();
+});
+
+function render(now){
+  resize();
+  const dt = Math.min(0.05, (now - state.lastNow) / 1000);
+  state.lastNow = now;
+  if(!state.paused) state.time += dt;
+
+  state.mouseX += (state.targetMouseX - state.mouseX) * 0.12;
+  state.mouseY += (state.targetMouseY - state.mouseY) * 0.12;
+
+  gl.useProgram(program);
+  gl.uniform2f(loc.resolution, state.width, state.height);
+  gl.uniform2f(loc.mouse, state.mouseX * state.width, state.mouseY * state.height);
+  gl.uniform1f(loc.time, state.time);
+  gl.uniform1f(loc.intensity, value('intensity'));
+  gl.uniform1f(loc.grid, value('grid'));
+  gl.uniform1f(loc.zoom, value('zoom'));
+  gl.uniform1f(loc.speed, value('speed'));
+  gl.uniform1f(loc.chroma, value('chroma'));
+  gl.uniform1f(loc.noise, value('noise'));
+  gl.uniform1i(loc.mode, intValue('mode'));
+  gl.uniform1i(loc.palette, intValue('palette'));
+
+  gl.drawArrays(gl.TRIANGLES, 0, 6);
+
+  state.frameCount++;
+  if(now - state.fpsTime > 500){
+    const fps = Math.round(state.frameCount * 1000 / (now - state.fpsTime));
+    fpsEl.textContent = `FPS ${fps}  ${state.width}×${state.height}`;
+    state.frameCount = 0;
+    state.fpsTime = now;
+  }
+
+  requestAnimationFrame(render);
+}
+
+syncLabels();
+resize();
+requestAnimationFrame(render);
+})();
+</script>
+</body>
+</html>
