@@ -2,187 +2,558 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <title>Advanced Online 3D Slicer & Ender 3 Controller</title>
+  <title>Advanced Online 3D Slicer & Ender 3 Controller — V2 Lab</title>
   <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta name="description" content="Single-file experimental browser slicer, G-code previewer, and Ender 3 serial controller." />
+
   <!-- Three.js and extras -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
   <script src="https://threejs.org/examples/js/controls/OrbitControls.js"></script>
   <script src="https://threejs.org/examples/js/loaders/STLLoader.js"></script>
   <script src="https://threejs.org/examples/js/loaders/OBJLoader.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 
-  <!-- Fonts & basic style -->
-  <link href="https://fonts.googleapis.com/css?family=Roboto:400,500&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css?family=Roboto:400,500,700&display=swap" rel="stylesheet">
+
   <style>
     :root {
       --primary: #1e88e5;
+      --primary2: #1565c0;
+      --success: #43a047;
+      --danger: #e53935;
+      --warn: #f9a825;
       --bg: #f5f7fa;
       --card: #ffffff;
-      --muted: #666;
+      --card2: #f9fbff;
+      --text: #1d2430;
+      --muted: #667085;
+      --line: #dfe6ef;
+      --soft: rgba(14,20,30,0.08);
+      --shadow: 0 12px 32px rgba(14,20,30,0.10);
+      --radius: 14px;
     }
-    *{box-sizing:border-box}
-    html,body{height:100%;margin:0;font-family:Roboto,Arial,Helvetica,sans-serif;background:var(--bg);color:#222}
-    header{background:var(--primary);color:#fff;padding:14px 18px}
-    header h1{margin:0;font-weight:500;font-size:18px}
-    .wrap{max-width:1200px;margin:18px auto;padding:12px}
-    .grid {display:grid;grid-template-columns: 1fr 420px;gap:18px;align-items:start}
-    /* Left pane (viewer + controls) */
-    .card{background:var(--card);border-radius:10px;box-shadow:0 6px 18px rgba(14,20,30,0.06);padding:12px}
-    #viewer {height:620px;border-radius:8px;overflow:hidden;border:1px solid #e2e6ea}
-    .controls{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px;align-items:center}
-    .controls label{font-size:13px;color:var(--muted);margin-right:6px}
-    .controls input[type="number"], .controls input[type="text"], .controls select {
-      padding:8px;border-radius:6px;border:1px solid #d2d7db;background:#fff;width:120px;
+
+    [data-theme="dark"] {
+      --primary: #64b5f6;
+      --primary2: #2196f3;
+      --success: #66bb6a;
+      --danger: #ef5350;
+      --warn: #ffca28;
+      --bg: #071018;
+      --card: #0e1722;
+      --card2: #111f2e;
+      --text: #e7edf5;
+      --muted: #a4b0c2;
+      --line: #243244;
+      --soft: rgba(0,0,0,0.28);
+      --shadow: 0 12px 40px rgba(0,0,0,0.32);
     }
-    .controls input[type="file"]{padding:6px}
-    button{background:var(--primary);color:#fff;border:none;padding:8px 12px;border-radius:6px;cursor:pointer}
-    button.secondary{background:#4caf50}
-    .side {display:flex;flex-direction:column;gap:10px}
-    .status {font-size:13px;color:#444}
-    .small{font-size:13px;color:var(--muted)}
-    .sliderRow{display:flex;gap:8px;align-items:center}
-    .progressOuter{height:12px;background:#eee;border-radius:8px;overflow:hidden;margin-top:6px}
-    .progressInner{height:100%;width:0;background:linear-gradient(90deg,var(--primary),#1565c0)}
-    footer{margin-top:18px;text-align:center;color:var(--muted);font-size:13px}
-    @media(max-width:980px){.grid{grid-template-columns:1fr;}.controls input[type="number"],.controls select{width:100%}}
+
+    * { box-sizing: border-box; }
+    html, body { height: 100%; margin: 0; font-family: Roboto, Arial, Helvetica, sans-serif; background: var(--bg); color: var(--text); }
+    body { overflow-y: auto; }
+
+    header {
+      position: sticky;
+      top: 0;
+      z-index: 20;
+      background: linear-gradient(135deg, var(--primary), var(--primary2));
+      color: #fff;
+      padding: 14px 18px;
+      box-shadow: 0 8px 28px rgba(0,0,0,0.16);
+    }
+
+    .headerRow { max-width: 1540px; margin: 0 auto; display: flex; align-items: center; gap: 12px; justify-content: space-between; }
+    header h1 { margin: 0; font-weight: 700; font-size: 18px; letter-spacing: .1px; }
+    .headerSub { font-size: 12px; opacity: .9; margin-top: 3px; }
+    .wrap { max-width: 1540px; margin: 18px auto; padding: 0 14px 22px; }
+    .grid { display: grid; grid-template-columns: minmax(620px,1fr) 430px; gap: 16px; align-items: start; }
+    .card { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); padding: 12px; }
+    .cardTitle { display:flex; align-items:center; justify-content:space-between; gap:8px; font-weight:700; margin-bottom: 8px; }
+    .cardTitle small { font-weight:400; color:var(--muted); }
+    #viewer { height: 650px; border-radius: 12px; overflow: hidden; border: 1px solid var(--line); background: #101722; position: relative; }
+    #viewer canvas { display:block; }
+
+    .overlayHud {
+      position: absolute;
+      left: 12px;
+      top: 12px;
+      z-index: 5;
+      background: rgba(0,0,0,.54);
+      color: #fff;
+      border-radius: 12px;
+      padding: 9px 11px;
+      font-size: 12px;
+      line-height: 1.45;
+      backdrop-filter: blur(8px);
+      max-width: 310px;
+      pointer-events: none;
+    }
+
+    .viewerTools {
+      position: absolute;
+      right: 12px;
+      top: 12px;
+      z-index: 6;
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+      max-width: 360px;
+    }
+
+    .controls, .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+    .row { margin-top: 10px; }
+    label { font-size: 12px; color: var(--muted); }
+    input, select, textarea, button { font: inherit; }
+    input[type="number"], input[type="text"], select {
+      padding: 8px 9px;
+      border-radius: 9px;
+      border: 1px solid var(--line);
+      background: var(--card2);
+      color: var(--text);
+      width: 116px;
+      min-height: 36px;
+    }
+    input[type="file"] { padding: 6px; border: 1px dashed var(--line); border-radius: 10px; background: var(--card2); color: var(--muted); max-width: 270px; }
+    input[type="range"] { accent-color: var(--primary); }
+    textarea { background: var(--card2); color: var(--text); }
+    button {
+      background: var(--primary);
+      color: #fff;
+      border: none;
+      padding: 8px 11px;
+      border-radius: 10px;
+      cursor: pointer;
+      min-height: 36px;
+      box-shadow: 0 5px 14px rgba(30,136,229,.16);
+      transition: transform .12s ease, opacity .12s ease, filter .12s ease;
+    }
+    button:hover { transform: translateY(-1px); filter: brightness(1.03); }
+    button:disabled { opacity: .45; cursor: not-allowed; transform: none; }
+    button.secondary { background: var(--success); }
+    button.warn { background: var(--warn); color:#202020; }
+    button.danger { background: var(--danger); }
+    button.ghost { background: var(--card2); color: var(--text); border: 1px solid var(--line); box-shadow: none; }
+    button.tiny { min-height: 28px; padding: 5px 8px; font-size: 12px; border-radius: 8px; }
+
+    .side { display: flex; flex-direction: column; gap: 12px; }
+    .tabs { display:flex; gap:6px; flex-wrap: wrap; margin-bottom: 10px; }
+    .tabBtn { background: var(--card2); color: var(--muted); border: 1px solid var(--line); box-shadow: none; }
+    .tabBtn.active { background: var(--primary); color:#fff; border-color: transparent; }
+    .tabPane { display: none; }
+    .tabPane.active { display: block; }
+
+    .status { font-size: 13px; color: var(--text); }
+    .small { font-size: 12px; color: var(--muted); }
+    .metricGrid { display:grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap:8px; margin-top:10px; }
+    .metric { padding:9px; border:1px solid var(--line); border-radius:12px; background:var(--card2); min-height:58px; }
+    .metric .k { color:var(--muted); font-size:11px; }
+    .metric .v { margin-top:4px; font-weight:700; font-size:13px; overflow-wrap:anywhere; }
+
+    .progressOuter { height: 12px; background: var(--card2); border: 1px solid var(--line); border-radius: 999px; overflow: hidden; margin-top: 7px; }
+    .progressInner { height: 100%; width: 0; background: linear-gradient(90deg, var(--primary), var(--success)); transition: width .16s linear; }
+
+    .settingGrid { display:grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap:8px; }
+    .setting { border:1px solid var(--line); border-radius: 12px; padding:8px; background: var(--card2); }
+    .setting label { display:block; margin-bottom:5px; }
+    .setting input, .setting select { width:100%; }
+    .wide { grid-column: span 2; }
+    .full { grid-column: 1 / -1; }
+
+    .pillRow { display:flex; flex-wrap:wrap; gap:6px; }
+    .pill { border: 1px solid var(--line); background: var(--card2); border-radius: 999px; padding: 5px 8px; font-size: 12px; color: var(--muted); }
+    .pill.ok { color: var(--success); border-color: rgba(67,160,71,.4); }
+    .pill.bad { color: var(--danger); border-color: rgba(229,57,53,.4); }
+    .pill.warn { color: #a56b00; border-color: rgba(249,168,37,.5); }
+
+    .consoleBox, .gcodeBox {
+      width:100%;
+      border-radius: 10px;
+      border: 1px solid var(--line);
+      padding: 9px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 12px;
+      line-height: 1.38;
+      resize: vertical;
+    }
+    .consoleBox { height: 220px; }
+    .gcodeBox { height: 340px; }
+
+    .notice {
+      border: 1px solid rgba(249,168,37,.45);
+      background: rgba(249,168,37,.10);
+      border-radius: 12px;
+      padding: 9px;
+      color: var(--text);
+      font-size: 12px;
+      line-height: 1.45;
+    }
+
+    .modalBackdrop {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,.52);
+      display:none;
+      align-items:center;
+      justify-content:center;
+      z-index: 99;
+      padding: 16px;
+    }
+    .modalBackdrop.show { display:flex; }
+    .modal {
+      width: min(620px, 100%);
+      background: var(--card);
+      color: var(--text);
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      box-shadow: 0 22px 70px rgba(0,0,0,.34);
+      padding: 16px;
+    }
+    .modal h2 { margin: 0 0 8px; font-size: 19px; }
+    .modal p, .modal li { color: var(--muted); font-size: 13px; line-height: 1.5; }
+    .modal ul { padding-left: 20px; }
+
+    footer { margin: 18px 0 0; text-align: center; color: var(--muted); font-size: 12px; }
+
+    @media(max-width:1120px) {
+      .grid { grid-template-columns: 1fr; }
+      .metricGrid { grid-template-columns: repeat(2,1fr); }
+      #viewer { height: 560px; }
+    }
+    @media(max-width:680px) {
+      .settingGrid { grid-template-columns: 1fr; }
+      .wide { grid-column: auto; }
+      .headerRow { align-items:flex-start; flex-direction:column; }
+      #viewer { height: 430px; }
+      input[type="file"] { max-width:100%; width:100%; }
+      .controls button, .row button { flex: 1 1 auto; }
+    }
   </style>
 </head>
-<body>
+<body data-theme="light">
   <header>
-    <h1>Advanced Online 3D Slicer & Ender 3 Controller — Improved</h1>
+    <div class="headerRow">
+      <div>
+        <h1>Advanced Online 3D Slicer & Ender 3 Controller — V2 Lab</h1>
+        <div class="headerSub">Experimental browser slicer, G-code visualizer, and local printer streamer. Verify output before using on real hardware.</div>
+      </div>
+      <div class="controls">
+        <button id="themeBtn" class="ghost" title="Toggle dark / light theme">Dark Mode</button>
+        <button id="resetUiBtn" class="ghost" title="Reset stored UI and slicing settings">Reset UI</button>
+      </div>
+    </div>
   </header>
 
   <div class="wrap">
     <div class="grid">
-      <!-- Viewer + Layer controls -->
-      <div>
-        <div class="card">
-          <div id="viewer"></div>
-          <div class="controls" style="margin-top:12px">
-            <input type="file" id="modelUpload" accept=".stl,.obj,.zip,.gcode">
+      <main>
+        <section class="card">
+          <div id="viewer">
+            <div id="hud" class="overlayHud">Viewer ready. Load an STL, OBJ, ZIP, or G-code.</div>
+            <div class="viewerTools">
+              <button id="fitBtn" class="tiny ghost">Fit</button>
+              <button id="topBtn" class="tiny ghost">Top</button>
+              <button id="frontBtn" class="tiny ghost">Front</button>
+              <button id="isoBtn" class="tiny ghost">Iso</button>
+              <button id="toggleModelBtn" class="tiny ghost">Model</button>
+              <button id="toggleGcodeBtn" class="tiny ghost">G-code</button>
+              <button id="toggleTravelBtn" class="tiny ghost">Travel</button>
+            </div>
+          </div>
+
+          <div class="row controls">
+            <input type="file" id="modelUpload" accept=".stl,.obj,.zip,.gcode,.gc" />
             <button id="loadGcodeBtn">Upload G-code</button>
             <button id="downloadGcodeBtn">Download G-code</button>
+            <button id="exportProjectBtn" class="ghost">Export Project</button>
+            <button id="importProjectBtn" class="ghost">Import Project</button>
             <button id="saveSettingsBtn" title="Persist settings to browser">Save Settings</button>
           </div>
 
-          <div style="margin-top:12px" class="controls">
-            <label for="layerHeight">Layer Height (mm)</label>
-            <input id="layerHeight" type="number" min="0.05" max="0.4" step="0.01" value="0.2">
-            <label for="printSpeed">Print Speed (mm/s)</label>
-            <input id="printSpeed" type="number" min="10" max="120" step="1" value="60">
-            <label for="infillPercent">Infill %</label>
-            <input id="infillPercent" type="number" min="0" max="100" step="1" value="10" style="width:80px">
+          <div class="metricGrid">
+            <div class="metric"><div class="k">Model size</div><div id="modelSizeMetric" class="v">—</div></div>
+            <div class="metric"><div class="k">Layers</div><div id="layerMetric" class="v">—</div></div>
+            <div class="metric"><div class="k">Estimated time</div><div id="estTime" class="v">—</div></div>
+            <div class="metric"><div class="k">Filament</div><div id="estFilament" class="v">—</div></div>
           </div>
 
-          <div style="margin-top:12px" class="controls">
-            <label for="bedTemp">Bed °C</label>
-            <input id="bedTemp" type="number" min="0" max="110" step="1" value="60">
-            <label for="nozzleTemp">Nozzle °C</label>
-            <input id="nozzleTemp" type="number" min="170" max="260" step="1" value="200">
-            <label for="filamentDia">Filament mm</label>
-            <input id="filamentDia" type="number" min="1.5" max="3.0" step="0.01" value="1.75" style="width:100px">
-          </div>
-
-          <div style="margin-top:12px" class="controls">
-            <label for="skirtLoops">Skirt Loops</label>
-            <input id="skirtLoops" type="number" min="0" max="10" step="1" value="2" style="width:80px">
-            <label for="retraction">Retraction (mm)</label>
-            <input id="retraction" type="number" min="0" max="10" step="0.1" value="6" style="width:100px">
-            <label for="travelSpeed">Travel mm/s</label>
-            <input id="travelSpeed" type="number" min="30" max="300" step="1" value="150" style="width:100px">
-          </div>
-
-          <div style="margin-top:12px" class="controls">
-            <div class="sliderRow" style="flex:1">
-              <label class="small">Layer preview</label>
-              <input id="layerSlider" type="range" min="1" max="1" value="1" style="flex:1">
-              <div id="layerLabel" class="small" style="width:110px;text-align:right">Layer 1 / 1</div>
+          <div class="row">
+            <div style="flex:1;min-width:260px">
+              <label class="small">Layer / G-code preview</label>
+              <div class="controls" style="margin-top:5px">
+                <input id="layerSlider" type="range" min="1" max="1" value="1" style="flex:1;min-width:180px" />
+                <div id="layerLabel" class="small" style="width:128px;text-align:right">Layer 1 / 1</div>
+              </div>
             </div>
-            <div style="width:160px;text-align:right">
-              <div class="small">Estimated time</div>
-              <div id="estTime" class="small">—</div>
-              <div class="small">Filament</div>
-              <div id="estFilament" class="small">—</div>
+            <div style="min-width:260px;flex:1">
+              <label class="small">Print stream progress</label>
+              <div class="progressOuter"><div id="progressBar" class="progressInner"></div></div>
             </div>
           </div>
 
-          <div style="margin-top:12px;display:flex;gap:8px;align-items:center">
+          <div class="row controls">
             <button id="generateBtn">Generate G-code</button>
+            <button id="previewGcodeBtn" class="ghost">Preview Current G-code</button>
+            <button id="analyzeBtn" class="ghost">Analyze</button>
             <button id="autoStartBtn" class="secondary">Auto Start Print</button>
-            <button id="pausePrintBtn">Pause</button>
-            <button id="resumePrintBtn">Resume</button>
-            <button id="cancelPrintBtn">Cancel</button>
-            <button id="extractLayerBtn">Extract Layer</button>
+            <button id="pausePrintBtn" class="warn">Pause</button>
+            <button id="resumePrintBtn" class="secondary">Resume</button>
+            <button id="cancelPrintBtn" class="danger">Cancel / Emergency</button>
+            <button id="extractLayerBtn" class="ghost">Extract Layer</button>
           </div>
 
-          <div style="margin-top:8px">
-            <div class="small">Progress</div>
-            <div class="progressOuter"><div id="progressBar" class="progressInner"></div></div>
-            <div id="statusLine" class="status" style="margin-top:8px">Idle</div>
+          <div class="row">
+            <div class="small">Status</div>
+            <div id="statusLine" class="status">Idle</div>
           </div>
-        </div>
-      </div>
+        </section>
 
-      <!-- Right side: connection & gcode preview -->
-      <div class="side">
-        <div class="card">
-          <div style="display:flex;justify-content:space-between;align-items:center">
-            <div><strong>Printer Connection</strong></div>
-            <div class="small">Local</div>
+        <section class="card" style="margin-top:14px">
+          <div class="tabs">
+            <button class="tabBtn active" data-tab="sliceTab">Slicing</button>
+            <button class="tabBtn" data-tab="transformTab">Transform</button>
+            <button class="tabBtn" data-tab="qualityTab">Quality Tools</button>
+            <button class="tabBtn" data-tab="macrosTab">Macros</button>
           </div>
 
-          <div style="margin-top:8px" class="controls">
-            <button id="connectSerial">Connect (Web Serial)</button>
-            <button id="connectUsb">Connect (WebUSB)</button>
-            <button id="disconnectBtn" style="background:#bdbdbd">Disconnect</button>
-          </div>
+          <div id="sliceTab" class="tabPane active">
+            <div class="settingGrid">
+              <div class="setting">
+                <label for="profilePreset">Profile preset</label>
+                <select id="profilePreset">
+                  <option value="custom">Custom</option>
+                  <option value="draft">Fast draft</option>
+                  <option value="standard">Standard PLA</option>
+                  <option value="fine">Fine detail</option>
+                  <option value="strong">Strong part</option>
+                  <option value="vase">Vase-ish demo</option>
+                </select>
+              </div>
+              <div class="setting">
+                <label for="materialPreset">Material</label>
+                <select id="materialPreset">
+                  <option value="pla">PLA</option>
+                  <option value="petg">PETG</option>
+                  <option value="abs">ABS</option>
+                  <option value="tpu">TPU</option>
+                  <option value="custom">Custom</option>
+                </select>
+              </div>
+              <div class="setting">
+                <label for="printerPreset">Printer</label>
+                <select id="printerPreset">
+                  <option value="ender3">Ender 3 / 220×220×250</option>
+                  <option value="ender3v2">Ender 3 V2 / 220×220×250</option>
+                  <option value="ender3s1">Ender 3 S1 / 220×220×270</option>
+                  <option value="custom">Custom bed</option>
+                </select>
+              </div>
 
-          <div style="margin-top:8px" class="controls">
-            <label for="baud">Baud</label>
-            <select id="baud">
-              <option>115200</option>
-              <option>250000</option>
-            </select>
-            <label class="small">Endpoint</label>
-          </div>
+              <div class="setting"><label for="layerHeight">Layer Height (mm)</label><input id="layerHeight" type="number" min="0.05" max="0.4" step="0.01" value="0.2" /></div>
+              <div class="setting"><label for="firstLayerHeight">First Layer (mm)</label><input id="firstLayerHeight" type="number" min="0.08" max="0.5" step="0.01" value="0.24" /></div>
+              <div class="setting"><label for="nozzleWidth">Line Width (mm)</label><input id="nozzleWidth" type="number" min="0.2" max="1.2" step="0.01" value="0.4" /></div>
 
-          <div style="margin-top:10px">
-            <div class="small">Console</div>
-            <textarea id="console" style="width:100%;height:220px;margin-top:6px;border-radius:6px;border:1px solid #e0e0e0;padding:8px;font-family:monospace;font-size:12px" readonly></textarea>
-            <div class="controls" style="margin-top:8px">
-              <input id="manualCommand" type="text" style="flex:1" placeholder="Type raw G-code / M-cmd">
-              <button id="sendCmd">Send</button>
+              <div class="setting"><label for="printSpeed">Print Speed (mm/s)</label><input id="printSpeed" type="number" min="5" max="180" step="1" value="60" /></div>
+              <div class="setting"><label for="travelSpeed">Travel Speed (mm/s)</label><input id="travelSpeed" type="number" min="30" max="300" step="1" value="150" /></div>
+              <div class="setting"><label for="firstLayerSpeed">First Layer Speed</label><input id="firstLayerSpeed" type="number" min="5" max="80" step="1" value="25" /></div>
+
+              <div class="setting"><label for="infillPercent">Infill %</label><input id="infillPercent" type="number" min="0" max="100" step="1" value="15" /></div>
+              <div class="setting"><label for="infillPattern">Infill Pattern</label><select id="infillPattern"><option value="lines">Lines</option><option value="grid">Grid</option><option value="triangles">Triangles-lite</option></select></div>
+              <div class="setting"><label for="wallCount">Walls</label><input id="wallCount" type="number" min="1" max="5" step="1" value="2" /></div>
+
+              <div class="setting"><label for="topLayers">Top Layers</label><input id="topLayers" type="number" min="0" max="12" step="1" value="4" /></div>
+              <div class="setting"><label for="bottomLayers">Bottom Layers</label><input id="bottomLayers" type="number" min="0" max="12" step="1" value="4" /></div>
+              <div class="setting"><label for="seamMode">Seam</label><select id="seamMode"><option value="nearest">Nearest</option><option value="back">Back corner</option><option value="random">Randomized</option></select></div>
+
+              <div class="setting"><label for="bedTemp">Bed °C</label><input id="bedTemp" type="number" min="0" max="120" step="1" value="60" /></div>
+              <div class="setting"><label for="nozzleTemp">Nozzle °C</label><input id="nozzleTemp" type="number" min="150" max="285" step="1" value="200" /></div>
+              <div class="setting"><label for="fanSpeed">Fan %</label><input id="fanSpeed" type="number" min="0" max="100" step="1" value="100" /></div>
+
+              <div class="setting"><label for="filamentDia">Filament mm</label><input id="filamentDia" type="number" min="1.5" max="3.0" step="0.01" value="1.75" /></div>
+              <div class="setting"><label for="flowRate">Flow %</label><input id="flowRate" type="number" min="50" max="150" step="1" value="100" /></div>
+              <div class="setting"><label for="retraction">Retraction (mm)</label><input id="retraction" type="number" min="0" max="12" step="0.1" value="6" /></div>
+
+              <div class="setting"><label for="skirtLoops">Skirt Loops</label><input id="skirtLoops" type="number" min="0" max="10" step="1" value="2" /></div>
+              <div class="setting"><label for="brimWidth">Brim Width (mm)</label><input id="brimWidth" type="number" min="0" max="20" step="0.5" value="0" /></div>
+              <div class="setting"><label for="zHop">Z Hop (mm)</label><input id="zHop" type="number" min="0" max="2" step="0.05" value="0.2" /></div>
             </div>
           </div>
-        </div>
 
-        <div class="card">
-          <div><strong>G-code Preview</strong></div>
-          <textarea id="gcodePreview" style="width:100%;height:260px;margin-top:6px;border-radius:6px;border:1px solid #e0e0e0;padding:8px;font-family:monospace;font-size:12px"></textarea>
-        </div>
-      </div>
+          <div id="transformTab" class="tabPane">
+            <div class="settingGrid">
+              <div class="setting"><label for="scaleX">Scale X %</label><input id="scaleX" type="number" step="1" value="100" /></div>
+              <div class="setting"><label for="scaleY">Scale Y %</label><input id="scaleY" type="number" step="1" value="100" /></div>
+              <div class="setting"><label for="scaleZ">Scale Z %</label><input id="scaleZ" type="number" step="1" value="100" /></div>
+              <div class="setting"><label for="rotateX">Rotate X °</label><input id="rotateX" type="number" step="1" value="0" /></div>
+              <div class="setting"><label for="rotateY">Rotate Y °</label><input id="rotateY" type="number" step="1" value="0" /></div>
+              <div class="setting"><label for="rotateZ">Rotate Z °</label><input id="rotateZ" type="number" step="1" value="0" /></div>
+              <div class="setting"><label for="moveX">Move X mm</label><input id="moveX" type="number" step="1" value="110" /></div>
+              <div class="setting"><label for="moveY">Move Y mm</label><input id="moveY" type="number" step="1" value="110" /></div>
+              <div class="setting"><label for="moveZ">Move Z mm</label><input id="moveZ" type="number" step="0.1" value="0" /></div>
+              <div class="setting full">
+                <div class="controls">
+                  <button id="applyTransformBtn">Apply Transform</button>
+                  <button id="centerModelBtn" class="ghost">Center on Bed</button>
+                  <button id="dropToBedBtn" class="ghost">Drop to Bed</button>
+                  <button id="resetTransformBtn" class="ghost">Reset Transform</button>
+                  <button id="mirrorXBtn" class="ghost">Mirror X</button>
+                  <button id="mirrorYBtn" class="ghost">Mirror Y</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div id="qualityTab" class="tabPane">
+            <div class="notice">
+              This browser slicer is still a prototype. It now performs real layer-plane intersections and clipped infill, but it is not a replacement for Cura/PrusaSlicer/Bambu Studio for production parts. Always dry-run and inspect the G-code.
+            </div>
+            <div class="row controls">
+              <button id="repairBtn" class="ghost">Quick Mesh Repair</button>
+              <button id="checkFitBtn" class="ghost">Check Bed Fit</button>
+              <button id="overhangBtn" class="ghost">Analyze Overhangs</button>
+              <button id="supportPreviewBtn" class="ghost">Preview Simple Supports</button>
+              <button id="clearHelpersBtn" class="ghost">Clear Helpers</button>
+            </div>
+            <div id="qualityReport" class="small" style="margin-top:10px;line-height:1.5">No quality report yet.</div>
+          </div>
+
+          <div id="macrosTab" class="tabPane">
+            <div class="pillRow">
+              <button class="ghost macroBtn" data-cmd="M105">Get Temps</button>
+              <button class="ghost macroBtn" data-cmd="G28">Home All</button>
+              <button class="ghost macroBtn" data-cmd="G29">Auto Level / G29</button>
+              <button class="ghost macroBtn" data-cmd="M84">Disable Motors</button>
+              <button class="ghost macroBtn" data-cmd="M106 S255">Fan On</button>
+              <button class="ghost macroBtn" data-cmd="M107">Fan Off</button>
+              <button class="ghost macroBtn" data-cmd="G1 Z10 F3000">Lift Z 10</button>
+              <button class="ghost macroBtn" data-cmd="M503">Read EEPROM</button>
+            </div>
+            <div class="row controls">
+              <input id="customMacroName" type="text" placeholder="Macro name" style="flex:1;min-width:160px" />
+              <input id="customMacroCmd" type="text" placeholder="G-code command(s), use ; between lines" style="flex:2;min-width:220px" />
+              <button id="saveMacroBtn">Save Macro</button>
+            </div>
+            <div id="customMacros" class="pillRow" style="margin-top:10px"></div>
+          </div>
+        </section>
+      </main>
+
+      <aside class="side">
+        <section class="card">
+          <div class="cardTitle"><span>Printer Connection</span><small id="connectionState">Disconnected</small></div>
+          <div class="notice">
+            Web Serial works only in Chromium-based browsers on HTTPS or localhost. Use at your own risk: this page can send motion and heater commands to a real printer.
+          </div>
+          <div class="row controls">
+            <button id="connectSerial">Connect Web Serial</button>
+            <button id="connectUsb" class="ghost">Connect WebUSB</button>
+            <button id="disconnectBtn" class="ghost">Disconnect</button>
+          </div>
+          <div class="row controls">
+            <label for="baud">Baud</label>
+            <select id="baud"><option>115200</option><option>250000</option></select>
+            <label><input id="ackMode" type="checkbox" checked /> Wait for ok</label>
+            <label><input id="stripComments" type="checkbox" checked /> Strip comments</label>
+          </div>
+          <div class="row controls">
+            <input id="manualCommand" type="text" style="flex:1;min-width:190px" placeholder="Type raw G-code / M command" />
+            <button id="sendCmd">Send</button>
+          </div>
+          <textarea id="console" class="consoleBox" readonly></textarea>
+        </section>
+
+        <section class="card">
+          <div class="cardTitle"><span>G-code Preview</span><small id="gcodeStats">0 lines</small></div>
+          <textarea id="gcodePreview" class="gcodeBox" spellcheck="false"></textarea>
+          <div class="row controls">
+            <button id="copyGcodeBtn" class="ghost">Copy</button>
+            <button id="clearGcodeBtn" class="ghost">Clear</button>
+            <button id="saveSnapshotBtn" class="ghost">Save Snapshot</button>
+          </div>
+        </section>
+
+        <section class="card">
+          <div class="cardTitle"><span>Validation</span><small>pre-flight</small></div>
+          <div id="validationPills" class="pillRow">
+            <span class="pill warn">No model</span>
+            <span class="pill warn">No G-code</span>
+            <span class="pill bad">Disconnected</span>
+          </div>
+        </section>
+      </aside>
     </div>
 
-    <footer>&copy; 2025 — Advanced Slicer Prototype</footer>
+    <footer>&copy; 2026 — Advanced Slicer Prototype. Use professional slicers for critical or unattended prints.</footer>
+  </div>
+
+  <div id="safetyModal" class="modalBackdrop">
+    <div class="modal">
+      <h2>Before streaming to a real printer</h2>
+      <p>This tool is an experimental slicer and controller. It can send heater, homing, movement, and emergency-stop commands.</p>
+      <ul>
+        <li>Keep the printer supervised.</li>
+        <li>Verify nozzle/bed temperatures, model placement, and Z height.</li>
+        <li>Preview the generated G-code path before printing.</li>
+        <li>Do not use for valuable, safety-critical, or unattended prints.</li>
+      </ul>
+      <div class="row controls" style="justify-content:flex-end">
+        <button id="modalCancel" class="ghost">Cancel</button>
+        <button id="modalConfirm" class="danger">I understand — start streaming</button>
+      </div>
+    </div>
   </div>
 
   <script>
-  (function(){
-    // -------------------------
-    // App state
-    // -------------------------
+  (() => {
+    'use strict';
+
     const app = {
-      scene:null, camera:null, renderer:null, controls:null,
-      modelMesh:null, modelBBox:null,
-      gcodeText:null,
-      serialPort:null, serialWriter:null, serialReader:null, serialLock:false,
-      usbDevice:null,
-      generateAbortSignal:false,
-      sending:false,
-      totalLines:0, sentLines:0,
-      awaitingOk:false
+      scene: null,
+      camera: null,
+      renderer: null,
+      controls: null,
+      bedGroup: null,
+      modelRoot: null,
+      modelMesh: null,
+      modelSourceName: '',
+      modelBBox: null,
+      triangleCache: [],
+      sliceCache: [],
+      sliceGroup: null,
+      gcodeGroup: null,
+      travelGroup: null,
+      helperGroup: null,
+      gcodeText: '',
+      serialPort: null,
+      serialWriter: null,
+      serialReader: null,
+      serialWritableClosed: null,
+      serialReadableClosed: null,
+      usbDevice: null,
+      sending: false,
+      streamPaused: false,
+      totalLines: 0,
+      sentLines: 0,
+      okResolvers: [],
+      lineBuffer: '',
+      preview: {
+        showModel: true,
+        showGcode: true,
+        showTravel: false
+      },
+      printer: {
+        bedX: 220,
+        bedY: 220,
+        bedZ: 250,
+        origin: 'front-left'
+      },
+      transform: {
+        mirrorX: 1,
+        mirrorY: 1
+      }
     };
 
-    // DOM shortcuts
     const $ = id => document.getElementById(id);
     const statusLine = $('statusLine');
     const consoleEl = $('console');
@@ -190,849 +561,1672 @@
     const progressBar = $('progressBar');
     const layerSlider = $('layerSlider');
     const layerLabel = $('layerLabel');
-    const layerHeightInput = $('layerHeight');
+    const hud = $('hud');
 
-    // -------------------------
-    // Utilities
-    // -------------------------
-    function logConsole(...args){
-      const s = args.map(a=> (typeof a === 'object' ? JSON.stringify(a) : String(a))).join(' ');
+    const SETTINGS_KEYS = [
+      'profilePreset','materialPreset','printerPreset','layerHeight','firstLayerHeight','nozzleWidth','printSpeed','travelSpeed','firstLayerSpeed','infillPercent','infillPattern','wallCount','topLayers','bottomLayers','seamMode','bedTemp','nozzleTemp','fanSpeed','filamentDia','flowRate','retraction','skirtLoops','brimWidth','zHop','baud','ackMode','stripComments','scaleX','scaleY','scaleZ','rotateX','rotateY','rotateZ','moveX','moveY','moveZ'
+    ];
+
+    const PRESETS = {
+      draft: { layerHeight: .28, firstLayerHeight: .28, printSpeed: 80, travelSpeed: 180, firstLayerSpeed: 30, infillPercent: 10, wallCount: 2, topLayers: 3, bottomLayers: 3, nozzleWidth: .44 },
+      standard: { layerHeight: .20, firstLayerHeight: .24, printSpeed: 60, travelSpeed: 150, firstLayerSpeed: 25, infillPercent: 15, wallCount: 2, topLayers: 4, bottomLayers: 4, nozzleWidth: .40 },
+      fine: { layerHeight: .12, firstLayerHeight: .20, printSpeed: 45, travelSpeed: 150, firstLayerSpeed: 20, infillPercent: 15, wallCount: 3, topLayers: 6, bottomLayers: 5, nozzleWidth: .38 },
+      strong: { layerHeight: .20, firstLayerHeight: .24, printSpeed: 45, travelSpeed: 140, firstLayerSpeed: 22, infillPercent: 35, wallCount: 4, topLayers: 5, bottomLayers: 5, nozzleWidth: .44 },
+      vase: { layerHeight: .20, firstLayerHeight: .24, printSpeed: 45, travelSpeed: 120, firstLayerSpeed: 22, infillPercent: 0, wallCount: 1, topLayers: 0, bottomLayers: 3, nozzleWidth: .42 }
+    };
+
+    const MATERIALS = {
+      pla: { nozzleTemp: 200, bedTemp: 60, fanSpeed: 100, retraction: 6, printSpeed: 60 },
+      petg: { nozzleTemp: 235, bedTemp: 75, fanSpeed: 45, retraction: 4, printSpeed: 45 },
+      abs: { nozzleTemp: 245, bedTemp: 100, fanSpeed: 0, retraction: 5, printSpeed: 45 },
+      tpu: { nozzleTemp: 220, bedTemp: 50, fanSpeed: 60, retraction: 1.2, printSpeed: 25 }
+    };
+
+    const PRINTERS = {
+      ender3: { bedX: 220, bedY: 220, bedZ: 250 },
+      ender3v2: { bedX: 220, bedY: 220, bedZ: 250 },
+      ender3s1: { bedX: 220, bedY: 220, bedZ: 270 }
+    };
+
+    function logConsole(...args) {
+      const s = args.map(a => typeof a === 'object' ? JSON.stringify(a) : String(a)).join(' ');
       consoleEl.value += s + '\n';
       consoleEl.scrollTop = consoleEl.scrollHeight;
       console.log(...args);
     }
-    function setStatus(text){
+
+    function setStatus(text, quiet = false) {
       statusLine.textContent = text;
-      logConsole('[STATUS]', text);
-    }
-    function formatSecondsToHMS(sec){
-      if(!isFinite(sec)) return '—';
-      sec = Math.round(sec);
-      const h = Math.floor(sec/3600); sec%=3600;
-      const m = Math.floor(sec/60); const s = sec%60;
-      return (h? (h+'h ') : '') + (m? (m+'m ') : '') + s+'s';
+      if (!quiet) logConsole('[STATUS]', text);
+      updateHud();
+      updateValidation();
     }
 
-    // -------------------------
-    // Viewer / Three.js
-    // -------------------------
-    function initViewer(){
+    function updateHud() {
+      const model = app.modelBBox ? bboxSizeString(app.modelBBox) : 'No model';
+      const layers = app.sliceCache.length ? `${app.sliceCache.length} sliced` : `${layerSlider.max || 1} possible`;
+      const conn = app.serialWriter ? 'Serial connected' : app.usbDevice ? 'USB connected' : 'Disconnected';
+      hud.innerHTML = `<b>${escapeHtml(app.modelSourceName || 'Advanced Slicer Lab')}</b><br>${model}<br>${layers}<br>${conn}<br>${escapeHtml(statusLine.textContent || 'Idle')}`;
+    }
+
+    function escapeHtml(str) {
+      return String(str).replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
+    }
+
+    function num(id, fallback = 0) {
+      const v = parseFloat($(id).value);
+      return Number.isFinite(v) ? v : fallback;
+    }
+
+    function int(id, fallback = 0) {
+      const v = parseInt($(id).value, 10);
+      return Number.isFinite(v) ? v : fallback;
+    }
+
+    function bool(id) {
+      return !!$(id).checked;
+    }
+
+    function formatSecondsToHMS(sec) {
+      if (!Number.isFinite(sec) || sec <= 0) return '—';
+      sec = Math.round(sec);
+      const h = Math.floor(sec / 3600); sec %= 3600;
+      const m = Math.floor(sec / 60); const s = sec % 60;
+      return (h ? h + 'h ' : '') + (m ? m + 'm ' : '') + s + 's';
+    }
+
+    function bboxSizeString(box) {
+      const s = box.getSize(new THREE.Vector3());
+      return `${s.x.toFixed(1)} × ${s.y.toFixed(1)} × ${s.z.toFixed(1)} mm`;
+    }
+
+    function debounce(fn, ms = 180) {
+      let t;
+      return (...args) => {
+        clearTimeout(t);
+        t = setTimeout(() => fn(...args), ms);
+      };
+    }
+
+    function initViewer() {
       const container = $('viewer');
       app.scene = new THREE.Scene();
-      app.camera = new THREE.PerspectiveCamera(60, container.clientWidth / container.clientHeight, 0.1, 2000);
-      app.renderer = new THREE.WebGLRenderer({antialias:true});
-      app.renderer.setPixelRatio(window.devicePixelRatio);
+      app.scene.background = new THREE.Color(0x101722);
+      app.camera = new THREE.PerspectiveCamera(55, container.clientWidth / container.clientHeight, 0.1, 4000);
+      app.renderer = new THREE.WebGLRenderer({ antialias: true });
+      app.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
       app.renderer.setSize(container.clientWidth, container.clientHeight);
+      app.renderer.outputEncoding = THREE.sRGBEncoding;
       container.appendChild(app.renderer.domElement);
 
-      // Controls
       app.controls = new THREE.OrbitControls(app.camera, app.renderer.domElement);
+      app.controls.enableDamping = true;
+      app.controls.dampingFactor = 0.07;
 
-      // Lights
-      const hemi = new THREE.HemisphereLight(0xffffff, 0x444444, 0.8);
+      const hemi = new THREE.HemisphereLight(0xffffff, 0x455a64, 0.9);
       hemi.position.set(0, 1, 0);
       app.scene.add(hemi);
-      const dir = new THREE.DirectionalLight(0xffffff, 0.8);
-      dir.position.set(2, 6, 2);
+      const dir = new THREE.DirectionalLight(0xffffff, 0.9);
+      dir.position.set(90, 140, 120);
       app.scene.add(dir);
+      const dir2 = new THREE.DirectionalLight(0x8ab4ff, 0.35);
+      dir2.position.set(-140, 90, -80);
+      app.scene.add(dir2);
 
-      // Grid & axes
-      const grid = new THREE.GridHelper(300, 30, 0xe0e0e0, 0xe0e0e0);
-      app.scene.add(grid);
-      const axes = new THREE.AxesHelper(100);
-      app.scene.add(axes);
+      app.modelRoot = new THREE.Group();
+      app.sliceGroup = new THREE.Group();
+      app.gcodeGroup = new THREE.Group();
+      app.travelGroup = new THREE.Group();
+      app.helperGroup = new THREE.Group();
+      app.scene.add(app.modelRoot, app.sliceGroup, app.gcodeGroup, app.travelGroup, app.helperGroup);
 
-      app.camera.position.set(0, 80, 200);
-      app.controls.update();
+      createBed();
+      setCameraIso();
 
-      window.addEventListener('resize', ()=>{
+      window.addEventListener('resize', () => {
         app.camera.aspect = container.clientWidth / container.clientHeight;
         app.camera.updateProjectionMatrix();
         app.renderer.setSize(container.clientWidth, container.clientHeight);
       });
 
-      (function animate(){
+      (function animate() {
         requestAnimationFrame(animate);
         app.controls.update();
         app.renderer.render(app.scene, app.camera);
       })();
     }
 
-    // Fit model to view
-    function fitModelToView(){
-      if(!app.modelMesh) return;
-      const box = new THREE.Box3().setFromObject(app.modelMesh);
-      app.modelBBox = box;
-      const size = box.getSize(new THREE.Vector3());
-      const center = box.getCenter(new THREE.Vector3());
-      // position camera
-      const maxDim = Math.max(size.x, size.y, size.z);
-      const fov = app.camera.fov * (Math.PI/180);
-      let cameraZ = Math.abs(maxDim / 2 * Math.tan(fov * 2));
-      cameraZ *= 2.2;
-      app.camera.position.set(center.x, center.y + maxDim*0.4, center.z + cameraZ);
-      app.camera.lookAt(center);
-      app.controls.target.copy(center);
-      app.controls.update();
-      // update slider limits
-      const layerHeight = parseFloat(layerHeightInput.value) || 0.2;
-      const minZ = box.min.z;
-      const maxZ = box.max.z;
-      const layerCount = Math.max(1, Math.ceil((maxZ - minZ)/layerHeight));
-      layerSlider.min = 1;
-      layerSlider.max = layerCount;
-      layerSlider.value = 1;
-      updateLayerLabel();
+    function createBed() {
+      if (app.bedGroup) app.scene.remove(app.bedGroup);
+      app.bedGroup = new THREE.Group();
+      const { bedX, bedY, bedZ } = app.printer;
+
+      const bedGeo = new THREE.PlaneBufferGeometry(bedX, bedY);
+      const bedMat = new THREE.MeshStandardMaterial({ color: 0x202a34, roughness: .85, metalness: .08, side: THREE.DoubleSide });
+      const bed = new THREE.Mesh(bedGeo, bedMat);
+      bed.rotation.x = -Math.PI / 2;
+      bed.position.set(bedX / 2, 0, bedY / 2);
+      app.bedGroup.add(bed);
+
+      const grid = new THREE.GridHelper(Math.max(bedX, bedY), 22, 0x406075, 0x2c3d4c);
+      grid.position.set(bedX / 2, 0.08, bedY / 2);
+      app.bedGroup.add(grid);
+
+      const boxGeo = new THREE.BoxBufferGeometry(bedX, bedZ, bedY);
+      const edges = new THREE.EdgesGeometry(boxGeo);
+      const edgeMat = new THREE.LineBasicMaterial({ color: 0x4f82a8, transparent: true, opacity: .55 });
+      const volume = new THREE.LineSegments(edges, edgeMat);
+      volume.position.set(bedX / 2, bedZ / 2, bedY / 2);
+      app.bedGroup.add(volume);
+
+      const axes = new THREE.AxesHelper(60);
+      axes.position.set(0, 0.12, 0);
+      app.bedGroup.add(axes);
+      app.scene.add(app.bedGroup);
     }
 
-    // Clean existing model
-    function clearModel(){
-      if(app.modelMesh){
-        app.scene.remove(app.modelMesh);
-        app.modelMesh.traverse && app.modelMesh.traverse(child=>{
-          if(child.geometry) child.geometry.dispose && child.geometry.dispose();
-          if(child.material) child.material.dispose && child.material.dispose();
-        });
-        app.modelMesh = null;
+    function setCameraIso() {
+      const { bedX, bedY, bedZ } = app.printer;
+      app.camera.position.set(bedX * 1.2, bedZ * .9, bedY * 1.65);
+      app.controls.target.set(bedX / 2, bedZ * .20, bedY / 2);
+      app.controls.update();
+    }
+
+    function setCameraTop() {
+      const { bedX, bedY, bedZ } = app.printer;
+      app.camera.position.set(bedX / 2, bedZ * 1.9, bedY / 2 + 0.01);
+      app.controls.target.set(bedX / 2, 0, bedY / 2);
+      app.controls.update();
+    }
+
+    function setCameraFront() {
+      const { bedX, bedY, bedZ } = app.printer;
+      app.camera.position.set(bedX / 2, bedZ * .55, -bedY * 1.55);
+      app.controls.target.set(bedX / 2, bedZ * .25, bedY / 2);
+      app.controls.update();
+    }
+
+    function clearGroup(group, dispose = true) {
+      while (group.children.length) {
+        const obj = group.children.pop();
+        if (dispose) disposeObject(obj);
       }
     }
 
-    // Load model (STL/OBJ). Accepts ArrayBuffer or string for OBJ.
-    function loadModelFromFile(file, arrayBuffer){
-      clearModel();
+    function disposeObject(obj) {
+      obj.traverse?.(child => {
+        if (child.geometry) child.geometry.dispose?.();
+        if (child.material) {
+          if (Array.isArray(child.material)) child.material.forEach(m => m.dispose?.());
+          else child.material.dispose?.();
+        }
+      });
+    }
+
+    function clearModel() {
+      clearGroup(app.modelRoot);
+      app.modelMesh = null;
+      app.modelBBox = null;
+      app.triangleCache = [];
+      app.sliceCache = [];
+      clearGroup(app.sliceGroup);
+      clearGroup(app.gcodeGroup);
+      clearGroup(app.travelGroup);
+      clearGroup(app.helperGroup);
+      app.modelSourceName = '';
+      $('modelSizeMetric').textContent = '—';
+      $('layerMetric').textContent = '—';
+      layerSlider.max = 1;
+      layerSlider.value = 1;
+      updateLayerLabel();
+      updateHud();
+    }
+
+    async function handleFile(file) {
       const lower = file.name.toLowerCase();
-      if(lower.endsWith('.stl')){
+      const ab = await file.arrayBuffer();
+
+      if (lower.endsWith('.zip')) {
+        if (!window.JSZip) {
+          alert('ZIP support requires JSZip CDN to load.');
+          return;
+        }
+        const zip = await JSZip.loadAsync(ab);
+        const candidates = Object.keys(zip.files).filter(name => /\.(stl|obj|gcode|gc)$/i.test(name) && !zip.files[name].dir);
+        if (!candidates.length) {
+          alert('No STL, OBJ, or G-code file found inside ZIP.');
+          return;
+        }
+        const selected = candidates[0];
+        const inner = await zip.files[selected].async('arraybuffer');
+        const virtual = new File([inner], selected.split('/').pop(), { type: 'application/octet-stream' });
+        await loadModelOrGcode(virtual, inner);
+        setStatus(`Loaded ${selected} from ZIP`);
+        return;
+      }
+      await loadModelOrGcode(file, ab);
+    }
+
+    async function loadModelOrGcode(file, arrayBuffer) {
+      const lower = file.name.toLowerCase();
+      if (lower.endsWith('.gcode') || lower.endsWith('.gc')) {
+        const text = new TextDecoder().decode(arrayBuffer);
+        app.gcodeText = text;
+        gcodePreviewEl.value = text;
+        setStatus('G-code uploaded: ' + file.name);
+        analyzeGCodeAndEstimate(text);
+        previewGCode(text);
+        return;
+      }
+      if (lower.endsWith('.stl')) {
         const loader = new THREE.STLLoader();
         const geom = loader.parse(arrayBuffer);
-        const mat = new THREE.MeshStandardMaterial({color:0x8aa7ff, metalness:0.1, roughness:0.6, side:THREE.DoubleSide});
-        const mesh = new THREE.Mesh(geom, mat);
-        app.modelMesh = mesh;
-        app.scene.add(mesh);
-        fitModelToView();
-        setStatus('STL loaded: ' + file.name);
-      } else if(lower.endsWith('.obj')){
+        geom.computeVertexNormals();
+        const mesh = new THREE.Mesh(geom, defaultModelMaterial());
+        finishLoadedModel(mesh, file.name);
+        return;
+      }
+      if (lower.endsWith('.obj')) {
         const loader = new THREE.OBJLoader();
         const text = new TextDecoder().decode(arrayBuffer);
         const obj = loader.parse(text);
-        // normalize material
-        obj.traverse(c=>{
-          if(c.isMesh){
-            c.material = new THREE.MeshStandardMaterial({color:0xd6eaff, metalness:0.1, roughness:0.6});
+        obj.traverse(c => {
+          if (c.isMesh) {
+            c.geometry.computeVertexNormals?.();
+            c.material = defaultModelMaterial();
           }
         });
-        app.modelMesh = obj;
-        app.scene.add(obj);
-        fitModelToView();
-        setStatus('OBJ loaded: ' + file.name);
-      } else if(lower.endsWith('.gcode') || lower.endsWith('.gc')){
-        // If user uploads G-code, place into preview
-        const text = new TextDecoder().decode(arrayBuffer);
-        $('gcodePreview').value = text;
-        app.gcodeText = text;
-        setStatus('G-code uploaded: ' + file.name);
-        analyzeGCodeAndEstimate(text);
-      } else {
-        alert('Unsupported file type: ' + file.name);
+        finishLoadedModel(obj, file.name);
+        return;
       }
+      alert('Unsupported file type: ' + file.name);
     }
 
-    // -------------------------
-    // Geometry sampling & Convex hull
-    // -------------------------
-    // Extract XY points by sampling vertex positions on the mesh (downsample to maxPoints)
-    function extractXYPointsFromMesh(maxPoints=30000){
-      if(!app.modelMesh) return [];
-      const pts = [];
-      // gather geometries (app.modelMesh may be a Group)
+    function defaultModelMaterial() {
+      return new THREE.MeshStandardMaterial({ color: 0x8ab4ff, metalness: 0.08, roughness: 0.55, side: THREE.DoubleSide, transparent: true, opacity: .92 });
+    }
+
+    function finishLoadedModel(obj, name) {
+      clearModel();
+      app.modelMesh = obj;
+      app.modelSourceName = name;
+      app.modelRoot.add(obj);
+
+      normalizeNewModelPlacement();
+      updateTriangleCache();
+      fitModelToView();
+      updateLayerCountFromBBox();
+      setStatus('Model loaded: ' + name);
+      analyzeBedFit(false);
+    }
+
+    function normalizeNewModelPlacement() {
+      if (!app.modelMesh) return;
       app.modelMesh.updateMatrixWorld(true);
-      app.modelMesh.traverse(node=>{
-        if(!node.isMesh) return;
-        const geom = node.geometry;
-        if(!geom) return;
-        let pos = geom.attributes && geom.attributes.position;
-        if(!pos) return;
-        const array = pos.array;
-        const stride = pos.itemSize || 3;
-        for(let i=0; i<array.length; i+=stride){
-          const x = array[i], y = array[i+1], z = array[i+2];
-          // world transform
-          const v = new THREE.Vector3(x,y,z).applyMatrix4(node.matrixWorld);
-          pts.push([v.x, v.y, v.z]);
-        }
-      });
-      // downsample if needed
-      if(pts.length > maxPoints){
-        const step = Math.ceil(pts.length / maxPoints);
-        const sampled = [];
-        for(let i=0;i<pts.length;i+=step) sampled.push(pts[i]);
-        return sampled;
-      }
-      return pts;
+      const box = new THREE.Box3().setFromObject(app.modelMesh);
+      const center = box.getCenter(new THREE.Vector3());
+      const min = box.min.clone();
+      const targetX = app.printer.bedX / 2;
+      const targetY = app.printer.bedY / 2;
+      app.modelMesh.position.x += targetX - center.x;
+      app.modelMesh.position.z += targetY - center.z;
+      app.modelMesh.position.y += -min.y;
+      syncTransformInputsFromObject();
+      updateBBox();
     }
 
-    // Monotone chain convex hull for XY coordinates
-    function convexHull2D(points){
-      if(points.length <= 2) return points.map(p=>[p[0],p[1]]);
-      // convert to pairs [x,y]
-      const pts = points.map(p=>[p[0],p[1]]);
-      pts.sort((a,b)=> a[0] === b[0] ? a[1]-b[1] : a[0]-b[0]);
-      function cross(o,a,b){ return (a[0]-o[0])*(b[1]-o[1]) - (a[1]-o[1])*(b[0]-o[0]); }
-      const lower=[];
-      for(let i=0;i<pts.length;i++){
-        while(lower.length>=2 && cross(lower[lower.length-2], lower[lower.length-1], pts[i]) <= 0) lower.pop();
-        lower.push(pts[i]);
-      }
-      const upper=[];
-      for(let i=pts.length-1;i>=0;i--){
-        while(upper.length>=2 && cross(upper[upper.length-2], upper[upper.length-1], pts[i]) <= 0) upper.pop();
-        upper.push(pts[i]);
-      }
-      upper.pop(); lower.pop();
-      const hull = lower.concat(upper);
-      return hull;
+    function syncTransformInputsFromObject() {
+      const o = app.modelMesh;
+      if (!o) return;
+      $('moveX').value = o.position.x.toFixed(2);
+      $('moveY').value = o.position.z.toFixed(2);
+      $('moveZ').value = o.position.y.toFixed(2);
+      $('rotateX').value = THREE.MathUtils.radToDeg(o.rotation.x).toFixed(1);
+      $('rotateY').value = THREE.MathUtils.radToDeg(o.rotation.y).toFixed(1);
+      $('rotateZ').value = THREE.MathUtils.radToDeg(o.rotation.z).toFixed(1);
+      $('scaleX').value = (o.scale.x * 100).toFixed(1);
+      $('scaleY').value = (o.scale.z * 100).toFixed(1);
+      $('scaleZ').value = (o.scale.y * 100).toFixed(1);
     }
 
-    // -------------------------
-    // Layer / preview
-    // -------------------------
-    let layerPlane = null;
-    function updateLayerLabel(){
-      const cur = parseInt(layerSlider.value);
-      const max = parseInt(layerSlider.max);
-      layerLabel.textContent = `Layer ${cur} / ${max}`;
-      // move plane
-      if(!app.modelBBox) return;
-      const lh = parseFloat(layerHeightInput.value) || 0.2;
-      const z = app.modelBBox.min.z + (cur-1)*lh;
-      if(!layerPlane){
-        const geo = new THREE.PlaneBufferGeometry(1000,1000);
-        const mat = new THREE.MeshBasicMaterial({color:0xffcc00, transparent:true, opacity:0.12, side:THREE.DoubleSide});
-        layerPlane = new THREE.Mesh(geo, mat);
-        layerPlane.rotation.x = Math.PI/2;
-        app.scene.add(layerPlane);
-      }
-      layerPlane.position.set(app.modelBBox.getCenter(new THREE.Vector3()).x, z, app.modelBBox.getCenter(new THREE.Vector3()).z);
-      // optionally show a slice highlight (not full contour)
-    }
-    layerSlider.addEventListener('input', updateLayerLabel);
-    layerHeightInput.addEventListener('change', ()=>{
-      if(app.modelBBox) fitModelToView();
-    });
-
-    // -------------------------
-    // G-code generation (simplified, deterministic, usable)
-    // -------------------------
-    function estimateFilamentLengthFromVolume(volume_mm3, filamentDia=1.75){
-      const r = filamentDia/2;
-      const area = Math.PI*r*r; // mm^2
-      return volume_mm3 / area; // mm of filament
+    function applyTransformFromInputs() {
+      const o = app.modelMesh;
+      if (!o) return alert('Load a model first.');
+      o.position.set(num('moveX', 0), num('moveZ', 0), num('moveY', 0));
+      o.rotation.set(THREE.MathUtils.degToRad(num('rotateX',0)), THREE.MathUtils.degToRad(num('rotateY',0)), THREE.MathUtils.degToRad(num('rotateZ',0)));
+      o.scale.set((num('scaleX',100)/100) * app.transform.mirrorX, num('scaleZ',100)/100, (num('scaleY',100)/100) * app.transform.mirrorY);
+      updateAfterGeometryChange('Transform applied');
     }
 
-    function approxExtrusion(deltaXY, layerHeight, nozzleWidth=0.4){
-      // approximate extrusion length for distance deltaXY given nozzle width and layer height
-      // volumetric = nozzleWidth * layerHeight * deltaXY (approx cross-section)
-      const area = nozzleWidth * layerHeight; // mm^2
-      const filamentDia = parseFloat($('filamentDia').value) || 1.75;
-      const r = filamentDia / 2;
-      const filamentArea = Math.PI * r * r;
-      const length = (area * deltaXY) / filamentArea; // mm of filament consumed
-      return length;
+    function updateAfterGeometryChange(message) {
+      updateBBox();
+      updateTriangleCache();
+      updateLayerCountFromBBox();
+      clearGroup(app.sliceGroup);
+      app.sliceCache = [];
+      analyzeBedFit(false);
+      setStatus(message || 'Geometry updated');
     }
 
-    function generateGCodeFromModel(){
-      if(!app.modelMesh || !app.modelBBox){
-        alert('Load a model first.');
-        return;
-      }
-      const layerHeight = parseFloat($('layerHeight').value) || 0.2;
-      const printSpeed = parseInt($('printSpeed').value) || 60;
-      const travelSpeed = parseInt($('travelSpeed').value) || 150;
-      const bedTemp = parseInt($('bedTemp').value) || 60;
-      const nozzleTemp = parseInt($('nozzleTemp').value) || 200;
-      const infillPercent = parseFloat($('infillPercent').value) || 10;
-      const skirtLoops = parseInt($('skirtLoops').value) || 2;
-      const retraction = parseFloat($('retraction').value) || 6;
-      const nozzleWidth = 0.4;
-      const minZ = app.modelBBox.min.z;
-      const maxZ = app.modelBBox.max.z;
-      const layerCount = Math.max(1, Math.ceil((maxZ - minZ) / layerHeight));
-      // sample geometry and compute convex hull for outer perimeter
-      const pts = extractXYPointsFromMesh(20000); // sample cap
-      const hull = convexHull2D(pts);
-      if(hull.length < 3) {
-        alert('Model too small or unsupported to generate perimeter.');
-        return;
-      }
-      // bounding box for infill area
-      const xs = hull.map(p=>p[0]); const ys = hull.map(p=>p[1]);
-      const minX = Math.min(...xs), maxX = Math.max(...xs), minY = Math.min(...ys), maxY = Math.max(...ys);
+    function updateBBox() {
+      if (!app.modelMesh) return;
+      app.modelMesh.updateMatrixWorld(true);
+      app.modelBBox = new THREE.Box3().setFromObject(app.modelMesh);
+      $('modelSizeMetric').textContent = bboxSizeString(app.modelBBox);
+      updateHud();
+    }
 
-      // Start composing G-code
-      const lines = [];
-      lines.push('; Generated by Advanced Online Slicer');
-      lines.push(`; Layers: ${layerCount} | Layer Height: ${layerHeight}mm | Perimeter points: ${hull.length}`);
-      lines.push(`M140 S${bedTemp} ; Set bed temp`);
-      lines.push(`M104 S${nozzleTemp} ; Set nozzle temp`);
-      lines.push(`M190 S${bedTemp} ; Wait bed`);
-      lines.push(`M109 S${nozzleTemp} ; Wait nozzle`);
-      lines.push('G21 ; mm units');
-      lines.push('G90 ; absolute positioning');
-      lines.push('M82 ; absolute extrusion');
-      lines.push('G28 ; home');
-      lines.push('G1 Z5 F3000');
-      // origin: use bounding box center offset if desired, but we will use model coordinates as-is
-
-      // pre-scan: skirt around hull by offsetting bounding box slightly
-      const skirtOffset = nozzleWidth * 4;
-      const skirtMinX = minX - skirtOffset, skirtMaxX = maxX + skirtOffset, skirtMinY = minY - skirtOffset, skirtMaxY = maxY + skirtOffset;
-
-      let E = 0.0;
-      function appendMove(x,y,z,feed,comment){
-        const dx = (typeof x === 'number') ? x : '';
-        const dy = (typeof y === 'number') ? y : '';
-        const dz = (typeof z === 'number') ? z : '';
-        const f = feed ? ` F${Math.round(feed)}` : '';
-        // append without extrusion by default
-        return `G1 ${dx!=='' ? 'X'+dx.toFixed(3) : ''} ${dy!=='' ? 'Y'+dy.toFixed(3) : ''} ${dz!=='' ? 'Z'+dz.toFixed(3) : ''}${f}${comment ? ' ; '+comment : ''}`.trim();
-      }
-      function appendExtrudeMove(x,y,z,feed,amount){
-        E += amount;
-        const f = feed ? ` F${Math.round(feed)}` : '';
-        return `G1 X${x.toFixed(3)} Y${y.toFixed(3)} Z${z.toFixed(3)} E${E.toFixed(5)}${f}`;
-      }
-
-      // Generate per-layer
-      for(let L=0; L<layerCount; L++){
-        const z = minZ + L*layerHeight;
-        lines.push(`;LAYER:${L}`);
-        // move to layer height
-        lines.push(`G1 Z${z.toFixed(3)} F3000`);
-        // skirt loops (simple rectangles around bounding box)
-        for(let s=0;s<skirtLoops;s++){
-          const inset = s*nozzleWidth + 2*nozzleWidth;
-          const x1 = skirtMinX - inset, y1 = skirtMinY - inset;
-          const x2 = skirtMaxX + inset, y2 = skirtMaxY + inset;
-          lines.push(`; SKIRT LOOP ${s+1}`);
-          lines.push(appendMove(x1,y1,z, travelSpeed*60, 'skirt start'));
-          // extrude small amount along perimeter
-          const skirtPerim = 2*(x2-x1+y2-y1);
-          const eAmt = approxExtrusion(skirtPerim, layerHeight, nozzleWidth)*1.2;
-          lines.push(appendExtrudeMove(x2,y1,z, printSpeed*60, eAmt));
-          lines.push(appendExtrudeMove(x2,y2,z, printSpeed*60, approxExtrusion(y2-y1, layerHeight, nozzleWidth)));
-          lines.push(appendExtrudeMove(x1,y2,z, printSpeed*60, approxExtrusion(x2-x1, layerHeight, nozzleWidth)));
-          lines.push(appendExtrudeMove(x1,y1,z, printSpeed*60, approxExtrusion(y2-y1, layerHeight, nozzleWidth)));
-        }
-
-        // Perimeter: walk the convex hull
-        lines.push('; PERIMETER (convex hull approximation)');
-        // start at first hull point
-        const first = hull[0];
-        lines.push(appendMove(first[0], first[1], z, travelSpeed*60, 'move to perimeter start'));
-        for(let i=0;i<hull.length;i++){
-          const a = hull[i], b = hull[(i+1)%hull.length];
-          const dist = Math.hypot(b[0]-a[0], b[1]-a[1]);
-          const eAmount = approxExtrusion(dist, layerHeight, nozzleWidth);
-          lines.push(appendExtrudeMove(b[0], b[1], z, printSpeed*60, eAmount));
-        }
-
-        // Simple infill (zig-zag inside bounding box) based on infill percent
-        if(infillPercent > 0){
-          lines.push('; INFILL (simple zig-zag)');
-          const spacing = Math.max(0.8, (nozzleWidth * (100/infillPercent))*0.1); // crude
-          let dir = 0;
-          for(let y=minY+spacing/2; y <= maxY-spacing/2; y += spacing){
-            const xStart = (dir===0)? minX+spacing/2 : maxX-spacing/2;
-            const xEnd = (dir===0)? maxX-spacing/2 : minX+spacing/2;
-            lines.push(appendMove(xStart, y, z, travelSpeed*60, 'infill travel'));
-            const dist = Math.abs(xEnd - xStart);
-            const eAmt = approxExtrusion(dist, layerHeight, nozzleWidth);
-            lines.push(appendExtrudeMove(xEnd, y, z, printSpeed*60, eAmt));
-            dir = 1 - dir;
-          }
-        }
-      }
-
-      // footer
-      lines.push('M104 S0 ; turn off nozzle');
-      lines.push('M140 S0 ; turn off bed');
-      lines.push('G28 X0 ; home X');
-      lines.push('M84 ; disable motors');
-
-      // Save to preview
-      const gcode = lines.join('\n');
-      app.gcodeText = gcode;
-      gcodePreviewEl.value = gcode;
-      setStatus('G-code generated: ' + layerCount + ' layers');
-      analyzeGCodeAndEstimate(gcode);
-      // Make slider reflect new computed layer count
-      layerSlider.max = Math.max(1, Math.ceil((app.modelBBox.max.z - app.modelBBox.min.z) / layerHeight));
-      layerSlider.value = 1;
+    function updateLayerCountFromBBox() {
+      if (!app.modelBBox) return;
+      const h = Math.max(0.01, app.modelBBox.max.y - app.modelBBox.min.y);
+      const layerHeight = Math.max(.01, num('layerHeight', .2));
+      const first = Math.max(.01, num('firstLayerHeight', layerHeight));
+      const count = Math.max(1, 1 + Math.ceil(Math.max(0, h - first) / layerHeight));
+      layerSlider.min = 1;
+      layerSlider.max = count;
+      layerSlider.value = Math.min(parseInt(layerSlider.value, 10) || 1, count);
+      $('layerMetric').textContent = count;
       updateLayerLabel();
     }
 
-    // Analyze existing G-code to estimate time/filament (rough)
-    function analyzeGCodeAndEstimate(gcode){
-      const lines = gcode.split('\n').map(l=>l.trim());
-      // count extrusion amount by parsing E values and feedrates
-      let lastE = 0, totalE = 0;
-      let lastFeed = null;
-      let totalTravelDist = 0;
-      let lastPos = {x:null,y:null,z:null};
-      for(const ln of lines){
-        if(!ln || ln.startsWith(';')) continue;
-        const parts = ln.split(' ');
-        const cmd = parts[0];
-        if(cmd.startsWith('G1') || cmd.startsWith('G0')){
-          const px = parts.find(p=>p.startsWith('X'));
-          const py = parts.find(p=>p.startsWith('Y'));
-          const pz = parts.find(p=>p.startsWith('Z'));
-          const pe = parts.find(p=>p.startsWith('E'));
-          const pf = parts.find(p=>p.startsWith('F'));
-          const x = px ? parseFloat(px.substring(1)) : lastPos.x;
-          const y = py ? parseFloat(py.substring(1)) : lastPos.y;
-          const z = pz ? parseFloat(pz.substring(1)) : lastPos.z;
-          if(lastPos.x !== null && x !== undefined && y !== undefined && lastPos.x !== null){
-            const d = Math.hypot((x-lastPos.x||0),(y-lastPos.y||0),( (z-lastPos.z)||0 ));
-            totalTravelDist += d;
-          }
-          lastPos = {x,y,z};
-          if(pe){
-            const e = parseFloat(pe.substring(1));
-            if(!isNaN(e)){
-              const delta = e - lastE;
-              if(delta > 0) totalE += delta;
-              lastE = e;
-            }
-          }
-          if(pf) lastFeed = parseFloat(pf.substring(1));
-        }
-      }
-      // approximate filament mm from totalE: assume E already in mm of filament in this generator
-      const filament_mm = totalE || 0;
-      const filament_m = (filament_mm/1000).toFixed(3);
-      // estimate time from total moves and feed speeds - VERY rough: assume average feed ~ printSpeed * 60 if present
-      const avgFeed = 60 * (parseFloat($('printSpeed').value) || 60); // mm/min
-      const estimatedMinutes = (totalTravelDist / (avgFeed/60)) / 60; // bad but okay
-      const estTimeSec = Math.max(0, Math.round((totalTravelDist / ((avgFeed/60))) ));
-      $('estFilament').textContent = filament_m + ' m (approx)';
-      $('estTime').textContent = formatSecondsToHMS(estTimeSec);
+    function fitModelToView() {
+      const box = app.modelBBox || new THREE.Box3(new THREE.Vector3(0,0,0), new THREE.Vector3(app.printer.bedX, app.printer.bedZ, app.printer.bedY));
+      const size = box.getSize(new THREE.Vector3());
+      const center = box.getCenter(new THREE.Vector3());
+      const maxDim = Math.max(size.x, size.y, size.z, 80);
+      const dist = maxDim / (2 * Math.tan(THREE.MathUtils.degToRad(app.camera.fov / 2))) * 1.85;
+      app.camera.position.set(center.x + dist * .55, center.y + dist * .45, center.z + dist * .75);
+      app.controls.target.copy(center);
+      app.camera.lookAt(center);
+      app.controls.update();
     }
 
-    // -------------------------
-    // Save / Download G-code
-    // -------------------------
-    $('downloadGcodeBtn').addEventListener('click', ()=>{
-      if(!app.gcodeText){
-        alert('No G-code generated or uploaded.');
-        return;
-      }
-      const blob = new Blob([app.gcodeText], {type:'text/plain'});
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = 'model_generated.gcode';
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      URL.revokeObjectURL(url);
-      setStatus('G-code downloaded');
-    });
-
-    // Upload G-code via file input (or load stl/obj)
-    $('modelUpload').addEventListener('change', async (ev)=>{
-      if(!ev.target.files || ev.target.files.length === 0) return;
-      const f = ev.target.files[0];
-      const ab = await f.arrayBuffer();
-      // if gcode -> feed to preview
-      if(f.name.toLowerCase().endsWith('.gcode') || f.name.toLowerCase().endsWith('.gc')) {
-        const txt = new TextDecoder().decode(ab);
-        $('gcodePreview').value = txt;
-        app.gcodeText = txt;
-        analyzeGCodeAndEstimate(txt);
-        setStatus('G-code uploaded');
-        return;
-      }
-      // else assume model
-      loadModelFromFile(f, ab);
-    });
-
-    // Manual load gcode pop-up (file input)
-    $('loadGcodeBtn').addEventListener('click', ()=>{
-      const inp = document.createElement('input');
-      inp.type = 'file';
-      inp.accept = '.gcode,.gc';
-      inp.onchange = async e => {
-        const f = e.target.files[0];
-        if(!f) return;
-        const ab = await f.arrayBuffer();
-        const txt = new TextDecoder().decode(ab);
-        $('gcodePreview').value = txt;
-        app.gcodeText = txt;
-        analyzeGCodeAndEstimate(txt);
-        setStatus('G-code uploaded via Load button');
-      };
-      inp.click();
-    });
-
-    // Generate button
-    $('generateBtn').addEventListener('click', ()=>{
-      try{
-        generateGCodeFromModel();
-      }catch(err){
-        console.error(err);
-        alert('Error generating G-code: ' + err.message);
-      }
-    });
-
-    // Save settings to localStorage
-    $('saveSettingsBtn').addEventListener('click', ()=>{
-      const settings = {
-        layerHeight: $('layerHeight').value,
-        printSpeed: $('printSpeed').value,
-        travelSpeed: $('travelSpeed').value,
-        bedTemp: $('bedTemp').value,
-        nozzleTemp: $('nozzleTemp').value,
-        infillPercent: $('infillPercent').value,
-        filamentDia: $('filamentDia').value
-      };
-      localStorage.setItem('slicerSettings', JSON.stringify(settings));
-      setStatus('Settings saved locally');
-    });
-    // load settings on startup
-    (function loadSettingsOnStart(){
-      const s = localStorage.getItem('slicerSettings');
-      if(!s) return;
-      try{
-        const obj = JSON.parse(s);
-        for(const k in obj){
-          if($(k)) $(k).value = obj[k];
+    function updateTriangleCache() {
+      app.triangleCache = [];
+      if (!app.modelMesh) return;
+      app.modelMesh.updateMatrixWorld(true);
+      app.modelMesh.traverse(node => {
+        if (!node.isMesh || !node.geometry) return;
+        const geom = node.geometry.index ? node.geometry.toNonIndexed() : node.geometry.clone();
+        const pos = geom.attributes.position;
+        if (!pos) return;
+        const arr = pos.array;
+        const normalMatrix = new THREE.Matrix3().getNormalMatrix(node.matrixWorld);
+        for (let i = 0; i < arr.length; i += 9) {
+          const a = new THREE.Vector3(arr[i], arr[i+1], arr[i+2]).applyMatrix4(node.matrixWorld);
+          const b = new THREE.Vector3(arr[i+3], arr[i+4], arr[i+5]).applyMatrix4(node.matrixWorld);
+          const c = new THREE.Vector3(arr[i+6], arr[i+7], arr[i+8]).applyMatrix4(node.matrixWorld);
+          const n = new THREE.Vector3().subVectors(b, a).cross(new THREE.Vector3().subVectors(c, a)).normalize().applyMatrix3(normalMatrix).normalize();
+          if (Number.isFinite(a.x + b.x + c.x)) app.triangleCache.push({ a, b, c, n });
         }
-        setStatus('Loaded saved settings');
-      }catch(e){}
-    })();
+        if (!node.geometry.index) geom.dispose?.();
+      });
+    }
 
-    // -------------------------
-    // Serial (Web Serial) — preferred for Marlin/Ender
-    // -------------------------
-    async function connectSerial(){
-      if(!('serial' in navigator)){
-        alert('Web Serial API not available. Use a Chromium-based browser and a secure context (https/localhost).');
+    function sliceAllLayers() {
+      if (!app.modelMesh || !app.modelBBox) throw new Error('Load a model first.');
+      updateTriangleCache();
+      const settings = readSlicerSettings();
+      const minY = Math.max(0, app.modelBBox.min.y);
+      const maxY = app.modelBBox.max.y;
+      const totalLayers = Math.max(1, parseInt(layerSlider.max, 10) || 1);
+      const slices = [];
+      for (let layer = 0; layer < totalLayers; layer++) {
+        const zHeight = layer === 0 ? minY + settings.firstLayerHeight : minY + settings.firstLayerHeight + layer * settings.layerHeight;
+        if (zHeight > maxY + 0.02) break;
+        const segments = intersectMeshAtY(zHeight);
+        const loops = connectSegmentsToLoops(segments, 0.08);
+        const cleanLoops = loops
+          .map(loop => simplifyLoop(loop, 0.025))
+          .filter(loop => loop.length >= 3 && Math.abs(polygonArea(loop)) > 0.05);
+        slices.push({ layer, z: zHeight, loops: cleanLoops, segments });
+      }
+      app.sliceCache = slices;
+      layerSlider.max = Math.max(1, slices.length);
+      layerSlider.value = Math.min(parseInt(layerSlider.value, 10) || 1, parseInt(layerSlider.max, 10));
+      $('layerMetric').textContent = slices.length;
+      renderSlicePreview(parseInt(layerSlider.value, 10) - 1);
+      return slices;
+    }
+
+    function intersectMeshAtY(y) {
+      const out = [];
+      const eps = 1e-6;
+      for (const t of app.triangleCache) {
+        const verts = [t.a, t.b, t.c];
+        const ys = verts.map(v => v.y);
+        if (y < Math.min(...ys) - eps || y > Math.max(...ys) + eps) continue;
+        const points = [];
+        for (let i = 0; i < 3; i++) {
+          const p1 = verts[i], p2 = verts[(i+1)%3];
+          const d1 = p1.y - y, d2 = p2.y - y;
+          if (Math.abs(d1) < eps && Math.abs(d2) < eps) continue;
+          if ((d1 <= eps && d2 >= -eps) || (d2 <= eps && d1 >= -eps)) {
+            const denom = p2.y - p1.y;
+            if (Math.abs(denom) < eps) continue;
+            const f = (y - p1.y) / denom;
+            if (f >= -eps && f <= 1 + eps) {
+              const x = p1.x + (p2.x - p1.x) * f;
+              const z = p1.z + (p2.z - p1.z) * f;
+              points.push({ x, y: z });
+            }
+          }
+        }
+        const unique = uniquePoints2D(points, 0.0005);
+        if (unique.length === 2 && dist2D(unique[0], unique[1]) > 0.001) out.push([unique[0], unique[1]]);
+      }
+      return out;
+    }
+
+    function uniquePoints2D(points, tol) {
+      const out = [];
+      for (const p of points) {
+        if (!out.some(q => Math.abs(q.x - p.x) <= tol && Math.abs(q.y - p.y) <= tol)) out.push(p);
+      }
+      return out;
+    }
+
+    function keyPoint(p, tol) {
+      return `${Math.round(p.x / tol)},${Math.round(p.y / tol)}`;
+    }
+
+    function connectSegmentsToLoops(segments, tol = 0.08) {
+      const unused = segments.map(seg => ({ a: seg[0], b: seg[1], used: false }));
+      const loops = [];
+
+      for (let i = 0; i < unused.length; i++) {
+        if (unused[i].used) continue;
+        unused[i].used = true;
+        const loop = [unused[i].a, unused[i].b];
+        let extended = true;
+        let guard = 0;
+        while (extended && guard++ < 20000) {
+          extended = false;
+          const end = loop[loop.length - 1];
+          let best = -1;
+          let flip = false;
+          let bestD = Infinity;
+          for (let j = 0; j < unused.length; j++) {
+            if (unused[j].used) continue;
+            const da = dist2D(end, unused[j].a);
+            const db = dist2D(end, unused[j].b);
+            if (da < bestD) { bestD = da; best = j; flip = false; }
+            if (db < bestD) { bestD = db; best = j; flip = true; }
+          }
+          if (best !== -1 && bestD <= tol) {
+            unused[best].used = true;
+            loop.push(flip ? unused[best].a : unused[best].b);
+            extended = true;
+            if (dist2D(loop[0], loop[loop.length - 1]) <= tol && loop.length > 3) {
+              loop[loop.length - 1] = loop[0];
+              break;
+            }
+          }
+        }
+        if (loop.length >= 3) {
+          if (dist2D(loop[0], loop[loop.length - 1]) > tol) loop.push(loop[0]);
+          loops.push(loop);
+        }
+      }
+
+      return loops.sort((a,b) => Math.abs(polygonArea(b)) - Math.abs(polygonArea(a)));
+    }
+
+    function simplifyLoop(loop, minDist = 0.025) {
+      if (loop.length < 4) return loop;
+      const out = [loop[0]];
+      for (let i = 1; i < loop.length; i++) {
+        if (dist2D(out[out.length-1], loop[i]) >= minDist) out.push(loop[i]);
+      }
+      if (dist2D(out[0], out[out.length-1]) > minDist) out.push(out[0]);
+      else out[out.length-1] = out[0];
+      return out;
+    }
+
+    function dist2D(a, b) {
+      return Math.hypot(a.x - b.x, a.y - b.y);
+    }
+
+    function polygonArea(poly) {
+      let a = 0;
+      for (let i = 0; i < poly.length - 1; i++) a += poly[i].x * poly[i+1].y - poly[i+1].x * poly[i].y;
+      return a / 2;
+    }
+
+    function pointInPolygon(pt, poly) {
+      let inside = false;
+      for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+        const xi = poly[i].x, yi = poly[i].y;
+        const xj = poly[j].x, yj = poly[j].y;
+        const intersect = ((yi > pt.y) !== (yj > pt.y)) && (pt.x < (xj - xi) * (pt.y - yi) / ((yj - yi) || 1e-9) + xi);
+        if (intersect) inside = !inside;
+      }
+      return inside;
+    }
+
+    function makeInfillLines(loops, spacing, angleDeg = 0) {
+      if (!loops.length) return [];
+      const all = loops.flat();
+      const minX = Math.min(...all.map(p => p.x));
+      const maxX = Math.max(...all.map(p => p.x));
+      const minY = Math.min(...all.map(p => p.y));
+      const maxY = Math.max(...all.map(p => p.y));
+      const lines = [];
+
+      // horizontal scanline clipping against all loops with even-odd fill.
+      const pad = spacing;
+      let row = 0;
+      for (let y = minY + pad; y <= maxY - pad; y += spacing) {
+        const xs = [];
+        for (const loop of loops) {
+          for (let i = 0; i < loop.length - 1; i++) {
+            const a = loop[i], b = loop[i+1];
+            if ((a.y <= y && b.y > y) || (b.y <= y && a.y > y)) {
+              const x = a.x + (y - a.y) * (b.x - a.x) / ((b.y - a.y) || 1e-9);
+              xs.push(x);
+            }
+          }
+        }
+        xs.sort((a,b) => a-b);
+        for (let i = 0; i + 1 < xs.length; i += 2) {
+          const x1 = xs[i] + pad * .25;
+          const x2 = xs[i+1] - pad * .25;
+          if (x2 - x1 > .5) {
+            const seg = row % 2 ? [{x:x2,y}, {x:x1,y}] : [{x:x1,y}, {x:x2,y}];
+            lines.push(seg);
+          }
+        }
+        row++;
+      }
+
+      if (Math.abs(angleDeg) < .01) return lines;
+      // Lightweight rotation around bbox center. Good enough for alternating infill visualization.
+      const cx = (minX + maxX) / 2, cy = (minY + maxY) / 2;
+      const a = THREE.MathUtils.degToRad(angleDeg);
+      const ca = Math.cos(a), sa = Math.sin(a);
+      return lines.map(([p1,p2]) => [rotatePt(p1,cx,cy,ca,sa), rotatePt(p2,cx,cy,ca,sa)]);
+    }
+
+    function rotatePt(p, cx, cy, ca, sa) {
+      const x = p.x - cx, y = p.y - cy;
+      return { x: cx + x * ca - y * sa, y: cy + x * sa + y * ca };
+    }
+
+    function renderSlicePreview(layerIndex) {
+      clearGroup(app.sliceGroup);
+      if (!app.sliceCache.length || layerIndex < 0) return;
+      const layer = app.sliceCache[Math.min(layerIndex, app.sliceCache.length - 1)];
+      const mat = new THREE.LineBasicMaterial({ color: 0xffcc00, transparent: true, opacity: .95 });
+      const infillMat = new THREE.LineBasicMaterial({ color: 0x00e5ff, transparent: true, opacity: .62 });
+      for (const loop of layer.loops) {
+        const pts = loop.map(p => new THREE.Vector3(p.x, layer.z + 0.08, p.y));
+        const geo = new THREE.BufferGeometry().setFromPoints(pts);
+        app.sliceGroup.add(new THREE.Line(geo, mat));
+      }
+      const settings = readSlicerSettings();
+      const spacing = infillSpacing(settings);
+      if (settings.infillPercent > 0) {
+        const infills = makeLayerInfill(layer, settings);
+        for (const seg of infills.slice(0, 1800)) {
+          const geo = new THREE.BufferGeometry().setFromPoints([
+            new THREE.Vector3(seg[0].x, layer.z + 0.09, seg[0].y),
+            new THREE.Vector3(seg[1].x, layer.z + 0.09, seg[1].y)
+          ]);
+          app.sliceGroup.add(new THREE.Line(geo, infillMat));
+        }
+      }
+    }
+
+    function updateLayerLabel() {
+      const cur = parseInt(layerSlider.value, 10) || 1;
+      const max = parseInt(layerSlider.max, 10) || 1;
+      layerLabel.textContent = `Layer ${cur} / ${max}`;
+      if (app.sliceCache.length) renderSlicePreview(cur - 1);
+      updateHud();
+    }
+
+    function readSlicerSettings() {
+      return {
+        layerHeight: num('layerHeight', .2),
+        firstLayerHeight: num('firstLayerHeight', .24),
+        nozzleWidth: num('nozzleWidth', .4),
+        printSpeed: num('printSpeed', 60),
+        travelSpeed: num('travelSpeed', 150),
+        firstLayerSpeed: num('firstLayerSpeed', 25),
+        infillPercent: Math.max(0, Math.min(100, num('infillPercent', 15))),
+        infillPattern: $('infillPattern').value,
+        wallCount: int('wallCount', 2),
+        topLayers: int('topLayers', 4),
+        bottomLayers: int('bottomLayers', 4),
+        seamMode: $('seamMode').value,
+        bedTemp: int('bedTemp', 60),
+        nozzleTemp: int('nozzleTemp', 200),
+        fanSpeed: Math.max(0, Math.min(100, int('fanSpeed', 100))),
+        filamentDia: num('filamentDia', 1.75),
+        flowRate: Math.max(1, num('flowRate', 100)) / 100,
+        retraction: num('retraction', 6),
+        skirtLoops: int('skirtLoops', 2),
+        brimWidth: num('brimWidth', 0),
+        zHop: num('zHop', .2)
+      };
+    }
+
+    function infillSpacing(settings) {
+      if (settings.infillPercent <= 0) return Infinity;
+      return Math.max(settings.nozzleWidth * 1.8, settings.nozzleWidth * (100 / settings.infillPercent));
+    }
+
+    function makeLayerInfill(layer, settings) {
+      if (!layer.loops.length || settings.infillPercent <= 0) return [];
+      const isSolid = layer.layer < settings.bottomLayers || layer.layer >= app.sliceCache.length - settings.topLayers;
+      const spacing = isSolid ? settings.nozzleWidth * 1.35 : infillSpacing(settings);
+      const pattern = settings.infillPattern;
+      const base = makeInfillLines(layer.loops, spacing, layer.layer % 2 ? 90 : 0);
+      if (pattern === 'lines') return base;
+      if (pattern === 'grid') {
+        return base.concat(makeInfillLines(layer.loops, spacing, layer.layer % 2 ? 0 : 90));
+      }
+      if (pattern === 'triangles') {
+        return base.concat(makeInfillLines(layer.loops, spacing * 1.2, 60), makeInfillLines(layer.loops, spacing * 1.2, -60));
+      }
+      return base;
+    }
+
+    function generateGCodeFromModel() {
+      const settings = readSlicerSettings();
+      const slices = sliceAllLayers();
+      if (!slices.length) throw new Error('Could not create any printable slices. Check model orientation and scale.');
+
+      const validation = analyzeBedFit(false);
+      if (!validation.fits) logConsole('Warning: model does not fully fit the bed volume.');
+
+      let E = 0;
+      let last = null;
+      let retracted = false;
+      const lines = [];
+      const startTime = new Date().toISOString();
+
+      const feed = mmps => Math.round(mmps * 60);
+      const filamentArea = Math.PI * Math.pow(settings.filamentDia / 2, 2);
+      const extrusionFor = dist => (settings.nozzleWidth * settings.layerHeight * dist / filamentArea) * settings.flowRate;
+      const extrusionForFirst = dist => (settings.nozzleWidth * settings.firstLayerHeight * dist / filamentArea) * settings.flowRate;
+
+      const moveLine = (x, y, z, f, comment = '') => {
+        last = { x, y, z };
+        return `G1 X${x.toFixed(3)} Y${y.toFixed(3)} Z${z.toFixed(3)} F${feed(f)}${comment ? ' ; ' + comment : ''}`;
+      };
+      const extrudeLine = (x, y, z, f, eAmount, comment = '') => {
+        E += Math.max(0, eAmount);
+        last = { x, y, z };
+        return `G1 X${x.toFixed(3)} Y${y.toFixed(3)} Z${z.toFixed(3)} E${E.toFixed(5)} F${feed(f)}${comment ? ' ; ' + comment : ''}`;
+      };
+      const retract = () => {
+        if (settings.retraction <= 0 || retracted) return null;
+        E -= settings.retraction;
+        retracted = true;
+        return `G1 E${E.toFixed(5)} F1800 ; retract`;
+      };
+      const prime = () => {
+        if (settings.retraction <= 0 || !retracted) return null;
+        E += settings.retraction;
+        retracted = false;
+        return `G1 E${E.toFixed(5)} F1800 ; prime`;
+      };
+
+      lines.push('; Generated by Advanced Online 3D Slicer & Ender 3 Controller V2 Lab');
+      lines.push('; WARNING: Experimental output. Inspect before printing.');
+      lines.push(`; Source: ${app.modelSourceName || 'unknown'}`);
+      lines.push(`; Created: ${startTime}`);
+      lines.push(`; Layers: ${slices.length}`);
+      lines.push(`; Layer height: ${settings.layerHeight} mm | First layer: ${settings.firstLayerHeight} mm`);
+      lines.push(`; Nozzle/line width: ${settings.nozzleWidth} mm | Infill: ${settings.infillPercent}% ${settings.infillPattern}`);
+      lines.push(`; Material: ${$('materialPreset').value} | Printer: ${$('printerPreset').value}`);
+      lines.push('G90 ; absolute positioning');
+      lines.push('M82 ; absolute extrusion');
+      lines.push('G21 ; millimetres');
+      lines.push(`M140 S${settings.bedTemp} ; set bed temp`);
+      lines.push(`M104 S${settings.nozzleTemp} ; set nozzle temp`);
+      lines.push(`M190 S${settings.bedTemp} ; wait bed`);
+      lines.push(`M109 S${settings.nozzleTemp} ; wait nozzle`);
+      lines.push('G28 ; home all');
+      lines.push(`M106 S${Math.round(settings.fanSpeed * 2.55)} ; fan`);
+      lines.push('G92 E0');
+      lines.push('G1 Z5 F3000');
+      lines.push('G1 X5 Y5 F6000');
+      lines.push('G1 Z0.28 F1200');
+      lines.push('G1 X5 Y200 E12 F900 ; prime line');
+      lines.push('G92 E0');
+      E = 0;
+
+      const skirtBounds = boundsFromSlices(slices);
+      if (settings.skirtLoops > 0) {
+        for (let i = 0; i < settings.skirtLoops; i++) addRectLoop(lines, skirtBounds, slices[0].z, settings, i + 2, feed, extrusionForFirst, extrudeLine, moveLine);
+      }
+      if (settings.brimWidth > 0) {
+        const brimLoops = Math.ceil(settings.brimWidth / settings.nozzleWidth);
+        for (let i = 0; i < brimLoops; i++) addRectLoop(lines, skirtBounds, slices[0].z, settings, .6 + i * .42, feed, extrusionForFirst, extrudeLine, moveLine, '; BRIM');
+      }
+
+      for (const layer of slices) {
+        const z = layer.z;
+        const firstLayer = layer.layer === 0;
+        const printSpeed = firstLayer ? settings.firstLayerSpeed : settings.printSpeed;
+        const eFn = firstLayer ? extrusionForFirst : extrusionFor;
+        lines.push(`;LAYER:${layer.layer}`);
+        lines.push(`;Z:${z.toFixed(3)}`);
+        lines.push(`G1 Z${z.toFixed(3)} F3000`);
+
+        // Walls: this demo repeats real loops with slight visual inward scaling instead of robust polygon offsetting.
+        const sortedLoops = layer.loops.slice().sort((a,b) => Math.abs(polygonArea(b)) - Math.abs(polygonArea(a)));
+        let loopIndex = 0;
+        for (const loop of sortedLoops) {
+          for (let wall = 0; wall < settings.wallCount; wall++) {
+            const wallLoop = wall === 0 ? loop : scaleLoopAroundCentroid(loop, 1 - (wall * settings.nozzleWidth * 0.003));
+            if (wallLoop.length < 3) continue;
+            const startIndex = chooseSeamIndex(wallLoop, settings.seamMode, layer.layer + wall);
+            const ordered = rotateLoop(wallLoop, startIndex);
+            const start = ordered[0];
+            const ret = retract(); if (ret) lines.push(ret);
+            if (settings.zHop > 0 && last) lines.push(`G1 Z${(z + settings.zHop).toFixed(3)} F3000 ; z hop`);
+            lines.push(moveLine(start.x, start.y, z, settings.travelSpeed, `wall ${wall+1} loop ${loopIndex}`));
+            const pr = prime(); if (pr) lines.push(pr);
+            for (let i = 1; i < ordered.length; i++) {
+              const p = ordered[i], prev = ordered[i-1];
+              lines.push(extrudeLine(p.x, p.y, z, printSpeed, eFn(dist2D(prev, p))));
+            }
+            loopIndex++;
+          }
+        }
+
+        const infills = makeLayerInfill(layer, settings);
+        if (infills.length) {
+          lines.push('; INFILL');
+          for (const seg of infills) {
+            const [a, b] = seg;
+            const ret = retract(); if (ret) lines.push(ret);
+            if (settings.zHop > 0 && last) lines.push(`G1 Z${(z + settings.zHop).toFixed(3)} F3000 ; z hop`);
+            lines.push(moveLine(a.x, a.y, z, settings.travelSpeed, 'infill travel'));
+            const pr = prime(); if (pr) lines.push(pr);
+            lines.push(extrudeLine(b.x, b.y, z, printSpeed, eFn(dist2D(a, b)), 'infill'));
+          }
+        }
+      }
+
+      const ret = retract(); if (ret) lines.push(ret);
+      lines.push('M104 S0 ; turn off nozzle');
+      lines.push('M140 S0 ; turn off bed');
+      lines.push('M106 S0 ; fan off');
+      lines.push('G91 ; relative positioning');
+      lines.push('G1 Z10 F3000 ; lift');
+      lines.push('G90 ; absolute positioning');
+      lines.push('G1 X0 Y220 F6000 ; present print');
+      lines.push('M84 ; disable motors');
+
+      app.gcodeText = lines.join('\n');
+      gcodePreviewEl.value = app.gcodeText;
+      $('gcodeStats').textContent = `${lines.length} lines`;
+      analyzeGCodeAndEstimate(app.gcodeText);
+      previewGCode(app.gcodeText);
+      setStatus(`G-code generated: ${slices.length} layers, ${lines.length} lines`);
+    }
+
+    function scaleLoopAroundCentroid(loop, factor) {
+      const pts = loop.slice(0, -1);
+      const cx = pts.reduce((s,p)=>s+p.x,0) / pts.length;
+      const cy = pts.reduce((s,p)=>s+p.y,0) / pts.length;
+      const out = pts.map(p => ({ x: cx + (p.x - cx) * factor, y: cy + (p.y - cy) * factor }));
+      out.push(out[0]);
+      return out;
+    }
+
+    function chooseSeamIndex(loop, mode, seed = 0) {
+      const pts = loop.slice(0, -1);
+      if (!pts.length) return 0;
+      if (mode === 'random') return Math.abs(hash(seed + ':' + pts.length)) % pts.length;
+      if (mode === 'back') {
+        let best = 0, bestScore = -Infinity;
+        for (let i = 0; i < pts.length; i++) {
+          const score = pts[i].x + pts[i].y * 2;
+          if (score > bestScore) { bestScore = score; best = i; }
+        }
+        return best;
+      }
+      return 0;
+    }
+
+    function hash(str) {
+      let h = 2166136261;
+      for (let i = 0; i < str.length; i++) h = Math.imul(h ^ str.charCodeAt(i), 16777619);
+      return h;
+    }
+
+    function rotateLoop(loop, startIndex) {
+      const pts = loop.slice(0, -1);
+      const out = pts.slice(startIndex).concat(pts.slice(0, startIndex));
+      out.push(out[0]);
+      return out;
+    }
+
+    function boundsFromSlices(slices) {
+      const pts = slices.flatMap(s => s.loops.flat());
+      return {
+        minX: Math.min(...pts.map(p => p.x)),
+        maxX: Math.max(...pts.map(p => p.x)),
+        minY: Math.min(...pts.map(p => p.y)),
+        maxY: Math.max(...pts.map(p => p.y))
+      };
+    }
+
+    function addRectLoop(lines, bounds, z, settings, offset, feed, eFn, extrudeLine, moveLine, label = '; SKIRT') {
+      const x1 = Math.max(0, bounds.minX - offset);
+      const y1 = Math.max(0, bounds.minY - offset);
+      const x2 = Math.min(app.printer.bedX, bounds.maxX + offset);
+      const y2 = Math.min(app.printer.bedY, bounds.maxY + offset);
+      const pts = [{x:x1,y:y1},{x:x2,y:y1},{x:x2,y:y2},{x:x1,y:y2},{x:x1,y:y1}];
+      lines.push(label);
+      lines.push(moveLine(pts[0].x, pts[0].y, z, settings.travelSpeed, label.replace('; ', '').toLowerCase()));
+      for (let i = 1; i < pts.length; i++) lines.push(extrudeLine(pts[i].x, pts[i].y, z, settings.firstLayerSpeed, eFn(dist2D(pts[i-1], pts[i]))));
+    }
+
+    function analyzeGCodeAndEstimate(gcode) {
+      const lines = String(gcode || '').split(/\r?\n/);
+      let lastE = 0, totalE = 0;
+      let last = { x:null, y:null, z:null };
+      let totalTime = 0;
+      let distance = 0;
+      let printDistance = 0;
+      let travelDistance = 0;
+      let currentFeed = 1800;
+      let layers = 0;
+      for (const raw of lines) {
+        const line = raw.split(';')[0].trim();
+        if (!line) continue;
+        if (/^;?LAYER:/i.test(raw)) layers++;
+        if (!/^(G0|G1)\b/i.test(line)) continue;
+        const x = readParam(line, 'X', last.x);
+        const y = readParam(line, 'Y', last.y);
+        const z = readParam(line, 'Z', last.z);
+        const e = readParam(line, 'E', null);
+        const f = readParam(line, 'F', null);
+        if (f !== null && Number.isFinite(f)) currentFeed = f;
+        if (last.x !== null && x !== null && y !== null) {
+          const d = Math.hypot((x - last.x) || 0, (y - last.y) || 0, (z - last.z) || 0);
+          distance += d;
+          if (e !== null && e > lastE) printDistance += d;
+          else travelDistance += d;
+          const mmPerSec = Math.max(1, currentFeed / 60);
+          totalTime += d / mmPerSec;
+        }
+        if (e !== null && Number.isFinite(e)) {
+          const delta = e - lastE;
+          if (delta > 0) totalE += delta;
+          lastE = e;
+        }
+        last = { x, y, z };
+      }
+      $('estFilament').textContent = `${(totalE / 1000).toFixed(2)} m`;
+      $('estTime').textContent = formatSecondsToHMS(totalTime * 1.18);
+      $('gcodeStats').textContent = `${lines.length} lines`;
+      updateValidation();
+      return { totalE, totalTime, distance, printDistance, travelDistance, layers };
+    }
+
+    function readParam(line, letter, fallback) {
+      const m = line.match(new RegExp(`${letter}(-?\\d+(?:\\.\\d+)?)`, 'i'));
+      return m ? parseFloat(m[1]) : fallback;
+    }
+
+    function previewGCode(gcode) {
+      clearGroup(app.gcodeGroup);
+      clearGroup(app.travelGroup);
+      if (!gcode) return;
+      const printPts = [];
+      const travelPts = [];
+      let last = { x:null, y:null, z:null };
+      let lastE = 0;
+      let maxLayer = parseInt(layerSlider.value, 10) || 999999;
+      let currentLayer = 0;
+      for (const raw of gcode.split(/\r?\n/)) {
+        const layerMatch = raw.match(/;LAYER:(\d+)/i);
+        if (layerMatch) currentLayer = parseInt(layerMatch[1], 10) + 1;
+        if (currentLayer > maxLayer) continue;
+        const line = raw.split(';')[0].trim();
+        if (!/^(G0|G1)\b/i.test(line)) continue;
+        const x = readParam(line, 'X', last.x);
+        const y = readParam(line, 'Y', last.y);
+        const z = readParam(line, 'Z', last.z);
+        const e = readParam(line, 'E', null);
+        if (last.x !== null && x !== null && y !== null && z !== null) {
+          const a = new THREE.Vector3(last.x, last.z, last.y);
+          const b = new THREE.Vector3(x, z, y);
+          if (e !== null && e > lastE) printPts.push(a, b);
+          else travelPts.push(a, b);
+        }
+        if (e !== null && Number.isFinite(e)) lastE = e;
+        last = { x, y, z };
+      }
+      if (printPts.length) {
+        const geo = new THREE.BufferGeometry().setFromPoints(printPts);
+        const mat = new THREE.LineBasicMaterial({ color: 0x00e676, transparent: true, opacity: .9 });
+        app.gcodeGroup.add(new THREE.LineSegments(geo, mat));
+      }
+      if (travelPts.length) {
+        const geo = new THREE.BufferGeometry().setFromPoints(travelPts);
+        const mat = new THREE.LineBasicMaterial({ color: 0xff5252, transparent: true, opacity: .35 });
+        app.travelGroup.add(new THREE.LineSegments(geo, mat));
+      }
+      app.gcodeGroup.visible = app.preview.showGcode;
+      app.travelGroup.visible = app.preview.showTravel;
+      updateHud();
+    }
+
+    function quickRepairMesh() {
+      if (!app.modelMesh) return alert('Load a model first.');
+      let meshCount = 0;
+      app.modelMesh.traverse(node => {
+        if (!node.isMesh || !node.geometry) return;
+        meshCount++;
+        node.geometry.computeVertexNormals?.();
+        node.geometry.computeBoundingBox?.();
+        node.geometry.computeBoundingSphere?.();
+      });
+      updateAfterGeometryChange(`Quick repair done on ${meshCount} mesh object(s)`);
+      $('qualityReport').innerHTML = `Recomputed normals and bounds for ${meshCount} mesh object(s). This does not fix non-manifold geometry, but it helps display and slicing consistency.`;
+    }
+
+    function analyzeBedFit(showReport = true) {
+      if (!app.modelBBox) return { fits: false, messages: ['No model loaded.'] };
+      const b = app.modelBBox;
+      const messages = [];
+      let fits = true;
+      if (b.min.x < 0 || b.max.x > app.printer.bedX) { fits = false; messages.push('X is outside the bed.'); }
+      if (b.min.z < 0 || b.max.z > app.printer.bedY) { fits = false; messages.push('Y is outside the bed.'); }
+      if (b.min.y < -0.02) { fits = false; messages.push('Model is below the bed.'); }
+      if (b.max.y > app.printer.bedZ) { fits = false; messages.push('Model is taller than printer Z volume.'); }
+      if (!messages.length) messages.push('Model fits inside the configured build volume.');
+      if (showReport) $('qualityReport').innerHTML = messages.map(m => `• ${escapeHtml(m)}`).join('<br>');
+      updateValidation();
+      return { fits, messages };
+    }
+
+    function analyzeOverhangs() {
+      if (!app.triangleCache.length) return alert('Load a model first.');
+      clearGroup(app.helperGroup);
+      const threshold = Math.cos(THREE.MathUtils.degToRad(45));
+      let overhang = 0;
+      let total = 0;
+      const pts = [];
+      for (const t of app.triangleCache) {
+        total++;
+        if (t.n.y < -threshold) {
+          overhang++;
+          const c = new THREE.Vector3().add(t.a).add(t.b).add(t.c).multiplyScalar(1/3);
+          pts.push(c);
+        }
+      }
+      if (pts.length) {
+        const geo = new THREE.BufferGeometry().setFromPoints(pts.slice(0, 8000));
+        const mat = new THREE.PointsMaterial({ color: 0xff1744, size: 1.8, sizeAttenuation: true });
+        app.helperGroup.add(new THREE.Points(geo, mat));
+      }
+      const pct = total ? (overhang / total * 100).toFixed(1) : 0;
+      $('qualityReport').innerHTML = `Overhang-like downward faces: <b>${overhang}</b> / ${total} (${pct}%). Red points mark likely support-sensitive areas. Simple check only.`;
+      setStatus('Overhang analysis complete');
+    }
+
+    function previewSimpleSupports() {
+      if (!app.triangleCache.length) return alert('Load a model first.');
+      clearGroup(app.helperGroup);
+      const threshold = Math.cos(THREE.MathUtils.degToRad(50));
+      const material = new THREE.LineBasicMaterial({ color: 0xff9100, transparent: true, opacity: .55 });
+      const pts = [];
+      let count = 0;
+      for (let i = 0; i < app.triangleCache.length; i += 4) {
+        const t = app.triangleCache[i];
+        if (t.n.y < -threshold) {
+          const c = new THREE.Vector3().add(t.a).add(t.b).add(t.c).multiplyScalar(1/3);
+          if (c.y > 3) {
+            pts.push(c, new THREE.Vector3(c.x, 0, c.z));
+            count++;
+            if (count > 1200) break;
+          }
+        }
+      }
+      if (pts.length) {
+        const geo = new THREE.BufferGeometry().setFromPoints(pts);
+        app.helperGroup.add(new THREE.LineSegments(geo, material));
+      }
+      $('qualityReport').innerHTML = `Previewed ${count} simple vertical support guides. This is a visualization only; generated G-code does not yet print support structures.`;
+      setStatus('Support guide preview complete');
+    }
+
+    async function connectSerial() {
+      if (!('serial' in navigator)) {
+        alert('Web Serial API is not available. Use Chrome/Edge on HTTPS or localhost.');
         return;
       }
-      try{
-        const baud = parseInt($('baud').value) || 115200;
+      try {
+        const baud = int('baud', 115200);
         app.serialPort = await navigator.serial.requestPort();
         await app.serialPort.open({ baudRate: baud, parity: 'none', dataBits: 8, stopBits: 1, flowControl: 'none' });
-        setStatus('Serial port opened at ' + baud);
-        logConsole('Serial port opened:', app.serialPort);
-        // set up readers/writers
+
         const encoder = new TextEncoderStream();
-        const writableStreamClosed = encoder.readable.pipeTo(app.serialPort.writable);
+        app.serialWritableClosed = encoder.readable.pipeTo(app.serialPort.writable);
         app.serialWriter = encoder.writable.getWriter();
 
-        // Read loop
         const decoder = new TextDecoderStream();
-        app.serialPort.readable.pipeTo(decoder.writable);
+        app.serialReadableClosed = app.serialPort.readable.pipeTo(decoder.writable);
         app.serialReader = decoder.readable.getReader();
-
         readSerialLoop();
-      }catch(err){
+        $('connectionState').textContent = `Serial ${baud}`;
+        setStatus('Serial port opened at ' + baud);
+      } catch (err) {
         console.error(err);
         alert('Serial connect failed: ' + (err.message || err));
       }
     }
 
-    async function readSerialLoop(){
-      try{
-        while(true){
-          const {value, done} = await app.serialReader.read();
-          if(done) break;
-          if(value){
-            // split into lines
-            const lines = value.split(/\r?\n/).filter(Boolean);
-            lines.forEach(l=>{
-              logConsole('< ' + l);
-              if(l.trim().toLowerCase().startsWith('ok')){
-                // Received OK from printer; mark as ready
-                app.awaitingOk = false;
-              }
-            });
-          }
+    async function readSerialLoop() {
+      try {
+        while (app.serialReader) {
+          const { value, done } = await app.serialReader.read();
+          if (done) break;
+          if (!value) continue;
+          app.lineBuffer += value;
+          const parts = app.lineBuffer.split(/\r?\n/);
+          app.lineBuffer = parts.pop() || '';
+          for (const line of parts) handlePrinterLine(line.trim());
         }
-      }catch(err){
-        console.error('Serial read error',err);
-        setStatus('Serial read error: ' + err.message);
+      } catch (err) {
+        if (app.serialPort) setStatus('Serial read error: ' + err.message);
       }
     }
 
-    async function disconnectSerial(){
-      try{
-        if(app.serialReader) { await app.serialReader.cancel().catch(()=>{}); app.serialReader = null; }
-        if(app.serialWriter) { await app.serialWriter.close().catch(()=>{}); app.serialWriter = null; }
-        if(app.serialPort) { await app.serialPort.close().catch(()=>{}); app.serialPort = null; }
+    function handlePrinterLine(line) {
+      if (!line) return;
+      logConsole('< ' + line);
+      if (/^ok\b/i.test(line) || /wait/i.test(line)) {
+        const resolver = app.okResolvers.shift();
+        if (resolver) resolver(true);
+      }
+      const temp = line.match(/T:([0-9.]+).*B:([0-9.]+)/i);
+      if (temp) setStatus(`Printer temps: nozzle ${temp[1]}°C, bed ${temp[2]}°C`, true);
+    }
+
+    async function disconnectSerial() {
+      try {
+        if (app.serialReader) {
+          await app.serialReader.cancel().catch(()=>{});
+          app.serialReader.releaseLock?.();
+          app.serialReader = null;
+        }
+        if (app.serialWriter) {
+          await app.serialWriter.close().catch(()=>{});
+          app.serialWriter.releaseLock?.();
+          app.serialWriter = null;
+        }
+        if (app.serialPort) {
+          await app.serialPort.close().catch(()=>{});
+          app.serialPort = null;
+        }
+        $('connectionState').textContent = app.usbDevice ? 'USB connected' : 'Disconnected';
         setStatus('Serial disconnected');
-      }catch(e){
-        console.warn('Error disconnecting serial',e);
+      } catch (e) {
+        console.warn('Disconnect error', e);
       }
     }
 
-    // Send a single line via serial writer (wait for writer readiness)
-    async function serialWriteLine(line){
-      if(!app.serialWriter) throw new Error('Not connected via serial');
+    async function serialWriteLine(line) {
+      if (!app.serialWriter) throw new Error('Not connected via serial');
       await app.serialWriter.write(line + '\n');
       logConsole('> ' + line);
     }
 
-    // -------------------------
-    // WebUSB fallback (retains your earlier approach but kept as secondary)
-    // -------------------------
-    async function connectUsb(){
-      try{
-        const device = await navigator.usb.requestDevice({ filters: [{ vendorId: 0x2e3c }, {vendorId:0x2341}, {vendorId:0x0483}] });
+    function waitForOk(timeoutMs = 4500) {
+      if (!bool('ackMode')) return Promise.resolve(true);
+      return new Promise(resolve => {
+        const timer = setTimeout(() => {
+          const idx = app.okResolvers.indexOf(done);
+          if (idx >= 0) app.okResolvers.splice(idx, 1);
+          resolve(false);
+        }, timeoutMs);
+        function done(ok) {
+          clearTimeout(timer);
+          resolve(ok);
+        }
+        app.okResolvers.push(done);
+      });
+    }
+
+    async function connectUsb() {
+      if (!('usb' in navigator)) {
+        alert('WebUSB is not available in this browser.');
+        return;
+      }
+      try {
+        const device = await navigator.usb.requestDevice({ filters: [{ vendorId: 0x2e3c }, { vendorId: 0x2341 }, { vendorId: 0x0483 }, { vendorId: 0x1a86 }] });
         app.usbDevice = device;
         await device.open();
-        if(device.configuration === null) await device.selectConfiguration(1);
+        if (device.configuration === null) await device.selectConfiguration(1);
         await device.claimInterface(0);
-        setStatus('USB device claimed (fallback).');
-        logConsole('USB device:', device);
-      }catch(err){
+        $('connectionState').textContent = 'USB connected';
+        setStatus('USB device claimed. Serial is still recommended for Marlin printers.');
+      } catch (err) {
         console.error('USB connect failed', err);
         alert('WebUSB connection failed: ' + err.message);
       }
     }
 
-    async function disconnectUsb(){
-      if(!app.usbDevice) return;
-      try{
+    async function disconnectUsb() {
+      if (!app.usbDevice) return;
+      try {
         await app.usbDevice.close();
         app.usbDevice = null;
+        $('connectionState').textContent = app.serialWriter ? 'Serial connected' : 'Disconnected';
         setStatus('USB device disconnected');
-      }catch(e){
+      } catch (e) {
         console.warn('USB disconnect error', e);
       }
     }
 
-    // -------------------------
-    // Send G-code (line streaming) — supports serial (preferred) and USB fallback
-    // Uses line-by-line streaming with simple ack wait
-    // -------------------------
-    async function sendGCodeStream(gcode, {onProgress} = {}){
-      if(!gcode) throw new Error('No G-code to send');
-      if(app.sending) throw new Error('Already sending');
-      app.sending = true;
-      app.totalLines = gcode.split(/\r?\n/).filter(l=>l.trim().length>0).length;
-      app.sentLines = 0;
-      setStatus('Starting send: ' + app.totalLines + ' lines');
-      // Choose connection
-      if(app.serialWriter){
-        // Streaming via Web Serial, waiting for 'ok' responses to avoid buffer overflow
-        const lines = gcode.split(/\r?\n/);
-        for(let i=0;i<lines.length;i++){
-          if(!app.sending) break;
-          const raw = lines[i].trim();
-          if(!raw) continue;
-          // if the printer is already busy waiting ack, wait until ok is received
-          // we implement a simple flow: send line, wait small delay, but also check awaitingOk
-          await serialWriteLine(raw);
-          app.sentLines++;
-          if(onProgress) onProgress(app.sentLines / app.totalLines);
-          // throttle a bit
-          await new Promise(r=>setTimeout(r, 20));
-          // Wait for an 'ok' from the printer or timeout
-          const okWait = await waitForOk(4000);
-          if(!okWait){
-            // No ok received within timeout; continue but log
-            logConsole('Warning: no OK received within timeout for line', i);
-          }
-        }
-        setStatus('Completed sending (serial).');
-      } else if(app.usbDevice){
-        // WebUSB transferOut approach (older)
-        const encoder = new TextEncoder();
-        const lines = gcode.split(/\r?\n/);
-        for(let i=0;i<lines.length;i++){
-          if(!app.sending) break;
-          const raw = lines[i].trim();
-          if(!raw) continue;
-          const data = encoder.encode(raw + '\n');
-          try{
-            await app.usbDevice.transferOut(2, data);
-            app.sentLines++;
-            if(onProgress) onProgress(app.sentLines / app.totalLines);
-            await new Promise(r=>setTimeout(r, 10));
-          }catch(err){
-            console.error('USB transfer error', err);
-            break;
-          }
-        }
-        setStatus('Completed sending (USB).');
-      } else {
-        throw new Error('No connection active. Connect to printer first (Web Serial recommended).');
-      }
-      app.sending = false;
-      return true;
+    function prepareGcodeLines(gcode) {
+      return String(gcode || '').split(/\r?\n/).map(line => {
+        let l = line.trim();
+        if (bool('stripComments')) l = l.split(';')[0].trim();
+        return l;
+      }).filter(Boolean);
     }
 
-    // Wait for 'ok' from serial read loop; timeout in ms
-    function waitForOk(timeoutMs=2000){
-      return new Promise(resolve=>{
-        const start = Date.now();
-        const check = () => {
-          if(!app.serialReader) return resolve(false);
-          // if awaitingOk flag was cleared by read loop, then ok was seen
-          if(!app.awaitingOk) return resolve(true);
-          if(Date.now() - start > timeoutMs) return resolve(false);
-          setTimeout(check, 50);
+    async function sendGCodeStream(gcode, { onProgress } = {}) {
+      if (!gcode) throw new Error('No G-code to send');
+      if (app.sending) throw new Error('Already sending');
+      const lines = prepareGcodeLines(gcode);
+      app.sending = true;
+      app.streamPaused = false;
+      app.totalLines = lines.length;
+      app.sentLines = 0;
+      setStatus('Starting stream: ' + lines.length + ' lines');
+
+      try {
+        if (app.serialWriter) {
+          for (let i = 0; i < lines.length; i++) {
+            if (!app.sending) break;
+            while (app.streamPaused && app.sending) await delay(120);
+            const raw = lines[i];
+            await serialWriteLine(raw);
+            app.sentLines++;
+            if (onProgress) onProgress(app.sentLines / app.totalLines);
+            const ok = await waitForOk(4500);
+            if (!ok) logConsole('Warning: ok timeout after line', i + 1, raw);
+          }
+          setStatus(app.sending ? 'Completed sending via serial.' : 'Sending stopped.');
+        } else if (app.usbDevice) {
+          const encoder = new TextEncoder();
+          for (let i = 0; i < lines.length; i++) {
+            if (!app.sending) break;
+            while (app.streamPaused && app.sending) await delay(120);
+            await app.usbDevice.transferOut(2, encoder.encode(lines[i] + '\n'));
+            logConsole('> ' + lines[i]);
+            app.sentLines++;
+            if (onProgress) onProgress(app.sentLines / app.totalLines);
+            await delay(15);
+          }
+          setStatus(app.sending ? 'Completed sending via USB.' : 'Sending stopped.');
+        } else {
+          throw new Error('No connection active. Connect using Web Serial or WebUSB first.');
+        }
+      } finally {
+        app.sending = false;
+        app.streamPaused = false;
+        updateValidation();
+      }
+    }
+
+    function delay(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+    function updateValidation() {
+      const pills = [];
+      if (app.modelMesh) pills.push(`<span class="pill ok">Model loaded</span>`); else pills.push(`<span class="pill warn">No model</span>`);
+      if (app.gcodeText || gcodePreviewEl.value.trim()) pills.push(`<span class="pill ok">G-code ready</span>`); else pills.push(`<span class="pill warn">No G-code</span>`);
+      if (app.serialWriter || app.usbDevice) pills.push(`<span class="pill ok">Connected</span>`); else pills.push(`<span class="pill bad">Disconnected</span>`);
+      if (app.modelBBox) {
+        const fit = analyzeBedFitNoUi();
+        pills.push(`<span class="pill ${fit ? 'ok' : 'bad'}">${fit ? 'Fits bed' : 'Out of volume'}</span>`);
+      }
+      if (app.sending) pills.push(`<span class="pill warn">Streaming</span>`);
+      $('validationPills').innerHTML = pills.join('');
+    }
+
+    function analyzeBedFitNoUi() {
+      if (!app.modelBBox) return false;
+      const b = app.modelBBox;
+      return b.min.x >= -0.01 && b.max.x <= app.printer.bedX + 0.01 && b.min.z >= -0.01 && b.max.z <= app.printer.bedY + 0.01 && b.min.y >= -0.05 && b.max.y <= app.printer.bedZ + 0.01;
+    }
+
+    function saveSettings() {
+      const data = {};
+      for (const k of SETTINGS_KEYS) {
+        const el = $(k);
+        if (!el) continue;
+        data[k] = el.type === 'checkbox' ? el.checked : el.value;
+      }
+      data.theme = document.body.dataset.theme;
+      localStorage.setItem('slicerV2Settings', JSON.stringify(data));
+      setStatus('Settings saved locally');
+    }
+
+    function loadSettings() {
+      const raw = localStorage.getItem('slicerV2Settings');
+      if (!raw) return;
+      try {
+        const data = JSON.parse(raw);
+        for (const [k, v] of Object.entries(data)) {
+          const el = $(k);
+          if (!el) continue;
+          if (el.type === 'checkbox') el.checked = !!v;
+          else el.value = v;
+        }
+        if (data.theme) document.body.dataset.theme = data.theme;
+        $('themeBtn').textContent = document.body.dataset.theme === 'dark' ? 'Light Mode' : 'Dark Mode';
+      } catch (e) {
+        console.warn('Could not load settings', e);
+      }
+    }
+
+    function saveProject() {
+      const project = {
+        version: 2,
+        savedAt: new Date().toISOString(),
+        settings: {},
+        gcodeText: gcodePreviewEl.value,
+        sourceName: app.modelSourceName,
+        note: 'This project stores settings and G-code only, not the uploaded mesh file.'
+      };
+      for (const k of SETTINGS_KEYS) {
+        const el = $(k);
+        if (!el) continue;
+        project.settings[k] = el.type === 'checkbox' ? el.checked : el.value;
+      }
+      downloadText('slicer_project.json', JSON.stringify(project, null, 2), 'application/json');
+      setStatus('Project exported');
+    }
+
+    function importProject() {
+      const inp = document.createElement('input');
+      inp.type = 'file';
+      inp.accept = '.json';
+      inp.onchange = async e => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        try {
+          const project = JSON.parse(await file.text());
+          if (project.settings) {
+            for (const [k,v] of Object.entries(project.settings)) {
+              const el = $(k);
+              if (!el) continue;
+              if (el.type === 'checkbox') el.checked = !!v;
+              else el.value = v;
+            }
+          }
+          if (project.gcodeText) {
+            app.gcodeText = project.gcodeText;
+            gcodePreviewEl.value = project.gcodeText;
+            analyzeGCodeAndEstimate(project.gcodeText);
+            previewGCode(project.gcodeText);
+          }
+          setStatus('Project imported');
+        } catch (err) {
+          alert('Could not import project: ' + err.message);
+        }
+      };
+      inp.click();
+    }
+
+    function downloadText(filename, text, type = 'text/plain') {
+      const blob = new Blob([text], { type });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    }
+
+    function renderCustomMacros() {
+      const raw = localStorage.getItem('slicerV2Macros');
+      const macros = raw ? JSON.parse(raw) : [];
+      $('customMacros').innerHTML = '';
+      macros.forEach((m, idx) => {
+        const btn = document.createElement('button');
+        btn.className = 'ghost';
+        btn.textContent = m.name;
+        btn.title = m.cmd;
+        btn.onclick = () => sendCommandOrLines(m.cmd);
+        const del = document.createElement('button');
+        del.className = 'ghost tiny';
+        del.textContent = '×';
+        del.title = 'Delete macro';
+        del.onclick = () => {
+          macros.splice(idx, 1);
+          localStorage.setItem('slicerV2Macros', JSON.stringify(macros));
+          renderCustomMacros();
         };
-        // set awaitingOk true to indicate we are waiting
-        app.awaitingOk = true;
-        check();
+        $('customMacros').append(btn, del);
       });
     }
 
-    // Public controls: auto start / pause / resume / cancel
-    $('autoStartBtn').addEventListener('click', async ()=>{
-      try{
-        if(!app.gcodeText){
-          alert('No G-code. Generate or upload G-code first.');
-          return;
-        }
-        if(!app.serialWriter && !app.usbDevice){
-          alert('Not connected to a printer. Use Connect (Web Serial) or Connect (WebUSB).');
-          return;
-        }
-        setStatus('Starting print stream');
-        progressBar.style.width = '0%';
-        await sendGCodeStream(app.gcodeText, { onProgress: (p)=>{
-          progressBar.style.width = (p*100)+'%';
-          $('statusLine').textContent = `Sending to printer ${Math.round(p*100)}%`;
-        }});
-      }catch(err){
-        console.error('Auto start failed', err);
-        setStatus('Auto start error: ' + err.message);
+    async function sendCommandOrLines(cmd) {
+      const lines = String(cmd).split(';').map(s => s.trim()).filter(Boolean);
+      for (const line of lines) {
+        if (app.serialWriter) await serialWriteLine(line);
+        else if (app.usbDevice) await app.usbDevice.transferOut(2, new TextEncoder().encode(line + '\n'));
+        else return alert('Not connected to any device.');
+        await delay(80);
       }
-    });
+    }
 
-    $('pausePrintBtn').addEventListener('click', async ()=>{
-      try{
-        // We cannot truly pause the printer except by sending M25 or feed hold M0 depending on firmware
-        if(app.serialWriter){
-          await serialWriteLine('M25'); // SD pause (might not apply)
-          await serialWriteLine('M0'); // stop
-          setStatus('Pause commands sent (M25 / M0).');
-        } else if(app.usbDevice){
-          await app.usbDevice.transferOut(2, new TextEncoder().encode('M25\n'));
-          setStatus('Pause (USB) sent');
+    function showSafetyModal() {
+      return new Promise(resolve => {
+        $('safetyModal').classList.add('show');
+        $('modalCancel').onclick = () => { $('safetyModal').classList.remove('show'); resolve(false); };
+        $('modalConfirm').onclick = () => { $('safetyModal').classList.remove('show'); resolve(true); };
+      });
+    }
+
+    function wireEvents() {
+      document.querySelectorAll('.tabBtn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          document.querySelectorAll('.tabBtn').forEach(b => b.classList.remove('active'));
+          document.querySelectorAll('.tabPane').forEach(p => p.classList.remove('active'));
+          btn.classList.add('active');
+          $(btn.dataset.tab).classList.add('active');
+        });
+      });
+
+      $('themeBtn').addEventListener('click', () => {
+        document.body.dataset.theme = document.body.dataset.theme === 'dark' ? 'light' : 'dark';
+        $('themeBtn').textContent = document.body.dataset.theme === 'dark' ? 'Light Mode' : 'Dark Mode';
+        saveSettings();
+      });
+
+      $('resetUiBtn').addEventListener('click', () => {
+        if (!confirm('Reset saved UI/settings/macros?')) return;
+        localStorage.removeItem('slicerV2Settings');
+        localStorage.removeItem('slicerV2Macros');
+        location.reload();
+      });
+
+      $('modelUpload').addEventListener('change', async ev => {
+        const file = ev.target.files?.[0];
+        if (!file) return;
+        try { await handleFile(file); }
+        catch (err) { console.error(err); alert('Load failed: ' + err.message); }
+      });
+
+      $('loadGcodeBtn').addEventListener('click', () => {
+        const inp = document.createElement('input');
+        inp.type = 'file'; inp.accept = '.gcode,.gc';
+        inp.onchange = async e => {
+          const f = e.target.files?.[0];
+          if (!f) return;
+          const text = await f.text();
+          app.gcodeText = text;
+          gcodePreviewEl.value = text;
+          analyzeGCodeAndEstimate(text);
+          previewGCode(text);
+          setStatus('G-code uploaded via Load button');
+        };
+        inp.click();
+      });
+
+      $('downloadGcodeBtn').addEventListener('click', () => {
+        const text = gcodePreviewEl.value || app.gcodeText;
+        if (!text) return alert('No G-code generated or uploaded.');
+        downloadText('model_generated_v2.gcode', text);
+        setStatus('G-code downloaded');
+      });
+
+      $('exportProjectBtn').addEventListener('click', saveProject);
+      $('importProjectBtn').addEventListener('click', importProject);
+      $('saveSettingsBtn').addEventListener('click', saveSettings);
+
+      $('generateBtn').addEventListener('click', () => {
+        try { generateGCodeFromModel(); }
+        catch (err) { console.error(err); alert('Error generating G-code: ' + err.message); setStatus('Generate failed: ' + err.message); }
+      });
+
+      $('previewGcodeBtn').addEventListener('click', () => {
+        app.gcodeText = gcodePreviewEl.value;
+        analyzeGCodeAndEstimate(app.gcodeText);
+        previewGCode(app.gcodeText);
+        setStatus('G-code preview refreshed');
+      });
+
+      $('analyzeBtn').addEventListener('click', () => {
+        const stats = analyzeGCodeAndEstimate(gcodePreviewEl.value || app.gcodeText);
+        $('qualityReport').innerHTML = `G-code distance: ${stats.distance.toFixed(1)} mm<br>Print moves: ${stats.printDistance.toFixed(1)} mm<br>Travel moves: ${stats.travelDistance.toFixed(1)} mm<br>Filament: ${(stats.totalE/1000).toFixed(2)} m<br>Estimated time: ${formatSecondsToHMS(stats.totalTime*1.18)}`;
+        setStatus('Analysis complete');
+      });
+
+      $('autoStartBtn').addEventListener('click', async () => {
+        try {
+          app.gcodeText = gcodePreviewEl.value || app.gcodeText;
+          if (!app.gcodeText) return alert('No G-code. Generate or upload G-code first.');
+          if (!app.serialWriter && !app.usbDevice) return alert('Not connected to a printer. Use Web Serial or WebUSB.');
+          const ok = await showSafetyModal();
+          if (!ok) return;
+          progressBar.style.width = '0%';
+          await sendGCodeStream(app.gcodeText, { onProgress: p => {
+            progressBar.style.width = (p * 100).toFixed(1) + '%';
+            statusLine.textContent = `Sending to printer ${Math.round(p*100)}%`;
+          }});
+        } catch (err) {
+          console.error('Auto start failed', err);
+          setStatus('Auto start error: ' + err.message);
         }
-      }catch(e){ console.warn(e); }
-    });
+      });
 
-    $('resumePrintBtn').addEventListener('click', async ()=>{
-      try{
-        if(app.serialWriter){
-          await serialWriteLine('M24'); // resume SD print
-          setStatus('Resume command sent (M24)');
-        } else if(app.usbDevice){
-          await app.usbDevice.transferOut(2, new TextEncoder().encode('M24\n'));
-          setStatus('Resume (USB) sent');
-        }
-      }catch(e){ console.warn(e); }
-    });
+      $('pausePrintBtn').addEventListener('click', async () => {
+        try {
+          app.streamPaused = true;
+          if (app.serialWriter) await serialWriteLine('M25');
+          else if (app.usbDevice) await app.usbDevice.transferOut(2, new TextEncoder().encode('M25\n'));
+          setStatus('Paused stream and sent M25 if connected');
+        } catch (e) { console.warn(e); }
+      });
 
-    $('cancelPrintBtn').addEventListener('click', async ()=>{
-      try{
+      $('resumePrintBtn').addEventListener('click', async () => {
+        try {
+          app.streamPaused = false;
+          if (app.serialWriter) await serialWriteLine('M24');
+          else if (app.usbDevice) await app.usbDevice.transferOut(2, new TextEncoder().encode('M24\n'));
+          setStatus('Resumed stream and sent M24 if connected');
+        } catch (e) { console.warn(e); }
+      });
+
+      $('cancelPrintBtn').addEventListener('click', async () => {
+        const ok = confirm('Send emergency stop M112 and stop streaming? This may require printer reset after use.');
+        if (!ok) return;
         app.sending = false;
-        if(app.serialWriter){
-          await serialWriteLine('M112'); // emergency stop
-          await serialWriteLine('M84'); // disable motors
-          setStatus('Emergency stop (M112) sent');
-        }
-        if(app.usbDevice){
-          await app.usbDevice.transferOut(2, new TextEncoder().encode('M112\n'));
-          setStatus('Emergency stop (USB) sent');
-        }
-      }catch(e){ console.warn(e); }
-    });
-
-    // Extract a specific layer from current G-code in preview
-    $('extractLayerBtn').addEventListener('click', ()=>{
-      const layerNumber = parseInt(prompt('Enter layer number to extract (1-based):','1'));
-      if(isNaN(layerNumber) || layerNumber < 1){
-        alert('Invalid layer');
-        return;
-      }
-      const g = $('gcodePreview').value;
-      if(!g) { alert('No G-code in preview'); return; }
-      const lines = g.split(/\r?\n/);
-      let sIdx = -1, eIdx = -1;
-      for(let i=0;i<lines.length;i++){
-        if(lines[i].includes(`;LAYER:${layerNumber-1}`)){
-          sIdx = i;
-        }else if(sIdx !== -1 && lines[i].includes(`;LAYER:${layerNumber}`)){
-          eIdx = i;
-          break;
-        }
-      }
-      if(sIdx === -1){
-        alert('Layer not found in G-code');
-        return;
-      }
-      if(eIdx === -1) eIdx = lines.length;
-      // include header (setup) plus layer block
-      const header = lines.slice(0, Math.min(60, sIdx)).join('\n');
-      const chunk = header + '\n' + lines.slice(sIdx, eIdx).join('\n');
-      // Option: send chunk directly
-      const ok = confirm('Extracted layer. Would you like to send it to printer now?');
-      if(ok){
-        // send directly
-        (async ()=>{
-          try{
-            await sendGCodeStream(chunk,{onProgress:p=> progressBar.style.width = (p*100)+'%'});
-          }catch(err){
-            alert('Error sending layer: ' + err.message);
+        app.streamPaused = false;
+        try {
+          if (app.serialWriter) {
+            await serialWriteLine('M112');
+            await delay(100);
+            await serialWriteLine('M84');
+          } else if (app.usbDevice) {
+            await app.usbDevice.transferOut(2, new TextEncoder().encode('M112\n'));
           }
-        })();
-      } else {
-        // place in preview temp
-        const w = window.open();
-        w.document.body.innerText = chunk;
-      }
-    });
+          setStatus('Emergency stop sent');
+        } catch (e) { console.warn(e); }
+      });
 
-    // Send manual command
-    $('sendCmd').addEventListener('click', async ()=>{
-      const cmd = $('manualCommand').value.trim();
-      if(!cmd) return;
-      if(app.serialWriter){
-        try{ await serialWriteLine(cmd); }catch(e){ alert('Send failed: ' + e.message); }
-      } else if(app.usbDevice){
-        try{ await app.usbDevice.transferOut(2, new TextEncoder().encode(cmd + '\n')); }catch(e){ alert('Send failed (USB): ' + e.message); }
-      } else {
-        alert('Not connected to any device.');
-      }
-    });
+      $('extractLayerBtn').addEventListener('click', () => {
+        const layerNumber = parseInt(prompt('Enter layer number to extract (1-based):', String(layerSlider.value || 1)), 10);
+        if (!Number.isFinite(layerNumber) || layerNumber < 1) return alert('Invalid layer');
+        const g = gcodePreviewEl.value;
+        if (!g) return alert('No G-code in preview');
+        const lines = g.split(/\r?\n/);
+        let sIdx = -1, eIdx = -1;
+        for (let i = 0; i < lines.length; i++) {
+          if (lines[i].includes(`;LAYER:${layerNumber-1}`)) sIdx = i;
+          else if (sIdx !== -1 && lines[i].includes(`;LAYER:${layerNumber}`)) { eIdx = i; break; }
+        }
+        if (sIdx === -1) return alert('Layer not found in G-code');
+        if (eIdx === -1) eIdx = lines.length;
+        const header = lines.slice(0, Math.min(80, sIdx)).join('\n');
+        const chunk = header + '\n' + lines.slice(sIdx, eIdx).join('\n');
+        if (confirm('Extracted layer. Send it to printer now? Cancel will download it instead.')) {
+          sendGCodeStream(chunk, { onProgress: p => progressBar.style.width = (p*100).toFixed(1)+'%' }).catch(err => alert('Error sending layer: ' + err.message));
+        } else {
+          downloadText(`layer_${layerNumber}.gcode`, chunk);
+        }
+      });
 
-    // Connect / disconnect handlers
-    $('connectSerial').addEventListener('click', connectSerial);
-    $('connectUsb').addEventListener('click', connectUsb);
-    $('disconnectBtn').addEventListener('click', ()=>{
-      disconnectUsb();
-      disconnectSerial();
-    });
+      $('connectSerial').addEventListener('click', connectSerial);
+      $('connectUsb').addEventListener('click', connectUsb);
+      $('disconnectBtn').addEventListener('click', () => { disconnectUsb(); disconnectSerial(); });
 
-    // Load gcode preview into app state (text area manual edits included)
-    gcodePreviewEl.addEventListener('change', ()=>{
-      app.gcodeText = gcodePreviewEl.value;
-      analyzeGCodeAndEstimate(app.gcodeText);
-    });
+      $('sendCmd').addEventListener('click', () => {
+        const cmd = $('manualCommand').value.trim();
+        if (!cmd) return;
+        sendCommandOrLines(cmd).catch(e => alert('Send failed: ' + e.message));
+      });
+      $('manualCommand').addEventListener('keydown', e => {
+        if (e.key === 'Enter') { e.preventDefault(); $('sendCmd').click(); }
+      });
 
-    // Initialize viewer on load
-    initViewer();
-    setStatus('Viewer ready');
+      document.querySelectorAll('.macroBtn').forEach(btn => btn.addEventListener('click', () => sendCommandOrLines(btn.dataset.cmd)));
+      $('saveMacroBtn').addEventListener('click', () => {
+        const name = $('customMacroName').value.trim();
+        const cmd = $('customMacroCmd').value.trim();
+        if (!name || !cmd) return alert('Add a macro name and command.');
+        const macros = JSON.parse(localStorage.getItem('slicerV2Macros') || '[]');
+        macros.push({ name, cmd });
+        localStorage.setItem('slicerV2Macros', JSON.stringify(macros));
+        $('customMacroName').value = '';
+        $('customMacroCmd').value = '';
+        renderCustomMacros();
+      });
 
-    // Fit model if user double clicks viewer area (useful)
-    $('viewer').addEventListener('dblclick', ()=> { if(app.modelMesh) fitModelToView(); });
+      $('copyGcodeBtn').addEventListener('click', async () => {
+        await navigator.clipboard.writeText(gcodePreviewEl.value || '');
+        setStatus('G-code copied to clipboard');
+      });
+      $('clearGcodeBtn').addEventListener('click', () => {
+        gcodePreviewEl.value = '';
+        app.gcodeText = '';
+        clearGroup(app.gcodeGroup); clearGroup(app.travelGroup);
+        analyzeGCodeAndEstimate('');
+        setStatus('G-code cleared');
+      });
+      $('saveSnapshotBtn').addEventListener('click', () => {
+        const data = app.renderer.domElement.toDataURL('image/png');
+        const a = document.createElement('a');
+        a.href = data;
+        a.download = 'slicer_preview.png';
+        a.click();
+      });
 
+      $('fitBtn').addEventListener('click', fitModelToView);
+      $('topBtn').addEventListener('click', setCameraTop);
+      $('frontBtn').addEventListener('click', setCameraFront);
+      $('isoBtn').addEventListener('click', setCameraIso);
+      $('toggleModelBtn').addEventListener('click', () => { app.preview.showModel = !app.preview.showModel; app.modelRoot.visible = app.preview.showModel; });
+      $('toggleGcodeBtn').addEventListener('click', () => { app.preview.showGcode = !app.preview.showGcode; app.gcodeGroup.visible = app.preview.showGcode; });
+      $('toggleTravelBtn').addEventListener('click', () => { app.preview.showTravel = !app.preview.showTravel; app.travelGroup.visible = app.preview.showTravel; });
+
+      layerSlider.addEventListener('input', () => {
+        updateLayerLabel();
+        if (gcodePreviewEl.value) previewGCode(gcodePreviewEl.value);
+      });
+
+      const refreshLayers = debounce(() => {
+        updateLayerCountFromBBox();
+        if (app.sliceCache.length) sliceAllLayers();
+      }, 300);
+      ['layerHeight','firstLayerHeight','nozzleWidth','infillPercent','infillPattern','topLayers','bottomLayers','wallCount'].forEach(id => $(id).addEventListener('change', refreshLayers));
+
+      $('profilePreset').addEventListener('change', () => {
+        const p = PRESETS[$('profilePreset').value];
+        if (!p) return;
+        for (const [k,v] of Object.entries(p)) if ($(k)) $(k).value = v;
+        updateLayerCountFromBBox();
+        setStatus(`Applied profile: ${$('profilePreset').selectedOptions[0].textContent}`);
+      });
+
+      $('materialPreset').addEventListener('change', () => {
+        const m = MATERIALS[$('materialPreset').value];
+        if (!m) return;
+        for (const [k,v] of Object.entries(m)) if ($(k)) $(k).value = v;
+        setStatus(`Applied material: ${$('materialPreset').selectedOptions[0].textContent}`);
+      });
+
+      $('printerPreset').addEventListener('change', () => {
+        const p = PRINTERS[$('printerPreset').value];
+        if (!p) return;
+        app.printer = { ...app.printer, ...p };
+        createBed();
+        fitModelToView();
+        analyzeBedFit(false);
+        setStatus(`Printer volume set: ${p.bedX}×${p.bedY}×${p.bedZ}`);
+      });
+
+      $('applyTransformBtn').addEventListener('click', applyTransformFromInputs);
+      $('centerModelBtn').addEventListener('click', () => {
+        if (!app.modelMesh) return alert('Load a model first.');
+        updateBBox();
+        const c = app.modelBBox.getCenter(new THREE.Vector3());
+        app.modelMesh.position.x += app.printer.bedX / 2 - c.x;
+        app.modelMesh.position.z += app.printer.bedY / 2 - c.z;
+        syncTransformInputsFromObject();
+        updateAfterGeometryChange('Centered on bed');
+      });
+      $('dropToBedBtn').addEventListener('click', () => {
+        if (!app.modelMesh) return alert('Load a model first.');
+        updateBBox();
+        app.modelMesh.position.y += -app.modelBBox.min.y;
+        syncTransformInputsFromObject();
+        updateAfterGeometryChange('Dropped to bed');
+      });
+      $('resetTransformBtn').addEventListener('click', () => {
+        if (!app.modelMesh) return alert('Load a model first.');
+        app.transform.mirrorX = 1; app.transform.mirrorY = 1;
+        app.modelMesh.position.set(app.printer.bedX / 2, 0, app.printer.bedY / 2);
+        app.modelMesh.rotation.set(0,0,0);
+        app.modelMesh.scale.set(1,1,1);
+        normalizeNewModelPlacement();
+        updateAfterGeometryChange('Transform reset');
+      });
+      $('mirrorXBtn').addEventListener('click', () => { app.transform.mirrorX *= -1; applyTransformFromInputs(); });
+      $('mirrorYBtn').addEventListener('click', () => { app.transform.mirrorY *= -1; applyTransformFromInputs(); });
+
+      $('repairBtn').addEventListener('click', quickRepairMesh);
+      $('checkFitBtn').addEventListener('click', () => analyzeBedFit(true));
+      $('overhangBtn').addEventListener('click', analyzeOverhangs);
+      $('supportPreviewBtn').addEventListener('click', previewSimpleSupports);
+      $('clearHelpersBtn').addEventListener('click', () => { clearGroup(app.helperGroup); $('qualityReport').textContent = 'Helpers cleared.'; });
+
+      $('viewer').addEventListener('dblclick', () => { if (app.modelMesh) fitModelToView(); });
+
+      gcodePreviewEl.addEventListener('input', debounce(() => {
+        app.gcodeText = gcodePreviewEl.value;
+        analyzeGCodeAndEstimate(app.gcodeText);
+      }, 400));
+    }
+
+    function boot() {
+      loadSettings();
+      initViewer();
+      wireEvents();
+      renderCustomMacros();
+      setStatus('Viewer ready');
+      updateValidation();
+    }
+
+    boot();
   })();
   </script>
 </body>
