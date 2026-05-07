@@ -2,119 +2,473 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>3D Fractal + Dual RL Agents + Dynamic Palette + True Bloom + Replay Buffer + Env Reflection + Volumetric Lighting</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<link rel="icon" href="data:," />
+<title>Hybrid Fractal RL Observatory</title>
 <style>
+  :root {
+    color-scheme: dark;
+    --panel: rgba(5, 8, 14, 0.72);
+    --line: rgba(255, 255, 255, 0.14);
+    --text: rgba(247, 250, 255, 0.95);
+    --muted: rgba(213, 221, 235, 0.72);
+    --accent: #7bf6ff;
+    --hot: #ff9b5f;
+    --good: #9cff84;
+  }
+
+  * {
+    box-sizing: border-box;
+  }
+
   body {
     margin: 0;
     overflow: hidden;
-    background-color: black;
-    font-family: sans-serif;
-    color: #fff;
+    background: #000;
+    color: var(--text);
+    font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    letter-spacing: 0;
   }
-  #info {
-    position: absolute;
-    top: 10px;
-    left: 10px;
-    background: rgba(0,0,0,0.5);
-    padding: 10px;
-    font-size: 14px;
-    z-index: 9999;
-    max-width: 500px;
+
+  #canvas {
+    display: block;
+    width: 100vw;
+    height: 100vh;
+    touch-action: none;
+    background: #000;
   }
-  #vrButton {
-    position: absolute;
-    top: 10px;
-    right: 10px;
-    z-index: 10000;
-    padding: 10px;
-    background: rgba(0,0,0,0.7);
-    color: #fff;
-    border: 1px solid #333;
+
+  #hud {
+    position: fixed;
+    left: 12px;
+    top: 12px;
+    z-index: 8;
+    width: min(360px, calc(100vw - 24px));
+    display: grid;
+    gap: 10px;
+    pointer-events: none;
+  }
+
+  .panel {
+    pointer-events: auto;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    box-shadow: 0 16px 50px rgba(0, 0, 0, 0.35);
+    backdrop-filter: blur(14px);
+  }
+
+  .status {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 12px;
+  }
+
+  .title {
+    min-width: 0;
+  }
+
+  .title strong {
+    display: block;
+    font-size: 13px;
+    font-weight: 700;
+    line-height: 1.2;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .title span {
+    display: block;
+    color: var(--muted);
+    font-size: 11px;
+    line-height: 1.35;
+    margin-top: 2px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .readouts {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 6px;
+    padding: 0 12px 10px;
+  }
+
+  .readout {
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    padding: 6px;
+    min-width: 0;
+    background: rgba(255, 255, 255, 0.045);
+  }
+
+  .readout span {
+    display: block;
+    color: var(--muted);
+    font-size: 9px;
+    line-height: 1;
+    text-transform: uppercase;
+  }
+
+  .readout b {
+    display: block;
+    margin-top: 4px;
+    font-size: 13px;
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+
+  #controls {
+    padding: 10px 12px 12px;
+    display: grid;
+    gap: 10px;
+  }
+
+  .toolbar {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 6px;
+  }
+
+  button {
+    min-height: 34px;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    background: rgba(255, 255, 255, 0.075);
+    color: var(--text);
+    cursor: pointer;
+    font: inherit;
+    font-size: 11px;
+    line-height: 1;
+  }
+
+  button:hover {
+    border-color: rgba(123, 246, 255, 0.6);
+    background: rgba(123, 246, 255, 0.13);
+  }
+
+  button[data-active="true"] {
+    color: #031114;
+    border-color: transparent;
+    background: var(--accent);
+  }
+
+  .row {
+    display: grid;
+    grid-template-columns: 74px 1fr 42px;
+    gap: 8px;
+    align-items: center;
+  }
+
+  .row label,
+  .row output {
+    color: var(--muted);
+    font-size: 11px;
+    font-variant-numeric: tabular-nums;
+  }
+
+  input[type="range"] {
+    width: 100%;
+    accent-color: var(--accent);
+  }
+
+  .swatches {
+    display: grid;
+    grid-template-columns: repeat(6, 1fr);
+    gap: 6px;
+  }
+
+  .swatch {
+    height: 26px;
+    border-radius: 6px;
+    border: 1px solid rgba(255, 255, 255, 0.2);
     cursor: pointer;
   }
-  #fpsCounter {
-    position: absolute;
-    bottom: 10px;
-    left: 10px;
-    background: rgba(0,0,0,0.5);
-    padding: 5px;
-    font-size: 12px;
-    z-index: 10001;
-    color: #0f0;
+
+  .swatch[data-active="true"] {
+    outline: 2px solid var(--text);
+    outline-offset: 2px;
   }
-  canvas {
+
+  .sparkline {
+    width: 100%;
+    height: 42px;
     display: block;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    background: rgba(255, 255, 255, 0.045);
+  }
+
+  #toast {
+    position: fixed;
+    right: 12px;
+    bottom: 12px;
+    z-index: 9;
+    max-width: min(380px, calc(100vw - 24px));
+    padding: 10px 12px;
+    color: var(--text);
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    opacity: 0;
+    transform: translateY(8px);
+    transition: opacity 180ms ease, transform 180ms ease;
+    pointer-events: none;
+    font-size: 12px;
+    line-height: 1.35;
+  }
+
+  #toast.show {
+    opacity: 1;
+    transform: translateY(0);
+  }
+
+  body.compact #controls {
+    display: none;
+  }
+
+  body.clean #hud,
+  body.clean #toast {
+    display: none;
+  }
+
+  @media (max-width: 520px) {
+    #hud {
+      left: 8px;
+      top: 8px;
+      width: calc(100vw - 16px);
+    }
+
+    .readouts {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .toolbar {
+      grid-template-columns: repeat(3, 1fr);
+    }
+
+    .row {
+      grid-template-columns: 64px 1fr 38px;
+    }
   }
 </style>
 </head>
 <body>
-<div id="info">
-  <p><b>3D Hybrid Fractal + Dual RL Agents + Dynamic Palette + True Multipass Bloom + Replay Buffer + Env Reflection + Volumetric Lighting</b></p>
-  <p>Features:</p>
-  <ul>
-    <li>Improved fractal complexity (increased iteration depth, refined distance function)</li>
-    <li>Enhanced bloom effect with adjustable parameters</li>
-    <li>Vibrant, switchable color palettes</li>
-    <li>Dynamic background with stars and subtle gradients</li>
-    <li>Interactive controls (press 'b' to toggle bloom, 'w/s/a/d' to move, orbit camera with mouse drag)</li>
-    <li>Volumetric lighting integrated into fractal shading</li>
-    <li>Replay buffer for RL agents, environment reflection in lighting</li>
-    <li>FPS counter overlay</li>
-    <li>VR attempt button (if supported)</li>
-  </ul>
-</div>
-<button id="vrButton">Enter VR</button>
-<div id="fpsCounter">FPS: 0</div>
 <canvas id="canvas"></canvas>
 
+<div id="hud">
+  <section class="panel">
+    <div class="status">
+      <div class="title">
+        <strong>Hybrid Fractal RL Observatory</strong>
+        <span id="modeLine">WebGL initializing</span>
+      </div>
+      <button id="toggleUi" title="Collapse controls">HUD</button>
+    </div>
+    <div class="readouts">
+      <div class="readout"><span>FPS</span><b id="fpsCounter">0</b></div>
+      <div class="readout"><span>Scale</span><b id="scaleCounter">1.00</b></div>
+      <div class="readout"><span>Audio</span><b id="audioCounter">0.00</b></div>
+      <div class="readout"><span>Agent</span><b id="agentCounter">On</b></div>
+    </div>
+  </section>
+
+  <section id="controls" class="panel">
+    <div class="toolbar">
+      <button id="audioButton" title="Enable microphone reactive input">Mic</button>
+      <button id="bloomButton" data-active="true" title="Toggle bloom">Bloom</button>
+      <button id="agentButton" data-active="true" title="Toggle agent updates">Agent</button>
+      <button id="autoButton" data-active="true" title="Toggle autopilot camera">Auto</button>
+      <button id="foldButton" data-active="true" title="Toggle deep fold field">Fold</button>
+      <button id="shotButton" title="Save a still frame">Shot</button>
+      <button id="vrButton" title="Start immersive VR when supported">VR</button>
+    </div>
+
+    <div class="row">
+      <label for="exposure">Exposure</label>
+      <input id="exposure" type="range" min="0.6" max="2.2" step="0.01" value="1.34" />
+      <output id="exposureOut">1.34</output>
+    </div>
+    <div class="row">
+      <label for="bloomIntensity">Bloom</label>
+      <input id="bloomIntensity" type="range" min="0" max="2.5" step="0.01" value="1.02" />
+      <output id="bloomIntensityOut">1.02</output>
+    </div>
+    <div class="row">
+      <label for="bloomThreshold">Cutoff</label>
+      <input id="bloomThreshold" type="range" min="0.05" max="1.4" step="0.01" value="0.46" />
+      <output id="bloomThresholdOut">0.46</output>
+    </div>
+    <div class="row">
+      <label for="quality">Quality</label>
+      <input id="quality" type="range" min="0.45" max="1" step="0.01" value="0.82" />
+      <output id="qualityOut">0.82</output>
+    </div>
+    <div class="row">
+      <label for="foldDepth">Fold</label>
+      <input id="foldDepth" type="range" min="0" max="3" step="0.01" value="0.28" />
+      <output id="foldDepthOut">0.28</output>
+    </div>
+    <div class="row">
+      <label for="lensStrength">Lens</label>
+      <input id="lensStrength" type="range" min="0" max="1" step="0.01" value="0.22" />
+      <output id="lensStrengthOut">0.22</output>
+    </div>
+
+    <div id="paletteSwatches" class="swatches" aria-label="Palette"></div>
+    <canvas id="agentGraph" class="sparkline" width="320" height="48"></canvas>
+  </section>
+</div>
+
+<div id="toast"></div>
+
 <script>
-// The user mentioned a Maya Python snippet for a heuristic mesh reduction, which we show as a reference.
-// Not integrated into this WebGL code, but here for completeness per instructions.
+"use strict";
+
 class HeuristicMeshReduction {
-    constructor(mesh_name, target_face_count) {
-        this.mesh_name = mesh_name;
-        this.target_face_count = target_face_count;
-    }
-    extract_mesh_features() {
-        // In an actual environment with Maya cmds, we would query:
-        // let face_count = cmds.polyEvaluate(this.mesh_name, face=True);
-        // let edge_count = cmds.polyEvaluate(this.mesh_name, edge=True);
-        // let uv_count = cmds.polyListComponentConversion(this.mesh_name, tuv=True).length;
-        // For this code snippet, just return mock data:
-        return {
-            face_count: 2456,
-            edge_count: 3690,
-            uv_count: 2456
-        };
-    }
+  constructor(meshName, targetFaceCount) {
+    this.meshName = meshName;
+    this.targetFaceCount = targetFaceCount;
+  }
+
+  extractMeshFeatures() {
+    return {
+      face_count: 2456,
+      edge_count: 3690,
+      uv_count: 2456,
+      target_face_count: this.targetFaceCount
+    };
+  }
+
+  estimateReductionPressure() {
+    const features = this.extractMeshFeatures();
+    return Math.max(0, Math.min(1, 1 - features.target_face_count / features.face_count));
+  }
 }
 
-// Note: The fractal/graphics code starts here.
-////////////////////////////////////////////////////////////////////////////////
-// WebGL Context Setup
-////////////////////////////////////////////////////////////////////////////////
 const canvas = document.getElementById("canvas");
-const gl = canvas.getContext("webgl");
-if(!gl) {
-  alert("WebGL not supported.");
+const gl = canvas.getContext("webgl", {
+  alpha: false,
+  antialias: false,
+  depth: false,
+  stencil: false,
+  preserveDrawingBuffer: false,
+  powerPreference: "high-performance"
+});
+
+const ui = {
+  fps: document.getElementById("fpsCounter"),
+  scale: document.getElementById("scaleCounter"),
+  audio: document.getElementById("audioCounter"),
+  agent: document.getElementById("agentCounter"),
+  modeLine: document.getElementById("modeLine"),
+  toast: document.getElementById("toast"),
+  toggleUi: document.getElementById("toggleUi"),
+  audioButton: document.getElementById("audioButton"),
+  bloomButton: document.getElementById("bloomButton"),
+  agentButton: document.getElementById("agentButton"),
+  autoButton: document.getElementById("autoButton"),
+  foldButton: document.getElementById("foldButton"),
+  shotButton: document.getElementById("shotButton"),
+  vrButton: document.getElementById("vrButton"),
+  exposure: document.getElementById("exposure"),
+  exposureOut: document.getElementById("exposureOut"),
+  bloomIntensity: document.getElementById("bloomIntensity"),
+  bloomIntensityOut: document.getElementById("bloomIntensityOut"),
+  bloomThreshold: document.getElementById("bloomThreshold"),
+  bloomThresholdOut: document.getElementById("bloomThresholdOut"),
+  quality: document.getElementById("quality"),
+  qualityOut: document.getElementById("qualityOut"),
+  foldDepth: document.getElementById("foldDepth"),
+  foldDepthOut: document.getElementById("foldDepthOut"),
+  lensStrength: document.getElementById("lensStrength"),
+  lensStrengthOut: document.getElementById("lensStrengthOut"),
+  agentGraph: document.getElementById("agentGraph"),
+  paletteSwatches: document.getElementById("paletteSwatches")
+};
+
+if (!gl) {
+  ui.modeLine.textContent = "WebGL unavailable";
+  throw new Error("WebGL not supported");
 }
-canvas.width = window.innerWidth;
-canvas.height = window.innerHeight;
 
-gl.viewport(0,0,gl.drawingBufferWidth, gl.drawingBufferHeight);
+const extensions = {
+  halfFloat: gl.getExtension("OES_texture_half_float"),
+  halfFloatLinear: gl.getExtension("OES_texture_half_float_linear"),
+  colorBufferHalfFloat: gl.getExtension("EXT_color_buffer_half_float"),
+  loseContext: gl.getExtension("WEBGL_lose_context")
+};
 
-// Shaders for main fractal scene
+const settings = {
+  bloomEnabled: true,
+  bloomIntensity: Number(ui.bloomIntensity.value),
+  bloomThreshold: Number(ui.bloomThreshold.value),
+  exposure: Number(ui.exposure.value),
+  qualityTarget: Number(ui.quality.value),
+  adaptiveQuality: true,
+  renderScale: Number(ui.quality.value),
+  agentEnabled: true,
+  autopilot: true,
+  foldEnabled: true,
+  foldDepth: Number(ui.foldDepth.value),
+  lensStrength: Number(ui.lensStrength.value),
+  paletteIndex: 0,
+  cleanHud: false
+};
+
+const paletteDefs = [
+  { name: "Abyss", css: "linear-gradient(90deg,#18214f,#00b4d8,#b8fff9)" },
+  { name: "Ember", css: "linear-gradient(90deg,#40110d,#ff5b35,#ffd166)" },
+  { name: "Lichen", css: "linear-gradient(90deg,#11351d,#62d26f,#d9ff82)" },
+  { name: "Violet", css: "linear-gradient(90deg,#281548,#a13dff,#ffd1ff)" },
+  { name: "Prism", css: "linear-gradient(90deg,#ff4d6d,#ffd166,#5effc7,#73a5ff)" },
+  { name: "Mono", css: "linear-gradient(90deg,#1d2433,#d5deef,#ffffff)" }
+];
+
+paletteDefs.forEach((palette, index) => {
+  const swatch = document.createElement("button");
+  swatch.className = "swatch";
+  swatch.title = palette.name;
+  swatch.style.background = palette.css;
+  swatch.dataset.index = String(index);
+  swatch.addEventListener("click", () => setPalette(index));
+  ui.paletteSwatches.appendChild(swatch);
+});
+
+function toast(message) {
+  ui.toast.textContent = message;
+  ui.toast.classList.add("show");
+  window.clearTimeout(toast.timer);
+  toast.timer = window.setTimeout(() => ui.toast.classList.remove("show"), 2200);
+}
+
+function setButtonState(button, active) {
+  button.dataset.active = active ? "true" : "false";
+}
+
+function setPalette(index) {
+  settings.paletteIndex = (index + paletteDefs.length) % paletteDefs.length;
+  fractalAgent.paletteIndex = settings.paletteIndex;
+  [...ui.paletteSwatches.children].forEach((node, i) => {
+    node.dataset.active = i === settings.paletteIndex ? "true" : "false";
+  });
+}
+
 const vertexShaderSource = `
 attribute vec2 a_position;
 varying vec2 v_uv;
+
 void main() {
-  v_uv = (a_position * 0.5) + 0.5;
+  v_uv = a_position * 0.5 + 0.5;
   gl_Position = vec4(a_position, 0.0, 1.0);
 }
 `;
 
-// Main fractal fragment shader
 const fragmentShaderSource = `
 precision highp float;
 
@@ -127,249 +481,336 @@ uniform mat3 u_cameraMatrix;
 uniform float u_zoom;
 uniform float u_powerOffset;
 uniform int u_paletteIndex;
+uniform float u_exposure;
+uniform float u_foldDepth;
+uniform float u_agentMood;
 
-#define MAX_MARCH_STEPS 400
-#define MAX_DISTANCE 10.0
-#define SURF_DISTANCE 0.0002
-#define LIGHT_STEPS 10
+#define MAX_MARCH_STEPS 260
+#define MAX_DISTANCE 12.0
+#define SURF_DISTANCE 0.00045
+#define LIGHT_STEPS 14
 #define DITHER_SCALE 0.5
 
 float hash(vec2 p) {
-    return fract(sin(dot(p,vec2(12.9898,78.233)))*43758.5453123);
+  return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123);
+}
+
+float hash3(vec3 p) {
+  return fract(sin(dot(p, vec3(17.31, 67.13, 109.51))) * 43758.5453123);
+}
+
+float noise(vec2 p) {
+  vec2 i = floor(p);
+  vec2 f = fract(p);
+  f = f * f * (3.0 - 2.0 * f);
+  float a = hash(i);
+  float b = hash(i + vec2(1.0, 0.0));
+  float c = hash(i + vec2(0.0, 1.0));
+  float d = hash(i + vec2(1.0, 1.0));
+  return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
+}
+
+float fbm(vec2 p) {
+  float v = 0.0;
+  float a = 0.5;
+  for (int i = 0; i < 5; i++) {
+    v += a * noise(p);
+    p = p * 2.04 + vec2(17.2, 9.1);
+    a *= 0.5;
+  }
+  return v;
 }
 
 float dither(vec2 uv) {
-    vec2 p = floor(uv * 2.0);
-    float pattern = mod(p.x + p.y*2.0,4.0);
-    return (pattern+0.5)/4.0; 
+  vec2 p = floor(uv * 2.0);
+  float pattern = mod(p.x + p.y * 2.0, 4.0);
+  return (pattern + 0.5) / 4.0;
 }
 
 vec2 mandelbulbDistanceIter(vec3 pos, float power) {
-    vec3 z = pos;
-    float dr = 1.0;
-    float r = length(z);
-    float iterCount = 0.0;
-    // Increased fractal iterations for more complexity
-    for(int i=0; i<10; i++) {
-        if(r > 2.0) { 
-            break; 
-        }
-        iterCount = float(i);
-        float theta = acos(z.z/r);
-        float phi = atan(z.y, z.x);
-        float zr = pow(r, power);
-        theta *= power;
-        phi   *= power;
-        z = zr*vec3(sin(theta)*cos(phi), sin(theta)*sin(phi), cos(theta)) + pos;
-        r = length(z);
-        dr = pow(r, power-1.0)*power*dr + 1.0;
+  vec3 z = pos;
+  float dr = 1.0;
+  float r = length(z);
+  float iterCount = 0.0;
+  for (int i = 0; i < 12; i++) {
+    if (r > 2.2) {
+      break;
     }
-    float dist = 0.5*log(r)*r/dr;
-    return vec2(dist, iterCount);
+    iterCount = float(i);
+    float safeR = max(r, 0.0001);
+    float theta = acos(clamp(z.z / safeR, -1.0, 1.0));
+    float phi = atan(z.y, z.x);
+    float zr = pow(safeR, power);
+    theta *= power;
+    phi *= power;
+    z = zr * vec3(sin(theta) * cos(phi), sin(theta) * sin(phi), cos(theta)) + pos;
+    r = length(z);
+    dr = pow(max(r, 0.0001), power - 1.0) * power * dr + 1.0;
+  }
+  float dist = 0.5 * log(max(r, 0.0001)) * r / dr;
+  return vec2(max(dist, 0.00005), iterCount);
 }
 
-float juliaLikeDE(vec3 p, float cPower, vec3 c) {
-    vec3 z = p;
-    float r = 0.0;
-    for(int i=0;i<10;i++){
-        r = dot(z,z);
-        if(r>4.0) break;
-        z = vec3(z.x*z.x - z.y*z.y - z.z*z.z, 2.0*z.x*z.y, 2.0*z.x*z.z) + c;
+float juliaLikeDE(vec3 p, vec3 c) {
+  vec3 z = p;
+  float r = 0.0;
+  for (int i = 0; i < 10; i++) {
+    r = dot(z, z);
+    if (r > 5.0) {
+      break;
     }
-    return 0.5*sqrt(r);
+    z = vec3(
+      z.x * z.x - z.y * z.y - z.z * z.z,
+      2.0 * z.x * z.y,
+      2.0 * z.x * z.z
+    ) + c;
+  }
+  return 0.42 * sqrt(max(r, 0.0001));
+}
+
+float gyroidField(vec3 p) {
+  float g = abs(dot(sin(p * 2.35), cos(p.zxy * 2.35)));
+  return (g - 0.42) * 0.12;
+}
+
+mat2 rotate2(float a) {
+  float s = sin(a);
+  float c = cos(a);
+  return mat2(c, -s, s, c);
+}
+
+vec3 foldSpace(vec3 p) {
+  float depth = clamp(u_foldDepth, 0.0, 3.0);
+  for (int i = 0; i < 4; i++) {
+    float enabled = smoothstep(float(i), float(i) + 0.85, depth);
+    vec3 folded = abs(p) - vec3(0.62 + float(i) * 0.055);
+    folded.xy = rotate2(0.34 + float(i) * 0.29 + u_time * 0.035) * folded.xy;
+    folded.yz = rotate2(-0.21 + float(i) * 0.17) * folded.yz;
+    p = mix(p, folded, enabled * 0.34);
+    p *= mix(1.0, 1.024, enabled);
+  }
+  return p;
 }
 
 float hybridDE(vec3 p, float power, float blendFactor) {
-    vec2 mb = mandelbulbDistanceIter(p, power);
-    vec3 c = vec3(sin(u_time*0.3), cos(u_time*0.3), sin(u_time*0.7)*cos(u_time*0.3))*0.5;
-    float ju = juliaLikeDE(p, 2.0+power*0.2, c);
-    return mix(mb.x, ju, blendFactor);
+  vec3 q = foldSpace(p);
+  vec2 mb = mandelbulbDistanceIter(q, power);
+  vec3 c = vec3(
+    sin(u_time * 0.31),
+    cos(u_time * 0.27),
+    sin(u_time * 0.53) * cos(u_time * 0.19)
+  ) * 0.45;
+  float ju = juliaLikeDE(q, c);
+  float shell = gyroidField(q + vec3(u_time * 0.08, 0.0, -u_time * 0.06));
+  float blended = mix(mb.x, ju, blendFactor);
+  float foldBias = 1.0 + clamp(u_foldDepth, 0.0, 3.0) * 0.05;
+  return max(0.00004, min(blended, blended + shell * 0.38) / foldBias);
 }
 
 vec2 raymarch(vec3 ro, vec3 rd, float power, float blendFactor) {
-    float dist = 0.0;
-    float iterationCount = 0.0;
-    for (int i=0; i<MAX_MARCH_STEPS; i++) {
-        vec3 p = ro + rd * dist;
-        vec2 dResMB = mandelbulbDistanceIter(p, power);
-        iterationCount = dResMB.y;
-        float d = hybridDE(p, power, blendFactor);
-        if (d < SURF_DISTANCE) return vec2(dist, iterationCount);
-        dist += d;
-        if (dist > MAX_DISTANCE) break;
+  float dist = 0.0;
+  float iterationCount = 0.0;
+  for (int i = 0; i < MAX_MARCH_STEPS; i++) {
+    vec3 p = ro + rd * dist;
+    vec2 dResMB = mandelbulbDistanceIter(p, power);
+    iterationCount = dResMB.y;
+    float d = hybridDE(p, power, blendFactor);
+    if (d < SURF_DISTANCE * (1.0 + dist * 0.08)) {
+      return vec2(dist, iterationCount);
     }
-    return vec2(-1.0, iterationCount);
-}
-
-float hybridDEOffset(vec3 p, float power, float blendFactor) {
-    return hybridDE(p, power, blendFactor);
+    dist += d * 0.82;
+    if (dist > MAX_DISTANCE) {
+      break;
+    }
+  }
+  return vec2(-1.0, iterationCount);
 }
 
 vec3 calcNormal(vec3 p, float power, float blendFactor) {
-    float d = hybridDEOffset(p, power, blendFactor);
-    float e = 0.0005;
-    float dx = hybridDEOffset(p+vec3(e,0.0,0.0),power,blendFactor)-d;
-    float dy = hybridDEOffset(p+vec3(0.0,e,0.0),power,blendFactor)-d;
-    float dz = hybridDEOffset(p+vec3(0.0,0.0,e),power,blendFactor)-d;
-    return normalize(vec3(dx,dy,dz));
+  float e = 0.0007;
+  vec2 h = vec2(e, 0.0);
+  float dx = hybridDE(p + h.xyy, power, blendFactor) - hybridDE(p - h.xyy, power, blendFactor);
+  float dy = hybridDE(p + h.yxy, power, blendFactor) - hybridDE(p - h.yxy, power, blendFactor);
+  float dz = hybridDE(p + h.yyx, power, blendFactor) - hybridDE(p - h.yyx, power, blendFactor);
+  return normalize(vec3(dx, dy, dz));
 }
 
 float ambientOcclusion(vec3 p, vec3 n, float power, float blendFactor) {
-    float ao = 0.0;
-    float stepSize = 0.003;
-    for (int i=1; i<=5; i++){
-        float len = float(i)*stepSize;
-        float d = hybridDEOffset(p + n * len, power, blendFactor);
-        ao += (len - d);
+  float occ = 0.0;
+  float sca = 1.0;
+  for (int i = 1; i <= 6; i++) {
+    float h = 0.012 * float(i);
+    float d = hybridDE(p + n * h, power, blendFactor);
+    occ += (h - d) * sca;
+    sca *= 0.72;
+  }
+  return clamp(1.0 - occ * 1.45, 0.08, 1.0);
+}
+
+float softShadow(vec3 ro, vec3 rd, float power, float blendFactor) {
+  float res = 1.0;
+  float t = 0.015;
+  for (int i = 0; i < 36; i++) {
+    float h = hybridDE(ro + rd * t, power, blendFactor);
+    res = min(res, 8.0 * h / t);
+    t += clamp(h, 0.015, 0.18);
+    if (res < 0.02 || t > 4.0) {
+      break;
     }
-    ao = clamp(1.0 - ao*0.5, 0.0, 1.0);
-    return ao;
+  }
+  return clamp(res, 0.0, 1.0);
 }
 
 float starField(vec2 uv, float time) {
-    uv *= 200.0;
-    vec2 iuv = floor(uv);
-    float rnd = hash(iuv);
-    float twinkle = 0.5 + 0.5*sin(time*10.0 + rnd*10.0);
-    float star = step(0.995, rnd);
-    return star * twinkle;
+  uv *= 230.0;
+  vec2 iuv = floor(uv);
+  vec2 f = fract(uv) - 0.5;
+  float rnd = hash(iuv);
+  float core = smoothstep(0.12, 0.0, length(f));
+  float twinkle = 0.45 + 0.55 * sin(time * 7.0 + rnd * 16.0);
+  return step(0.9935, rnd) * core * twinkle;
 }
 
-vec3 getPaletteColor(int idx, float iterationFactor) {
-    // Introduce multiple vibrant palettes
-    if(idx==0) {
-        // Blue to Cyan
-        return mix(vec3(0.2,0.3,0.6), vec3(0.0,0.7,0.9), iterationFactor);
-    } else if(idx==1) {
-        // Red to Orange
-        return mix(vec3(0.6,0.2,0.2), vec3(1.0,0.5,0.2), iterationFactor);
-    } else if(idx==2) {
-        // Greenish range
-        return mix(vec3(0.2,0.4,0.2), vec3(0.6,1.0,0.5), iterationFactor);
-    } else {
-        // Purple-magenta transition
-        return mix(vec3(0.4,0.2,0.6), vec3(0.9,0.3,1.0), iterationFactor);
-    }
+vec3 palette(float t, vec3 a, vec3 b, vec3 c, vec3 d) {
+  return a + b * cos(6.28318 * (c * t + d));
 }
 
-// Simple environment reflection: gradient based on direction
-vec3 environmentColor(vec3 dir) {
-    float u = dir.y*0.5+0.5;
-    return mix(vec3(0.05,0.05,0.1), vec3(0.2,0.5,0.7), u);
+vec3 getPaletteColor(int idx, float t, float audioLevel, float time) {
+  t = fract(t + time * 0.018 + audioLevel * 0.08);
+  if (idx == 0) {
+    return palette(t, vec3(0.18, 0.28, 0.42), vec3(0.24, 0.34, 0.42), vec3(0.8, 0.65, 0.55), vec3(0.12, 0.20, 0.32));
+  } else if (idx == 1) {
+    return palette(t, vec3(0.55, 0.24, 0.15), vec3(0.45, 0.22, 0.10), vec3(0.75, 0.50, 0.35), vec3(0.02, 0.19, 0.31));
+  } else if (idx == 2) {
+    return palette(t, vec3(0.22, 0.42, 0.22), vec3(0.22, 0.38, 0.18), vec3(0.54, 0.72, 0.38), vec3(0.28, 0.07, 0.16));
+  } else if (idx == 3) {
+    return palette(t, vec3(0.34, 0.22, 0.48), vec3(0.35, 0.20, 0.42), vec3(0.58, 0.48, 0.62), vec3(0.56, 0.18, 0.03));
+  } else if (idx == 4) {
+    return palette(t, vec3(0.54, 0.43, 0.42), vec3(0.38, 0.31, 0.28), vec3(0.70, 0.83, 0.56), vec3(0.00, 0.24, 0.48));
+  }
+  return mix(vec3(0.18, 0.22, 0.28), vec3(1.05), smoothstep(0.0, 1.0, t));
 }
 
-vec3 lighting(vec3 p, vec3 n, vec3 ro, float iteration, float power, float audioLevel, float time, int paletteIdx) {
-    vec3 lightDir = normalize(vec3(1.0, 0.5, 0.7));
-    vec3 rimLightDir = normalize(vec3(-0.7, -0.4, -1.0));
-
-    float diff = clamp(dot(n, lightDir),0.0,1.0);
-    float diff2 = clamp(dot(n, rimLightDir)*0.5+0.5,0.0,1.0);
-    float fresnel = pow(1.0 - dot(n, normalize(ro - p)), 2.0);
-
-    vec3 baseColor = vec3(0.15,0.2,0.4)*diff + vec3(0.1)*fresnel;
-    float iterationFactor = iteration/10.0;
-    vec3 paletteColor = getPaletteColor(paletteIdx, iterationFactor);
-    vec3 audioTint = mix(vec3(1.0), vec3(0.6,1.0,0.6), audioLevel*0.5);
-
-    vec3 finalColor = baseColor * paletteColor * audioTint;
-    finalColor += vec3(0.1,0.15,0.25)*diff2*0.3;
-
-    float skyFactor = clamp(n.y*0.5+0.5,0.0,1.0);
-    vec3 skyColor = mix(vec3(0.05,0.05,0.1), vec3(0.2,0.3,0.5), skyFactor);
-    finalColor = mix(finalColor, finalColor*skyColor, 0.2);
-
-    // Add environment reflection
-    float reflectFactor = 0.2;
-    // Reflect direction approximation
-    vec3 r = reflect(normalize(ro - p), n);
-    vec3 reflectColor = environmentColor(r);
-    finalColor = mix(finalColor, finalColor+reflectColor*0.5, reflectFactor);
-
-    return finalColor;
+vec3 environmentColor(vec3 dir, float time) {
+  float y = dir.y * 0.5 + 0.5;
+  float horizon = pow(1.0 - abs(dir.y), 2.0);
+  vec3 low = vec3(0.018, 0.026, 0.050);
+  vec3 high = vec3(0.12, 0.26, 0.34);
+  vec3 nebula = vec3(0.18, 0.08, 0.16) * fbm(dir.xz * 2.3 + time * 0.025);
+  return mix(low, high, y) + nebula * horizon;
 }
 
 float volumetricLight(vec3 pos, vec3 lightDir, float power, float blendFactor) {
-    float stepLen = 0.02;
-    float vol = 0.0;
-    vec3 p = pos;
-    for(int i=0;i<LIGHT_STEPS;i++){
-        p += lightDir * stepLen;
-        float d = hybridDEOffset(p, power, blendFactor);
-        if(d < 0.002) {
-            vol += 0.1;
-        } else {
-            vol *= 0.95;
-        }
-    }
-    return clamp(vol,0.0,1.0);
+  float stepLen = 0.035;
+  float vol = 0.0;
+  float transmit = 1.0;
+  vec3 p = pos + lightDir * 0.02;
+  for (int i = 0; i < LIGHT_STEPS; i++) {
+    float d = hybridDE(p, power, blendFactor);
+    float density = smoothstep(0.07, 0.0, d);
+    vol += density * transmit;
+    transmit *= mix(0.98, 0.82, density);
+    p += lightDir * stepLen;
+  }
+  return clamp(vol / float(LIGHT_STEPS), 0.0, 1.0);
 }
 
-vec3 toneMap(vec3 color) {
-    color = color / (color + vec3(1.0));
-    return pow(color, vec3(0.9));
+vec3 lighting(vec3 p, vec3 n, vec3 ro, float iteration, float power, float audioLevel, float time, int paletteIdx, float blendFactor) {
+  vec3 lightDir = normalize(vec3(0.72, 0.48, 0.62));
+  vec3 rimLightDir = normalize(vec3(-0.65, -0.25, -0.95));
+  vec3 viewDir = normalize(ro - p);
+  vec3 halfDir = normalize(lightDir + viewDir);
+
+  float diff = max(dot(n, lightDir), 0.0);
+  float rim = pow(clamp(1.0 - dot(n, viewDir), 0.0, 1.0), 2.4);
+  float spec = pow(max(dot(n, halfDir), 0.0), 44.0) * (0.35 + audioLevel * 0.8);
+  float shadow = softShadow(p + n * 0.004, lightDir, power, blendFactor);
+  float iterationFactor = clamp(iteration / 11.0 + length(p) * 0.035, 0.0, 1.0);
+
+  vec3 paletteColor = getPaletteColor(paletteIdx, iterationFactor, audioLevel, time);
+  vec3 reflectDir = reflect(-viewDir, n);
+  vec3 reflectColor = environmentColor(reflectDir, time);
+  vec3 audioTint = mix(vec3(1.0), vec3(0.72, 1.0, 0.82), smoothstep(0.05, 0.85, audioLevel));
+
+  vec3 color = paletteColor * (0.20 + diff * shadow * 1.35) * audioTint;
+  color += reflectColor * (0.20 + rim * 0.46);
+  color += vec3(1.0, 0.82, 0.64) * spec * shadow;
+  color += vec3(0.22, 0.48, 0.82) * rim * 0.16;
+  color += vec3(0.36, 0.92, 1.0) * max(u_agentMood, 0.0) * (0.08 + rim * 0.14);
+  color += vec3(1.0, 0.72, 0.42) * volumetricLight(p, lightDir, power, blendFactor) * 0.55;
+  return color;
+}
+
+vec3 background(vec2 uv, vec3 rd, float time, float audioLevel) {
+  vec3 env = environmentColor(rd, time);
+  float stars = starField(uv + rd.xy * 0.025, time);
+  float cloud = fbm(uv * vec2(2.2, 1.1) + vec2(time * 0.018, -time * 0.01));
+  float glow = pow(max(dot(rd, normalize(vec3(0.7, 0.45, 0.6))), 0.0), 7.0);
+  vec3 nebula = mix(vec3(0.03, 0.04, 0.08), vec3(0.18, 0.07, 0.13), cloud);
+  return env + nebula * 0.38 + vec3(stars) * (0.75 + audioLevel) + vec3(1.0, 0.66, 0.34) * glow * 0.25;
+}
+
+vec3 toneMap(vec3 color, float exposure) {
+  color *= exposure;
+  color = color / (color + vec3(1.0));
+  return pow(color, vec3(0.92));
 }
 
 void main() {
-    vec2 uv = v_uv;
-    float fov = 1.2;
-    float camDist = 4.0 + u_zoom;
-    vec3 ro = vec3(0.0,0.0,camDist);
-    ro = u_cameraMatrix * ro;
-    vec3 forward = u_cameraMatrix * vec3(0.0,0.0,-1.0);
-    vec3 right   = u_cameraMatrix * vec3(1.0,0.0,0.0);
-    vec3 up      = u_cameraMatrix * vec3(0.0,1.0,0.0);
+  vec2 uv = v_uv;
+  vec2 uvC = uv - 0.5;
+  uvC.x *= u_resolution.x / u_resolution.y;
 
-    vec2 uvC = uv - 0.5;
-    uvC.x *= (u_resolution.x/u_resolution.y);
-    vec3 rd = normalize(uvC.x * right * fov + uvC.y * up * fov + forward);
+  float fov = 1.02;
+  float camDist = 3.18 + u_zoom;
+  vec3 ro = u_cameraMatrix * vec3(0.0, 0.0, camDist);
+  vec3 forward = u_cameraMatrix * vec3(0.0, 0.0, -1.0);
+  vec3 right = u_cameraMatrix * vec3(1.0, 0.0, 0.0);
+  vec3 up = u_cameraMatrix * vec3(0.0, 1.0, 0.0);
+  vec3 rd = normalize(uvC.x * right * fov + uvC.y * up * fov + forward);
 
-    float timeMorph = 0.5*sin(u_time*0.3) + 0.5; 
-    float basePower = 8.0 + u_audioLevel*0.5 + timeMorph*0.3;
-    float power = basePower + u_powerOffset;
-    float blendFactor = clamp(u_audioLevel*0.5,0.0,1.0);
+  float timeMorph = 0.5 + 0.5 * sin(u_time * 0.28);
+  float basePower = 7.75 + u_audioLevel * 0.75 + timeMorph * 0.45;
+  float power = clamp(basePower + u_powerOffset, 5.5, 11.5);
+  float blendFactor = clamp(0.08 + u_audioLevel * 0.38 + u_agentMood * 0.16 + 0.10 * sin(u_time * 0.17), 0.0, 0.72);
 
-    vec2 rm = raymarch(ro, rd, power, blendFactor);
-    float t = rm.x;
-    float iteration = rm.y;
-    vec3 color;
-    if(t > 0.0) {
-        vec3 p = ro + rd*t;
-        vec3 n = calcNormal(p, power, blendFactor);
-        float ao = ambientOcclusion(p, n, power, blendFactor);
-        color = lighting(p, n, ro, iteration, power, u_audioLevel, u_time, u_paletteIndex);
-        color *= ao;
-        float particleNoise = hash(floor(p.xy*20.0 + u_time*5.0));
-        color += particleNoise*0.03;
-        vec3 lightDir = normalize(vec3(1.0,0.5,0.7));
-        float vol = volumetricLight(p, lightDir, power, blendFactor);
-        color += vec3(vol*0.1, vol*0.08, vol*0.05);
-    } else {
-        // Dynamic background with starfield
-        vec3 bg = mix(vec3(0.01,0.02,0.05), vec3(0.0,0.0,0.1), uv.y);
-        float sf = starField(uv, u_time);
-        bg += vec3(sf);
-        float particleNoise = hash(floor(uv*200.0 + u_time*2.0));
-        bg += particleNoise*0.01;
-        color = bg;
-    }
+  vec2 rm = raymarch(ro, rd, power, blendFactor);
+  float t = rm.x;
+  float iteration = rm.y;
+  vec3 color;
 
-    float grain = hash(uv*vec2(u_time*60.0,u_time*60.0)) * 0.02;
-    color += grain;
-    color = toneMap(color);
-    float d = dither(v_uv*u_resolution);
-    color += (d - 0.5)*DITHER_SCALE*0.01;
+  if (t > 0.0) {
+    vec3 p = ro + rd * t;
+    vec3 n = calcNormal(p, power, blendFactor);
+    float ao = ambientOcclusion(p, n, power, blendFactor);
+    color = lighting(p, n, ro, iteration, power, u_audioLevel, u_time, u_paletteIndex, blendFactor);
+    color *= ao;
+    color += hash3(floor(p * 26.0 + u_time * 2.0)) * 0.022;
+    float depthFade = exp(-t * 0.035);
+    color = mix(background(uv, rd, u_time, u_audioLevel), color, depthFade);
+  } else {
+    color = background(uv, rd, u_time, u_audioLevel);
+  }
 
-    gl_FragColor = vec4(color,1.0);
+  float vignette = smoothstep(1.25, 0.22, length(uvC));
+  color *= mix(0.68, 1.0, vignette);
+  color = toneMap(color, u_exposure);
+  color += (dither(v_uv * u_resolution) - 0.5) * DITHER_SCALE * 0.01;
+  gl_FragColor = vec4(color, 1.0);
 }
 `;
 
-// Gaussian blur (horizontal/vertical) shaders
-const blurVertexShaderSource = `
-attribute vec2 a_position;
+const brightPassFragmentShaderSource = `
+precision highp float;
 varying vec2 v_uv;
-void main(){
-  v_uv = (a_position*0.5)+0.5;
-  gl_Position = vec4(a_position,0.0,1.0);
+uniform sampler2D u_scene;
+uniform float u_threshold;
+
+void main() {
+  vec3 color = texture2D(u_scene, v_uv).rgb;
+  float luma = dot(color, vec3(0.2126, 0.7152, 0.0722));
+  float knee = smoothstep(u_threshold * 0.72, u_threshold, luma);
+  gl_FragColor = vec4(color * knee, 1.0);
 }
 `;
 
@@ -378,347 +819,487 @@ precision highp float;
 varying vec2 v_uv;
 uniform sampler2D u_texture;
 uniform vec2 u_resolution;
-uniform vec2 u_direction; // (1.0,0.0) for horizontal, (0.0,1.0) for vertical
+uniform vec2 u_direction;
 
-void main(){
-  vec2 uv = v_uv;
-  float sigma = 3.0;
-  float weightSum = 0.0;
-  vec3 color = vec3(0.0);
-  for(float i=-4.0; i<=4.0; i++){
-    float x = i;
-    float w = exp(-0.5*(x*x)/(sigma*sigma));
-    vec2 offset = u_direction*(x/u_resolution);
-    color += w*texture2D(u_texture, uv+offset).rgb;
-    weightSum += w;
-  }
-  color /= weightSum;
-  gl_FragColor = vec4(color,1.0);
+void main() {
+  vec2 texel = u_direction / u_resolution;
+  vec3 color = texture2D(u_texture, v_uv).rgb * 0.227027;
+  color += texture2D(u_texture, v_uv + texel * 1.384615).rgb * 0.316216;
+  color += texture2D(u_texture, v_uv - texel * 1.384615).rgb * 0.316216;
+  color += texture2D(u_texture, v_uv + texel * 3.230769).rgb * 0.070270;
+  color += texture2D(u_texture, v_uv - texel * 3.230769).rgb * 0.070270;
+  gl_FragColor = vec4(color, 1.0);
 }
 `;
 
-// Composite shader: combines original scene with blurred bloom texture
 const compositeFragmentShaderSource = `
 precision highp float;
 varying vec2 v_uv;
 uniform sampler2D u_scene;
 uniform sampler2D u_bloom;
 uniform float u_bloomEnabled;
+uniform float u_bloomIntensity;
+uniform float u_lensStrength;
+uniform float u_time;
 
-void main(){
-  vec3 scene = texture2D(u_scene, v_uv).rgb;
-  vec3 bloom = texture2D(u_bloom, v_uv).rgb;
-  vec3 finalColor = scene + bloom*u_bloomEnabled*0.7;
-  gl_FragColor = vec4(finalColor,1.0);
+float hash(vec2 p) {
+  return fract(sin(dot(p, vec2(41.13, 289.7))) * 43758.5453123);
+}
+
+void main() {
+  vec2 center = v_uv - 0.5;
+  float radius2 = dot(center, center);
+  float lens = clamp(u_lensStrength, 0.0, 1.0);
+  vec2 warped = 0.5 + center * (1.0 + radius2 * lens * 0.16);
+  vec2 aberration = center * lens * 0.007;
+  vec2 uv = clamp(warped, vec2(0.001), vec2(0.999));
+
+  vec3 scene;
+  scene.r = texture2D(u_scene, clamp(uv + aberration, vec2(0.001), vec2(0.999))).r;
+  scene.g = texture2D(u_scene, uv).g;
+  scene.b = texture2D(u_scene, clamp(uv - aberration, vec2(0.001), vec2(0.999))).b;
+
+  vec3 bloom = texture2D(u_bloom, uv).rgb;
+  vec3 finalColor = scene + bloom * u_bloomEnabled * u_bloomIntensity;
+  float grain = (hash(v_uv * vec2(927.1, 613.7) + u_time) - 0.5) * 0.018 * lens;
+  float scan = sin((v_uv.y + u_time * 0.015) * 900.0) * 0.006 * lens;
+  finalColor += grain + scan;
+  gl_FragColor = vec4(finalColor, 1.0);
 }
 `;
 
-function createShader(gl,type,source) {
+function createShader(type, source, label) {
   const shader = gl.createShader(type);
-  gl.shaderSource(shader,source);
+  gl.shaderSource(shader, source);
   gl.compileShader(shader);
-  if(!gl.getShaderParameter(shader, gl.COMPILE_STATUS)){
-    console.error(gl.getShaderInfoLog(shader));
+  if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+    const info = gl.getShaderInfoLog(shader) || "Unknown shader error";
     gl.deleteShader(shader);
-    return null;
+    throw new Error(label + ": " + info);
   }
   return shader;
 }
 
-function createProgram(gl, vsSource, fsSource) {
-  const vs = createShader(gl, gl.VERTEX_SHADER, vsSource);
-  const fs = createShader(gl, gl.FRAGMENT_SHADER, fsSource);
+function createProgram(vsSource, fsSource, label) {
+  const vs = createShader(gl.VERTEX_SHADER, vsSource, label + " vertex");
+  const fs = createShader(gl.FRAGMENT_SHADER, fsSource, label + " fragment");
   const program = gl.createProgram();
-  gl.attachShader(program,vs);
-  gl.attachShader(program,fs);
+  gl.attachShader(program, vs);
+  gl.attachShader(program, fs);
   gl.linkProgram(program);
-  if(!gl.getProgramParameter(program, gl.LINK_STATUS)){
-    console.error(gl.getProgramInfoLog(program));
+  gl.deleteShader(vs);
+  gl.deleteShader(fs);
+  if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+    const info = gl.getProgramInfoLog(program) || "Unknown program error";
     gl.deleteProgram(program);
-    return null;
+    throw new Error(label + ": " + info);
   }
   return program;
 }
 
-const mainProgram = createProgram(gl, vertexShaderSource, fragmentShaderSource);
-const blurProgram = createProgram(gl, blurVertexShaderSource, blurFragmentShaderSource);
-const compositeProgram = createProgram(gl, blurVertexShaderSource, compositeFragmentShaderSource);
-
-// Fullscreen quad
-const positionBuffer = gl.createBuffer();
-gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
-const positions = new Float32Array([-1,-1, 1,-1, -1,1, 1,1]);
-gl.bufferData(gl.ARRAY_BUFFER, positions, gl.STATIC_DRAW);
-
-// Setup main program attribs
-gl.useProgram(mainProgram);
-let a_position_main = gl.getAttribLocation(mainProgram,"a_position");
-gl.enableVertexAttribArray(a_position_main);
-gl.vertexAttribPointer(a_position_main,2,gl.FLOAT,false,0,0);
-
-// Blur program attribs
-gl.useProgram(blurProgram);
-let a_position_blur = gl.getAttribLocation(blurProgram,"a_position");
-gl.enableVertexAttribArray(a_position_blur);
-gl.vertexAttribPointer(a_position_blur,2,gl.FLOAT,false,0,0);
-
-// Composite program attribs
-gl.useProgram(compositeProgram);
-let a_position_comp = gl.getAttribLocation(compositeProgram,"a_position");
-gl.enableVertexAttribArray(a_position_comp);
-gl.vertexAttribPointer(a_position_comp,2,gl.FLOAT,false,0,0);
-
-// Uniform locations main
-const u_resolution_main = gl.getUniformLocation(mainProgram, "u_resolution");
-const u_time_main = gl.getUniformLocation(mainProgram, "u_time");
-const u_audioLevel_main = gl.getUniformLocation(mainProgram, "u_audioLevel");
-const u_cameraMatrix_main = gl.getUniformLocation(mainProgram, "u_cameraMatrix");
-const u_zoom_main = gl.getUniformLocation(mainProgram, "u_zoom");
-const u_powerOffset_main = gl.getUniformLocation(mainProgram, "u_powerOffset");
-const u_paletteIndex_main = gl.getUniformLocation(mainProgram, "u_paletteIndex");
-
-// Blur uniforms
-const u_texture_blur = gl.getUniformLocation(blurProgram,"u_texture");
-const u_resolution_blur = gl.getUniformLocation(blurProgram,"u_resolution");
-const u_direction_blur = gl.getUniformLocation(blurProgram,"u_direction");
-
-// Composite uniforms
-const u_scene_comp = gl.getUniformLocation(compositeProgram,"u_scene");
-const u_bloom_comp = gl.getUniformLocation(compositeProgram,"u_bloom");
-const u_bloomEnabled_comp = gl.getUniformLocation(compositeProgram,"u_bloomEnabled");
-
-// Setup Framebuffers & Textures for multipass
-function createFBO(w,h) {
-  const fb = gl.createFramebuffer();
-  gl.bindFramebuffer(gl.FRAMEBUFFER, fb);
-
-  const tex = gl.createTexture();
-  gl.bindTexture(gl.TEXTURE_2D, tex);
-  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.LINEAR);
-  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.LINEAR);
-  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE);
-  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE);
-  gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,w,h,0,gl.RGBA,gl.UNSIGNED_BYTE,null);
-
-  const rb = gl.createRenderbuffer();
-  gl.bindRenderbuffer(gl.RENDERBUFFER, rb);
-  gl.renderbufferStorage(gl.RENDERBUFFER,gl.DEPTH_COMPONENT16,w,h);
-  gl.framebufferTexture2D(gl.FRAMEBUFFER,gl.COLOR_ATTACHMENT0,gl.TEXTURE_2D,tex,0);
-  gl.framebufferRenderbuffer(gl.FRAMEBUFFER,gl.DEPTH_ATTACHMENT,gl.RENDERBUFFER,rb);
-
-  gl.bindTexture(gl.TEXTURE_2D,null);
-  gl.bindFramebuffer(gl.FRAMEBUFFER,null);
-  return {fbo:fb, tex:tex, rb:rb, w:w, h:h};
+function bindQuad(program) {
+  const location = gl.getAttribLocation(program, "a_position");
+  gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+  gl.enableVertexAttribArray(location);
+  gl.vertexAttribPointer(location, 2, gl.FLOAT, false, 0, 0);
 }
 
-let width = gl.drawingBufferWidth;
-let height = gl.drawingBufferHeight;
-let sceneFBO = createFBO(width,height);
-let pingFBO = createFBO(width,height);
-let pongFBO = createFBO(width,height);
+const mainProgram = createProgram(vertexShaderSource, fragmentShaderSource, "main");
+const brightProgram = createProgram(vertexShaderSource, brightPassFragmentShaderSource, "bright pass");
+const blurProgram = createProgram(vertexShaderSource, blurFragmentShaderSource, "blur");
+const compositeProgram = createProgram(vertexShaderSource, compositeFragmentShaderSource, "composite");
 
-// Audio Setup
-let audioLevel = 0.0;
-navigator.mediaDevices.getUserMedia({audio:true}).then(stream=>{
-  const audioCtx = new (window.AudioContext||window.webkitAudioContext)();
-  const analyser = audioCtx.createAnalyser();
-  const source = audioCtx.createMediaStreamSource(stream);
-  source.connect(analyser);
-  analyser.fftSize = 256;
-  const bufferLength = analyser.frequencyBinCount;
-  const dataArray = new Uint8Array(bufferLength);
+const positionBuffer = gl.createBuffer();
+gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW);
 
-  function getAudioData(){
-    analyser.getByteFrequencyData(dataArray);
-    let avg = 0;
-    for(let i=0;i<bufferLength;i++){
-      avg+=dataArray[i];
-    }
-    avg/=bufferLength;
-    audioLevel = avg/255.0; 
-    requestAnimationFrame(getAudioData);
+const uniforms = {
+  main: {
+    resolution: gl.getUniformLocation(mainProgram, "u_resolution"),
+    time: gl.getUniformLocation(mainProgram, "u_time"),
+    audioLevel: gl.getUniformLocation(mainProgram, "u_audioLevel"),
+    cameraMatrix: gl.getUniformLocation(mainProgram, "u_cameraMatrix"),
+    zoom: gl.getUniformLocation(mainProgram, "u_zoom"),
+    powerOffset: gl.getUniformLocation(mainProgram, "u_powerOffset"),
+    paletteIndex: gl.getUniformLocation(mainProgram, "u_paletteIndex"),
+    exposure: gl.getUniformLocation(mainProgram, "u_exposure"),
+    foldDepth: gl.getUniformLocation(mainProgram, "u_foldDepth"),
+    agentMood: gl.getUniformLocation(mainProgram, "u_agentMood")
+  },
+  bright: {
+    scene: gl.getUniformLocation(brightProgram, "u_scene"),
+    threshold: gl.getUniformLocation(brightProgram, "u_threshold")
+  },
+  blur: {
+    texture: gl.getUniformLocation(blurProgram, "u_texture"),
+    resolution: gl.getUniformLocation(blurProgram, "u_resolution"),
+    direction: gl.getUniformLocation(blurProgram, "u_direction")
+  },
+  composite: {
+    scene: gl.getUniformLocation(compositeProgram, "u_scene"),
+    bloom: gl.getUniformLocation(compositeProgram, "u_bloom"),
+    bloomEnabled: gl.getUniformLocation(compositeProgram, "u_bloomEnabled"),
+    bloomIntensity: gl.getUniformLocation(compositeProgram, "u_bloomIntensity"),
+    lensStrength: gl.getUniformLocation(compositeProgram, "u_lensStrength"),
+    time: gl.getUniformLocation(compositeProgram, "u_time")
   }
-  getAudioData();
-}).catch(err=>{
-  // If no audio input, just run with audioLevel=0
-});
+};
 
-// Camera Interaction & Controls
-let mouseDown = false;
-let lastX, lastY;
-let rotX = 0.3;
-let rotY = 0.6;
+const quadPrograms = [mainProgram, brightProgram, blurProgram, compositeProgram];
+quadPrograms.forEach(bindQuad);
 
-canvas.addEventListener("mousedown",(e)=>{
-  mouseDown = true;
-  lastX = e.clientX;
-  lastY = e.clientY;
-});
-window.addEventListener("mouseup",()=>{mouseDown=false;});
-window.addEventListener("mousemove",(e)=>{
-  if(!mouseDown)return;
-  let dx = (e.clientX - lastX)*0.005;
-  let dy = (e.clientY - lastY)*0.005;
-  rotX += dy;
-  rotY += dx;
-  lastX = e.clientX;
-  lastY = e.clientY;
-});
+function createFBO(w, h, label) {
+  const fbo = gl.createFramebuffer();
+  const tex = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D, tex);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
 
-window.addEventListener("resize",()=>{
-  canvas.width = window.innerWidth;
-  canvas.height = window.innerHeight;
-  gl.viewport(0,0,gl.drawingBufferWidth, gl.drawingBufferHeight);
-  width = gl.drawingBufferWidth;
-  height = gl.drawingBufferHeight;
-  sceneFBO = createFBO(width,height);
-  pingFBO = createFBO(width,height);
-  pongFBO = createFBO(width,height);
-});
+  gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+  gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
+  const status = gl.checkFramebufferStatus(gl.FRAMEBUFFER);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  gl.bindTexture(gl.TEXTURE_2D, null);
+  if (status !== gl.FRAMEBUFFER_COMPLETE) {
+    throw new Error(label + " framebuffer incomplete: " + status);
+  }
+  return { fbo, tex, w, h };
+}
 
-// VR button
-document.getElementById('vrButton').addEventListener('click', async ()=>{
-  if(navigator.xr){
-    try {
-      await navigator.xr.requestSession('immersive-vr');
-      alert("VR session started (conceptually).");
-    } catch(err) {
-      alert("Failed to start VR: " + err);
+let buffers = null;
+let displayW = 1;
+let displayH = 1;
+let renderW = 1;
+let renderH = 1;
+let lastBufferKey = "";
+
+function rebuildBuffers(force) {
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  displayW = Math.max(1, Math.floor(window.innerWidth * dpr));
+  displayH = Math.max(1, Math.floor(window.innerHeight * dpr));
+  renderW = Math.max(2, Math.floor(displayW * settings.renderScale));
+  renderH = Math.max(2, Math.floor(displayH * settings.renderScale));
+  const bloomW = Math.max(2, Math.floor(renderW * 0.5));
+  const bloomH = Math.max(2, Math.floor(renderH * 0.5));
+  const key = [displayW, displayH, renderW, renderH, bloomW, bloomH].join("x");
+
+  if (!force && key === lastBufferKey) {
+    return;
+  }
+
+  canvas.width = displayW;
+  canvas.height = displayH;
+  if (buffers) {
+    [buffers.scene, buffers.bright, buffers.ping, buffers.pong].forEach((buffer) => {
+      gl.deleteFramebuffer(buffer.fbo);
+      gl.deleteTexture(buffer.tex);
+    });
+  }
+
+  buffers = {
+    scene: createFBO(renderW, renderH, "scene"),
+    bright: createFBO(bloomW, bloomH, "bright"),
+    ping: createFBO(bloomW, bloomH, "ping"),
+    pong: createFBO(bloomW, bloomH, "pong")
+  };
+  lastBufferKey = key;
+}
+
+let audioLevel = 0;
+let micLevel = 0;
+let audioMode = "procedural";
+let audioContext = null;
+let analyser = null;
+let audioArray = null;
+let micStream = null;
+
+async function startAudio() {
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    toast("Microphone input requires a secure browser context.");
+    return;
+  }
+
+  try {
+    micStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+    audioContext = new (window.AudioContext || window.webkitAudioContext)();
+    analyser = audioContext.createAnalyser();
+    analyser.fftSize = 512;
+    analyser.smoothingTimeConstant = 0.78;
+    audioArray = new Uint8Array(analyser.frequencyBinCount);
+    const source = audioContext.createMediaStreamSource(micStream);
+    source.connect(analyser);
+    audioMode = "microphone";
+    setButtonState(ui.audioButton, true);
+    toast("Microphone reactive input enabled.");
+  } catch (error) {
+    audioMode = "procedural";
+    setButtonState(ui.audioButton, false);
+    toast("Microphone unavailable; procedural pulse remains active.");
+  }
+}
+
+function updateAudio(time) {
+  if (analyser && audioArray) {
+    analyser.getByteFrequencyData(audioArray);
+    let weighted = 0;
+    let totalWeight = 0;
+    for (let i = 0; i < audioArray.length; i++) {
+      const weight = 1 + Math.sin((i / audioArray.length) * Math.PI);
+      weighted += audioArray[i] * weight;
+      totalWeight += weight;
     }
+    micLevel = weighted / totalWeight / 255;
   } else {
-    alert("WebXR not supported in this browser.");
+    micLevel = 0;
+  }
+
+  const procedural = 0.16 + 0.12 * Math.sin(time * 1.7) + 0.08 * Math.sin(time * 0.41 + Math.sin(time * 0.13));
+  const target = audioMode === "microphone" ? Math.max(micLevel, procedural * 0.2) : procedural;
+  audioLevel += (Math.max(0, Math.min(1, target)) - audioLevel) * 0.08;
+}
+
+let mouseDown = false;
+let lastX = 0;
+let lastY = 0;
+let rotX = 0.32;
+let rotY = 0.58;
+let baseZoom = 0;
+let camForward = 0;
+let camStrafe = 0;
+let idleSpin = 0;
+let pointerInertiaX = 0;
+let pointerInertiaY = 0;
+
+canvas.addEventListener("pointerdown", (event) => {
+  mouseDown = true;
+  lastX = event.clientX;
+  lastY = event.clientY;
+  canvas.setPointerCapture(event.pointerId);
+});
+
+canvas.addEventListener("pointerup", (event) => {
+  mouseDown = false;
+  canvas.releasePointerCapture(event.pointerId);
+});
+
+canvas.addEventListener("pointercancel", () => {
+  mouseDown = false;
+});
+
+canvas.addEventListener("pointermove", (event) => {
+  if (!mouseDown) {
+    return;
+  }
+  const dx = (event.clientX - lastX) * 0.0045;
+  const dy = (event.clientY - lastY) * 0.0045;
+  pointerInertiaY = dx;
+  pointerInertiaX = dy;
+  rotX = Math.max(-1.35, Math.min(1.35, rotX + dy));
+  rotY += dx;
+  lastX = event.clientX;
+  lastY = event.clientY;
+});
+
+canvas.addEventListener("wheel", (event) => {
+  event.preventDefault();
+  baseZoom = Math.max(-2.0, Math.min(2.8, baseZoom + event.deltaY * 0.0015));
+}, { passive: false });
+
+window.addEventListener("keydown", (event) => {
+  const key = event.key.toLowerCase();
+  if (key === "b") {
+    settings.bloomEnabled = !settings.bloomEnabled;
+    setButtonState(ui.bloomButton, settings.bloomEnabled);
+  } else if (key === "p") {
+    setPalette(settings.paletteIndex + 1);
+  } else if (key === "h") {
+    settings.cleanHud = !settings.cleanHud;
+    document.body.classList.toggle("clean", settings.cleanHud);
+  } else if (key === "f") {
+    settings.agentEnabled = !settings.agentEnabled;
+    setButtonState(ui.agentButton, settings.agentEnabled);
+  } else if (key === "c") {
+    settings.autopilot = !settings.autopilot;
+    setButtonState(ui.autoButton, settings.autopilot);
+  } else if (key === "x") {
+    settings.foldEnabled = !settings.foldEnabled;
+    setButtonState(ui.foldButton, settings.foldEnabled);
+  } else if (key === "r") {
+    resetAgents();
+    toast("Agent state reset.");
+  } else if (key === "w") {
+    camForward = 1;
+  } else if (key === "s") {
+    camForward = -1;
+  } else if (key === "a") {
+    camStrafe = -1;
+  } else if (key === "d") {
+    camStrafe = 1;
   }
 });
 
-let bloomEnabled = 1.0;
-let camForward = 0.0;
-let camStrafe = 0.0;
-
-window.addEventListener('keydown', (e)=>{
-  if(e.key==='b') {
-    bloomEnabled = (bloomEnabled>0.5)?0.0:1.0;
+window.addEventListener("keyup", (event) => {
+  const key = event.key.toLowerCase();
+  if (key === "w" || key === "s") {
+    camForward = 0;
   }
-  if(e.key==='w') camForward=1.0;
-  if(e.key==='s') camForward=-1.0;
-  if(e.key==='a') camStrafe=-1.0;
-  if(e.key==='d') camStrafe=1.0;
+  if (key === "a" || key === "d") {
+    camStrafe = 0;
+  }
 });
 
-window.addEventListener('keyup',(e)=>{
-  if(e.key==='w' || e.key==='s') camForward=0.0;
-  if(e.key==='a' || e.key==='d') camStrafe=0.0;
-});
+window.addEventListener("resize", () => rebuildBuffers(true));
 
-function mat3(a00,a01,a02,a10,a11,a12,a20,a21,a22){
+function mat3(a00, a01, a02, a10, a11, a12, a20, a21, a22) {
   return [
-    a00,a01,a02,
-    a10,a11,a12,
-    a20,a21,a22
+    a00, a01, a02,
+    a10, a11, a12,
+    a20, a21, a22
   ];
 }
 
-// SimpleGNN
+function multiplyMat3(a, b) {
+  return [
+    a[0] * b[0] + a[1] * b[3] + a[2] * b[6],
+    a[0] * b[1] + a[1] * b[4] + a[2] * b[7],
+    a[0] * b[2] + a[1] * b[5] + a[2] * b[8],
+    a[3] * b[0] + a[4] * b[3] + a[5] * b[6],
+    a[3] * b[1] + a[4] * b[4] + a[5] * b[7],
+    a[3] * b[2] + a[4] * b[5] + a[5] * b[8],
+    a[6] * b[0] + a[7] * b[3] + a[8] * b[6],
+    a[6] * b[1] + a[7] * b[4] + a[8] * b[7],
+    a[6] * b[2] + a[7] * b[5] + a[8] * b[8]
+  ];
+}
+
 class SimpleGNN {
-  constructor(numNodes=2) {
+  constructor() {
     this.W = [
-      [Math.random()*0.1-0.05, Math.random()*0.1-0.05],
-      [Math.random()*0.1-0.05, Math.random()*0.1-0.05]
+      [Math.random() * 0.1 - 0.05, Math.random() * 0.1 - 0.05],
+      [Math.random() * 0.1 - 0.05, Math.random() * 0.1 - 0.05]
     ];
-    this.lr = 0.001;
+    this.lr = 0.00065;
   }
 
   forward(a, b) {
-    let x = [[a,0],[0,b]];
-    let x0_agg = [x[0][0]+x[1][0], x[0][1]+x[1][1]];
-    let x1_agg = [x[0][0]+x[1][0], x[0][1]+x[1][1]];
-    let n0 = [
-      x0_agg[0]*this.W[0][0] + x0_agg[1]*this.W[1][0],
-      x0_agg[0]*this.W[0][1] + x0_agg[1]*this.W[1][1]
+    const clippedA = Math.max(-2, Math.min(2, a));
+    const clippedB = Math.max(-2, Math.min(2, b));
+    const x0 = [clippedA, clippedB * 0.35];
+    const x1 = [clippedB, clippedA * 0.35];
+    const agg = [x0[0] + x1[0], x0[1] + x1[1]];
+    const n0 = [
+      Math.tanh(agg[0] * this.W[0][0] + agg[1] * this.W[1][0]),
+      Math.tanh(agg[0] * this.W[0][1] + agg[1] * this.W[1][1])
     ];
-    let n1 = [
-      x1_agg[0]*this.W[0][0] + x1_agg[1]*this.W[1][0],
-      x1_agg[0]*this.W[0][1] + x1_agg[1]*this.W[1][1]
+    const n1 = [
+      Math.tanh((x0[0] - x1[0]) * this.W[0][0] + agg[1] * this.W[1][0]),
+      Math.tanh(agg[0] * this.W[0][1] + (x0[1] - x1[1]) * this.W[1][1])
     ];
-    return [n0,n1];
+    return [n0, n1];
   }
 }
 
-// Fractal Agent
+class ReplayBuffer {
+  constructor(limit) {
+    this.limit = limit;
+    this.items = [];
+  }
+
+  add(sample) {
+    this.items.push(sample);
+    if (this.items.length > this.limit) {
+      this.items.splice(0, this.items.length - this.limit);
+    }
+  }
+
+  sample() {
+    return this.items[Math.floor(Math.random() * this.items.length)];
+  }
+}
+
 class FractalAgent {
   constructor() {
     this.gnn = new SimpleGNN();
-    this.epsilon = 0.1;
+    this.epsilon = 0.08;
     this.powerOffset = 0.0;
     this.paletteIndex = 0;
   }
 
-  computeQValues(n0,n1){
-    let qvals = [];
-    for(let i=0;i<9;i++){
-      qvals.push(n0[0]+n1[0]*(i*0.5) + n0[1]*(i*0.33)+ n1[1]*0.1);
+  computeQValues(n0, n1) {
+    const qvals = [];
+    for (let i = 0; i < 18; i++) {
+      const paletteBucket = Math.floor(i / 3);
+      const offsetBucket = i % 3;
+      qvals.push(
+        n0[0] * (0.8 + paletteBucket * 0.07) +
+        n1[0] * (offsetBucket - 1) * 0.35 +
+        n0[1] * Math.sin(i * 0.7) +
+        n1[1] * Math.cos(i * 0.39)
+      );
     }
     return qvals;
   }
 
-  step(audioLevel) {
-    let [n0,n1] = this.gnn.forward(audioLevel, this.powerOffset);
-    let qValues = this.computeQValues(n0,n1);
-    let action;
-    if(Math.random()<this.epsilon) {
-      action = Math.floor(Math.random()*9);
-    } else {
-      action = qValues.indexOf(Math.max(...qValues));
-    }
-    let paletteI = Math.floor(action/3);
-    let offsetI = action%3;
-    let offsets = [-0.05,0.0,0.05];
-    this.powerOffset += offsets[offsetI];
-    this.paletteIndex = paletteI;
-    return {action, qValues};
+  step(level) {
+    const nodes = this.gnn.forward(level, this.powerOffset);
+    const qValues = this.computeQValues(nodes[0], nodes[1]);
+    const action = Math.random() < this.epsilon
+      ? Math.floor(Math.random() * qValues.length)
+      : qValues.indexOf(Math.max(...qValues));
+    const paletteBucket = Math.floor(action / 3) % paletteDefs.length;
+    const offsetBucket = action % 3;
+    const offsets = [-0.022, 0, 0.022];
+    this.powerOffset = Math.max(-1.6, Math.min(1.6, this.powerOffset + offsets[offsetBucket]));
+    this.paletteIndex = paletteBucket;
+    return { action, qValues };
   }
 
   updateQ(action, qValues, reward) {
-    let error = reward - qValues[action];
-    for(let i=0;i<2;i++){
-      for(let j=0;j<2;j++){
-        this.gnn.W[i][j] += error*this.gnn.lr;
+    const error = Math.max(-1, Math.min(1, reward - qValues[action]));
+    for (let i = 0; i < 2; i++) {
+      for (let j = 0; j < 2; j++) {
+        this.gnn.W[i][j] = Math.max(-1, Math.min(1, this.gnn.W[i][j] + error * this.gnn.lr));
       }
     }
   }
 }
 
-// Camera Agent
 class CameraAgent {
   constructor() {
     this.gnn = new SimpleGNN();
-    this.epsilon = 0.1;
+    this.epsilon = 0.075;
   }
 
-  computeQValues(n0,n1){
-    let qvals = [];
-    for(let i=0;i<5;i++){
-      qvals.push(n0[0] + n1[1]*i*0.1 + n0[1]*i*0.05 + n1[0]*0.2);
+  computeQValues(n0, n1) {
+    const qvals = [];
+    for (let i = 0; i < 7; i++) {
+      qvals.push(
+        n0[0] +
+        n1[1] * i * 0.12 +
+        n0[1] * Math.sin(i * 0.8) +
+        n1[0] * Math.cos(i * 0.45)
+      );
     }
     return qvals;
   }
 
-  step(audioLevel, rotX, rotY) {
-    let [n0,n1] = this.gnn.forward(audioLevel, (rotX+rotY)*0.1);
-    let qValues = this.computeQValues(n0,n1);
-    let action;
-    if(Math.random()<this.epsilon) {
-      action = Math.floor(Math.random()*5);
-    } else {
-      action = qValues.indexOf(Math.max(...qValues));
-    }
-    return {action,qValues};
+  step(level, x, y) {
+    const nodes = this.gnn.forward(level, (x + y) * 0.1);
+    const qValues = this.computeQValues(nodes[0], nodes[1]);
+    const action = Math.random() < this.epsilon
+      ? Math.floor(Math.random() * qValues.length)
+      : qValues.indexOf(Math.max(...qValues));
+    return { action, qValues };
   }
 
   updateQ(action, qValues, reward) {
-    let error = reward - qValues[action];
-    for(let i=0;i<2;i++){
-      for(let j=0;j<2;j++){
-        this.gnn.W[i][j] += error*this.gnn.lr;
+    const error = Math.max(-1, Math.min(1, reward - qValues[action]));
+    for (let i = 0; i < 2; i++) {
+      for (let j = 0; j < 2; j++) {
+        this.gnn.W[i][j] = Math.max(-1, Math.min(1, this.gnn.W[i][j] + error * this.gnn.lr));
       }
     }
   }
@@ -726,212 +1307,455 @@ class CameraAgent {
 
 let fractalAgent = new FractalAgent();
 let cameraAgent = new CameraAgent();
+const replayBufferFA = new ReplayBuffer(1000);
+const replayBufferCA = new ReplayBuffer(1000);
+const agentHistory = [];
+let agentMood = 0;
+let lastFractalReward = 0;
+let lastCameraReward = 0;
+let lastAgentAction = 0;
 
-// Load/Save State
 function loadState() {
-  let storedFA = localStorage.getItem('fractalAgent');
-  if(storedFA) {
-    let faData = JSON.parse(storedFA);
-    fractalAgent.powerOffset = faData.powerOffset;
-    fractalAgent.paletteIndex = faData.paletteIndex;
-    fractalAgent.epsilon = faData.epsilon;
-    fractalAgent.gnn.W = faData.W;
-  }
-  let storedCA = localStorage.getItem('cameraAgent');
-  if(storedCA) {
-    let caData = JSON.parse(storedCA);
-    cameraAgent.epsilon = caData.epsilon;
-    cameraAgent.gnn.W = caData.W;
+  try {
+    const storedFA = localStorage.getItem("fractalAgent.v2");
+    if (storedFA) {
+      const data = JSON.parse(storedFA);
+      fractalAgent.powerOffset = Number(data.powerOffset) || 0;
+      fractalAgent.paletteIndex = Number(data.paletteIndex) || 0;
+      fractalAgent.epsilon = Number(data.epsilon) || fractalAgent.epsilon;
+      if (Array.isArray(data.W)) {
+        fractalAgent.gnn.W = data.W;
+      }
+    }
+
+    const storedCA = localStorage.getItem("cameraAgent.v2");
+    if (storedCA) {
+      const data = JSON.parse(storedCA);
+      cameraAgent.epsilon = Number(data.epsilon) || cameraAgent.epsilon;
+      if (Array.isArray(data.W)) {
+        cameraAgent.gnn.W = data.W;
+      }
+    }
+  } catch (error) {
+    localStorage.removeItem("fractalAgent.v2");
+    localStorage.removeItem("cameraAgent.v2");
   }
 }
 
 function saveState() {
-  let faData = {
-    powerOffset: fractalAgent.powerOffset,
-    paletteIndex: fractalAgent.paletteIndex,
-    epsilon: fractalAgent.epsilon,
-    W: fractalAgent.gnn.W
-  };
-  localStorage.setItem('fractalAgent', JSON.stringify(faData));
-
-  let caData = {
-    epsilon: cameraAgent.epsilon,
-    W: cameraAgent.gnn.W
-  };
-  localStorage.setItem('cameraAgent', JSON.stringify(caData));
+  try {
+    localStorage.setItem("fractalAgent.v2", JSON.stringify({
+      powerOffset: fractalAgent.powerOffset,
+      paletteIndex: fractalAgent.paletteIndex,
+      epsilon: fractalAgent.epsilon,
+      W: fractalAgent.gnn.W
+    }));
+    localStorage.setItem("cameraAgent.v2", JSON.stringify({
+      epsilon: cameraAgent.epsilon,
+      W: cameraAgent.gnn.W
+    }));
+  } catch (error) {
+    // Storage can be unavailable in some privacy modes.
+  }
 }
 
-// Replay Buffer for RL agents
-const replayBufferFA = [];
-const replayBufferCA = [];
-const MAX_REPLAY = 1000;
-
-function addToReplayFA(state,action,reward) {
-  replayBufferFA.push({state,action,reward});
-  if(replayBufferFA.length>MAX_REPLAY) replayBufferFA.shift();
+function resetAgents() {
+  fractalAgent = new FractalAgent();
+  cameraAgent = new CameraAgent();
+  agentHistory.length = 0;
+  agentMood = 0;
+  lastFractalReward = 0;
+  lastCameraReward = 0;
+  lastAgentAction = 0;
+  setPalette(0);
+  localStorage.removeItem("fractalAgent.v2");
+  localStorage.removeItem("cameraAgent.v2");
 }
 
-function addToReplayCA(state,action,reward) {
-  replayBufferCA.push({state,action,reward});
-  if(replayBufferCA.length>MAX_REPLAY) replayBufferCA.shift();
-}
-
-function replayTraining(agent, bufferSize) {
-  for(let i=0;i<10;i++){
-    if(bufferSize.length<10) break;
-    let idx = Math.floor(Math.random()*bufferSize.length);
-    let sample = bufferSize[idx];
-    if(agent===fractalAgent){
-      let [n0,n1] = fractalAgent.gnn.forward(sample.state.audio, sample.state.powerOffset);
-      let qValues = fractalAgent.computeQValues(n0,n1);
+function replayTraining(agent, buffer) {
+  if (buffer.items.length < 10) {
+    return;
+  }
+  for (let i = 0; i < 8; i++) {
+    const sample = buffer.sample();
+    if (agent === fractalAgent) {
+      const nodes = fractalAgent.gnn.forward(sample.state.audio, sample.state.powerOffset);
+      const qValues = fractalAgent.computeQValues(nodes[0], nodes[1]);
       fractalAgent.updateQ(sample.action, qValues, sample.reward);
     } else {
-      let [n0,n1] = cameraAgent.gnn.forward(sample.state.audio, sample.state.angle);
-      let qValues = cameraAgent.computeQValues(n0,n1);
+      const nodes = cameraAgent.gnn.forward(sample.state.audio, sample.state.angle);
+      const qValues = cameraAgent.computeQValues(nodes[0], nodes[1]);
       cameraAgent.updateQ(sample.action, qValues, sample.reward);
     }
   }
 }
 
-// Pretraining
-function pretrainAgents(steps=100) {
-  for(let i=0; i<steps; i++) {
-    let randAudio = Math.random();
-    let fakeFAState = {audio:randAudio, powerOffset:fractalAgent.powerOffset};
-    let fa = fractalAgent.step(randAudio);
-    let randomRewardFA = (Math.random()-0.5)*0.1;
-    fractalAgent.updateQ(fa.action, fa.qValues, randomRewardFA);
-
-    let fakeCAState = {audio:randAudio, angle:(rotX+rotY)*0.1};
-    let ca = cameraAgent.step(randAudio, rotX, rotY);
-    let randomRewardCA = (Math.random()-0.5)*0.1;
-    cameraAgent.updateQ(ca.action, ca.qValues, randomRewardCA);
+function pretrainAgents(steps) {
+  for (let i = 0; i < steps; i++) {
+    const randAudio = Math.random();
+    const fa = fractalAgent.step(randAudio);
+    fractalAgent.updateQ(fa.action, fa.qValues, (Math.random() - 0.46) * 0.08);
+    const ca = cameraAgent.step(randAudio, rotX, rotY);
+    cameraAgent.updateQ(ca.action, ca.qValues, (Math.random() - 0.5) * 0.05);
   }
 }
 
-loadState();
-pretrainAgents(100);
+function updateAgents() {
+  const faBefore = { audio: audioLevel, powerOffset: fractalAgent.powerOffset };
+  const caBefore = { audio: audioLevel, angle: (rotX + rotY) * 0.1 };
+  const fa = fractalAgent.step(audioLevel);
+  const ca = cameraAgent.step(audioLevel, rotX, rotY);
 
-let startTime = Date.now();
-let baseZoom = 0.0;
-let lastFrameTime = performance.now();
-let fpsCounter = document.getElementById("fpsCounter");
+  settings.paletteIndex = fractalAgent.paletteIndex;
+  setPalette(settings.paletteIndex);
 
-function render() {
-  let now = performance.now();
-  let delta = now - lastFrameTime;
-  lastFrameTime = now;
-  let fps = 1000/delta;
-  fpsCounter.textContent = "FPS: " + fps.toFixed(1);
-
-  let time = (Date.now()-startTime)*0.001;
-
-  // Step fractal agent
-  let faBefore = {audio:audioLevel, powerOffset:fractalAgent.powerOffset};
-  let fa = fractalAgent.step(audioLevel);
-  // Step camera agent
-  let caBefore = {audio:audioLevel, angle:(rotX+rotY)*0.1};
-  let ca = cameraAgent.step(audioLevel,rotX,rotY);
-
-  // Camera movement
-  baseZoom += camForward*0.01;
-  rotY += camStrafe*0.01;
-
-  // Render fractal to sceneFBO
-  gl.bindFramebuffer(gl.FRAMEBUFFER, sceneFBO.fbo);
-  gl.viewport(0,0,width,height);
-  gl.clearColor(0,0,0,1);
-  gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);
-  gl.useProgram(mainProgram);
-
-  gl.uniform2f(u_resolution_main, width, height);
-  gl.uniform1f(u_time_main, time);
-  gl.uniform1f(u_audioLevel_main, audioLevel);
-  let zoom = 0.5 + Math.sin(time*0.1)*0.2 + baseZoom;
-  gl.uniform1f(u_zoom_main, zoom);
-  let camMat = mat3(Math.cos(rotY),0,-Math.sin(rotY), 0,1,0, Math.sin(rotY),0,Math.cos(rotY));
-  let cx = Math.cos(rotX), sx = Math.sin(rotX);
-  let rotXMat = mat3(1,0,0,0,cx,-sx,0,sx,cx);
-  let finalMat = [
-    rotXMat[0]*camMat[0]+rotXMat[1]*camMat[3]+rotXMat[2]*camMat[6],
-    rotXMat[0]*camMat[1]+rotXMat[1]*camMat[4]+rotXMat[2]*camMat[7],
-    rotXMat[0]*camMat[2]+rotXMat[1]*camMat[5]+rotXMat[2]*camMat[8],
-
-    rotXMat[3]*camMat[0]+rotXMat[4]*camMat[3]+rotXMat[5]*camMat[6],
-    rotXMat[3]*camMat[1]+rotXMat[4]*camMat[4]+rotXMat[5]*camMat[7],
-    rotXMat[3]*camMat[2]+rotXMat[4]*camMat[5]+rotXMat[5]*camMat[8],
-
-    rotXMat[6]*camMat[0]+rotXMat[7]*camMat[3]+rotXMat[8]*camMat[6],
-    rotXMat[6]*camMat[1]+rotXMat[7]*camMat[4]+rotXMat[8]*camMat[7],
-    rotXMat[6]*camMat[2]+rotXMat[7]*camMat[5]+rotXMat[8]*camMat[8]
-  ];
-  gl.uniformMatrix3fv(u_cameraMatrix_main,false,new Float32Array(finalMat));
-  gl.uniform1f(u_powerOffset_main, fractalAgent.powerOffset);
-  gl.uniform1i(u_paletteIndex_main, fractalAgent.paletteIndex);
-
-  gl.drawArrays(gl.TRIANGLE_STRIP,0,4);
-
-  // Estimate complexity for rewards
-  let complexityEstimate = audioLevel*(fractalAgent.paletteIndex+1);
-
-  // Rewards
-  let fractalReward = (complexityEstimate>0.5 && audioLevel>0.5)?0.1:-0.01;
+  const complexity = audioLevel * (settings.paletteIndex + 1) * 0.24 + Math.abs(fractalAgent.powerOffset) * 0.1;
+  const meshPressure = new HeuristicMeshReduction("shader-fractal", 820).estimateReductionPressure();
+  const fractalReward = Math.max(-0.04, Math.min(0.16, complexity - 0.055 + meshPressure * 0.018));
   fractalAgent.updateQ(fa.action, fa.qValues, fractalReward);
-  addToReplayFA(faBefore, fa.action, fractalReward);
+  replayBufferFA.add({ state: faBefore, action: fa.action, reward: fractalReward });
 
-  let cameraReward = complexityEstimate * 0.05; 
+  const cameraReward = Math.max(-0.025, Math.min(0.08, complexity * 0.035 + (0.7 - Math.abs(rotX)) * 0.01));
   cameraAgent.updateQ(ca.action, ca.qValues, cameraReward);
-  addToReplayCA(caBefore, ca.action, cameraReward);
+  replayBufferCA.add({ state: caBefore, action: ca.action, reward: cameraReward });
+  lastFractalReward = fractalReward;
+  lastCameraReward = cameraReward;
+  lastAgentAction = fa.action;
+  const targetMood = Math.max(0, Math.min(1, 0.28 + audioLevel * 0.2 + fractalReward * 1.9 + cameraReward * 1.4));
+  agentMood += (targetMood - agentMood) * 0.04;
+  agentHistory.push({ reward: fractalReward + cameraReward, mood: agentMood, action: fa.action });
+  if (agentHistory.length > 160) {
+    agentHistory.shift();
+  }
 
-  // Occasionally do replay training
-  if(Math.random()<0.01) {
+  const cameraStep = (0.001 + audioLevel * 0.0025);
+  if (ca.action === 1) rotY += cameraStep;
+  if (ca.action === 2) rotY -= cameraStep;
+  if (ca.action === 3) rotX += cameraStep * 0.6;
+  if (ca.action === 4) rotX -= cameraStep * 0.6;
+  if (ca.action === 5) baseZoom += cameraStep * 0.4;
+  if (ca.action === 6) baseZoom -= cameraStep * 0.4;
+  rotX = Math.max(-1.35, Math.min(1.35, rotX));
+  baseZoom = Math.max(-2.0, Math.min(2.8, baseZoom));
+
+  if (Math.random() < 0.012) {
     replayTraining(fractalAgent, replayBufferFA);
     replayTraining(cameraAgent, replayBufferCA);
   }
+}
 
-  // Bloom pass
-  // 1. Horizontal blur (sceneFBO -> pingFBO)
-  gl.bindFramebuffer(gl.FRAMEBUFFER, pingFBO.fbo);
-  gl.clearColor(0,0,0,1);
-  gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);
+function drawTexturePass(program, target, viewportW, viewportH) {
+  gl.bindFramebuffer(gl.FRAMEBUFFER, target ? target.fbo : null);
+  gl.viewport(0, 0, viewportW, viewportH);
+  gl.useProgram(program);
+  bindQuad(program);
+  gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+}
+
+function renderScene(time, cameraMatrix, zoom) {
+  gl.bindFramebuffer(gl.FRAMEBUFFER, buffers.scene.fbo);
+  gl.viewport(0, 0, renderW, renderH);
+  gl.clearColor(0, 0, 0, 1);
+  gl.clear(gl.COLOR_BUFFER_BIT);
+  gl.useProgram(mainProgram);
+  bindQuad(mainProgram);
+  gl.uniform2f(uniforms.main.resolution, renderW, renderH);
+  gl.uniform1f(uniforms.main.time, time);
+  gl.uniform1f(uniforms.main.audioLevel, audioLevel);
+  gl.uniformMatrix3fv(uniforms.main.cameraMatrix, false, new Float32Array(cameraMatrix));
+  gl.uniform1f(uniforms.main.zoom, zoom);
+  gl.uniform1f(uniforms.main.powerOffset, fractalAgent.powerOffset);
+  gl.uniform1i(uniforms.main.paletteIndex, settings.paletteIndex);
+  gl.uniform1f(uniforms.main.exposure, settings.exposure);
+  gl.uniform1f(uniforms.main.foldDepth, settings.foldEnabled ? settings.foldDepth : 0);
+  gl.uniform1f(uniforms.main.agentMood, agentMood);
+  gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+}
+
+function renderBloom() {
+  gl.useProgram(brightProgram);
+  bindQuad(brightProgram);
+  gl.activeTexture(gl.TEXTURE0);
+  gl.bindTexture(gl.TEXTURE_2D, buffers.scene.tex);
+  gl.uniform1i(uniforms.bright.scene, 0);
+  gl.uniform1f(uniforms.bright.threshold, settings.bloomThreshold);
+  drawTexturePass(brightProgram, buffers.bright, buffers.bright.w, buffers.bright.h);
+
   gl.useProgram(blurProgram);
-  gl.uniform2f(u_resolution_blur,width,height);
-  gl.uniform2f(u_direction_blur,1.0,0.0);
+  bindQuad(blurProgram);
+  gl.uniform2f(uniforms.blur.resolution, buffers.bright.w, buffers.bright.h);
   gl.activeTexture(gl.TEXTURE0);
-  gl.bindTexture(gl.TEXTURE_2D, sceneFBO.tex);
-  gl.uniform1i(u_texture_blur,0);
-  gl.drawArrays(gl.TRIANGLE_STRIP,0,4);
+  gl.bindTexture(gl.TEXTURE_2D, buffers.bright.tex);
+  gl.uniform1i(uniforms.blur.texture, 0);
+  gl.uniform2f(uniforms.blur.direction, 1, 0);
+  drawTexturePass(blurProgram, buffers.ping, buffers.ping.w, buffers.ping.h);
 
-  // 2. Vertical blur (pingFBO -> pongFBO)
-  gl.bindFramebuffer(gl.FRAMEBUFFER, pongFBO.fbo);
-  gl.clearColor(0,0,0,1);
-  gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);
-  gl.uniform2f(u_direction_blur,0.0,1.0);
-  gl.bindTexture(gl.TEXTURE_2D, pingFBO.tex);
-  gl.drawArrays(gl.TRIANGLE_STRIP,0,4);
+  gl.bindTexture(gl.TEXTURE_2D, buffers.ping.tex);
+  gl.uniform2f(uniforms.blur.direction, 0, 1);
+  drawTexturePass(blurProgram, buffers.pong, buffers.pong.w, buffers.pong.h);
 
-  // Composite (sceneFBO & pongFBO) to screen
+  gl.bindTexture(gl.TEXTURE_2D, buffers.pong.tex);
+  gl.uniform2f(uniforms.blur.direction, 1, 0);
+  drawTexturePass(blurProgram, buffers.ping, buffers.ping.w, buffers.ping.h);
+
+  gl.bindTexture(gl.TEXTURE_2D, buffers.ping.tex);
+  gl.uniform2f(uniforms.blur.direction, 0, 1);
+  drawTexturePass(blurProgram, buffers.pong, buffers.pong.w, buffers.pong.h);
+}
+
+function compositeToScreen() {
   gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-  gl.viewport(0,0,width,height);
-  gl.clearColor(0,0,0,1);
-  gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);
+  gl.viewport(0, 0, displayW, displayH);
   gl.useProgram(compositeProgram);
+  bindQuad(compositeProgram);
   gl.activeTexture(gl.TEXTURE0);
-  gl.bindTexture(gl.TEXTURE_2D, sceneFBO.tex);
-  gl.uniform1i(u_scene_comp,0);
+  gl.bindTexture(gl.TEXTURE_2D, buffers.scene.tex);
+  gl.uniform1i(uniforms.composite.scene, 0);
   gl.activeTexture(gl.TEXTURE1);
-  gl.bindTexture(gl.TEXTURE_2D, pongFBO.tex);
-  gl.uniform1i(u_bloom_comp,1);
-  gl.uniform1f(u_bloomEnabled_comp, bloomEnabled);
-  gl.drawArrays(gl.TRIANGLE_STRIP,0,4);
+  gl.bindTexture(gl.TEXTURE_2D, buffers.pong.tex);
+  gl.uniform1i(uniforms.composite.bloom, 1);
+  gl.uniform1f(uniforms.composite.bloomEnabled, settings.bloomEnabled ? 1 : 0);
+  gl.uniform1f(uniforms.composite.bloomIntensity, settings.bloomIntensity);
+  gl.uniform1f(uniforms.composite.lensStrength, settings.lensStrength);
+  gl.uniform1f(uniforms.composite.time, performance.now() * 0.001);
+  gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+}
 
-  // Save state after updates
-  saveState();
+function updateQuality(fps) {
+  if (!settings.adaptiveQuality) {
+    settings.renderScale = settings.qualityTarget;
+    return;
+  }
+
+  const target = settings.qualityTarget;
+  if (fps < 42 && settings.renderScale > 0.46) {
+    settings.renderScale = Math.max(0.45, settings.renderScale - 0.015);
+    rebuildBuffers(false);
+  } else if (fps > 57 && settings.renderScale < target) {
+    settings.renderScale = Math.min(target, settings.renderScale + 0.006);
+    rebuildBuffers(false);
+  }
+}
+
+function drawAgentGraph() {
+  const graph = ui.agentGraph;
+  if (!graph) {
+    return;
+  }
+  const ctx = graph.getContext("2d");
+  const w = graph.width;
+  const h = graph.height;
+  ctx.clearRect(0, 0, w, h);
+  ctx.fillStyle = "rgba(255,255,255,0.035)";
+  ctx.fillRect(0, 0, w, h);
+  ctx.strokeStyle = "rgba(255,255,255,0.12)";
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(0, h * 0.5);
+  ctx.lineTo(w, h * 0.5);
+  ctx.stroke();
+
+  if (agentHistory.length < 2) {
+    return;
+  }
+
+  ctx.lineWidth = 2;
+  ctx.strokeStyle = "rgba(123,246,255,0.9)";
+  ctx.beginPath();
+  agentHistory.forEach((point, index) => {
+    const x = (index / Math.max(1, agentHistory.length - 1)) * w;
+    const y = h - Math.max(2, Math.min(h - 2, point.mood * h));
+    if (index === 0) {
+      ctx.moveTo(x, y);
+    } else {
+      ctx.lineTo(x, y);
+    }
+  });
+  ctx.stroke();
+
+  ctx.lineWidth = 1;
+  ctx.strokeStyle = "rgba(255,155,95,0.72)";
+  ctx.beginPath();
+  agentHistory.forEach((point, index) => {
+    const x = (index / Math.max(1, agentHistory.length - 1)) * w;
+    const y = h * 0.5 - point.reward * h * 3.1;
+    if (index === 0) {
+      ctx.moveTo(x, y);
+    } else {
+      ctx.lineTo(x, y);
+    }
+  });
+  ctx.stroke();
+}
+
+function updateHud(fps) {
+  ui.fps.textContent = fps.toFixed(1);
+  ui.scale.textContent = settings.renderScale.toFixed(2);
+  ui.audio.textContent = audioLevel.toFixed(2);
+  ui.agent.textContent = settings.agentEnabled ? agentMood.toFixed(2) : "Off";
+  const inputMode = audioMode === "microphone" ? "Microphone reactive" : "Procedural pulse";
+  const motionMode = settings.autopilot ? "autopilot" : "manual";
+  const foldMode = settings.foldEnabled ? "deep fold" : "classic field";
+  ui.modeLine.textContent = `${inputMode} · ${motionMode} · ${foldMode}`;
+  drawAgentGraph();
+}
+
+function takeShot() {
+  captureNextFrame = true;
+  toast("Capturing next rendered frame.");
+}
+
+async function enterVR() {
+  if (!navigator.xr || !navigator.xr.isSessionSupported) {
+    toast("WebXR is not available in this browser.");
+    return;
+  }
+
+  try {
+    const supported = await navigator.xr.isSessionSupported("immersive-vr");
+    if (!supported) {
+      toast("No immersive VR session is available.");
+      return;
+    }
+    const session = await navigator.xr.requestSession("immersive-vr", { optionalFeatures: ["local-floor", "bounded-floor"] });
+    toast("VR session started.");
+    session.addEventListener("end", () => toast("VR session ended."));
+  } catch (error) {
+    toast("VR request was blocked or failed.");
+  }
+}
+
+function updateSlider(input, output, key) {
+  settings[key] = Number(input.value);
+  output.textContent = Number(input.value).toFixed(2);
+}
+
+ui.audioButton.addEventListener("click", startAudio);
+ui.bloomButton.addEventListener("click", () => {
+  settings.bloomEnabled = !settings.bloomEnabled;
+  setButtonState(ui.bloomButton, settings.bloomEnabled);
+});
+ui.agentButton.addEventListener("click", () => {
+  settings.agentEnabled = !settings.agentEnabled;
+  setButtonState(ui.agentButton, settings.agentEnabled);
+});
+ui.autoButton.addEventListener("click", () => {
+  settings.autopilot = !settings.autopilot;
+  setButtonState(ui.autoButton, settings.autopilot);
+});
+ui.foldButton.addEventListener("click", () => {
+  settings.foldEnabled = !settings.foldEnabled;
+  setButtonState(ui.foldButton, settings.foldEnabled);
+});
+ui.shotButton.addEventListener("click", takeShot);
+ui.vrButton.addEventListener("click", enterVR);
+ui.toggleUi.addEventListener("click", () => document.body.classList.toggle("compact"));
+ui.exposure.addEventListener("input", () => updateSlider(ui.exposure, ui.exposureOut, "exposure"));
+ui.bloomIntensity.addEventListener("input", () => updateSlider(ui.bloomIntensity, ui.bloomIntensityOut, "bloomIntensity"));
+ui.bloomThreshold.addEventListener("input", () => updateSlider(ui.bloomThreshold, ui.bloomThresholdOut, "bloomThreshold"));
+ui.foldDepth.addEventListener("input", () => updateSlider(ui.foldDepth, ui.foldDepthOut, "foldDepth"));
+ui.lensStrength.addEventListener("input", () => updateSlider(ui.lensStrength, ui.lensStrengthOut, "lensStrength"));
+ui.quality.addEventListener("input", () => {
+  settings.qualityTarget = Number(ui.quality.value);
+  settings.renderScale = settings.qualityTarget;
+  ui.qualityOut.textContent = settings.qualityTarget.toFixed(2);
+  rebuildBuffers(true);
+});
+
+setButtonState(ui.bloomButton, settings.bloomEnabled);
+setButtonState(ui.agentButton, settings.agentEnabled);
+setButtonState(ui.autoButton, settings.autopilot);
+setButtonState(ui.foldButton, settings.foldEnabled);
+if (window.innerWidth < 520) {
+  document.body.classList.add("compact");
+}
+setPalette(0);
+loadState();
+setPalette(fractalAgent.paletteIndex || 0);
+pretrainAgents(80);
+rebuildBuffers(true);
+
+let startTime = performance.now();
+let lastFrameTime = startTime;
+let smoothedFps = 60;
+let saveAccumulator = 0;
+let captureNextFrame = false;
+
+function render(now) {
+  const deltaMs = Math.max(1, now - lastFrameTime);
+  lastFrameTime = now;
+  const dt = Math.min(0.05, deltaMs / 1000);
+  const fps = 1000 / deltaMs;
+  smoothedFps += (fps - smoothedFps) * 0.06;
+
+  const time = (now - startTime) * 0.001;
+  updateAudio(time);
+  updateQuality(smoothedFps);
+  rebuildBuffers(false);
+
+  idleSpin += dt * (0.07 + audioLevel * 0.08);
+  if (!mouseDown) {
+    rotX = Math.max(-1.35, Math.min(1.35, rotX + pointerInertiaX * 0.94));
+    rotY += pointerInertiaY * 0.94;
+    pointerInertiaX *= 0.90;
+    pointerInertiaY *= 0.90;
+  }
+
+  baseZoom = Math.max(-2.0, Math.min(2.8, baseZoom + camForward * dt * 0.75));
+  rotY += camStrafe * dt * 0.72;
+  if (settings.autopilot && !mouseDown && camForward === 0 && camStrafe === 0) {
+    const targetX = 0.24 + Math.sin(time * 0.23) * 0.34 + audioLevel * 0.12;
+    const targetZoom = Math.sin(time * 0.17) * 0.44 - audioLevel * 0.25;
+    rotX += (targetX - rotX) * dt * 0.35;
+    rotY += dt * (0.11 + audioLevel * 0.08);
+    baseZoom += (targetZoom - baseZoom) * dt * 0.13;
+  }
+
+  if (settings.agentEnabled) {
+    updateAgents();
+  } else {
+    agentMood += (0.2 - agentMood) * 0.02;
+  }
+
+  const bob = Math.sin(time * 0.37) * 0.08 + audioLevel * 0.18;
+  const zoom = 0.45 + Math.sin(time * 0.11) * 0.18 + baseZoom - bob;
+  const y = rotY + idleSpin * 0.16;
+  const camMat = mat3(Math.cos(y), 0, -Math.sin(y), 0, 1, 0, Math.sin(y), 0, Math.cos(y));
+  const cx = Math.cos(rotX);
+  const sx = Math.sin(rotX);
+  const rotXMat = mat3(1, 0, 0, 0, cx, -sx, 0, sx, cx);
+  const cameraMatrix = multiplyMat3(rotXMat, camMat);
+
+  renderScene(time, cameraMatrix, zoom);
+  renderBloom();
+  compositeToScreen();
+  if (captureNextFrame) {
+    captureNextFrame = false;
+    canvas.toBlob((blob) => {
+      if (!blob) {
+        toast("Frame capture failed in this browser.");
+        return;
+      }
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = "fractal-observatory.png";
+      link.click();
+      URL.revokeObjectURL(url);
+    }, "image/png");
+  }
+  updateHud(smoothedFps);
+
+  saveAccumulator += dt;
+  if (saveAccumulator > 5) {
+    saveAccumulator = 0;
+    saveState();
+  }
 
   requestAnimationFrame(render);
 }
 
-render();
+requestAnimationFrame(render);
 </script>
 </body>
 </html>
