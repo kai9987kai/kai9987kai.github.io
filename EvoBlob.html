@@ -1,285 +1,1758 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Hyper EvoBlob Simulation (Memory, Signals, Terrain) - Fixed</title>
-    <style>
-        body { font-family: sans-serif; display: flex; flex-direction: column; align-items: center; background-color: #f0f0f0; margin: 0; padding: 10px; }
-        #main-container { display: flex; flex-direction: row; align-items: flex-start; gap: 15px; }
-        #simulation-area { display: flex; flex-direction: column; align-items: center; }
-        #sidebar { width: 280px; font-size: 0.85em; background-color: #e8e8e8; padding: 10px; border-radius: 5px; max-height: 900px; overflow-y: auto;}
-        #simulationCanvas { border: 1px solid black; background-color: #dde8f8; width: 1200px; height: 800px; cursor: crosshair; }
-        .control-panel, #info, #genome-display, #species-info { margin-top: 8px; padding: 8px; background-color: #e0e0e0; border-radius: 5px; box-sizing: border-box; display: flex; flex-wrap: wrap; gap: 8px 15px; align-items: center; font-size: 0.9em; }
-        #info, #genome-display, #species-info { width: 1200px; }
-        .control-panel button, .control-panel label, .control-panel input { margin: 0 3px; padding: 4px 8px; font-size: 0.9em; }
-        .control-panel label { padding: 0;}
-        #info span, #species-info span { margin: 0 5px; font-weight: bold; white-space: nowrap; }
-        .stats-value { color: #0056b3; }
-        #tooltip { position: absolute; display: none; background: rgba(0, 0, 0, 0.8); color: white; padding: 6px; border-radius: 4px; font-size: 0.75em; pointer-events: none; z-index: 10; max-width: 250px; }
-        #genome-display { font-size: 0.75em; word-wrap: break-word; max-height: 40px; overflow-y: auto; }
-        #species-list { margin-top: 5px; max-height: 250px; overflow-y: auto; list-style: none; padding-left: 5px; }
-        #species-list li { margin-bottom: 3px; padding: 2px; background-color: #f8f8f8; border-radius: 2px;}
-        #sidebar h3 { margin-top: 0; margin-bottom: 5px; text-align: center; }
-         .food-depleted { opacity: 0.3; }
-    </style>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Hyper EvoBlob Simulation — Research Edition</title>
+  <style>
+    :root {
+      --bg: #09111f;
+      --panel: rgba(18, 29, 48, 0.92);
+      --panel-2: rgba(28, 42, 67, 0.92);
+      --text: #eef6ff;
+      --muted: #9db2d0;
+      --accent: #6df6c4;
+      --accent-2: #8db7ff;
+      --danger: #ff6978;
+      --warning: #ffd166;
+      --ok: #71f79f;
+      --border: rgba(255, 255, 255, 0.12);
+      --shadow: 0 18px 60px rgba(0, 0, 0, 0.35);
+      --radius: 18px;
+      --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+      --sans: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    * { box-sizing: border-box; }
+    html, body { margin: 0; min-height: 100%; background: radial-gradient(circle at 15% 0%, #17284a 0, var(--bg) 45%, #050913 100%); color: var(--text); font-family: var(--sans); }
+    body { padding: 18px; }
+    h1 { margin: 0; letter-spacing: -0.04em; font-size: clamp(1.6rem, 3vw, 2.5rem); }
+    h2, h3 { margin: 0 0 8px; letter-spacing: -0.02em; }
+    p { margin: 6px 0; color: var(--muted); }
+    button, input, select, label { font: inherit; }
+    button, .file-label {
+      border: 1px solid var(--border); border-radius: 999px; padding: 8px 12px; color: var(--text);
+      background: linear-gradient(180deg, rgba(255,255,255,0.12), rgba(255,255,255,0.04));
+      cursor: pointer; transition: transform .15s ease, border-color .15s ease, background .15s ease;
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.12);
+    }
+    button:hover, .file-label:hover { transform: translateY(-1px); border-color: rgba(109,246,196,.55); }
+    button.primary { background: linear-gradient(135deg, rgba(109,246,196,.35), rgba(141,183,255,.20)); border-color: rgba(109,246,196,.45); }
+    button.danger { border-color: rgba(255,105,120,.35); }
+    input[type="range"] { accent-color: var(--accent); width: 120px; }
+    input[type="checkbox"] { accent-color: var(--accent); }
+    input[type="number"], input[type="text"] { width: 110px; border: 1px solid var(--border); border-radius: 12px; padding: 7px 9px; background: rgba(255,255,255,.06); color: var(--text); }
+    input[type="file"] { display: none; }
+
+    #app { max-width: 1580px; margin: 0 auto; display: grid; gap: 14px; }
+    .hero { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: end; gap: 14px; }
+    .hero-card, .panel { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow); backdrop-filter: blur(18px); }
+    .hero-card { padding: 18px; flex: 1 1 600px; }
+    .badges { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+    .badge { padding: 5px 9px; border-radius: 999px; border: 1px solid var(--border); background: rgba(255,255,255,.05); color: var(--muted); font-size: .78rem; }
+    .badge.hot { color: #05130f; background: var(--accent); border-color: transparent; }
+
+    .layout { display: grid; grid-template-columns: minmax(780px, 1fr) 340px; gap: 14px; align-items: start; }
+    .sim-stack { display: grid; gap: 10px; min-width: 0; }
+    .panel { padding: 12px; }
+    .control-panel { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+    .control-group { display: flex; flex-wrap: wrap; align-items: center; gap: 7px; padding: 6px 8px; border: 1px solid var(--border); border-radius: 14px; background: rgba(255,255,255,.035); }
+    .control-group span, .control-group label { color: var(--muted); font-size: .86rem; }
+
+    .canvas-wrap { position: relative; overflow: hidden; border-radius: var(--radius); border: 1px solid var(--border); background: #0d1730; box-shadow: var(--shadow); }
+    #simulationCanvas { display: block; width: 100%; max-height: 78vh; aspect-ratio: 3 / 2; background: #0d1730; cursor: crosshair; }
+    #tooltip { position: fixed; display: none; pointer-events: none; z-index: 20; max-width: 290px; padding: 9px 10px; border-radius: 12px; background: rgba(5, 9, 19, .92); border: 1px solid rgba(255,255,255,.16); color: var(--text); font: 12px/1.35 var(--mono); box-shadow: var(--shadow); }
+    #event-banner { position: absolute; left: 14px; top: 14px; display: none; padding: 8px 11px; border-radius: 999px; background: rgba(5,9,19,.72); border: 1px solid rgba(255,255,255,.16); color: var(--warning); font-size: .82rem; }
+
+    .metrics { display: grid; grid-template-columns: repeat(8, minmax(90px, 1fr)); gap: 8px; }
+    .metric { border: 1px solid var(--border); background: rgba(255,255,255,.04); border-radius: 14px; padding: 9px; min-width: 0; }
+    .metric .label { display: block; color: var(--muted); font-size: .72rem; text-transform: uppercase; letter-spacing: .06em; }
+    .metric .value { display: block; margin-top: 3px; color: var(--accent); font-weight: 800; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+    .sidebar { display: grid; gap: 10px; }
+    .scroll { max-height: 270px; overflow-y: auto; padding-right: 4px; }
+    #species-list, #lineage-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+    #species-list li, #lineage-list li { border: 1px solid var(--border); border-radius: 12px; background: rgba(255,255,255,.04); padding: 7px 8px; font: 12px/1.35 var(--mono); color: #dce8ff; }
+    #genome-display { max-height: 150px; overflow-y: auto; font: 11px/1.45 var(--mono); color: #dce8ff; white-space: pre-wrap; word-break: break-word; }
+    #chartCanvas, #archiveCanvas { width: 100%; height: 140px; display: block; border-radius: 14px; border: 1px solid var(--border); background: rgba(255,255,255,.035); }
+    .legend { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 7px; color: var(--muted); font-size: .75rem; }
+    .dot { display:inline-block; width:9px; height:9px; border-radius:99px; margin-right:4px; vertical-align:-1px; }
+    .dot.fit { background: var(--accent); } .dot.alive { background: var(--accent-2); } .dot.novel { background: var(--warning); }
+    .note { font-size: .78rem; color: var(--muted); line-height: 1.45; }
+
+    @media (max-width: 1180px) { .layout { grid-template-columns: 1fr; } .metrics { grid-template-columns: repeat(4, minmax(90px, 1fr)); } }
+    @media (max-width: 720px) { body { padding: 10px; } .metrics { grid-template-columns: repeat(2, minmax(90px, 1fr)); } .control-group { width: 100%; } }
+  </style>
 </head>
 <body>
-    <div id="main-container">
-        <div id="simulation-area">
-            <h1>Hyper EvoBlob Simulation</h1>
-            <p style="font-size: 0.9em; margin-bottom: 5px;">Recurrent Memory, Signaling, Terrain, Replenishing Food, Speciation++.</p>
-
-            <div class="control-panel">
-                <button id="startButton">Start</button> <button id="stopButton">Stop</button> <button id="resetButton">Reset</button>
-                <label for="speedControl">Speed:</label> <input type="range" id="speedControl" min="1" max="10" value="1" step="1"> <span id="speedValue">1x</span>
-                <button id="addFoodButton">+30 Food</button> <button id="addThreatButton">+10 Threats</button>
-                <label for="visPheromones">Vis Phero:</label> <input type="checkbox" id="visPheromones" checked>
-                <label for="visGrid">Vis Grid:</label> <input type="checkbox" id="visGrid">
-                <label for="simpleDraw">Simple Draw:</label> <input type="checkbox" id="simpleDraw">
-            </div>
-
-            <canvas id="simulationCanvas"></canvas>
-
-            <div id="info">
-                <span>Step: <span id="simStepCount" class="stats-value">0</span></span> <span>Replacements: <span id="replacementCount" class="stats-value">0</span></span>
-                <span>Avg Fit: <span id="avgFitness" class="stats-value">N/A</span></span> <span>Best Fit: <span id="bestFitness" class="stats-value">N/A</span></span>
-                <span>Alive: <span id="aliveCount" class="stats-value">0</span>/<span id="populationSize" class="stats-value">0</span></span>
-                <span>Food: <span id="foodCountDisplay" class="stats-value">0</span></span> <span>Threats: <span id="threatCountDisplay" class="stats-value">0</span></span>
-                <span>Pheromones: <span id="pheromoneCountDisplay" class="stats-value">0</span></span>
-            </div>
-             <div id="species-info">
-                 <span>Species Count: <span id="speciesCount" class="stats-value">0</span></span>
-                 <span>Avg MutRate: <span id="avgMutationRate" class="stats-value">N/A</span></span>
-                 <span>Avg WgtMutRate: <span id="avgWeightMutationRate" class="stats-value">N/A</span></span>
-            </div>
-             <div id="genome-display"> Best Genome Sample (Physical - Last Cycle): N/A </div>
+  <div id="app">
+    <div class="hero">
+      <section class="hero-card">
+        <h1>Hyper EvoBlob Simulation — Research Edition</h1>
+        <p>Recurrent-memory organisms with pheromone trails, explicit signals, dynamic terrain, ecological events, speciation, novelty pressure, and a lightweight MAP-Elites archive.</p>
+        <div class="badges">
+          <span class="badge hot">Single-file HTML</span>
+          <span class="badge">Quality-diversity archive</span>
+          <span class="badge">Novelty search</span>
+          <span class="badge">Dynamic niches</span>
+          <span class="badge">Lineage tracking</span>
+          <span class="badge">Genome import/export</span>
         </div>
-         <div id="sidebar">
-              <h3>Species Details</h3>
-              <ul id="species-list"><li>No species data yet.</li></ul>
-         </div>
+      </section>
     </div>
-     <div id="tooltip">Blob Info</div>
 
-    <script>
-        // --- Activation Functions ---
-        function sigmoid(x){return 1/(1+Math.exp(-x))} function tanh(x){return Math.tanh(x)} function relu(x){return Math.max(0,x)}
+    <div class="layout">
+      <main class="sim-stack">
+        <section class="panel control-panel">
+          <div class="control-group">
+            <button id="startButton" class="primary">Start</button>
+            <button id="stopButton">Stop</button>
+            <button id="stepButton">Step Eval</button>
+            <button id="resetButton" class="danger">Reset</button>
+          </div>
+          <div class="control-group">
+            <label for="speedControl">Speed</label>
+            <input type="range" id="speedControl" min="1" max="12" value="1" step="1" />
+            <span id="speedValue">1x</span>
+          </div>
+          <div class="control-group">
+            <button id="addFoodButton">+30 Food</button>
+            <button id="addThreatButton">+10 Threats</button>
+            <button id="addMovingThreatButton">+5 Movers</button>
+            <button id="eventButton">Trigger Event</button>
+          </div>
+          <div class="control-group">
+            <label><input type="checkbox" id="visPheromones" checked /> Pheromones</label>
+            <label><input type="checkbox" id="visGrid" /> Grid</label>
+            <label><input type="checkbox" id="simpleDraw" /> Simple</label>
+            <label><input type="checkbox" id="visSensors" /> Sensors</label>
+            <label><input type="checkbox" id="visArchive" checked /> QD Map</label>
+            <label><input type="checkbox" id="adaptiveEnvironment" checked /> Dynamic env</label>
+          </div>
+          <div class="control-group">
+            <span>Seed</span>
+            <input type="number" id="seedInput" value="9987" />
+            <button id="applySeedButton">Apply</button>
+            <button id="exportBestButton">Export Best</button>
+            <label class="file-label" for="importGenomeInput">Import Genome</label>
+            <input type="file" id="importGenomeInput" accept="application/json,.json" />
+          </div>
+        </section>
 
-        // --- Neural Network (with recurrent connections) ---
-        class NeuralNetwork {
-            constructor(inputNodes, hiddenNodes, outputNodes, memoryNodes = 0, weights = null) {
-                this.inputNodes = inputNodes; this.hiddenNodes = hiddenNodes; this.outputNodes = outputNodes; this.memoryNodes = memoryNodes;
-                this.externalInputs = inputNodes - memoryNodes; this.externalOutputs = outputNodes - memoryNodes;
-                this.weightsIH_count = this.inputNodes * this.hiddenNodes; this.weightsHO_count = this.hiddenNodes * this.outputNodes; this.biasH_count = this.hiddenNodes; this.biasO_count = this.outputNodes;
-                this.totalWeights = this.weightsIH_count + this.weightsHO_count + this.biasH_count + this.biasO_count;
-                if(weights && weights.length === this.totalWeights){this.loadWeights(weights);}else{this.randomizeWeights();}
-            }
-            randomizeWeights(){this.weightsIH=Array.from({length:this.weightsIH_count},()=>random(-1,1)); this.weightsHO=Array.from({length:this.weightsHO_count},()=>random(-1,1)); this.biasH=Array.from({length:this.biasH_count},()=>random(-1,1)); this.biasO=Array.from({length:this.biasO_count},()=>random(-1,1));}
-            loadWeights(w){let i=0; this.weightsIH=w.slice(i,i+=this.weightsIH_count); this.weightsHO=w.slice(i,i+=this.weightsHO_count); this.biasH=w.slice(i,i+=this.biasH_count); this.biasO=w.slice(i,i+=this.biasO_count);}
-            getWeights(){return [...this.weightsIH,...this.weightsHO,...this.biasH,...this.biasO];}
-            feedForward(externalInputs, memoryState) {
-                if(externalInputs.length!==this.externalInputs){console.error(`NN ext input mismatch. E${this.externalInputs}, G${externalInputs.length}`);while(externalInputs.length<this.externalInputs)externalInputs.push(0);if(externalInputs.length>this.externalInputs)externalInputs.length=this.externalInputs;}
-                if(memoryState.length!==this.memoryNodes){console.error(`NN mem state mismatch. E${this.memoryNodes}, G${memoryState.length}`);while(memoryState.length<this.memoryNodes)memoryState.push(0);if(memoryState.length>this.memoryNodes)memoryState.length=this.memoryNodes;}
-                const fullInputs = [...externalInputs,...memoryState];
-                const hidden = new Array(this.hiddenNodes).fill(0);
-                for(let h=0; h<this.hiddenNodes; h++){let s=this.biasH[h]; for(let i=0; i<this.inputNodes; i++){s+=fullInputs[i]*this.weightsIH[h*this.inputNodes+i];} hidden[h]=tanh(s);}
-                const fullOutputs = new Array(this.outputNodes).fill(0);
-                for(let o=0; o<this.outputNodes; o++){let s=this.biasO[o]; for(let h=0; h<this.hiddenNodes; h++){s+=hidden[h]*this.weightsHO[o*this.hiddenNodes+h];} fullOutputs[o]=tanh(s);}
-                const externalActions = fullOutputs.slice(0, this.externalOutputs); const nextMemoryState = fullOutputs.slice(this.externalOutputs);
-                return { externalActions, nextMemoryState };
-            }
+        <section class="canvas-wrap">
+          <div id="event-banner"></div>
+          <canvas id="simulationCanvas" width="1200" height="800"></canvas>
+        </section>
+
+        <section class="panel metrics" id="info">
+          <div class="metric"><span class="label">Step</span><span id="simStepCount" class="value">0</span></div>
+          <div class="metric"><span class="label">Generation</span><span id="generationCount" class="value">0</span></div>
+          <div class="metric"><span class="label">Replacements</span><span id="replacementCount" class="value">0</span></div>
+          <div class="metric"><span class="label">Alive</span><span class="value"><span id="aliveCount">0</span>/<span id="populationSize">0</span></span></div>
+          <div class="metric"><span class="label">Avg Fit</span><span id="avgFitness" class="value">0.000</span></div>
+          <div class="metric"><span class="label">Best Fit</span><span id="bestFitness" class="value">0.000</span></div>
+          <div class="metric"><span class="label">Novelty</span><span id="avgNovelty" class="value">0.000</span></div>
+          <div class="metric"><span class="label">Species</span><span id="speciesCount" class="value">0</span></div>
+          <div class="metric"><span class="label">Food</span><span id="foodCountDisplay" class="value">0</span></div>
+          <div class="metric"><span class="label">Threats</span><span id="threatCountDisplay" class="value">0</span></div>
+          <div class="metric"><span class="label">Pheromone Cells</span><span id="pheromoneCountDisplay" class="value">0</span></div>
+          <div class="metric"><span class="label">QD Cells</span><span id="archiveCells" class="value">0</span></div>
+          <div class="metric"><span class="label">Diversity</span><span id="diversityScore" class="value">0.000</span></div>
+          <div class="metric"><span class="label">Mut Rate</span><span id="avgMutationRate" class="value">0.0000</span></div>
+          <div class="metric"><span class="label">Wgt Mut</span><span id="avgWeightMutationRate" class="value">0.0000</span></div>
+          <div class="metric"><span class="label">Event</span><span id="eventName" class="value">Stable</span></div>
+        </section>
+      </main>
+
+      <aside class="sidebar">
+        <section class="panel">
+          <h3>Live Fitness Graph</h3>
+          <canvas id="chartCanvas" width="320" height="140"></canvas>
+          <div class="legend"><span><i class="dot fit"></i>Best</span><span><i class="dot alive"></i>Alive</span><span><i class="dot novel"></i>Novelty</span></div>
+        </section>
+        <section class="panel">
+          <h3>Quality-Diversity Archive</h3>
+          <canvas id="archiveCanvas" width="320" height="140"></canvas>
+          <p class="note">Cells are behaviour niches: movement speed × signalling rate. Brighter cells contain stronger elites.</p>
+        </section>
+        <section class="panel">
+          <h3>Species Details</h3>
+          <div class="scroll"><ul id="species-list"><li>No species data yet.</li></ul></div>
+        </section>
+        <section class="panel">
+          <h3>Lineage Highlights</h3>
+          <div class="scroll"><ul id="lineage-list"><li>No lineage yet.</li></ul></div>
+        </section>
+        <section class="panel">
+          <h3>Best Genome / Traits</h3>
+          <div id="genome-display">No evaluation yet.</div>
+        </section>
+        <section class="panel">
+          <h3>Research-Inspired Upgrades</h3>
+          <p class="note">Added novelty pressure, MAP-Elites-style diversity preservation, dynamic niches, adaptive speciation threshold, behaviour descriptors, richer terrain ecology, and safe genome persistence without external libraries.</p>
+        </section>
+      </aside>
+    </div>
+  </div>
+  <div id="tooltip">Blob Info</div>
+
+<script>
+"use strict";
+const NativeDownloadBlob = globalThis.Blob;
+
+// -----------------------------
+// Seeded random utility
+// -----------------------------
+let currentSeed = 9987;
+function mulberry32(seed) {
+  return function() {
+    let t = seed += 0x6D2B79F5;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+let rng = mulberry32(currentSeed);
+function reseed(seed) { currentSeed = Number(seed) || 9987; rng = mulberry32(currentSeed >>> 0); }
+function random(min, max) { return rng() * (max - min) + min; }
+function randomInt(min, max) { return Math.floor(random(min, max + 1)); }
+function clamp(v, min, max) { return Math.max(min, Math.min(max, v)); }
+function normalize(v, min, max) { return clamp((v - min) / ((max - min) || 1), 0, 1); }
+function lerp(a, b, t) { return a + (b - a) * t; }
+function distanceSq(x1, y1, x2, y2) { const dx = x1 - x2, dy = y1 - y2; return dx * dx + dy * dy; }
+function distance(x1, y1, x2, y2) { return Math.sqrt(distanceSq(x1, y1, x2, y2)); }
+function safeMean(arr, getter) { if (!arr.length) return 0; return arr.reduce((s, x) => s + getter(x), 0) / arr.length; }
+function downloadJSON(filename, data) {
+  const blob = new NativeDownloadBlob([JSON.stringify(data, null, 2)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = filename; a.click();
+  URL.revokeObjectURL(url);
+}
+
+// -----------------------------
+// Activation functions
+// -----------------------------
+function tanh(x) { return Math.tanh(x); }
+
+// -----------------------------
+// Neural Network with recurrent memory outputs
+// -----------------------------
+class NeuralNetwork {
+  constructor(inputNodes, hiddenNodes, outputNodes, memoryNodes = 0, weights = null) {
+    this.inputNodes = inputNodes;
+    this.hiddenNodes = hiddenNodes;
+    this.outputNodes = outputNodes;
+    this.memoryNodes = memoryNodes;
+    this.externalInputs = inputNodes - memoryNodes;
+    this.externalOutputs = outputNodes - memoryNodes;
+    this.weightsIH_count = inputNodes * hiddenNodes;
+    this.weightsHO_count = hiddenNodes * outputNodes;
+    this.biasH_count = hiddenNodes;
+    this.biasO_count = outputNodes;
+    this.totalWeights = this.weightsIH_count + this.weightsHO_count + this.biasH_count + this.biasO_count;
+    if (weights && weights.length === this.totalWeights) this.loadWeights(weights);
+    else this.randomizeWeights();
+  }
+  randomizeWeights() {
+    this.weightsIH = Array.from({ length: this.weightsIH_count }, () => random(-1, 1));
+    this.weightsHO = Array.from({ length: this.weightsHO_count }, () => random(-1, 1));
+    this.biasH = Array.from({ length: this.biasH_count }, () => random(-1, 1));
+    this.biasO = Array.from({ length: this.biasO_count }, () => random(-1, 1));
+  }
+  loadWeights(w) {
+    let i = 0;
+    this.weightsIH = w.slice(i, i += this.weightsIH_count);
+    this.weightsHO = w.slice(i, i += this.weightsHO_count);
+    this.biasH = w.slice(i, i += this.biasH_count);
+    this.biasO = w.slice(i, i += this.biasO_count);
+  }
+  getWeights() { return [...this.weightsIH, ...this.weightsHO, ...this.biasH, ...this.biasO]; }
+  feedForward(externalInputs, memoryState) {
+    const ext = externalInputs.slice(0, this.externalInputs);
+    while (ext.length < this.externalInputs) ext.push(0);
+    const mem = memoryState.slice(0, this.memoryNodes);
+    while (mem.length < this.memoryNodes) mem.push(0);
+    const fullInputs = [...ext, ...mem];
+    const hidden = new Array(this.hiddenNodes).fill(0);
+    for (let h = 0; h < this.hiddenNodes; h++) {
+      let sum = this.biasH[h];
+      for (let i = 0; i < this.inputNodes; i++) sum += fullInputs[i] * this.weightsIH[h * this.inputNodes + i];
+      hidden[h] = tanh(sum);
+    }
+    const fullOutputs = new Array(this.outputNodes).fill(0);
+    for (let o = 0; o < this.outputNodes; o++) {
+      let sum = this.biasO[o];
+      for (let h = 0; h < this.hiddenNodes; h++) sum += hidden[h] * this.weightsHO[o * this.hiddenNodes + h];
+      fullOutputs[o] = tanh(sum);
+    }
+    return {
+      externalActions: fullOutputs.slice(0, this.externalOutputs),
+      nextMemoryState: fullOutputs.slice(this.externalOutputs)
+    };
+  }
+}
+
+// -----------------------------
+// Configuration
+// -----------------------------
+const CANVAS_WIDTH = 1200;
+const CANVAS_HEIGHT = 800;
+const config = {
+  populationSize: 220,
+  initialFoodCount: 200,
+  initialThreatCount: 55,
+  initialMovingThreatCount: 24,
+  initialSlowZoneCount: 10,
+  worldPadding: 12,
+  worldRegionSize: 160,
+  regionFoodDensityRange: [0.35, 1.85],
+  regionThreatDensityRange: [0.35, 1.75],
+
+  baseMutationRate: 0.095,
+  baseWeightMutationRate: 0.1,
+  mutationAmount: 0.23,
+  weightMutationAmount: 0.30,
+  minMutationRate: 0.003,
+  maxMutationRate: 0.42,
+  minWeightMutationRate: 0.003,
+  maxWeightMutationRate: 0.55,
+
+  pt_maxSpeed: 0,
+  pt_acceleration: 1,
+  pt_turnRate: 2,
+  pt_sensorRange: 3,
+  pt_maxRadius: 4,
+  pt_energyEfficiency: 5,
+  pt_foodEnergyGain: 6,
+  pt_reproductionUrge: 7,
+  pt_pheromoneSensitivity: 8,
+  pt_signalSensitivity: 9,
+  pt_shedBoostMultiplier: 10,
+  pt_shedCostMultiplier: 11,
+  pt_mutationRate: 12,
+  pt_weightMutationRate: 13,
+  pt_curiosityDrive: 14,
+  pt_riskTolerance: 15,
+  pt_cohesion: 16,
+  numPhysicalTraits: 17,
+
+  numSensors: 8,
+  sensorAngleSpread: Math.PI * 1.95,
+  nnHiddenNodes: 28,
+  nnMemoryNodes: 6,
+  nnExternalOutputs: 5, // thrust, turn, shed, signal, split/reproduction gate
+  numBaseSensorInputs: 4,
+  numPheromoneSensorInputs: 3,
+  numInternalStateInputs: 10,
+  numRelativeTargetInputs: 8,
+  numSelfTraitInputs: 4,
+  numSocialInputs: 2,
+
+  simulationTimeStep: 16,
+  initialEnergy: 100,
+  maxEnergyStorageFactor: 2.6,
+  energyDecayBase: 0.034,
+  energyCostPerThrust: 0.026,
+  energyCostPerTurn: 0.011,
+  energyCostSizeFactor: 0.64,
+  energyCostSignalEmit: 0.45,
+  sizeChangeRate: 0.055,
+  energyFromFoodBase: 50,
+  foodValueVariance: 0.36,
+  foodReplenishRate: 0.0014,
+  foodEvasionRate: 0.42,
+  foodEvasionDistance: 52,
+  energyLossFromThreat: 78,
+  energyLossFromMovingThreat: 118,
+
+  minBlobRadius: 3,
+  maxSpeedCap: 4.9,
+  minSpeedCap: 0.18,
+  maxAccelCap: 0.68,
+  minAccelCap: 0.045,
+  maxTurnRateCap: 0.22,
+  minTurnRateCap: 0.008,
+  maxSensorRangeCap: 165,
+  minSensorRangeCap: 18,
+  maxMaxRadiusCap: 16,
+  minMaxRadiusCap: 4,
+  maxEfficiency: 1.65,
+  minEfficiency: 0.25,
+  maxFoodGain: 2.05,
+  minFoodGain: 0.45,
+  maxReproductionUrge: 0.9,
+  minReproductionUrge: 0.03,
+  maxPheromoneSensitivity: 2.8,
+  minPheromoneSensitivity: 0.04,
+  maxSignalSensitivity: 3.2,
+  minSignalSensitivity: 0.08,
+  maxShedBoost: 2.6,
+  minShedBoost: 1.12,
+  maxShedCost: 0.32,
+  minShedCost: 0.04,
+  maxCuriosity: 1.0,
+  minCuriosity: 0.0,
+  maxRiskTolerance: 1.0,
+  minRiskTolerance: 0.0,
+  maxCohesion: 1.0,
+  minCohesion: 0.0,
+  shedDurationSteps: 32,
+
+  terrainTypes: ["normal", "slow", "dense", "toxic", "rich", "dry"],
+  terrainEffects: {
+    normal: { speed: 1.0, sensor: 1.0, decay: 1.0, food: 1.0, threat: 1.0, color: "rgba(80,135,210,.10)" },
+    slow:   { speed: 0.45, sensor: 1.0, decay: 1.0, food: 1.05, threat: 0.95, color: "rgba(139,92,45,.18)" },
+    dense:  { speed: 0.86, sensor: 0.52, decay: 1.1, food: 1.3, threat: 0.9, color: "rgba(34,197,94,.15)" },
+    toxic:  { speed: 1.0, sensor: 0.95, decay: 1.55, food: 0.65, threat: 1.15, color: "rgba(180,70,240,.14)" },
+    rich:   { speed: 0.95, sensor: 1.05, decay: 0.96, food: 1.65, threat: 1.2, color: "rgba(109,246,196,.15)" },
+    dry:    { speed: 1.07, sensor: 1.08, decay: 1.2, food: 0.48, threat: 1.05, color: "rgba(255,209,102,.13)" }
+  },
+  slowZoneFactor: 0.72,
+
+  evaluationIntervalSteps: 900,
+  replacementPercentage: 0.18,
+  eliteGlobalCount: 4,
+  eliteSpeciesCount: 1,
+  reproductionEnergyThreshold: 1.15,
+  reproductionEnergyCost: 0.30,
+  speciationDistanceThreshold: 8.0,
+  targetSpeciesRange: [7, 18],
+  genomeDistanceWeights: { physical: 1.0, nn: 0.32 },
+  speciesMinSizeForPenalty: 3,
+  stagnationThresholdSteps: 16,
+  stagnationCullingThreshold: 30,
+  interSpeciesCrossoverRate: 0.015,
+  archiveInjectionRate: 0.10,
+  nicheRadius: 66,
+  fitnessSharingAlpha: 1,
+  noveltyWeight: 0.28,
+  optimalAgeFactor: 0.65,
+  ageFitnessPenalty: 0.13,
+
+  pheromoneGridCellSize: 24,
+  pheromoneFoodStrength: 0.55,
+  pheromoneThreatStrength: 1.08,
+  pheromoneSignalStrength: 1.35,
+  pheromoneDecayRate: 0.981,
+  signalDecayRate: 0.952,
+  maxPheromoneValue: 5.0,
+  maxSignalValue: 4.0,
+  pheromoneEmitInterval: 5,
+
+  collisionElasticity: 0.62,
+  collisionEnergyTransfer: 0.011,
+  spatialGridCellSize: 42,
+
+  archiveBins: 8,
+  noveltyArchiveMax: 450,
+  metricsHistoryMax: 160,
+  dynamicEventEvery: 1800,
+  eventDuration: 550
+};
+config.nnExternalInputs = (config.numBaseSensorInputs * config.numSensors) +
+  (config.numPheromoneSensorInputs * config.numSensors) +
+  config.numInternalStateInputs + config.numRelativeTargetInputs + config.numSelfTraitInputs + config.numSocialInputs;
+config.nnInputNodes = config.nnExternalInputs + config.nnMemoryNodes;
+config.nnOutputNodes = config.nnExternalOutputs + config.nnMemoryNodes;
+const nnTemplate = new NeuralNetwork(config.nnInputNodes, config.nnHiddenNodes, config.nnOutputNodes, config.nnMemoryNodes);
+config.genomeLength = config.numPhysicalTraits + nnTemplate.totalWeights;
+config.maxEnergy = config.initialEnergy * config.maxEnergyStorageFactor;
+config.numToReplace = Math.max(1, Math.floor(config.populationSize * config.replacementPercentage));
+config.pheromoneGridCols = Math.ceil(CANVAS_WIDTH / config.pheromoneGridCellSize);
+config.pheromoneGridRows = Math.ceil(CANVAS_HEIGHT / config.pheromoneGridCellSize);
+config.spatialGridCols = Math.ceil(CANVAS_WIDTH / config.spatialGridCellSize);
+config.spatialGridRows = Math.ceil(CANVAS_HEIGHT / config.spatialGridCellSize);
+config.regionGridCols = Math.ceil(CANVAS_WIDTH / config.worldRegionSize);
+config.regionGridRows = Math.ceil(CANVAS_HEIGHT / config.worldRegionSize);
+
+// -----------------------------
+// Globals
+// -----------------------------
+let canvas, ctx, tooltip, speciesListUL, lineageListUL, chartCanvas, chartCtx, archiveCanvas, archiveCtx;
+let offscreenPheroCanvas, offscreenPheroCtx;
+let environment;
+let population = [];
+let species = [];
+let qdArchive = new Map();
+let noveltyArchive = [];
+let lineageLog = [];
+let totalReplacements = 0;
+let simulationStep = 0;
+let generation = 0;
+let stepsSinceLastEval = 0;
+let animationFrameId = null;
+let isRunning = false;
+let simSpeedMultiplier = 1;
+let mousePos = { x: 0, y: 0 };
+let visPheromones = true;
+let visGrid = false;
+let simpleDraw = false;
+let visSensors = false;
+let visArchive = true;
+let adaptiveEnvironment = true;
+let worldRegions = [];
+let metricsHistory = [];
+let lastEvalStats = {
+  avgFitness: 0, bestFitness: 0, avgNovelty: 0, diversity: 0,
+  bestGenomeSample: "No evaluation yet.", avgMutRate: 0, avgWgtMutRate: 0, bestBlob: null
+};
+
+// -----------------------------
+// Spatial Hash Grid
+// -----------------------------
+class SpatialGrid {
+  constructor(w, h, cs) { this.w = w; this.h = h; this.cs = cs; this.cols = Math.ceil(w / cs); this.rows = Math.ceil(h / cs); this.grid = new Map(); }
+  _gc(x, y) { return { col: Math.floor(x / this.cs), row: Math.floor(y / this.cs) }; }
+  _gi(c, r) { return r * this.cols + c; }
+  clear() { this.grid.clear(); }
+  insert(o) {
+    const { col, row } = this._gc(o.x, o.y);
+    if (col < 0 || row < 0 || col >= this.cols || row >= this.rows) return;
+    const i = this._gi(col, row);
+    if (!this.grid.has(i)) this.grid.set(i, new Set());
+    this.grid.get(i).add(o);
+    o._sgc = i;
+  }
+  queryRadius(x, y, r) {
+    const near = new Set();
+    const cCol = Math.floor(x / this.cs), cRow = Math.floor(y / this.cs), sr = Math.ceil(r / this.cs);
+    for (let ro = -sr; ro <= sr; ro++) for (let co = -sr; co <= sr; co++) {
+      const c = cCol + co, row = cRow + ro;
+      if (c >= 0 && c < this.cols && row >= 0 && row < this.rows) {
+        const idx = this._gi(c, row);
+        if (this.grid.has(idx)) this.grid.get(idx).forEach(o => near.add(o));
+      }
+    }
+    return near;
+  }
+  drawGrid(c) {
+    c.save();
+    c.strokeStyle = "rgba(255,255,255,0.07)";
+    c.lineWidth = 1;
+    for (let col = 1; col < this.cols; col++) { c.beginPath(); c.moveTo(col * this.cs, 0); c.lineTo(col * this.cs, this.h); c.stroke(); }
+    for (let row = 1; row < this.rows; row++) { c.beginPath(); c.moveTo(0, row * this.cs); c.lineTo(this.w, row * this.cs); c.stroke(); }
+    c.restore();
+  }
+}
+
+// -----------------------------
+// Environment
+// -----------------------------
+class Environment {
+  constructor(width, height) {
+    this.width = width;
+    this.height = height;
+    this.food = [];
+    this.threats = [];
+    this.movingThreats = [];
+    this.slowZones = [];
+    this.currentEvent = { name: "Stable", timer: 0, foodMult: 1, threatMult: 1, decayMult: 1, signalMult: 1 };
+    this.pheromoneGrid = Array.from({ length: config.pheromoneGridCols * config.pheromoneGridRows }, () => ({ food: 0, threat: 0, signal: 0 }));
+    this.spatialGrid = new SpatialGrid(width, height, config.spatialGridCellSize);
+    this.generateWorldRegions();
+    this.reset();
+  }
+  generateWorldRegions() {
+    worldRegions = [];
+    for (let row = 0; row < config.regionGridRows; row++) {
+      for (let col = 0; col < config.regionGridCols; col++) {
+        const centerBias = 1 - Math.min(1, distance(col, row, config.regionGridCols / 2, config.regionGridRows / 2) / Math.max(config.regionGridCols, config.regionGridRows));
+        const terrainRoll = rng();
+        let terrain = "normal";
+        if (terrainRoll < 0.14) terrain = "slow";
+        else if (terrainRoll < 0.31) terrain = "dense";
+        else if (terrainRoll < 0.43) terrain = "toxic";
+        else if (terrainRoll < 0.57) terrain = "rich";
+        else if (terrainRoll < 0.70) terrain = "dry";
+        worldRegions.push({
+          foodDensity: random(config.regionFoodDensityRange[0], config.regionFoodDensityRange[1]) * (0.85 + centerBias * 0.3),
+          threatDensity: random(config.regionThreatDensityRange[0], config.regionThreatDensityRange[1]) * (1.05 - centerBias * 0.15),
+          terrain
+        });
+      }
+    }
+  }
+  getRegionProperties(x, y) {
+    const col = clamp(Math.floor(x / config.worldRegionSize), 0, config.regionGridCols - 1);
+    const row = clamp(Math.floor(y / config.worldRegionSize), 0, config.regionGridRows - 1);
+    return worldRegions[row * config.regionGridCols + col] || { foodDensity: 1, threatDensity: 1, terrain: "normal" };
+  }
+  getTerrainEffects(x, y) { return config.terrainEffects[this.getRegionProperties(x, y).terrain] || config.terrainEffects.normal; }
+  reset() {
+    this.food = [];
+    this.threats = [];
+    this.movingThreats = [];
+    this.slowZones = Array.from({ length: config.initialSlowZoneCount }, () => this._createSlowZone());
+    this.currentEvent = { name: "Stable", timer: 0, foodMult: 1, threatMult: 1, decayMult: 1, signalMult: 1 };
+    this.pheromoneGrid.forEach(cell => { cell.food = 0; cell.threat = 0; cell.signal = 0; });
+    this.spatialGrid.clear();
+    let cFood = 0, cThreat = 0, cMoving = 0;
+    const maxAttempts = (config.initialFoodCount + config.initialThreatCount + config.initialMovingThreatCount) * 5;
+    for (let i = 0; i < maxAttempts && (cFood < config.initialFoodCount || cThreat < config.initialThreatCount || cMoving < config.initialMovingThreatCount); i++) {
+      const x = random(config.worldPadding, this.width - config.worldPadding);
+      const y = random(config.worldPadding, this.height - config.worldPadding);
+      const props = this.getRegionProperties(x, y);
+      const terrain = this.getTerrainEffects(x, y);
+      if (cFood < config.initialFoodCount && rng() < (props.foodDensity * terrain.food) / 1.75) { this._addItem(this._createFood(x, y)); cFood++; }
+      if (cThreat < config.initialThreatCount && rng() < (props.threatDensity * terrain.threat) / 1.85) { this._addItem(this._createThreat(x, y)); cThreat++; }
+      if (cMoving < config.initialMovingThreatCount && rng() < (props.threatDensity * terrain.threat) / 1.9) { this._addItem(this._createMovingThreat(x, y)); cMoving++; }
+    }
+    this.rebuildSpatialGrid();
+  }
+  _createFood(x = null, y = null) {
+    x = x ?? random(config.worldPadding, this.width - config.worldPadding);
+    y = y ?? random(config.worldPadding, this.height - config.worldPadding);
+    const terrain = this.getTerrainEffects(x, y);
+    const maxValue = config.energyFromFoodBase * terrain.food * (1 + random(-config.foodValueVariance, config.foodValueVariance));
+    return { x, y, radius: 5, maxValue, currentValue: maxValue, replenishTimer: 0, vx: 0, vy: 0, type: "food" };
+  }
+  _createThreat(x = null, y = null) {
+    x = x ?? random(config.worldPadding, this.width - config.worldPadding);
+    y = y ?? random(config.worldPadding, this.height - config.worldPadding);
+    return { x, y, radius: 8, type: "threat" };
+  }
+  _createMovingThreat(x = null, y = null) {
+    x = x ?? random(config.worldPadding, this.width - config.worldPadding);
+    y = y ?? random(config.worldPadding, this.height - config.worldPadding);
+    return { x, y, radius: 10, vx: random(-1, 1) * 1.9, vy: random(-1, 1) * 1.9, type: "mthreat" };
+  }
+  _createSlowZone() { const s = random(50, 125); return { x: random(0, this.width - s), y: random(0, this.height - s), width: s, height: s }; }
+  _addItem(item) {
+    if (item.type === "food") this.food.push(item);
+    else if (item.type === "threat") this.threats.push(item);
+    else if (item.type === "mthreat") this.movingThreats.push(item);
+    this.spatialGrid.insert(item);
+  }
+  addFoodItem(x = null, y = null) { this._addItem(this._createFood(x, y)); }
+  addThreatItem(x = null, y = null) { this._addItem(this._createThreat(x, y)); }
+  addMovingThreatItem(x = null, y = null) { this._addItem(this._createMovingThreat(x, y)); }
+  consumeFood(item) { item.currentValue = 0; item.replenishTimer = 1; }
+  isInSlowZone(x, y) { return this.slowZones.some(z => x > z.x && x < z.x + z.width && y > z.y && y < z.y + z.height); }
+  triggerEvent(name = null) {
+    const events = [
+      { name: "Nutrient Bloom", timer: config.eventDuration, foodMult: 2.15, threatMult: 0.85, decayMult: 0.92, signalMult: 1.0 },
+      { name: "Drought", timer: config.eventDuration, foodMult: 0.38, threatMult: 1.08, decayMult: 1.18, signalMult: 0.96 },
+      { name: "Predator Surge", timer: config.eventDuration, foodMult: 0.9, threatMult: 1.85, decayMult: 1.05, signalMult: 1.0 },
+      { name: "Signal Storm", timer: config.eventDuration, foodMult: 1.0, threatMult: 1.0, decayMult: 1.02, signalMult: 1.8 },
+      { name: "Toxic Drift", timer: config.eventDuration, foodMult: 0.76, threatMult: 1.15, decayMult: 1.38, signalMult: 0.85 }
+    ];
+    this.currentEvent = name ? events.find(e => e.name === name) || events[0] : events[randomInt(0, events.length - 1)];
+    for (let i = 0; i < 12 * this.currentEvent.threatMult; i++) this.addMovingThreatItem();
+    if (this.currentEvent.foodMult > 1.2) for (let i = 0; i < 50; i++) this.addFoodItem();
+    showEventBanner(this.currentEvent.name);
+  }
+  updateDynamicEcology() {
+    if (!adaptiveEnvironment) return;
+    if (simulationStep > 0 && simulationStep % config.dynamicEventEvery === 0) this.triggerEvent();
+    if (this.currentEvent.timer > 0) {
+      this.currentEvent.timer--;
+      if (this.currentEvent.timer <= 0) this.currentEvent = { name: "Stable", timer: 0, foodMult: 1, threatMult: 1, decayMult: 1, signalMult: 1 };
+    }
+    if (simulationStep > 0 && simulationStep % (config.dynamicEventEvery * 2) === 0) this.generateWorldRegions();
+  }
+  updateFood(nearbyBlobsMap) {
+    this.food.forEach(f => {
+      const terrain = this.getTerrainEffects(f.x, f.y);
+      if (f.replenishTimer > 0 && f.currentValue < f.maxValue) {
+        f.currentValue += f.maxValue * config.foodReplenishRate * terrain.food * this.currentEvent.foodMult;
+        if (f.currentValue >= f.maxValue) { f.currentValue = f.maxValue; f.replenishTimer = 0; }
+      }
+      let closestDistSq = Infinity, evX = 0, evY = 0;
+      const evaders = nearbyBlobsMap.get(f) || [];
+      for (const b of evaders) {
+        const dSq = distanceSq(f.x, f.y, b.x, b.y);
+        if (dSq < config.foodEvasionDistance * config.foodEvasionDistance && dSq < closestDistSq) {
+          closestDistSq = dSq; evX = f.x - b.x; evY = f.y - b.y;
         }
+      }
+      if (closestDistSq !== Infinity) {
+        const d = Math.sqrt(closestDistSq) || 1;
+        const evForce = config.foodEvasionRate / (d + 1);
+        f.vx += (evX / d) * evForce;
+        f.vy += (evY / d) * evForce;
+      }
+      f.vx *= 0.85; f.vy *= 0.85;
+      const sp = Math.sqrt(f.vx * f.vx + f.vy * f.vy);
+      if (sp > 0.5) { f.vx = (f.vx / sp) * 0.5; f.vy = (f.vy / sp) * 0.5; }
+      f.x = clamp(f.x + f.vx, config.worldPadding, this.width - config.worldPadding);
+      f.y = clamp(f.y + f.vy, config.worldPadding, this.height - config.worldPadding);
+    });
+  }
+  updateMovingThreats() {
+    this.movingThreats.forEach(mt => {
+      mt.x += mt.vx * this.currentEvent.threatMult;
+      mt.y += mt.vy * this.currentEvent.threatMult;
+      if (mt.x < mt.radius || mt.x > this.width - mt.radius) { mt.vx *= -1; mt.x = clamp(mt.x, mt.radius, this.width - mt.radius); }
+      if (mt.y < mt.radius || mt.y > this.height - mt.radius) { mt.vy *= -1; mt.y = clamp(mt.y, mt.radius, this.height - mt.radius); }
+    });
+  }
+  rebuildSpatialGrid() {
+    this.spatialGrid.clear();
+    this.food.forEach(f => this.spatialGrid.insert(f));
+    this.threats.forEach(t => this.spatialGrid.insert(t));
+    this.movingThreats.forEach(mt => this.spatialGrid.insert(mt));
+    population.forEach(b => { if (b.isAlive) this.spatialGrid.insert(b); });
+  }
+  getGridCoordsPhero(x, y) {
+    return {
+      col: clamp(Math.floor(x / config.pheromoneGridCellSize), 0, config.pheromoneGridCols - 1),
+      row: clamp(Math.floor(y / config.pheromoneGridCellSize), 0, config.pheromoneGridRows - 1)
+    };
+  }
+  getGridIndexPhero(col, row) { return row * config.pheromoneGridCols + col; }
+  addPheromone(x, y, type, strength) {
+    const { col, row } = this.getGridCoordsPhero(x, y);
+    const cell = this.pheromoneGrid[this.getGridIndexPhero(col, row)];
+    if (!cell) return;
+    const maxV = type === "signal" ? config.maxSignalValue : config.maxPheromoneValue;
+    cell[type] = clamp(cell[type] + strength * (type === "signal" ? this.currentEvent.signalMult : 1), 0, maxV);
+  }
+  getPheromone(x, y) {
+    const gX = x / config.pheromoneGridCellSize, gY = y / config.pheromoneGridCellSize;
+    const c0 = Math.floor(gX - 0.5), c1 = c0 + 1, r0 = Math.floor(gY - 0.5), r1 = r0 + 1;
+    const tx = gX - (c0 + 0.5), ty = gY - (r0 + 0.5);
+    const getV = (c, r, t) => {
+      c = clamp(c, 0, config.pheromoneGridCols - 1); r = clamp(r, 0, config.pheromoneGridRows - 1);
+      const cell = this.pheromoneGrid[this.getGridIndexPhero(c, r)];
+      return cell ? cell[t] : 0;
+    };
+    const p00 = { f: getV(c0, r0, "food"), t: getV(c0, r0, "threat"), s: getV(c0, r0, "signal") };
+    const p10 = { f: getV(c1, r0, "food"), t: getV(c1, r0, "threat"), s: getV(c1, r0, "signal") };
+    const p01 = { f: getV(c0, r1, "food"), t: getV(c0, r1, "threat"), s: getV(c0, r1, "signal") };
+    const p11 = { f: getV(c1, r1, "food"), t: getV(c1, r1, "threat"), s: getV(c1, r1, "signal") };
+    return {
+      food: lerp(lerp(p00.f, p10.f, tx), lerp(p01.f, p11.f, tx), ty),
+      threat: lerp(lerp(p00.t, p10.t, tx), lerp(p01.t, p11.t, tx), ty),
+      signal: lerp(lerp(p00.s, p10.s, tx), lerp(p01.s, p11.s, tx), ty)
+    };
+  }
+  decayPheromones() {
+    let active = 0;
+    this.pheromoneGrid.forEach(cell => {
+      cell.food *= config.pheromoneDecayRate;
+      cell.threat *= config.pheromoneDecayRate;
+      cell.signal *= config.signalDecayRate;
+      if (cell.food < 0.01) cell.food = 0;
+      if (cell.threat < 0.01) cell.threat = 0;
+      if (cell.signal < 0.01) cell.signal = 0;
+      if (cell.food > 0 || cell.threat > 0 || cell.signal > 0) active++;
+    });
+    document.getElementById("pheromoneCountDisplay").textContent = active;
+  }
+  drawTerrain(c) {
+    c.save();
+    c.fillStyle = "#0d1730";
+    c.fillRect(0, 0, this.width, this.height);
+    for (let row = 0; row < config.regionGridRows; row++) {
+      for (let col = 0; col < config.regionGridCols; col++) {
+        const reg = worldRegions[row * config.regionGridCols + col];
+        const eff = config.terrainEffects[reg.terrain] || config.terrainEffects.normal;
+        c.fillStyle = eff.color;
+        c.fillRect(col * config.worldRegionSize, row * config.worldRegionSize, config.worldRegionSize, config.worldRegionSize);
+      }
+    }
+    c.restore();
+  }
+  drawPheromonesOffscreen() {
+    if (!offscreenPheroCtx) return;
+    const c = offscreenPheroCtx, cs = config.pheromoneGridCellSize;
+    c.clearRect(0, 0, offscreenPheroCanvas.width, offscreenPheroCanvas.height);
+    for (let row = 0; row < config.pheromoneGridRows; row++) {
+      for (let col = 0; col < config.pheromoneGridCols; col++) {
+        const cell = this.pheromoneGrid[this.getGridIndexPhero(col, row)];
+        const x = col * cs, y = row * cs;
+        if (cell.food > 0.01) { c.fillStyle = `rgba(44,255,120,${normalize(cell.food, 0, config.maxPheromoneValue) * 0.18})`; c.fillRect(x, y, cs, cs); }
+        if (cell.threat > 0.01) { c.fillStyle = `rgba(255,69,95,${normalize(cell.threat, 0, config.maxPheromoneValue) * 0.20})`; c.fillRect(x, y, cs, cs); }
+        if (cell.signal > 0.01) { c.fillStyle = `rgba(120,165,255,${normalize(cell.signal, 0, config.maxSignalValue) * 0.24})`; c.fillRect(x, y, cs, cs); }
+      }
+    }
+  }
+  draw(c) {
+    this.drawTerrain(c);
+    if (visPheromones && offscreenPheroCanvas) c.drawImage(offscreenPheroCanvas, 0, 0);
+    c.save();
+    c.fillStyle = "rgba(156,103,54,0.22)";
+    this.slowZones.forEach(z => { c.fillRect(z.x, z.y, z.width, z.height); });
+    this.food.forEach(f => {
+      const ratio = f.maxValue ? f.currentValue / f.maxValue : 0;
+      if (ratio <= 0) return;
+      c.globalAlpha = 0.28 + ratio * 0.72;
+      c.fillStyle = `rgb(30,${Math.round(165 + 90 * ratio)},80)`;
+      c.beginPath(); c.arc(f.x, f.y, f.radius * (0.35 + 0.75 * ratio), 0, Math.PI * 2); c.fill();
+    });
+    c.globalAlpha = 1;
+    c.fillStyle = "#ff405d";
+    this.threats.forEach(t => { c.beginPath(); c.arc(t.x, t.y, t.radius, 0, Math.PI * 2); c.fill(); });
+    c.fillStyle = "#ad5cff";
+    this.movingThreats.forEach(mt => { c.beginPath(); c.arc(mt.x, mt.y, mt.radius, 0, Math.PI * 2); c.fill(); c.strokeStyle = "rgba(255,255,255,.22)"; c.stroke(); });
+    c.restore();
+    if (visGrid) this.spatialGrid.drawGrid(c);
+    document.getElementById("foodCountDisplay").textContent = this.food.filter(f => f.currentValue > 0).length;
+    document.getElementById("threatCountDisplay").textContent = this.threats.length + this.movingThreats.length;
+    document.getElementById("eventName").textContent = this.currentEvent.name;
+  }
+}
 
-        // --- Simulation Configuration ---
-        const CANVAS_WIDTH = 1200; const CANVAS_HEIGHT = 800;
-        const config = {
-            populationSize: 200, initialFoodCount: 180, initialThreatCount: 50, initialMovingThreatCount: 20, initialSlowZoneCount: 12,
-            worldRegionSize: 200, regionFoodDensityRange: [0.4, 1.6], regionThreatDensityRange: [0.4, 1.6],
-            baseMutationRate: 0.1, baseWeightMutationRate: 0.1, mutationAmount: 0.20, weightMutationAmount: 0.3,
-            minMutationRate: 0.005, maxMutationRate: 0.4, minWeightMutationRate: 0.005, maxWeightMutationRate: 0.5,
-            pt_maxSpeed: 0, pt_acceleration: 1, pt_turnRate: 2, pt_sensorRange: 3, pt_maxRadius: 4, pt_energyEfficiency: 5, pt_foodEnergyGain: 6, pt_reproductionUrge: 7, pt_pheromoneSensitivity: 8, pt_signalSensitivity: 9, pt_shedBoostMultiplier: 10, pt_shedCostMultiplier: 11, pt_mutationRate: 12, pt_weightMutationRate: 13,
-            numPhysicalTraits: 14,
-            numSensors: 8, sensorAngleSpread: Math.PI * 1.9, nnHiddenNodes: 20, nnMemoryNodes: 4, nnExternalOutputs: 4, // [thrust, turn, shed, signal]
-            numBaseSensorInputs: 4, numPheromoneSensorInputs: 2, numSignalSensorInputs: 1, numInternalStateInputs: 9, numRelativeTargetInputs: 8, numSelfTraitInputs: 2,
-            simulationTimeStep: 16, worldPadding: 10, initialEnergy: 100, maxEnergyStorageFactor: 2.5,
-            energyDecayBase: 0.035, energyCostPerThrust: 0.025, energyCostPerTurn: 0.012, energyCostSizeFactor: 0.6, energyCostSignalEmit: 0.5,
-            sizeChangeRate: 0.05, energyFromFoodBase: 50, foodValueVariance: 0.3, foodReplenishRate: 0.001, foodEvasionRate: 0.4, foodEvasionDistance: 50,
-            energyLossFromThreat: 80, energyLossFromMovingThreat: 120, minBlobRadius: 3, maxSpeedCap: 4.8, minSpeedCap: 0.2, maxAccelCap: 0.65, minAccelCap: 0.05, maxTurnRateCap: 0.2, minTurnRateCap: 0.01,
-            maxSensorRangeCap: 150, minSensorRangeCap: 20, maxMaxRadiusCap: 15, minMaxRadiusCap: 4, maxEfficiency: 1.7, minEfficiency: 0.25,
-            maxFoodGain: 1.9, minFoodGain: 0.5, maxReproductionUrge: 0.8, minReproductionUrge: 0.05,
-            maxPheromoneSensitivity: 2.5, minPheromoneSensitivity: 0.05, maxSignalSensitivity: 3.0, minSignalSensitivity: 0.1,
-            maxShedBoost: 2.5, minShedBoost: 1.2, maxShedCost: 0.3, minShedCost: 0.05, shedDurationSteps: 30,
-            terrainTypes: ['normal', 'slow', 'dense', 'toxic'], terrainEffects: { normal:{speed:1.0,sensor:1.0,decay:1.0}, slow:{speed:0.4,sensor:1.0,decay:1.0}, dense:{speed:0.9,sensor:0.5,decay:1.1}, toxic:{speed:1.0,sensor:1.0,decay:1.5} },
-            evaluationIntervalSteps: 1000, replacementPercentage: 0.15, eliteSpeciesCount: 1, reproductionEnergyThreshold: 1.2, reproductionEnergyCost: 0.4,
-            speciationDistanceThreshold: 7.0, genomeDistanceWeights: { physical: 1.0, nn: 0.4 }, speciesMinSizeForPenalty: 3, stagnationThresholdSteps: 20, stagnationCullingThreshold: 35, interSpeciesCrossoverRate: 0.01,
-            nicheRadius: 60, fitnessSharingAlpha: 1, optimalAgeFactor: 0.6, ageFitnessPenalty: 0.15,
-            pheromoneGridCellSize: 25, pheromoneFoodStrength: 0.5, pheromoneThreatStrength: 1.0, pheromoneSignalStrength: 1.5, pheromoneDecayRate: 0.98, signalDecayRate: 0.95, maxPheromoneValue: 5.0, maxSignalValue: 4.0, pheromoneEmitInterval: 5,
-            collisionElasticity: 0.6, collisionEnergyTransfer: 0.01, spatialGridCellSize: 40,
-        };
+// -----------------------------
+// Species
+// -----------------------------
+class Species {
+  constructor(rep) {
+    this.id = Math.random().toString(36).substring(2, 9);
+    this.representative = rep.genome.slice();
+    this.members = [rep];
+    this.adjFitSum = 0;
+    this.avgFit = 0;
+    this.bestFit = -1;
+    this.stag = 0;
+    this.colorHue = randomInt(0, 360);
+    rep.speciesId = this.id;
+  }
+  addMember(b) { this.members.push(b); b.speciesId = this.id; }
+  calculateAdjustedFitness() {
+    this.adjFitSum = 0; this.bestFit = -1;
+    if (this.members.length === 0) { this.avgFit = 0; return; }
+    this.members.forEach(m => {
+      if (m.isAlive) {
+        const shared = m.rawFitness / (m.nicheCount || 1);
+        const noveltyBonus = m.noveltyScore * config.noveltyWeight;
+        m.adjustedFitness = Math.max(0, shared + noveltyBonus);
+        this.adjFitSum += m.adjustedFitness;
+        if (m.adjustedFitness > this.bestFit) this.bestFit = m.adjustedFitness;
+      } else m.adjustedFitness = 0;
+    });
+    const newAvg = this.adjFitSum / this.members.length;
+    this.stag = newAvg > this.avgFit * 1.003 ? 0 : this.stag + 1;
+    this.avgFit = newAvg;
+    const best = this.members.reduce((a, b) => (b.adjustedFitness > (a?.adjustedFitness ?? -1) ? b : a), null);
+    if (best && rng() < 0.25) this.representative = best.genome.slice();
+  }
+  selectParent() {
+    const pool = this.members.filter(m => m.isAlive);
+    if (!pool.length) return null;
+    let best = null, bestF = -Infinity;
+    const tournamentSize = Math.min(5, pool.length);
+    for (let i = 0; i < tournamentSize; i++) {
+      const m = pool[randomInt(0, pool.length - 1)];
+      const score = m.adjustedFitness + (m.energy >= config.initialEnergy * config.reproductionEnergyThreshold ? 2 : 0);
+      if (score > bestF) { best = m; bestF = score; }
+    }
+    return best;
+  }
+  reset() { this.members = []; this.adjFitSum = 0; }
+}
 
-        // --- Calculate Dependent Config Properties --- <<< CORRECTED SECTION
-        config.nnExternalInputs = (config.numBaseSensorInputs * config.numSensors) + (config.numPheromoneSensorInputs * config.numSensors) + (config.numSignalSensorInputs * config.numSensors) + config.numInternalStateInputs + config.numRelativeTargetInputs + config.numSelfTraitInputs;
-        config.nnInputNodes = config.nnExternalInputs + config.nnMemoryNodes;
-        config.nnOutputNodes = config.nnExternalOutputs + config.nnMemoryNodes; // << Calculation moved here
+// -----------------------------
+// Blob
+// -----------------------------
+class EvoBlob {
+  constructor(genome = null, parentIds = []) {
+    this.genome = genome || this.createRandomGenome();
+    this.parentIds = parentIds;
+    this.id = Math.random().toString(36).substring(2, 9);
+    this.decodeGenome();
+    this.x = random(config.worldPadding, CANVAS_WIDTH - config.worldPadding);
+    this.y = random(config.worldPadding, CANVAS_HEIGHT - config.worldPadding);
+    this.angle = random(0, Math.PI * 2);
+    this.vx = 0; this.vy = 0;
+    this.energy = config.initialEnergy;
+    this.currentRadius = this.maxRadius / 2;
+    this.rawFitness = 0;
+    this.adjustedFitness = 0;
+    this.noveltyScore = 0;
+    this.nicheCount = 1;
+    this.isAlive = true;
+    this.sensorAngles = Array.from({ length: config.numSensors }, (_, i) => (i / (config.numSensors - 1)) * config.sensorAngleSpread - (config.sensorAngleSpread / 2));
+    this.memoryState = new Array(config.nnMemoryNodes).fill(0);
+    this.lastExternalOutputs = new Array(config.nnExternalOutputs).fill(0);
+    this.age = 0;
+    this.shedBoostTimer = 0;
+    this.currentMaxSpeed = this.maxSpeed;
+    this.speciesId = null;
+    this.type = "blob";
+    this._sgc = -1;
+    this.distanceTravelled = 0;
+    this.signalsEmitted = 0;
+    this.foodsEaten = 0;
+    this.threatHits = 0;
+    this.terrainVisits = { normal: 0, slow: 0, dense: 0, toxic: 0, rich: 0, dry: 0 };
+    this.birthGeneration = generation;
+  }
+  createRandomGenome() {
+    const phys = [
+      random(config.minSpeedCap, config.maxSpeedCap),
+      random(config.minAccelCap, config.maxAccelCap),
+      random(config.minTurnRateCap, config.maxTurnRateCap),
+      random(config.minSensorRangeCap, config.maxSensorRangeCap),
+      random(config.minMaxRadiusCap, config.maxMaxRadiusCap),
+      random(config.minEfficiency, config.maxEfficiency),
+      random(config.minFoodGain, config.maxFoodGain),
+      random(config.minReproductionUrge, config.maxReproductionUrge),
+      random(config.minPheromoneSensitivity, config.maxPheromoneSensitivity),
+      random(config.minSignalSensitivity, config.maxSignalSensitivity),
+      random(config.minShedBoost, config.maxShedBoost),
+      random(config.minShedCost, config.maxShedCost),
+      config.baseMutationRate,
+      config.baseWeightMutationRate,
+      random(config.minCuriosity, config.maxCuriosity),
+      random(config.minRiskTolerance, config.maxRiskTolerance),
+      random(config.minCohesion, config.maxCohesion)
+    ];
+    const nnW = Array.from({ length: nnTemplate.totalWeights }, () => random(-1, 1));
+    return [...phys, ...nnW];
+  }
+  decodeGenome() {
+    this.maxSpeed = clamp(this.genome[config.pt_maxSpeed], config.minSpeedCap, config.maxSpeedCap);
+    this.currentMaxSpeed = this.maxSpeed;
+    this.acceleration = clamp(this.genome[config.pt_acceleration], config.minAccelCap, config.maxAccelCap);
+    this.turnRate = clamp(this.genome[config.pt_turnRate], config.minTurnRateCap, config.maxTurnRateCap);
+    this.sensorRange = clamp(this.genome[config.pt_sensorRange], config.minSensorRangeCap, config.maxSensorRangeCap);
+    this.maxRadius = clamp(this.genome[config.pt_maxRadius], config.minMaxRadiusCap, config.maxMaxRadiusCap);
+    this.energyEfficiency = clamp(this.genome[config.pt_energyEfficiency], config.minEfficiency, config.maxEfficiency);
+    this.foodEnergyGain = clamp(this.genome[config.pt_foodEnergyGain], config.minFoodGain, config.maxFoodGain);
+    this.reproductionUrge = clamp(this.genome[config.pt_reproductionUrge], config.minReproductionUrge, config.maxReproductionUrge);
+    this.pheromoneSensitivity = clamp(this.genome[config.pt_pheromoneSensitivity], config.minPheromoneSensitivity, config.maxPheromoneSensitivity);
+    this.signalSensitivity = clamp(this.genome[config.pt_signalSensitivity], config.minSignalSensitivity, config.maxSignalSensitivity);
+    this.shedBoostMultiplier = clamp(this.genome[config.pt_shedBoostMultiplier], config.minShedBoost, config.maxShedBoost);
+    this.shedCostMultiplier = clamp(this.genome[config.pt_shedCostMultiplier], config.minShedCost, config.maxShedCost);
+    this.mutationRate = clamp(this.genome[config.pt_mutationRate], config.minMutationRate, config.maxMutationRate);
+    this.weightMutationRate = clamp(this.genome[config.pt_weightMutationRate], config.minWeightMutationRate, config.maxWeightMutationRate);
+    this.curiosityDrive = clamp(this.genome[config.pt_curiosityDrive], config.minCuriosity, config.maxCuriosity);
+    this.riskTolerance = clamp(this.genome[config.pt_riskTolerance], config.minRiskTolerance, config.maxRiskTolerance);
+    this.cohesion = clamp(this.genome[config.pt_cohesion], config.minCohesion, config.maxCohesion);
+    const nnW = this.genome.slice(config.numPhysicalTraits);
+    this.brain = new NeuralNetwork(config.nnInputNodes, config.nnHiddenNodes, config.nnOutputNodes, config.nnMemoryNodes, nnW);
+  }
+  behaviorDescriptor() {
+    const age = Math.max(1, this.age);
+    const speed = clamp((this.distanceTravelled / age) / config.maxSpeedCap, 0, 1);
+    const signal = clamp(this.signalsEmitted / age * 8, 0, 1);
+    const size = normalize(this.currentRadius, config.minBlobRadius, config.maxMaxRadiusCap);
+    const risk = clamp(this.threatHits / Math.max(1, this.foodsEaten + this.threatHits), 0, 1);
+    return [speed, signal, size, risk];
+  }
+  sense(environment) {
+    const ext = [];
+    const terrainEff = environment.getTerrainEffects(this.x, this.y);
+    const maxRange = this.sensorRange * terrainEff.sensor;
+    const cone = 0.707;
+    let nearFood = null, nearFoodSq = maxRange * maxRange;
+    let nearThreat = null, nearThreatSq = maxRange * maxRange;
+    let allyCount = 0, speciesKinds = new Set();
+    const nearObjects = environment.spatialGrid.queryRadius(this.x, this.y, maxRange);
 
-        // Ensure nnTemplate is created *after* all NN related config values are set
-        const nnTemplate = new NeuralNetwork(config.nnInputNodes, config.nnHiddenNodes, config.nnOutputNodes, config.nnMemoryNodes);
-        config.genomeLength = config.numPhysicalTraits + nnTemplate.totalWeights;
-
-        config.maxEnergy = config.initialEnergy * config.maxEnergyStorageFactor;
-        config.numToReplace = Math.max(1, Math.floor(config.populationSize * config.replacementPercentage));
-        config.pheromoneGridCols = Math.ceil(CANVAS_WIDTH / config.pheromoneGridCellSize); config.pheromoneGridRows = Math.ceil(CANVAS_HEIGHT / config.pheromoneGridCellSize);
-        config.spatialGridCols = Math.ceil(CANVAS_WIDTH / config.spatialGridCellSize); config.spatialGridRows = Math.ceil(CANVAS_HEIGHT / config.spatialGridCellSize);
-        config.regionGridCols = Math.ceil(CANVAS_WIDTH / config.worldRegionSize); config.regionGridRows = Math.ceil(CANVAS_HEIGHT / config.worldRegionSize);
-        // --- End Dependent Calculations ---
-
-
-        // --- Globals ---
-        let canvas, ctx, tooltip, speciesListUL, offscreenPheroCanvas, offscreenPheroCtx;
-        let environment; let population = []; let species = [];
-        let totalReplacements = 0; let simulationStep = 0; let stepsSinceLastEval = 0;
-        let animationFrameId = null; let isRunning = false; let simSpeedMultiplier = 1;
-        let lastEvalStats = { avgFitness: 0, bestFitness: 0, bestGenomeSample: "N/A", avgMutRate: 0, avgWgtMutRate: 0 };
-        let mousePos = { x: 0, y: 0 }; let visPheromones = true; let visGrid = false; let simpleDraw = false;
-        let worldRegions = [];
-
-        // --- Utility Functions ---
-        function random(min, max) { return Math.random()*(max-min)+min } function randomInt(min, max) { return Math.floor(random(min,max+1)) } function distance(x1,y1,x2,y2) { const dx=x1-x2; const dy=y1-y2; return Math.sqrt(dx*dx+dy*dy) } function distanceSq(x1,y1,x2,y2) { const dx=x1-x2; const dy=y1-y2; return dx*dx+dy*dy } function clamp(v,min,max) { return Math.max(min,Math.min(v,max)) } function normalize(v,min,max) { return clamp(((v-min)||0)/((max-min)||1),0,1) }
-
-        // --- Spatial Hash Grid ---
-        class SpatialGrid{constructor(w,h,cs){this.w=w;this.h=h;this.cs=cs;this.cols=Math.ceil(w/cs);this.rows=Math.ceil(h/cs);this.grid=new Map()} _gc(x,y){return{col:Math.floor(x/this.cs),row:Math.floor(y/this.cs)}} _gi(c,r){return r*this.cols+c} clear(){this.grid.clear()} insert(o){const{col,row}=this._gc(o.x,o.y);const i=this._gi(col,row);if(!this.grid.has(i))this.grid.set(i,new Set());this.grid.get(i).add(o);o._sgc=i} queryRadius(x,y,r){const near=new Set();const cCol=Math.floor(x/this.cs);const cRow=Math.floor(y/this.cs);const sr=Math.ceil(r/this.cs);for(let ro=-sr;ro<=sr;ro++){for(let co=-sr;co<=sr;co++){const c=cCol+co;const r=cRow+ro;if(c>=0&&c<this.cols&&r>=0&&r<this.rows){const i=this._gi(c,r);if(this.grid.has(i))this.grid.get(i).forEach(o=>near.add(o))}}}return near} drawGrid(c){c.strokeStyle='rgba(0,0,0,0.1)';c.lineWidth=1;for(let cl=1;cl<this.cols;cl++){c.beginPath();c.moveTo(cl*this.cs,0);c.lineTo(cl*this.cs,this.h);c.stroke()}for(let rw=1;rw<this.rows;rw++){c.beginPath();c.moveTo(0,rw*this.cs);c.lineTo(this.w,rw*this.cs);c.stroke()}}}
-
-        // --- Environment Class ---
-        class Environment {
-            constructor(width, height) {
-                 this.width=width; this.height=height; this.food=[]; this.threats=[]; this.movingThreats=[]; this.slowZones=[];
-                 this.pheromoneGrid=Array.from({length:config.pheromoneGridCols*config.pheromoneGridRows},()=>({food:0,threat:0,signal:0}));
-                 this.spatialGrid=new SpatialGrid(width,height,config.spatialGridCellSize);
-                 this.generateWorldRegions(); this.reset();
-             }
-            generateWorldRegions(){worldRegions=[]; for(let r=0; r<config.regionGridRows; r++){for(let c=0; c<config.regionGridCols; c++){worldRegions.push({foodDensity:random(config.regionFoodDensityRange[0],config.regionFoodDensityRange[1]),threatDensity:random(config.regionThreatDensityRange[0],config.regionThreatDensityRange[1]),terrain:config.terrainTypes[randomInt(0,config.terrainTypes.length-1)]});}} console.log("Generated world regions with terrain.");}
-            getRegionProperties(x,y){const regCol=clamp(Math.floor(x/config.worldRegionSize),0,config.regionGridCols-1); const regRow=clamp(Math.floor(y/config.worldRegionSize),0,config.regionGridRows-1); const idx=regRow*config.regionGridCols+regCol; return worldRegions[idx]||{foodDensity:1,threatDensity:1,terrain:'normal'};}
-            getTerrainEffects(x,y){return config.terrainEffects[this.getRegionProperties(x,y).terrain]||config.terrainEffects.normal;}
-             reset() {
-                 this.food=[]; this.threats=[]; this.movingThreats=[]; this.slowZones=[];
-                 this.pheromoneGrid.forEach(cell=>{cell.food=0; cell.threat=0; cell.signal=0;});
-                 this.spatialGrid.clear(); this.slowZones=Array.from({length:config.initialSlowZoneCount},()=>this._createSlowZone());
-                 let cFood=0,cThreat=0,cMoving=0; const tFood=config.initialFoodCount,tThreat=config.initialThreatCount,tMoving=config.initialMovingThreatCount; const maxAtt=(tFood+tThreat+tMoving)*3;
-                 for(let i=0; i<maxAtt && (cFood<tFood || cThreat<tThreat || cMoving<tMoving); i++) { const x=random(config.worldPadding,this.width-config.worldPadding); const y=random(config.worldPadding,this.height-config.worldPadding); const props=this.getRegionProperties(x,y); if(cFood<tFood && Math.random()<props.foodDensity/1.5){this._addItem(this._createFood(x,y)); cFood++;} if(cThreat<tThreat && Math.random()<props.threatDensity/1.5){this._addItem(this._createThreat(x,y)); cThreat++;} if(cMoving<tMoving && Math.random()<props.threatDensity/1.5){this._addItem(this._createMovingThreat(x,y)); cMoving++;} }
-                 console.log(`Env Reset: Added ${cFood} Food, ${cThreat} Threats, ${cMoving} Moving Threats.`); this.rebuildSpatialGrid();
-             }
-            _createFood(x=null,y=null){x=x??random(config.worldPadding,this.width-config.worldPadding); y=y??random(config.worldPadding,this.height-config.worldPadding); const maxV=config.energyFromFoodBase*(1+random(-config.foodValueVariance,config.foodValueVariance)); return {x,y,radius:5,maxValue:maxV,currentValue:maxV,replenishTimer:0,vx:0,vy:0,type:'food'};}
-            _createThreat(x=null,y=null){x=x??random(config.worldPadding,this.width-config.worldPadding); y=y??random(config.worldPadding,this.height-config.worldPadding); return {x,y,radius:8,type:'threat'};}
-            _createMovingThreat(x=null,y=null){x=x??random(config.worldPadding,this.width-config.worldPadding); y=y??random(config.worldPadding,this.height-config.worldPadding); return {x,y,radius:10,vx:random(-1,1)*1.8,vy:random(-1,1)*1.8,type:'mthreat'};}
-            _createSlowZone(){const s=random(50,120); return {x:random(0,this.width-s),y:random(0,this.height-s),width:s,height:s};}
-            _addItem(item){if(item.type==='food')this.food.push(item); else if(item.type==='threat')this.threats.push(item); else if(item.type==='mthreat')this.movingThreats.push(item); this.spatialGrid.insert(item);}
-            addFoodItem(x=null,y=null){this._addItem(this._createFood(x,y));} addThreatItem(x=null,y=null){this._addItem(this._createThreat(x,y));} addMovingThreatItem(x=null,y=null){this._addItem(this._createMovingThreat(x,y));}
-            consumeFood(item){item.currentValue=0; item.replenishTimer=1;}
-            updateFood(nearbyBlobsMap){this.food.forEach(f=>{if(f.replenishTimer>0&&f.currentValue<f.maxValue){f.currentValue+=f.maxValue*config.foodReplenishRate; if(f.currentValue>=f.maxValue){f.currentValue=f.maxValue;f.replenishTimer=0;}} let clDistSq=Infinity; let evX=0,evY=0; const pEvaders=nearbyBlobsMap.get(f)||[]; for(const b of pEvaders){const dSq=distanceSq(f.x,f.y,b.x,b.y); if(dSq<config.foodEvasionDistance*config.foodEvasionDistance&&dSq<clDistSq){clDistSq=dSq; evX=f.x-b.x; evY=f.y-b.y;}} if(clDistSq!==Infinity){const dist=Math.sqrt(clDistSq); const evF=(config.foodEvasionRate/(dist+1)); f.vx+=(evX/dist)*evF; f.vy+=(evY/dist)*evF;} f.vx*=0.85; f.vy*=0.85; const sp=Math.sqrt(f.vx*f.vx+f.vy*f.vy); const maxSp=0.5; if(sp>maxSp){f.vx=(f.vx/sp)*maxSp; f.vy=(f.vy/sp)*maxSp;} f.x=clamp(f.x+f.vx,config.worldPadding,this.width-config.worldPadding); f.y=clamp(f.y+f.vy,config.worldPadding,this.height-config.worldPadding);});}
-            updateMovingThreats(){this.movingThreats.forEach(mt=>{mt.x+=mt.vx; mt.y+=mt.vy; if(mt.x<mt.radius||mt.x>this.width-mt.radius){mt.vx*=-1;mt.x=clamp(mt.x,mt.radius,this.width-mt.radius)} if(mt.y<mt.radius||mt.y>this.height-mt.radius){mt.vy*=-1;mt.y=clamp(mt.y,mt.radius,this.height-mt.radius)}});}
-            isInSlowZone(x,y){for(const z of this.slowZones){if(x>z.x&&x<z.x+z.width&&y>z.y&&y<z.y+z.height)return true;} return false;}
-            rebuildSpatialGrid(){this.spatialGrid.clear(); this.food.forEach(f=>this.spatialGrid.insert(f)); this.threats.forEach(t=>this.spatialGrid.insert(t)); this.movingThreats.forEach(mt=>this.spatialGrid.insert(mt)); population.forEach(b=>{if(b.isAlive)this.spatialGrid.insert(b)}); }
-            getGridCoordsPhero(x,y){const c=Math.floor(x/config.pheromoneGridCellSize);const r=Math.floor(y/config.pheromoneGridCellSize);return{col:clamp(c,0,config.pheromoneGridCols-1),row:clamp(r,0,config.pheromoneGridRows-1)};}
-            getGridIndexPhero(col,row){return row*config.pheromoneGridCols+col;}
-            addPheromone(x,y,type,strength){const{col,row}=this.getGridCoordsPhero(x,y); const idx=this.getGridIndexPhero(col,row); if(this.pheromoneGrid[idx]){const maxV=type==='signal'?config.maxSignalValue:config.maxPheromoneValue; this.pheromoneGrid[idx][type]=clamp(this.pheromoneGrid[idx][type]+strength,0,maxV);}}
-            getPheromone(x,y){const gX=x/config.pheromoneGridCellSize; const gY=y/config.pheromoneGridCellSize; const c0=Math.floor(gX-0.5); const c1=c0+1; const r0=Math.floor(gY-0.5); const r1=r0+1; const tx=gX-(c0+0.5); const ty=gY-(r0+0.5); const getV=(c,r,t)=>{c=clamp(c,0,config.pheromoneGridCols-1);r=clamp(r,0,config.pheromoneGridRows-1);const i=this.getGridIndexPhero(c,r);return this.pheromoneGrid[i]?this.pheromoneGrid[i][t]:0}; const lerp=(a,b,t)=>a+(b-a)*t; const p00={f:getV(c0,r0,'food'),t:getV(c0,r0,'threat'),s:getV(c0,r0,'signal')}; const p10={f:getV(c1,r0,'food'),t:getV(c1,r0,'threat'),s:getV(c1,r0,'signal')}; const p01={f:getV(c0,r1,'food'),t:getV(c0,r1,'threat'),s:getV(c0,r1,'signal')}; const p11={f:getV(c1,r1,'food'),t:getV(c1,r1,'threat'),s:getV(c1,r1,'signal')}; const food=lerp(lerp(p00.f,p10.f,tx),lerp(p01.f,p11.f,tx),ty); const threat=lerp(lerp(p00.t,p10.t,tx),lerp(p01.t,p11.t,tx),ty); const signal=lerp(lerp(p00.s,p10.s,tx),lerp(p01.s,p11.s,tx),ty); return{food,threat,signal};}
-            decayPheromones(){let actCnt=0; this.pheromoneGrid.forEach(cell=>{cell.food*=config.pheromoneDecayRate; cell.threat*=config.pheromoneDecayRate; cell.signal*=config.signalDecayRate; if(cell.food<0.01)cell.food=0; if(cell.threat<0.01)cell.threat=0; if(cell.signal<0.01)cell.signal=0; if(cell.food>0||cell.threat>0||cell.signal>0)actCnt++;}); document.getElementById('pheromoneCountDisplay').textContent=actCnt;}
-            drawPheromonesOffscreen(){if(!offscreenPheroCtx)return; const ctx=offscreenPheroCtx;const w=offscreenPheroCanvas.width; const h=offscreenPheroCanvas.height; ctx.clearRect(0,0,w,h); const cs=config.pheromoneGridCellSize; for(let r=0;r<config.pheromoneGridRows;r++){for(let c=0;c<config.pheromoneGridCols;c++){const idx=this.getGridIndexPhero(c,r); const cell=this.pheromoneGrid[idx]; const x=c*cs; const y=r*cs; if(cell.food>0.01){ctx.fillStyle=`rgba(0,255,0,${normalize(cell.food,0,config.maxPheromoneValue)*0.15})`; ctx.fillRect(x,y,cs,cs);} if(cell.threat>0.01){ctx.fillStyle=`rgba(255,0,0,${normalize(cell.threat,0,config.maxPheromoneValue)*0.15})`; ctx.fillRect(x,y,cs,cs);} if(cell.signal>0.01){ctx.fillStyle=`rgba(0,0,255,${normalize(cell.signal,0,config.maxSignalValue)*0.20})`; ctx.fillRect(x,y,cs,cs);}}}}
-            draw(ctx){if(visPheromones&&offscreenPheroCanvas)ctx.drawImage(offscreenPheroCanvas,0,0); ctx.fillStyle='rgba(139,69,19,0.25)'; this.slowZones.forEach(z=>{ctx.fillRect(z.x,z.y,z.width,z.height);}); this.food.forEach(f=>{const rF=0.3+0.7*(f.currentValue/f.maxValue); ctx.fillStyle=`rgb(0,${Math.round(180+75*(f.currentValue/f.maxValue))},0)`; ctx.globalAlpha=rF; ctx.beginPath(); ctx.arc(f.x,f.y,f.radius*rF,0,Math.PI*2); ctx.fill(); ctx.globalAlpha=1.0;}); ctx.fillStyle='red'; this.threats.forEach(t=>{ctx.beginPath(); ctx.arc(t.x,t.y,t.radius,0,Math.PI*2); ctx.fill();}); ctx.fillStyle='purple'; this.movingThreats.forEach(mt=>{ctx.beginPath(); ctx.arc(mt.x,mt.y,mt.radius,0,Math.PI*2); ctx.fill();}); if(visGrid)this.spatialGrid.drawGrid(ctx); document.getElementById('foodCountDisplay').textContent=this.food.filter(f=>f.currentValue>0).length; document.getElementById('threatCountDisplay').textContent=this.threats.length+this.movingThreats.length;}
+    for (const relAng of this.sensorAngles) {
+      const absAng = this.angle + relAng;
+      const dx = Math.cos(absAng), dy = Math.sin(absAng);
+      let foodDist = maxRange, threatDist = maxRange, movingThreatDist = maxRange, wallDist = maxRange;
+      nearObjects.forEach(obj => {
+        if (obj === this) return;
+        const dSq = distanceSq(this.x, this.y, obj.x, obj.y);
+        const d = Math.sqrt(dSq) || 1;
+        const vx = obj.x - this.x, vy = obj.y - this.y;
+        const dot = (dx * vx + dy * vy) / d;
+        if (obj.type === "blob" && obj.isAlive && d < config.nicheRadius) { allyCount++; speciesKinds.add(obj.speciesId || obj.id); }
+        if (dot > cone && d < maxRange) {
+          if (obj.type === "food" && obj.currentValue > 0 && d < foodDist) foodDist = d;
+          if (obj.type === "threat" && d < threatDist) threatDist = d;
+          if (obj.type === "mthreat" && d < movingThreatDist) movingThreatDist = d;
         }
+        if (obj.type === "food" && obj.currentValue > 0 && dSq < nearFoodSq) { nearFood = obj; nearFoodSq = dSq; }
+        if ((obj.type === "threat" || obj.type === "mthreat") && dSq < nearThreatSq) { nearThreat = obj; nearThreatSq = dSq; }
+      });
+      if (dx !== 0) {
+        const d1 = (0 - this.x) / dx, d2 = (environment.width - this.x) / dx;
+        if (d1 > 0 && d1 < wallDist) wallDist = d1;
+        if (d2 > 0 && d2 < wallDist) wallDist = d2;
+      }
+      if (dy !== 0) {
+        const d1 = (0 - this.y) / dy, d2 = (environment.height - this.y) / dy;
+        if (d1 > 0 && d1 < wallDist) wallDist = d1;
+        if (d2 > 0 && d2 < wallDist) wallDist = d2;
+      }
+      ext.push(1 - normalize(foodDist, 0, maxRange));
+      ext.push(1 - normalize(threatDist, 0, maxRange));
+      ext.push(1 - normalize(movingThreatDist, 0, maxRange));
+      ext.push(1 - normalize(wallDist, 0, maxRange));
+      const sx = this.x + dx * maxRange * 0.55;
+      const sy = this.y + dy * maxRange * 0.55;
+      const p = environment.getPheromone(sx, sy);
+      ext.push(normalize(p.food, 0, config.maxPheromoneValue) * this.pheromoneSensitivity);
+      ext.push(normalize(p.threat, 0, config.maxPheromoneValue) * this.pheromoneSensitivity);
+      ext.push(normalize(p.signal, 0, config.maxSignalValue) * this.signalSensitivity);
+    }
 
-        // --- Species Class ---
-        class Species{constructor(rep){this.id=Math.random().toString(36).substring(2,9);this.representative=rep.genome;this.members=[rep];this.adjFitSum=0;this.avgFit=0;this.bestFit=-1;this.stag=0;rep.speciesId=this.id} addMember(b){this.members.push(b);b.speciesId=this.id} calculateAdjustedFitness(){this.adjFitSum=0;this.bestFit=-1;if(this.members.length===0){this.avgFit=0;return} this.members.forEach(m=>{if(m.isAlive){const sf=m.rawFitness/(m.nicheCount||1);m.adjustedFitness=sf;this.adjFitSum+=sf;if(sf>this.bestFit)this.bestFit=sf}else{m.adjustedFitness=0;}});const newAvg=this.adjFitSum/this.members.length;if(newAvg>this.avgFit){this.stag=0;this.avgFit=newAvg}else{this.stag++} this.avgFit=newAvg} selectParent(){let best=null;let bestF=-1;const ts=Math.min(5,this.members.length);for(let i=0;i<ts;i++){const rm=this.members[randomInt(0,this.members.length-1)];if(rm.isAlive&&rm.adjustedFitness>bestF&&rm.energy>=config.initialEnergy*config.reproductionEnergyThreshold){best=rm;bestF=rm.adjustedFitness;}} if(!best){const lm=this.members.filter(m=>m.isAlive);if(lm.length>0)best=lm[randomInt(0,lm.length-1)]} return best} reset(){this.members=[];this.adjFitSum=0}} // Minified version
+    const speed = Math.sqrt(this.vx * this.vx + this.vy * this.vy);
+    ext.push(normalize(this.energy, 0, config.maxEnergy));
+    ext.push(1 - normalize(this.energy, 0, config.maxEnergy));
+    ext.push(normalize(this.currentRadius, config.minBlobRadius, this.maxRadius));
+    ext.push(normalize(this.vx, -this.currentMaxSpeed, this.currentMaxSpeed));
+    ext.push(normalize(this.vy, -this.currentMaxSpeed, this.currentMaxSpeed));
+    ext.push(normalize(this.age, 0, config.evaluationIntervalSteps * 1.5));
+    ext.push(this.lastExternalOutputs[0]);
+    ext.push(this.lastExternalOutputs[1]);
+    ext.push(this.lastExternalOutputs[2] > 0 ? 1 : 0);
+    ext.push(this.lastExternalOutputs[3] > 0 ? 1 : 0);
 
-        // --- Blob Class ---
-        class Blob {
-            constructor(genome) {
-                this.genome=genome||this.createRandomGenome(); this.decodeGenome(); this.x=random(config.worldPadding,CANVAS_WIDTH-config.worldPadding); this.y=random(config.worldPadding,CANVAS_HEIGHT-config.worldPadding); this.angle=random(0,Math.PI*2); this.vx=0; this.vy=0; this.energy=config.initialEnergy; this.currentRadius=this.maxRadius/2; this.rawFitness=0; this.adjustedFitness=0; this.nicheCount=1; this.isAlive=true; this.sensorAngles=Array.from({length:config.numSensors},(_,i)=>(i/config.numSensors)*config.sensorAngleSpread-(config.sensorAngleSpread/2)); this.memoryState=new Array(config.nnMemoryNodes).fill(0); this.lastExternalOutputs=new Array(config.nnExternalOutputs).fill(0); this.id=Math.random().toString(36).substring(2,9); this.age=0; this.shedBoostTimer=0; this.currentMaxSpeed=this.maxSpeed; this.speciesId=null; this._sgc=-1; this.type='blob';
-            }
-            createRandomGenome() { const phys=[random(config.minSpeedCap,config.maxSpeedCap),random(config.minAccelCap,config.maxAccelCap),random(config.minTurnRateCap,config.maxTurnRateCap),random(config.minSensorRangeCap,config.maxSensorRangeCap),random(config.minMaxRadiusCap,config.maxMaxRadiusCap),random(config.minEfficiency,config.maxEfficiency),random(config.minFoodGain,config.maxFoodGain),random(config.minReproductionUrge,config.maxReproductionUrge),random(config.minPheromoneSensitivity,config.maxPheromoneSensitivity),random(config.minSignalSensitivity,config.maxSignalSensitivity),random(config.minShedBoost,config.maxShedBoost),random(config.minShedCost,config.maxShedCost),config.baseMutationRate,config.baseWeightMutationRate]; while(phys.length<config.numPhysicalTraits)phys.push(0); const nnW=Array.from({length:nnTemplate.totalWeights},()=>random(-1,1)); return[...phys,...nnW]; }
-            decodeGenome() { this.maxSpeed=clamp(this.genome[config.pt_maxSpeed],config.minSpeedCap,config.maxSpeedCap); this.currentMaxSpeed=this.maxSpeed; this.acceleration=clamp(this.genome[config.pt_acceleration],config.minAccelCap,config.maxAccelCap); this.turnRate=clamp(this.genome[config.pt_turnRate],config.minTurnRateCap,config.maxTurnRateCap); this.sensorRange=clamp(this.genome[config.pt_sensorRange],config.minSensorRangeCap,config.maxSensorRangeCap); this.maxRadius=clamp(this.genome[config.pt_maxRadius],config.minMaxRadiusCap,config.maxMaxRadiusCap); this.energyEfficiency=clamp(this.genome[config.pt_energyEfficiency],config.minEfficiency,config.maxEfficiency); this.foodEnergyGain=clamp(this.genome[config.pt_foodEnergyGain],config.minFoodGain,config.maxFoodGain); this.reproductionUrge=clamp(this.genome[config.pt_reproductionUrge],config.minReproductionUrge,config.maxReproductionUrge); this.pheromoneSensitivity=clamp(this.genome[config.pt_pheromoneSensitivity],config.minPheromoneSensitivity,config.maxPheromoneSensitivity); this.signalSensitivity=clamp(this.genome[config.pt_signalSensitivity],config.minSignalSensitivity,config.maxSignalSensitivity); this.shedBoostMultiplier=clamp(this.genome[config.pt_shedBoostMultiplier],config.minShedBoost,config.maxShedBoost); this.shedCostMultiplier=clamp(this.genome[config.pt_shedCostMultiplier],config.minShedCost,config.maxShedCost); this.mutationRate=clamp(this.genome[config.pt_mutationRate],config.minMutationRate,config.maxMutationRate); this.weightMutationRate=clamp(this.genome[config.pt_weightMutationRate],config.minWeightMutationRate,config.maxWeightMutationRate); const nnW=this.genome.slice(config.numPhysicalTraits); this.brain=new NeuralNetwork(config.nnInputNodes,config.nnHiddenNodes,config.nnOutputNodes,config.nnMemoryNodes,nnW); }
-            sense(environment) { const extInp=[]; const terrEff=environment.getTerrainEffects(this.x,this.y); const effSensRng=this.sensorRange*terrEff.sensor; const maxRng=effSensRng; const sensConeThr=0.707; let nearF=null,nearFDsq=maxRng*maxRng; let nearT=null,nearTDsq=maxRng*maxRng; const nearObj=environment.spatialGrid.queryRadius(this.x,this.y,maxRng); for(const relAng of this.sensorAngles){const absAng=this.angle+relAng; const dx=Math.cos(absAng); const dy=Math.sin(absAng); let fDist=maxRng, tDist=maxRng, mtDist=maxRng; nearObj.forEach(obj=>{if(obj===this)return; const dSq=distanceSq(this.x,this.y,obj.x,obj.y); const d=Math.sqrt(dSq); const vX=obj.x-this.x; const vY=obj.y-this.y; const dot=(dx*vX+dy*vY)/(d||1); if(dot>sensConeThr&&d<maxRng){if(obj.type==='food'&&obj.currentValue>0&&d<fDist)fDist=d; if(obj.type==='threat'&&d<tDist)tDist=d; if(obj.type==='mthreat'&&d<mtDist)mtDist=d;} if(obj.type==='food'&&obj.currentValue>0&&dSq<nearFDsq){nearF=obj;nearFDsq=dSq;} if((obj.type==='threat'||obj.type==='mthreat')&&dSq<nearTDsq){nearT=obj;nearTDsq=dSq;}}); let wallD=maxRng; if(dx!==0){const dX1=(0-this.x)/dx; const dX2=(environment.width-this.x)/dx; if(dX1>0&&dX1<wallD)wallD=dX1; if(dX2>0&&dX2<wallD)wallD=dX2;} if(dy!==0){const dY1=(0-this.y)/dy; const dY2=(environment.height-this.y)/dy; if(dY1>0&&dY1<wallD)wallD=dY1; if(dY2>0&&dY2<wallD)wallD=dY2;} wallD=Math.min(wallD,maxRng); extInp.push(1.0-normalize(fDist,0,maxRng)); extInp.push(1.0-normalize(tDist,0,maxRng)); extInp.push(1.0-normalize(mtDist,0,maxRng)); extInp.push(1.0-normalize(wallD,0,maxRng)); const sTipX=this.x+dx*maxRng*0.5; const sTipY=this.y+dy*maxRng*0.5; const phero=environment.getPheromone(sTipX,sTipY); extInp.push(normalize(phero.food,0,config.maxPheromoneValue)*this.pheromoneSensitivity); extInp.push(normalize(phero.threat,0,config.maxPheromoneValue)*this.pheromoneSensitivity); extInp.push(normalize(phero.signal,0,config.maxSignalValue)*this.signalSensitivity);} const hunger=1.0-normalize(this.energy,0,config.maxEnergy); extInp.push(normalize(this.energy,0,config.maxEnergy)); extInp.push(hunger); extInp.push(normalize(this.currentRadius,config.minBlobRadius,this.maxRadius)); extInp.push(normalize(this.vx,-this.currentMaxSpeed,this.currentMaxSpeed)); extInp.push(normalize(this.vy,-this.currentMaxSpeed,this.currentMaxSpeed)); extInp.push(this.lastExternalOutputs[0]); extInp.push(this.lastExternalOutputs[1]); extInp.push(this.lastExternalOutputs[2]>0?1:0); extInp.push(this.lastExternalOutputs[3]>0?1:0); const addRel=(t)=>{if(t){const rX=t.x-this.x,rY=t.y-this.y,tVX=t.vx||0,tVY=t.vy||0,rVX=tVX-this.vx,rVY=tVY-this.vy;extInp.push(normalize(rX,-maxRng,maxRng),normalize(rY,-maxRng,maxRng),normalize(rVX,-this.currentMaxSpeed*2,this.currentMaxSpeed*2),normalize(rVY,-this.currentMaxSpeed*2,this.currentMaxSpeed*2))}else{extInp.push(0,0,0,0)}}; addRel(nearF); addRel(nearT); extInp.push(normalize(this.mutationRate,config.minMutationRate,config.maxMutationRate)); extInp.push(normalize(this.weightMutationRate,config.minWeightMutationRate,config.maxWeightMutationRate)); if(extInp.length!==this.brain.externalInputs){console.error(`Ext inp len mismatch! E${this.brain.externalInputs}, A${extInp.length}`);while(extInp.length<this.brain.externalInputs)extInp.push(0);if(extInp.length>this.brain.externalInputs)extInp.length=this.brain.externalInputs;} return extInp; }
-            act(externalInputs, environment) { const{externalActions,nextMemoryState}=this.brain.feedForward(externalInputs,this.memoryState); this.lastExternalOutputs=[...externalActions]; this.memoryState=nextMemoryState; const thrust=externalActions[0]; const turn=externalActions[1]; const shedDecision=externalActions[2]; const emitSignalDecision=externalActions[3]; this.angle=(this.angle+turn*this.turnRate)%(Math.PI*2); const effAccel=this.acceleration; const tVX=Math.cos(this.angle)*thrust*effAccel; const tVY=Math.sin(this.angle)*thrust*effAccel; this.vx*=0.92; this.vy*=0.92; this.vx+=tVX; this.vy+=tVY; if(shedDecision>0&&this.shedBoostTimer<=0){const cost=config.initialEnergy*this.shedCostMultiplier;if(this.energy>cost+config.energyDecayBase*5){this.energy-=cost;this.shedBoostTimer=config.shedDurationSteps;this.currentMaxSpeed=this.maxSpeed*this.shedBoostMultiplier;const sizeRed=1.0-normalize(cost,0,config.initialEnergy);this.currentRadius=Math.max(this.currentRadius*sizeRed,config.minBlobRadius)}else{this.lastExternalOutputs[2]=-1}} if(this.shedBoostTimer>0){this.shedBoostTimer--;if(this.shedBoostTimer<=0){this.currentMaxSpeed=this.maxSpeed}} if(emitSignalDecision>0){const cost=config.energyCostSignalEmit; if(this.energy>cost+config.energyDecayBase*2){this.energy-=cost; environment.addPheromone(this.x,this.y,'signal',config.pheromoneSignalStrength);} else{this.lastExternalOutputs[3]=-1;}} const terrEff=environment.getTerrainEffects(this.x,this.y); const speedLimit=this.currentMaxSpeed*terrEff.speed*(environment.isInSlowZone(this.x,this.y)?config.slowZoneFactor:1); const speed=Math.sqrt(this.vx*this.vx+this.vy*this.vy); if(speed>speedLimit){this.vx=(this.vx/speed)*speedLimit; this.vy=(this.vy/speed)*speedLimit} const sizeCostMult=1+(normalize(this.currentRadius,config.minBlobRadius,this.maxRadius)*config.energyCostSizeFactor); this.energy-=(Math.abs(thrust)*config.energyCostPerThrust+Math.abs(turn)*config.energyCostPerTurn)*sizeCostMult; }
-            updateSize() {const er=this.energy/config.initialEnergy; let tr=this.maxRadius*normalize(er,0.5,1.5); tr=clamp(tr,config.minBlobRadius,this.maxRadius); if(tr>this.currentRadius){this.currentRadius+=config.sizeChangeRate*(tr-this.currentRadius)}else if(tr<this.currentRadius){this.currentRadius-=config.sizeChangeRate*(this.currentRadius-tr)} this.currentRadius=clamp(this.currentRadius,config.minBlobRadius,this.maxRadius);}
-            handleCollisions(nearbyBlobsIter) {for(const other of nearbyBlobsIter){if(this===other||!other.isAlive||other.type!=='blob')continue; const dSq=distanceSq(this.x,this.y,other.x,other.y); const combRad=this.currentRadius+other.currentRadius; if(dSq<combRad*combRad&&dSq>0){const dist=Math.sqrt(dSq);const overlap=combRad-dist; const nx=(this.x-other.x)/dist;const ny=(this.y-other.y)/dist;const push=overlap*0.5; this.x+=nx*push;this.y+=ny*push; other.x-=nx*push;other.y-=ny*push; const rvx=this.vx-other.vx;const rvy=this.vy-other.vy;const velNorm=rvx*nx+rvy*ny; if(velNorm>0)continue; const e=config.collisionElasticity; let j=-(1+e)*velNorm; const m1f=1+normalize(this.currentRadius,config.minBlobRadius,this.maxRadius); const m2f=1+normalize(other.currentRadius,config.minBlobRadius,other.maxRadius); j/=(1/m1f+1/m2f); const impX=j*nx; const impY=j*ny; this.vx+=impX/m1f; this.vy+=impY/m1f; other.vx-=impX/m2f; other.vy-=impY/m2f; const enDiff=this.energy-other.energy; const trans=Math.abs(enDiff)*config.collisionEnergyTransfer; if(enDiff>0){this.energy-=trans;other.energy+=trans}else{this.energy+=trans;other.energy-=trans} this.energy=clamp(this.energy,0,config.maxEnergy); other.energy=clamp(other.energy,0,config.maxEnergy);}}}
-            update(environment) { if(!this.isAlive)return; this.age++; const extSensInp=this.sense(environment); this.act(extSensInp,environment); this.updateSize(); const nearCheckRad=this.currentRadius*2+config.spatialGridCellSize; const nearObj=environment.spatialGrid.queryRadius(this.x,this.y,nearCheckRad); this.handleCollisions(nearObj.values()); this.x+=this.vx; this.y+=this.vy; if(this.x<this.currentRadius){this.x=this.currentRadius;this.vx*=-0.5} if(this.x>environment.width-this.currentRadius){this.x=environment.width-this.currentRadius;this.vx*=-0.5} if(this.y<this.currentRadius){this.y=this.currentRadius;this.vy*=-0.5} if(this.y>environment.height-this.currentRadius){this.y=environment.height-this.currentRadius;this.vy*=-0.5} let enChg=0; let ate=false; nearObj.forEach(item=>{if(item===this||item.type==='blob')return; const intDistSq=(this.currentRadius+item.radius)**2; if(distanceSq(this.x,this.y,item.x,item.y)<intDistSq){if(!ate&&item.type==='food'&&item.currentValue>0){const consumed=item.currentValue; const gain=consumed*this.foodEnergyGain; enChg+=gain; this.rawFitness+=15*normalize(gain,0,config.energyFromFoodBase*config.maxFoodGain*2); environment.consumeFood(item); ate=true;} else if(item.type==='threat'){enChg-=config.energyLossFromThreat; this.rawFitness-=5;} else if(item.type==='mthreat'){enChg-=config.energyLossFromMovingThreat; this.rawFitness-=8;}}}); const terrEff=environment.getTerrainEffects(this.x,this.y); const sizeCostMult=1+(normalize(this.currentRadius,config.minBlobRadius,this.maxRadius)*config.energyCostSizeFactor); const decay=config.energyDecayBase*this.energyEfficiency*sizeCostMult*terrEff.decay; enChg-=decay; this.energy=clamp(this.energy+enChg,0,config.maxEnergy); this.rawFitness+=0.05; this.rawFitness=Math.max(0,this.rawFitness); if(simulationStep%config.pheromoneEmitInterval===0){if(ate)environment.addPheromone(this.x,this.y,'food',config.pheromoneFoodStrength); else if(enChg<-decay*1.5)environment.addPheromone(this.x,this.y,'threat',config.pheromoneThreatStrength)} if(this.energy<=0||this.currentRadius<config.minBlobRadius){this.isAlive=false; this.rawFitness=Math.max(0,this.rawFitness-50);}}
-            draw(ctx) { const alpha=this.isAlive?clamp(this.energy/config.initialEnergy,0.3,1.0):0.1; const borderC=this.isAlive?(this.shedBoostTimer>0?'rgba(255,100,0,0.8)':'rgba(0,0,0,0.5)') : 'rgba(150,150,150,0.5)'; const hue=normalize(this.reproductionUrge,config.minReproductionUrge,config.maxReproductionUrge)*120+240; ctx.fillStyle=`hsla(${hue},70%,60%,${alpha})`; ctx.beginPath(); ctx.arc(this.x,this.y,this.currentRadius,0,Math.PI*2); ctx.fill(); if(!simpleDraw){ctx.strokeStyle=borderC; ctx.lineWidth=this.shedBoostTimer>0?2:1; ctx.stroke(); if(this.isAlive){ctx.strokeStyle='rgba(255,255,255,0.7)'; ctx.lineWidth=2; ctx.beginPath(); ctx.moveTo(this.x,this.y); const fX=this.x+Math.cos(this.angle)*(this.currentRadius+3); const fY=this.y+Math.sin(this.angle)*(this.currentRadius+3); ctx.lineTo(fX,fY); ctx.stroke();}} else if(this.isAlive){ctx.strokeStyle=borderC; ctx.lineWidth=1; ctx.stroke();} }
+    const addRel = target => {
+      if (target) {
+        const rx = target.x - this.x, ry = target.y - this.y;
+        const tvx = target.vx || 0, tvy = target.vy || 0;
+        ext.push(normalize(rx, -maxRange, maxRange), normalize(ry, -maxRange, maxRange));
+        ext.push(normalize(tvx - this.vx, -this.currentMaxSpeed * 2, this.currentMaxSpeed * 2));
+        ext.push(normalize(tvy - this.vy, -this.currentMaxSpeed * 2, this.currentMaxSpeed * 2));
+      } else ext.push(0, 0, 0, 0);
+    };
+    addRel(nearFood);
+    addRel(nearThreat);
+
+    ext.push(normalize(this.mutationRate, config.minMutationRate, config.maxMutationRate));
+    ext.push(normalize(this.weightMutationRate, config.minWeightMutationRate, config.maxWeightMutationRate));
+    ext.push(this.curiosityDrive);
+    ext.push(this.riskTolerance);
+    ext.push(clamp(allyCount / 18, 0, 1));
+    ext.push(clamp(speciesKinds.size / 8, 0, 1));
+
+    if (ext.length !== this.brain.externalInputs) {
+      console.warn("Input length mismatch", ext.length, this.brain.externalInputs);
+      while (ext.length < this.brain.externalInputs) ext.push(0);
+      if (ext.length > this.brain.externalInputs) ext.length = this.brain.externalInputs;
+    }
+    return ext;
+  }
+  act(externalInputs, environment) {
+    const { externalActions, nextMemoryState } = this.brain.feedForward(externalInputs, this.memoryState);
+    this.lastExternalOutputs = externalActions.slice();
+    this.memoryState = nextMemoryState;
+    const [thrust, turn, shedDecision, emitSignalDecision, splitDecision] = externalActions;
+    this.angle = (this.angle + turn * this.turnRate + Math.PI * 2) % (Math.PI * 2);
+    this.vx *= 0.92;
+    this.vy *= 0.92;
+    this.vx += Math.cos(this.angle) * thrust * this.acceleration;
+    this.vy += Math.sin(this.angle) * thrust * this.acceleration;
+
+    if (shedDecision > 0 && this.shedBoostTimer <= 0) {
+      const cost = config.initialEnergy * this.shedCostMultiplier;
+      if (this.energy > cost + config.energyDecayBase * 5) {
+        this.energy -= cost;
+        this.shedBoostTimer = config.shedDurationSteps;
+        this.currentMaxSpeed = this.maxSpeed * this.shedBoostMultiplier;
+        this.currentRadius = Math.max(this.currentRadius * (1 - normalize(cost, 0, config.initialEnergy)), config.minBlobRadius);
+      } else this.lastExternalOutputs[2] = -1;
+    }
+    if (this.shedBoostTimer > 0) {
+      this.shedBoostTimer--;
+      if (this.shedBoostTimer <= 0) this.currentMaxSpeed = this.maxSpeed;
+    }
+    if (emitSignalDecision > 0) {
+      const cost = config.energyCostSignalEmit;
+      if (this.energy > cost + config.energyDecayBase * 2) {
+        this.energy -= cost;
+        this.signalsEmitted++;
+        environment.addPheromone(this.x, this.y, "signal", config.pheromoneSignalStrength);
+      } else this.lastExternalOutputs[3] = -1;
+    }
+
+    const terrainEff = environment.getTerrainEffects(this.x, this.y);
+    const slowZoneFactor = environment.isInSlowZone(this.x, this.y) ? config.slowZoneFactor : 1;
+    const speedLimit = this.currentMaxSpeed * terrainEff.speed * slowZoneFactor;
+    const speed = Math.sqrt(this.vx * this.vx + this.vy * this.vy);
+    if (speed > speedLimit) { this.vx = (this.vx / speed) * speedLimit; this.vy = (this.vy / speed) * speedLimit; }
+    const sizeCostMult = 1 + normalize(this.currentRadius, config.minBlobRadius, this.maxRadius) * config.energyCostSizeFactor;
+    this.energy -= (Math.abs(thrust) * config.energyCostPerThrust + Math.abs(turn) * config.energyCostPerTurn) * sizeCostMult;
+
+    // Brain can express reproduction intent. It slightly improves raw fitness only when backed by energy.
+    if (splitDecision > 0.4 && this.energy > config.initialEnergy * config.reproductionEnergyThreshold) {
+      this.rawFitness += this.reproductionUrge * 0.02;
+    }
+  }
+  updateSize() {
+    const energyRatio = this.energy / config.initialEnergy;
+    let targetRadius = this.maxRadius * normalize(energyRatio, 0.5, 1.5);
+    targetRadius = clamp(targetRadius, config.minBlobRadius, this.maxRadius);
+    this.currentRadius += (targetRadius - this.currentRadius) * config.sizeChangeRate;
+    this.currentRadius = clamp(this.currentRadius, config.minBlobRadius, this.maxRadius);
+  }
+  handleCollisions(nearby) {
+    for (const other of nearby) {
+      if (this === other || !other.isAlive || other.type !== "blob") continue;
+      const dSq = distanceSq(this.x, this.y, other.x, other.y);
+      const combined = this.currentRadius + other.currentRadius;
+      if (dSq < combined * combined && dSq > 0) {
+        const d = Math.sqrt(dSq), overlap = combined - d;
+        const nx = (this.x - other.x) / d, ny = (this.y - other.y) / d;
+        this.x += nx * overlap * 0.5; this.y += ny * overlap * 0.5;
+        other.x -= nx * overlap * 0.5; other.y -= ny * overlap * 0.5;
+        const rvx = this.vx - other.vx, rvy = this.vy - other.vy;
+        const velNorm = rvx * nx + rvy * ny;
+        if (velNorm > 0) continue;
+        const m1 = 1 + normalize(this.currentRadius, config.minBlobRadius, this.maxRadius);
+        const m2 = 1 + normalize(other.currentRadius, config.minBlobRadius, other.maxRadius);
+        let impulse = -(1 + config.collisionElasticity) * velNorm;
+        impulse /= (1 / m1 + 1 / m2);
+        this.vx += (impulse * nx) / m1; this.vy += (impulse * ny) / m1;
+        other.vx -= (impulse * nx) / m2; other.vy -= (impulse * ny) / m2;
+        const diff = this.energy - other.energy;
+        const trans = Math.abs(diff) * config.collisionEnergyTransfer;
+        if (diff > 0) { this.energy -= trans; other.energy += trans; }
+        else { this.energy += trans; other.energy -= trans; }
+        this.energy = clamp(this.energy, 0, config.maxEnergy);
+        other.energy = clamp(other.energy, 0, config.maxEnergy);
+      }
+    }
+  }
+  update(environment) {
+    if (!this.isAlive) return;
+    this.age++;
+    const prevX = this.x, prevY = this.y;
+    const inputs = this.sense(environment);
+    this.act(inputs, environment);
+    this.updateSize();
+    const nearRadius = this.currentRadius * 2 + config.spatialGridCellSize;
+    const nearObjects = environment.spatialGrid.queryRadius(this.x, this.y, nearRadius);
+    this.handleCollisions(nearObjects.values());
+    this.x += this.vx;
+    this.y += this.vy;
+    if (this.x < this.currentRadius) { this.x = this.currentRadius; this.vx *= -0.5; }
+    if (this.x > environment.width - this.currentRadius) { this.x = environment.width - this.currentRadius; this.vx *= -0.5; }
+    if (this.y < this.currentRadius) { this.y = this.currentRadius; this.vy *= -0.5; }
+    if (this.y > environment.height - this.currentRadius) { this.y = environment.height - this.currentRadius; this.vy *= -0.5; }
+    this.distanceTravelled += distance(prevX, prevY, this.x, this.y);
+
+    let energyChange = 0;
+    let ate = false;
+    nearObjects.forEach(item => {
+      if (item === this || item.type === "blob") return;
+      const hitDistance = (this.currentRadius + item.radius) ** 2;
+      if (distanceSq(this.x, this.y, item.x, item.y) < hitDistance) {
+        if (!ate && item.type === "food" && item.currentValue > 0) {
+          const consumed = item.currentValue;
+          const gain = consumed * this.foodEnergyGain;
+          energyChange += gain;
+          this.foodsEaten++;
+          this.rawFitness += 15 * normalize(gain, 0, config.energyFromFoodBase * config.maxFoodGain * 2);
+          environment.consumeFood(item);
+          ate = true;
+        } else if (item.type === "threat") {
+          energyChange -= config.energyLossFromThreat * environment.currentEvent.threatMult * (1 - this.riskTolerance * 0.12);
+          this.rawFitness -= 5;
+          this.threatHits++;
+        } else if (item.type === "mthreat") {
+          energyChange -= config.energyLossFromMovingThreat * environment.currentEvent.threatMult * (1 - this.riskTolerance * 0.12);
+          this.rawFitness -= 8;
+          this.threatHits++;
         }
+      }
+    });
 
-        // --- GA / Speciation Functions ---
-        function calculateGenomeDistance(g1, g2) { let dSq=0; const len=Math.min(g1.length,g2.length); const wP=config.genomeDistanceWeights.physical; const wN=config.genomeDistanceWeights.nn; for(let i=0;i<len;i++){const diff=g1[i]-g2[i]; const w=(i<config.numPhysicalTraits)?wP:wN; dSq+=(diff*diff)*w;} return Math.sqrt(dSq); }
-        function speciatePopulation() { species.forEach(s=>s.reset()); let unassigned=[...population]; let nextSpecies=[]; while(unassigned.length>0){const current=unassigned.shift(); let assigned=false; for(const s of species){const dist=calculateGenomeDistance(current.genome,s.representative); if(dist<config.speciationDistanceThreshold){s.addMember(current); assigned=true; if(!nextSpecies.includes(s))nextSpecies.push(s); break;}} if(!assigned){const newS=new Species(current); species.push(newS); nextSpecies.push(newS);}} species=species.filter(s=>s.members.length>0); return species; }
+    const terrain = environment.getRegionProperties(this.x, this.y).terrain;
+    this.terrainVisits[terrain] = (this.terrainVisits[terrain] || 0) + 1;
+    const terrainEff = environment.getTerrainEffects(this.x, this.y);
+    const sizeCostMult = 1 + normalize(this.currentRadius, config.minBlobRadius, this.maxRadius) * config.energyCostSizeFactor;
+    const decay = config.energyDecayBase * this.energyEfficiency * sizeCostMult * terrainEff.decay * environment.currentEvent.decayMult;
+    energyChange -= decay;
+    this.energy = clamp(this.energy + energyChange, 0, config.maxEnergy);
+    this.rawFitness += 0.045 + this.curiosityDrive * 0.004;
+    this.rawFitness = Math.max(0, this.rawFitness);
 
-        function performEvolutionStep() { // Updated offspring allocation with culling
-            const activeSpecies = speciatePopulation();
-            population.forEach(b => b.nicheCount = 1); for(let i=0;i<population.length;i++){if(!population[i].isAlive)continue; const neighbors=environment.spatialGrid.queryRadius(population[i].x,population[i].y,config.nicheRadius); neighbors.forEach(n=>{if(n!==population[i]&&n.isAlive&&n.type==='blob'){const dSq=distanceSq(population[i].x,population[i].y,n.x,n.y);if(dSq<config.nicheRadius*config.nicheRadius){const sv=1.0-Math.pow(Math.sqrt(dSq)/config.nicheRadius,config.fitnessSharingAlpha); population[i].nicheCount+=sv;}}});}
-            population.forEach(b=>{if(b.isAlive){const ar=b.age/config.evaluationIntervalSteps; const ad=ar-config.optimalAgeFactor; const ap=Math.pow(ad/(1.0-config.optimalAgeFactor),2)*config.ageFitnessPenalty; b.rawFitness*=(1.0-ap); b.rawFitness=Math.max(0,b.rawFitness);}else{b.rawFitness=0;}});
-            activeSpecies.forEach(s => s.calculateAdjustedFitness());
-            let totalAdjFitSum = activeSpecies.reduce((sum,s)=>sum+s.adjFitSum,0); let offspringAlloc=[]; let speciesToKeep=[];
-            activeSpecies.sort((a,b)=>b.avgFit-a.avgFit); // Sort by avg adjusted fitness for elite check
+    if (simulationStep % config.pheromoneEmitInterval === 0) {
+      if (ate) environment.addPheromone(this.x, this.y, "food", config.pheromoneFoodStrength);
+      else if (energyChange < -decay * 1.5) environment.addPheromone(this.x, this.y, "threat", config.pheromoneThreatStrength);
+    }
+    if (this.energy <= 0 || this.currentRadius < config.minBlobRadius * 0.95) {
+      this.isAlive = false;
+      this.rawFitness = Math.max(0, this.rawFitness - 45);
+    }
+  }
+  draw(c) {
+    const alpha = this.isAlive ? clamp(this.energy / config.initialEnergy, 0.28, 1) : 0.08;
+    const hue = (normalize(this.reproductionUrge, config.minReproductionUrge, config.maxReproductionUrge) * 115 + 225 + (this.speciesId ? this.speciesId.charCodeAt(0) : 0)) % 360;
+    c.save();
+    c.fillStyle = `hsla(${hue}, 78%, 62%, ${alpha})`;
+    c.beginPath(); c.arc(this.x, this.y, this.currentRadius, 0, Math.PI * 2); c.fill();
+    c.strokeStyle = this.shedBoostTimer > 0 ? "rgba(255,209,102,.95)" : "rgba(255,255,255,.32)";
+    c.lineWidth = this.shedBoostTimer > 0 ? 2.4 : 1;
+    c.stroke();
+    if (!simpleDraw && this.isAlive) {
+      c.strokeStyle = "rgba(255,255,255,.78)";
+      c.lineWidth = 2;
+      c.beginPath(); c.moveTo(this.x, this.y); c.lineTo(this.x + Math.cos(this.angle) * (this.currentRadius + 4), this.y + Math.sin(this.angle) * (this.currentRadius + 4)); c.stroke();
+      if (this.signalsEmitted > 0 && this.lastExternalOutputs[3] > 0) {
+        c.strokeStyle = "rgba(141,183,255,.35)";
+        c.beginPath(); c.arc(this.x, this.y, this.currentRadius + 7, 0, Math.PI * 2); c.stroke();
+      }
+    }
+    if (visSensors && this.isAlive) {
+      c.strokeStyle = "rgba(109,246,196,.10)";
+      c.lineWidth = 1;
+      for (const rel of this.sensorAngles) {
+        const a = this.angle + rel;
+        c.beginPath(); c.moveTo(this.x, this.y); c.lineTo(this.x + Math.cos(a) * this.sensorRange, this.y + Math.sin(a) * this.sensorRange); c.stroke();
+      }
+    }
+    c.restore();
+  }
+}
 
-            if(totalAdjFitSum > 0){ activeSpecies.forEach((s,idx)=>{ let numOff=0; const isElite=idx<config.eliteSpeciesCount; if(s.stagnation>config.stagnationCullingThreshold&&!isElite){numOff=0; console.log(`Culling stagnant species ${s.id.substring(0,4)}`);} else {speciesToKeep.push(s); numOff=(s.adjFitSum/totalAdjFitSum)*config.populationSize; if(s.stagnation>config.stagnationThresholdSteps&&s.members.length>=config.speciesMinSizeForPenalty){numOff*=0.75;} numOff=Math.round(numOff);} if(numOff>0){offspringAlloc.push({species:s,count:numOff});}}); }
-            else { activeSpecies.forEach(s=>{offspringAlloc.push({species:s,count:Math.floor(config.populationSize/activeSpecies.length)}); speciesToKeep.push(s);}); }
-            species = speciesToKeep; // Update global species list
+// -----------------------------
+// Evolution, speciation, novelty, QD archive
+// -----------------------------
+function calculateGenomeDistance(g1, g2) {
+  let dSq = 0;
+  const len = Math.min(g1.length, g2.length);
+  for (let i = 0; i < len; i++) {
+    const w = i < config.numPhysicalTraits ? config.genomeDistanceWeights.physical : config.genomeDistanceWeights.nn;
+    const diff = g1[i] - g2[i];
+    dSq += diff * diff * w;
+  }
+  return Math.sqrt(dSq / Math.max(1, len / 50));
+}
+function speciatePopulation() {
+  species.forEach(s => s.reset());
+  const nextSpecies = [];
+  const previous = species.slice();
+  for (const blob of population) {
+    let assigned = false;
+    for (const s of previous) {
+      if (calculateGenomeDistance(blob.genome, s.representative) < config.speciationDistanceThreshold) {
+        s.addMember(blob); assigned = true;
+        if (!nextSpecies.includes(s)) nextSpecies.push(s);
+        break;
+      }
+    }
+    if (!assigned) {
+      const s = new Species(blob);
+      nextSpecies.push(s);
+    }
+  }
+  species = nextSpecies.filter(s => s.members.length > 0);
+  if (species.length < config.targetSpeciesRange[0]) config.speciationDistanceThreshold *= 0.97;
+  if (species.length > config.targetSpeciesRange[1]) config.speciationDistanceThreshold *= 1.03;
+  config.speciationDistanceThreshold = clamp(config.speciationDistanceThreshold, 3.5, 18);
+  return species;
+}
+function descriptorDistance(a, b) {
+  let s = 0;
+  for (let i = 0; i < Math.min(a.length, b.length); i++) { const d = a[i] - b[i]; s += d * d; }
+  return Math.sqrt(s);
+}
+function archiveKey(desc) {
+  const bins = config.archiveBins;
+  const speed = clamp(Math.floor(desc[0] * bins), 0, bins - 1);
+  const signal = clamp(Math.floor(desc[1] * bins), 0, bins - 1);
+  return `${speed}:${signal}`;
+}
+function computeNoveltyScores() {
+  const live = population.filter(b => b.isAlive);
+  const archiveDescs = noveltyArchive.map(x => x.desc);
+  for (const b of live) {
+    const desc = b.behaviorDescriptor();
+    const sample = [];
+    for (let i = 0; i < Math.min(16, live.length); i++) sample.push(live[randomInt(0, live.length - 1)].behaviorDescriptor());
+    for (let i = 0; i < Math.min(24, archiveDescs.length); i++) sample.push(archiveDescs[randomInt(0, archiveDescs.length - 1)]);
+    if (!sample.length) { b.noveltyScore = 0; continue; }
+    const dists = sample.map(d => descriptorDistance(desc, d)).sort((a, b) => a - b);
+    b.noveltyScore = safeMean(dists.slice(0, Math.min(8, dists.length)), x => x);
+  }
+}
+function updateQDArchive() {
+  const live = population.filter(b => b.isAlive);
+  live.forEach(b => {
+    const desc = b.behaviorDescriptor();
+    const key = archiveKey(desc);
+    const score = b.adjustedFitness + b.noveltyScore * 2;
+    const cell = qdArchive.get(key);
+    if (!cell || score > cell.score) {
+      qdArchive.set(key, { genome: b.genome.slice(), score, desc, generation, id: b.id, rawFitness: b.rawFitness, adjustedFitness: b.adjustedFitness });
+    }
+    if (rng() < 0.08) noveltyArchive.push({ desc, score, generation });
+  });
+  noveltyArchive.sort((a, b) => b.score - a.score);
+  if (noveltyArchive.length > config.noveltyArchiveMax) noveltyArchive.length = config.noveltyArchiveMax;
+}
+function mutate(genome, physicalRate, weightRate) {
+  const child = genome.slice();
+  for (let i = 0; i < child.length; i++) {
+    if (i < config.numPhysicalTraits) {
+      if (rng() < physicalRate) child[i] = child[i] * (1 + random(-config.mutationAmount, config.mutationAmount));
+    } else if (rng() < weightRate) child[i] = clamp(child[i] + random(-config.weightMutationAmount, config.weightMutationAmount), -5, 5);
+  }
+  child[config.pt_mutationRate] = clamp(child[config.pt_mutationRate], config.minMutationRate, config.maxMutationRate);
+  child[config.pt_weightMutationRate] = clamp(child[config.pt_weightMutationRate], config.minWeightMutationRate, config.maxWeightMutationRate);
+  return child;
+}
+function crossover(g1, g2) {
+  const child = [];
+  for (let i = 0; i < config.numPhysicalTraits; i++) {
+    const blend = random(0.25, 0.75);
+    child.push(blend * g1[i] + (1 - blend) * g2[i]);
+  }
+  for (let i = config.numPhysicalTraits; i < config.genomeLength; i++) child.push(rng() < 0.5 ? g1[i] : g2[i]);
+  return child;
+}
+function pickArchiveParent() {
+  if (!qdArchive.size) return null;
+  const cells = Array.from(qdArchive.values()).sort((a, b) => b.score - a.score);
+  const top = cells.slice(0, Math.max(1, Math.ceil(cells.length * 0.35)));
+  return top[randomInt(0, top.length - 1)]?.genome || null;
+}
+function performEvolutionStep() {
+  generation++;
+  const activeSpecies = speciatePopulation();
 
-            let currentSum=offspringAlloc.reduce((sum,alloc)=>sum+alloc.count,0); let diff=config.populationSize-currentSum; if(diff!==0&&offspringAlloc.length>0){offspringAlloc.sort((a,b)=>b.species.avgFit-a.species.avgFit); offspringAlloc[0].count=Math.max(0,offspringAlloc[0].count+diff);} currentSum=offspringAlloc.reduce((sum,alloc)=>sum+alloc.count,0); diff=config.populationSize-currentSum; if(diff!==0&&offspringAlloc.length>0){let i=0; while(diff>0){offspringAlloc[i%offspringAlloc.length].count++; diff--; i++;} while(diff<0){if(offspringAlloc[i%offspringAlloc.length].count>0){offspringAlloc[i%offspringAlloc.length].count--; diff++;} i++;}}
+  population.forEach(b => { b.nicheCount = 1; });
+  for (const b of population) {
+    if (!b.isAlive) continue;
+    const neighbors = environment.spatialGrid.queryRadius(b.x, b.y, config.nicheRadius);
+    neighbors.forEach(n => {
+      if (n !== b && n.isAlive && n.type === "blob") {
+        const d = distance(b.x, b.y, n.x, n.y);
+        if (d < config.nicheRadius) b.nicheCount += 1 - Math.pow(d / config.nicheRadius, config.fitnessSharingAlpha);
+      }
+    });
+  }
 
-            const nextPop=[]; population.sort((a,b)=>b.adjFit-a.adjFit); if(population.length>0&&population[0].isAlive){nextPop.push(new Blob(population[0].genome));} // Elitism
-            offspringAlloc.forEach(alloc=>{ const sp=alloc.species; for(let i=0;i<alloc.count;i++){ if(nextPop.length>=config.populationSize)break; let p1=sp.selectParent(); let p2=null; if(Math.random()<config.interSpeciesCrossoverRate&&species.length>1){let oS=species[randomInt(0,species.length-1)]; while(oS===sp&&species.length>1)oS=species[randomInt(0,species.length-1)]; p2=oS.selectParent();} else {p2=sp.selectParent();} if(p1&&!p2)p2=p1; if(!p1&&p2)p1=p2; if(!p1&&!p2){const lp=population.filter(b=>b.isAlive); if(lp.length>0){p1=lp[randomInt(0,lp.length-1)]; p2=p1;}else{p1=null;}} if(p1&&p2){let childG=crossover(p1.genome,p2.genome); const tempB=new Blob(childG); childG=mutate(childG,tempB.mutationRate,tempB.weightMutationRate); nextPop.push(new Blob(childG)); p1.energy=Math.max(0,p1.energy-config.initialEnergy*config.reproductionEnergyCost); if(p1!==p2)p2.energy=Math.max(0,p2.energy-config.initialEnergy*config.reproductionEnergyCost);}else{nextPop.push(new Blob());}}});
-            while(nextPop.length<config.populationSize){console.warn("Filling random blobs."); nextPop.push(new Blob());}
-            population = nextPop;
+  population.forEach(b => {
+    if (!b.isAlive) { b.rawFitness = 0; return; }
+    const ageRatio = b.age / config.evaluationIntervalSteps;
+    const ageDelta = ageRatio - config.optimalAgeFactor;
+    const penalty = Math.pow(ageDelta / Math.max(0.2, 1 - config.optimalAgeFactor), 2) * config.ageFitnessPenalty;
+    b.rawFitness = Math.max(0, b.rawFitness * (1 - penalty));
+  });
 
-            const livingNow=population.filter(b=>b.isAlive); lastEvalStats.avgFitness=livingNow.reduce((sum,b)=>sum+b.adjustedFitness,0)/livingNow.length||0; population.sort((a,b)=>b.adjustedFitness-a.adjustedFitness); lastEvalStats.bestFitness=population.length>0?population[0].adjustedFitness:0;
-            if(population.length>0&&population[0]){const bfG=population[0].genome.slice(0,config.numPhysicalTraits).map(v=>v.toFixed(2)).join(', '); lastEvalStats.bestGenomeSample=`[${bfG}]`;}else{lastEvalStats.bestGenomeSample="N/A";}
-            if(livingNow.length>0){lastEvalStats.avgMutRate=livingNow.reduce((s,b)=>s+b.mutationRate,0)/livingNow.length; lastEvalStats.avgWgtMutRate=livingNow.reduce((s,b)=>s+b.weightMutationRate,0)/livingNow.length;}else{lastEvalStats.avgMutRate=0; lastEvalStats.avgWgtMutRate=0;}
-            totalReplacements+=population.length; stepsSinceLastEval=0; updateSpeciesListUI(species);
-        }
+  computeNoveltyScores();
+  activeSpecies.forEach(s => s.calculateAdjustedFitness());
+  updateQDArchive();
 
-        function mutate(genome, physicalRate, weightRate){return genome.map((g,i)=>{if(i<config.numPhysicalTraits){if(Math.random()<physicalRate){const c=random(-config.mutationAmount,config.mutationAmount); return g*(1+c)}else return g}else{if(Math.random()<weightRate){const c=random(-config.weightMutationAmount,config.weightMutationAmount); return clamp(g+c,-5,5)}else return g}}); } // Minified
-        function crossover(g1,g2){const c=[];const a=0.5;for(let i=0;i<config.numPhysicalTraits;i++){c.push(a*g1[i]+(1-a)*g2[i])}const ws=config.numPhysicalTraits;for(let i=ws;i<config.genomeLength;i++){c.push(Math.random()<0.5?g1[i]:g2[i])}return c;} // Minified
+  let totalAdj = activeSpecies.reduce((sum, s) => sum + s.adjFitSum, 0);
+  let offspringAlloc = [];
+  let speciesToKeep = [];
+  activeSpecies.sort((a, b) => b.avgFit - a.avgFit);
+  if (totalAdj > 0) {
+    activeSpecies.forEach((s, idx) => {
+      const elite = idx < config.eliteSpeciesCount;
+      let count = 0;
+      if (s.stag > config.stagnationCullingThreshold && !elite) count = 0;
+      else {
+        speciesToKeep.push(s);
+        count = Math.round((s.adjFitSum / totalAdj) * config.populationSize);
+        if (s.stag > config.stagnationThresholdSteps && s.members.length >= config.speciesMinSizeForPenalty) count = Math.round(count * 0.74);
+      }
+      if (count > 0) offspringAlloc.push({ species: s, count });
+    });
+  } else {
+    activeSpecies.forEach(s => { offspringAlloc.push({ species: s, count: Math.floor(config.populationSize / Math.max(1, activeSpecies.length)) }); speciesToKeep.push(s); });
+  }
+  species = speciesToKeep;
 
-        // --- Simulation Loop ---
-        function gameLoop(timestamp) {
-            if(!isRunning)return; const elapsed=timestamp-(gameLoop.lastTimestamp||timestamp); gameLoop.lastTimestamp=timestamp; const effTStep=Math.min(elapsed,100)*simSpeedMultiplier; let steps=Math.max(1,Math.round(effTStep/config.simulationTimeStep)); steps=Math.min(steps,15);
-            for(let i=0;i<steps;i++){if(!isRunning)break; simulationStep++; stepsSinceLastEval++; environment.decayPheromones(); environment.updateMovingThreats(); const foodProxMap=new Map(); environment.food.forEach(f=>{const nearby=environment.spatialGrid.queryRadius(f.x,f.y,config.foodEvasionDistance); const blobs=[]; nearby.forEach(o=>{if(o.type==='blob'&&o.isAlive)blobs.push(o);}); if(blobs.length>0)foodProxMap.set(f,blobs);}); environment.updateFood(foodProxMap); environment.rebuildSpatialGrid(); let aliveCnt=0; population.forEach(blob=>{if(blob.isAlive){blob.update(environment); aliveCnt++;}}); updateAliveCount(aliveCnt); if(stepsSinceLastEval>=config.evaluationIntervalSteps){performEvolutionStep();}}
-            ctx.clearRect(0,0,CANVAS_WIDTH,CANVAS_HEIGHT); if(visPheromones)environment.drawPheromonesOffscreen(); environment.draw(ctx); population.forEach(blob=>{blob.draw(ctx);}); updateInfoPanel(); updateTooltip(); animationFrameId=requestAnimationFrame(gameLoop);
-        }
-        gameLoop.lastTimestamp = 0;
+  let currentSum = offspringAlloc.reduce((sum, a) => sum + a.count, 0);
+  let diff = config.populationSize - currentSum;
+  offspringAlloc.sort((a, b) => b.species.avgFit - a.species.avgFit);
+  let guard = 0;
+  while (diff !== 0 && offspringAlloc.length && guard++ < config.populationSize * 2) {
+    const idx = guard % offspringAlloc.length;
+    if (diff > 0) { offspringAlloc[idx].count++; diff--; }
+    else if (offspringAlloc[idx].count > 0) { offspringAlloc[idx].count--; diff++; }
+  }
 
-        // --- UI Update Functions ---
-        function updateInfoPanel(){document.getElementById('simStepCount').textContent=simulationStep; document.getElementById('replacementCount').textContent=totalReplacements; document.getElementById('avgFitness').textContent=lastEvalStats.avgFitness.toFixed(3); document.getElementById('bestFitness').textContent=lastEvalStats.bestFitness.toFixed(3); document.getElementById('genome-display').textContent=`Best Sample (Phys): ${lastEvalStats.bestGenomeSample}`; document.getElementById('speciesCount').textContent=species.length; document.getElementById('avgMutationRate').textContent=lastEvalStats.avgMutRate.toFixed(4); document.getElementById('avgWeightMutationRate').textContent=lastEvalStats.avgWgtMutRate.toFixed(4); }
-        function updateAliveCount(count){document.getElementById('aliveCount').textContent=count;}
-        function updateTooltip(){ const rect=canvas.getBoundingClientRect(); const scaleX=CANVAS_WIDTH/rect.width; const scaleY=CANVAS_HEIGHT/rect.height; const cX=(mousePos.x-rect.left)*scaleX; const cY=(mousePos.y-rect.top)*scaleY; let foundBlob=null; let minDistSq=Infinity; const nearby=environment.spatialGrid.queryRadius(cX,cY,50); nearby.forEach(blob=>{if(blob.type!=='blob'||!blob.isAlive)return; const dSq=distanceSq(blob.x,blob.y,cX,cY); if(dSq<blob.currentRadius*blob.currentRadius&&dSq<minDistSq){minDistSq=dSq; foundBlob=blob;}}); if(foundBlob){const terrain=environment.getRegionProperties(foundBlob.x,foundBlob.y).terrain; const memoryStr=foundBlob.memoryState.map(m=>m.toFixed(2)).join(','); tooltip.style.display='block'; tooltip.style.left=`${mousePos.x+15}px`; tooltip.style.top=`${mousePos.y}px`; tooltip.innerHTML=`ID:${foundBlob.id.substring(0,5)} Spc:${foundBlob.speciesId?foundBlob.speciesId.substring(0,4):'N/A'}<br>E:${foundBlob.energy.toFixed(1)}/${config.maxEnergy.toFixed(0)} Fit(R):${foundBlob.rawFitness.toFixed(1)}(A:${foundBlob.adjustedFitness.toFixed(1)})<br>Age:${foundBlob.age} R:${foundBlob.currentRadius.toFixed(1)}(Max:${foundBlob.maxRadius.toFixed(1)})<br>Speed:${Math.sqrt(foundBlob.vx**2+foundBlob.vy**2).toFixed(2)}${foundBlob.shedBoostTimer>0?'(BOOST)':''}<br>Terr:${terrain} Mut:${foundBlob.mutationRate.toFixed(3)}/${foundBlob.weightMutationRate.toFixed(3)}<br>Mem:[${memoryStr}]`;} else {tooltip.style.display='none';}}
-        function updateSpeciesListUI(activeSpecies){ speciesListUL.innerHTML=''; activeSpecies.sort((a,b)=>b.avgFit-a.avgFit); activeSpecies.forEach(s=>{const li=document.createElement('li'); const avgRaw=s.members.reduce((sum,m)=>sum+m.rawFitness,0)/s.members.length||0; li.textContent=`ID:${s.id.substring(0,4)}|Mem:${s.members.length}|AvgAdj:${s.avgFit.toFixed(2)}|AvgRaw:${avgRaw.toFixed(2)}|Best:${s.bestFit.toFixed(2)}|Stag:${s.stag}`; speciesListUL.appendChild(li);}); if(activeSpecies.length===0){speciesListUL.innerHTML='<li>No active species.</li>';} }
+  const liveSorted = population.filter(b => b.isAlive).sort((a, b) => b.adjustedFitness - a.adjustedFitness);
+  const nextPop = [];
+  for (let i = 0; i < Math.min(config.eliteGlobalCount, liveSorted.length); i++) {
+    const elite = new EvoBlob(liveSorted[i].genome.slice(), [liveSorted[i].id]);
+    elite.x = clamp(liveSorted[i].x + random(-18, 18), config.worldPadding, CANVAS_WIDTH - config.worldPadding);
+    elite.y = clamp(liveSorted[i].y + random(-18, 18), config.worldPadding, CANVAS_HEIGHT - config.worldPadding);
+    nextPop.push(elite);
+  }
 
-        // --- Control Functions ---
-        function startSimulation(){if(!isRunning){console.log("Starting...");isRunning=true;gameLoop.lastTimestamp=performance.now();animationFrameId=requestAnimationFrame(gameLoop)}} function stopSimulation(){if(isRunning){console.log("Stopping...");isRunning=false;if(animationFrameId){cancelAnimationFrame(animationFrameId);animationFrameId=null}}} function resetSimulation(){console.log("Resetting...");stopSimulation();simulationStep=0;stepsSinceLastEval=0;totalReplacements=0;species=[];lastEvalStats={avgFitness:0,bestFitness:0,bestGenomeSample:"N/A",avgMutRate:0,avgWgtMutRate:0};init();updateInfoPanel();updateAliveCount(0);document.getElementById('foodCountDisplay').textContent=config.initialFoodCount;document.getElementById('threatCountDisplay').textContent=config.initialThreatCount+config.initialMovingThreatCount;document.getElementById('pheromoneCountDisplay').textContent=0;updateSpeciesListUI([])}
+  offspringAlloc.forEach(alloc => {
+    const sp = alloc.species;
+    for (let i = 0; i < alloc.count && nextPop.length < config.populationSize; i++) {
+      let p1 = sp.selectParent();
+      let p2 = null;
+      let archiveGenome = rng() < config.archiveInjectionRate ? pickArchiveParent() : null;
+      if (archiveGenome) {
+        p2 = { genome: archiveGenome, id: "archive" };
+      } else if (rng() < config.interSpeciesCrossoverRate && species.length > 1) {
+        let other = species[randomInt(0, species.length - 1)];
+        let tries = 0;
+        while (other === sp && tries++ < 5) other = species[randomInt(0, species.length - 1)];
+        p2 = other.selectParent();
+      } else p2 = sp.selectParent();
 
-        // --- Initialization ---
-        function init() {
-            canvas=document.getElementById('simulationCanvas'); ctx=canvas.getContext('2d'); tooltip=document.getElementById('tooltip'); speciesListUL=document.getElementById('species-list');
-            canvas.width=CANVAS_WIDTH; canvas.height=CANVAS_HEIGHT; // Set canvas size directly
-            offscreenPheroCanvas=document.createElement('canvas'); offscreenPheroCanvas.width=CANVAS_WIDTH; offscreenPheroCanvas.height=CANVAS_HEIGHT; offscreenPheroCtx=offscreenPheroCanvas.getContext('2d');
-            environment=new Environment(CANVAS_WIDTH,CANVAS_HEIGHT);
-            population=[]; for(let i=0; i<config.populationSize; i++){population.push(new Blob());}
-            document.getElementById('populationSize').textContent=config.populationSize; updateAliveCount(config.populationSize);
-            const spdSlider=document.getElementById('speedControl'); const spdVal=document.getElementById('speedValue'); spdSlider.oninput=()=>{simSpeedMultiplier=parseInt(spdSlider.value);spdVal.textContent=`${simSpeedMultiplier}x`}; simSpeedMultiplier=parseInt(spdSlider.value);
-            visPheromones=document.getElementById('visPheromones').checked; visGrid=document.getElementById('visGrid').checked; simpleDraw=document.getElementById('simpleDraw').checked;
-            console.log("Hyper simulation initialized."); console.log(`NN Inputs:${config.nnInputNodes}(Ext:${config.nnExternalInputs},Mem:${config.nnMemoryNodes}), Outputs:${config.nnOutputNodes}(Ext:${config.nnExternalOutputs},Mem:${config.nnMemoryNodes}), Genome:${config.genomeLength}`); console.log(`Spatial Grid:${config.spatialGridCols}x${config.spatialGridRows}, Phero Grid:${config.pheromoneGridCols}x${config.pheromoneGridRows}`);
-        }
+      if (!p1 && liveSorted.length) p1 = liveSorted[randomInt(0, liveSorted.length - 1)];
+      if (!p2) p2 = p1;
+      if (p1 && p2) {
+        let childG = crossover(p1.genome, p2.genome);
+        const probe = new EvoBlob(childG, [p1.id, p2.id]);
+        childG = mutate(childG, probe.mutationRate, probe.weightMutationRate);
+        nextPop.push(new EvoBlob(childG, [p1.id, p2.id]));
+        if (p1.energy !== undefined) p1.energy = Math.max(0, p1.energy - config.initialEnergy * config.reproductionEnergyCost);
+        if (p2.energy !== undefined && p2 !== p1) p2.energy = Math.max(0, p2.energy - config.initialEnergy * config.reproductionEnergyCost);
+      } else nextPop.push(new EvoBlob());
+    }
+  });
+  while (nextPop.length < config.populationSize) nextPop.push(new EvoBlob());
+  population = nextPop;
 
-        // --- Event Listeners ---
-        window.onload = () => {
-            init();
-            document.getElementById('startButton').addEventListener('click', startSimulation); document.getElementById('stopButton').addEventListener('click', stopSimulation); document.getElementById('resetButton').addEventListener('click', resetSimulation);
-            document.getElementById('addFoodButton').addEventListener('click', ()=>{for(let i=0;i<30;i++)environment.addFoodItem(); environment.rebuildSpatialGrid();});
-            document.getElementById('addThreatButton').addEventListener('click',()=>{for(let i=0;i<10;i++)environment.addThreatItem(); environment.rebuildSpatialGrid();});
-            document.getElementById('visPheromones').addEventListener('change',(e)=>{visPheromones=e.target.checked;}); document.getElementById('visGrid').addEventListener('change',(e)=>{visGrid=e.target.checked;}); document.getElementById('simpleDraw').addEventListener('change',(e)=>{simpleDraw=e.target.checked;});
-            canvas.addEventListener('mousemove',(e)=>{mousePos.x=e.clientX;mousePos.y=e.clientY;}); canvas.addEventListener('mouseout',()=>{tooltip.style.display='none';});
-        };
+  const prevLive = liveSorted;
+  const avgFit = safeMean(prevLive, b => b.adjustedFitness);
+  const best = prevLive[0] || null;
+  lastEvalStats.avgFitness = avgFit;
+  lastEvalStats.bestFitness = best ? best.adjustedFitness : 0;
+  lastEvalStats.avgNovelty = safeMean(prevLive, b => b.noveltyScore);
+  lastEvalStats.diversity = qdArchive.size / (config.archiveBins * config.archiveBins);
+  lastEvalStats.bestBlob = best;
+  lastEvalStats.avgMutRate = safeMean(prevLive, b => b.mutationRate);
+  lastEvalStats.avgWgtMutRate = safeMean(prevLive, b => b.weightMutationRate);
+  if (best) {
+    const phys = best.genome.slice(0, config.numPhysicalTraits).map(v => Number(v.toFixed(3)));
+    lastEvalStats.bestGenomeSample = `ID: ${best.id}\nSpecies: ${best.speciesId || "N/A"}\nFitness: ${best.adjustedFitness.toFixed(3)} | Novelty: ${best.noveltyScore.toFixed(3)}\nDescriptor [speed, signal, size, risk]: ${best.behaviorDescriptor().map(v => v.toFixed(2)).join(", ")}\nPhysical genome:\n[${phys.join(", ")}]`;
+    lineageLog.unshift(`Gen ${generation}: ${best.id.slice(0,5)} fit ${best.adjustedFitness.toFixed(2)} nov ${best.noveltyScore.toFixed(2)} food ${best.foodsEaten} risk ${best.threatHits}`);
+    lineageLog.length = Math.min(20, lineageLog.length);
+  }
+  totalReplacements += config.populationSize;
+  stepsSinceLastEval = 0;
+  metricsHistory.push({ step: simulationStep, best: lastEvalStats.bestFitness, avg: lastEvalStats.avgFitness, alive: prevLive.length / config.populationSize, novelty: lastEvalStats.avgNovelty });
+  if (metricsHistory.length > config.metricsHistoryMax) metricsHistory.shift();
+  updateSpeciesListUI(species);
+  updateLineageUI();
+}
 
-    </script>
+// -----------------------------
+// Loop and UI
+// -----------------------------
+function simulationTick() {
+  simulationStep++;
+  stepsSinceLastEval++;
+  environment.updateDynamicEcology();
+  environment.decayPheromones();
+  environment.updateMovingThreats();
+  const foodProxMap = new Map();
+  environment.food.forEach(f => {
+    const nearby = environment.spatialGrid.queryRadius(f.x, f.y, config.foodEvasionDistance);
+    const blobs = [];
+    nearby.forEach(o => { if (o.type === "blob" && o.isAlive) blobs.push(o); });
+    if (blobs.length) foodProxMap.set(f, blobs);
+  });
+  environment.updateFood(foodProxMap);
+  environment.rebuildSpatialGrid();
+  let alive = 0;
+  population.forEach(blob => { if (blob.isAlive) { blob.update(environment); alive++; } });
+  updateAliveCount(alive);
+  if (stepsSinceLastEval >= config.evaluationIntervalSteps || alive < config.populationSize * 0.08) performEvolutionStep();
+}
+function gameLoop(timestamp) {
+  if (!isRunning) return;
+  try {
+    const elapsed = timestamp - (gameLoop.lastTimestamp || timestamp);
+    gameLoop.lastTimestamp = timestamp;
+    const effective = Math.min(elapsed, 100) * simSpeedMultiplier;
+    let steps = Math.max(1, Math.round(effective / config.simulationTimeStep));
+    steps = Math.min(steps, 20);
+    for (let i = 0; i < steps && isRunning; i++) simulationTick();
+    drawAll();
+    animationFrameId = requestAnimationFrame(gameLoop);
+  } catch (err) {
+    handleRuntimeError(err);
+  }
+}
+gameLoop.lastTimestamp = 0;
+function drawAll() {
+  if (visPheromones) environment.drawPheromonesOffscreen();
+  environment.draw(ctx);
+  population.forEach(blob => blob.draw(ctx));
+  updateInfoPanel();
+  updateTooltip();
+  drawCharts();
+  if (visArchive) drawArchive(); else archiveCtx.clearRect(0, 0, archiveCanvas.width, archiveCanvas.height);
+}
+function updateInfoPanel() {
+  document.getElementById("simStepCount").textContent = simulationStep;
+  document.getElementById("generationCount").textContent = generation;
+  document.getElementById("replacementCount").textContent = totalReplacements;
+  document.getElementById("avgFitness").textContent = lastEvalStats.avgFitness.toFixed(3);
+  document.getElementById("bestFitness").textContent = lastEvalStats.bestFitness.toFixed(3);
+  document.getElementById("avgNovelty").textContent = lastEvalStats.avgNovelty.toFixed(3);
+  document.getElementById("speciesCount").textContent = species.length;
+  document.getElementById("archiveCells").textContent = qdArchive.size;
+  document.getElementById("diversityScore").textContent = lastEvalStats.diversity.toFixed(3);
+  document.getElementById("avgMutationRate").textContent = lastEvalStats.avgMutRate.toFixed(4);
+  document.getElementById("avgWeightMutationRate").textContent = lastEvalStats.avgWgtMutRate.toFixed(4);
+  document.getElementById("genome-display").textContent = lastEvalStats.bestGenomeSample;
+}
+function updateAliveCount(count) { document.getElementById("aliveCount").textContent = count; }
+function updateSpeciesListUI(activeSpecies) {
+  speciesListUL.innerHTML = "";
+  const sorted = activeSpecies.slice().sort((a, b) => b.avgFit - a.avgFit);
+  sorted.slice(0, 34).forEach(s => {
+    const li = document.createElement("li");
+    const avgRaw = safeMean(s.members, m => m.rawFitness);
+    li.textContent = `ID:${s.id.slice(0,4)} | Mem:${s.members.length} | AvgAdj:${s.avgFit.toFixed(2)} | AvgRaw:${avgRaw.toFixed(2)} | Best:${s.bestFit.toFixed(2)} | Stag:${s.stag}`;
+    speciesListUL.appendChild(li);
+  });
+  if (!sorted.length) speciesListUL.innerHTML = "<li>No active species.</li>";
+}
+function updateLineageUI() {
+  lineageListUL.innerHTML = "";
+  lineageLog.forEach(line => { const li = document.createElement("li"); li.textContent = line; lineageListUL.appendChild(li); });
+  if (!lineageLog.length) lineageListUL.innerHTML = "<li>No lineage yet.</li>";
+}
+function updateTooltip() {
+  const rect = canvas.getBoundingClientRect();
+  const scaleX = CANVAS_WIDTH / rect.width, scaleY = CANVAS_HEIGHT / rect.height;
+  const cx = (mousePos.x - rect.left) * scaleX, cy = (mousePos.y - rect.top) * scaleY;
+  let found = null, minSq = Infinity;
+  const nearby = environment.spatialGrid.queryRadius(cx, cy, 50);
+  nearby.forEach(blob => {
+    if (blob.type !== "blob" || !blob.isAlive) return;
+    const dSq = distanceSq(blob.x, blob.y, cx, cy);
+    if (dSq < blob.currentRadius * blob.currentRadius && dSq < minSq) { minSq = dSq; found = blob; }
+  });
+  if (found) {
+    const terrain = environment.getRegionProperties(found.x, found.y).terrain;
+    const mem = found.memoryState.map(m => m.toFixed(2)).join(",");
+    const desc = found.behaviorDescriptor().map(v => v.toFixed(2)).join(",");
+    tooltip.style.display = "block";
+    tooltip.style.left = `${mousePos.x + 15}px`;
+    tooltip.style.top = `${mousePos.y}px`;
+    tooltip.innerHTML = `ID:${found.id.slice(0,5)} Sp:${found.speciesId ? found.speciesId.slice(0,4) : "N/A"}<br>E:${found.energy.toFixed(1)}/${config.maxEnergy.toFixed(0)} Fit:${found.rawFitness.toFixed(1)} Adj:${found.adjustedFitness.toFixed(1)} Nov:${found.noveltyScore.toFixed(2)}<br>Age:${found.age} R:${found.currentRadius.toFixed(1)}/${found.maxRadius.toFixed(1)} Speed:${Math.sqrt(found.vx**2 + found.vy**2).toFixed(2)} ${found.shedBoostTimer > 0 ? "BOOST" : ""}<br>Food:${found.foodsEaten} Hits:${found.threatHits} Signals:${found.signalsEmitted}<br>Terr:${terrain} Mut:${found.mutationRate.toFixed(3)}/${found.weightMutationRate.toFixed(3)}<br>Desc:[${desc}]<br>Mem:[${mem}]`;
+  } else tooltip.style.display = "none";
+}
+function drawCharts() {
+  const c = chartCtx, w = chartCanvas.width, h = chartCanvas.height;
+  c.clearRect(0, 0, w, h);
+  c.fillStyle = "rgba(255,255,255,.035)"; c.fillRect(0, 0, w, h);
+  c.strokeStyle = "rgba(255,255,255,.08)"; c.lineWidth = 1;
+  for (let i = 1; i < 4; i++) { c.beginPath(); c.moveTo(0, (h / 4) * i); c.lineTo(w, (h / 4) * i); c.stroke(); }
+  if (metricsHistory.length < 2) return;
+  const maxFit = Math.max(1, ...metricsHistory.map(m => Math.max(m.best, m.avg, m.novelty * 20)));
+  const plot = (getter, stroke) => {
+    c.strokeStyle = stroke; c.lineWidth = 2; c.beginPath();
+    metricsHistory.forEach((m, i) => {
+      const x = (i / (config.metricsHistoryMax - 1)) * w;
+      const y = h - clamp(getter(m) / maxFit, 0, 1) * (h - 10) - 5;
+      if (i === 0) c.moveTo(x, y); else c.lineTo(x, y);
+    });
+    c.stroke();
+  };
+  plot(m => m.best, "#6df6c4");
+  plot(m => m.alive * maxFit, "#8db7ff");
+  plot(m => m.novelty * 20, "#ffd166");
+}
+function drawArchive() {
+  const c = archiveCtx, w = archiveCanvas.width, h = archiveCanvas.height;
+  c.clearRect(0, 0, w, h);
+  c.fillStyle = "rgba(255,255,255,.035)"; c.fillRect(0, 0, w, h);
+  const bins = config.archiveBins;
+  const cellW = w / bins, cellH = h / bins;
+  const scores = Array.from(qdArchive.values()).map(v => v.score);
+  const maxScore = Math.max(1, ...scores);
+  for (const [key, cell] of qdArchive.entries()) {
+    const [xBin, yBin] = key.split(":").map(Number);
+    const intensity = normalize(cell.score, 0, maxScore);
+    c.fillStyle = `rgba(${Math.round(80 + 175 * intensity)}, ${Math.round(120 + 135 * intensity)}, 255, ${0.28 + 0.68 * intensity})`;
+    c.fillRect(xBin * cellW + 1, h - (yBin + 1) * cellH + 1, cellW - 2, cellH - 2);
+  }
+  c.strokeStyle = "rgba(255,255,255,.10)";
+  for (let i = 1; i < bins; i++) {
+    c.beginPath(); c.moveTo(i * cellW, 0); c.lineTo(i * cellW, h); c.stroke();
+    c.beginPath(); c.moveTo(0, i * cellH); c.lineTo(w, i * cellH); c.stroke();
+  }
+}
+function showEventBanner(text) {
+  const banner = document.getElementById("event-banner");
+  banner.textContent = `Ecology event: ${text}`;
+  banner.style.display = "block";
+  window.clearTimeout(showEventBanner._timer);
+  showEventBanner._timer = window.setTimeout(() => { banner.style.display = "none"; }, 2800);
+}
 
+// -----------------------------
+// Runtime safety helpers
+// -----------------------------
+function handleRuntimeError(err) {
+  isRunning = false;
+  if (animationFrameId) cancelAnimationFrame(animationFrameId);
+  animationFrameId = null;
+  const message = err && err.message ? err.message : String(err || "Unknown runtime error");
+  console.error("Hyper EvoBlob runtime error:", err);
+  const statusEl = document.getElementById("eventName");
+  if (statusEl) statusEl.textContent = "Error";
+  const startBtn = document.getElementById("startButton");
+  if (startBtn) startBtn.textContent = "Start";
+  if (typeof showEventBanner === "function") showEventBanner(`Runtime stopped: ${message.slice(0, 90)}`);
+}
+
+// -----------------------------
+// Controls and initialization
+// -----------------------------
+function startSimulation() {
+  if (!environment || !population.length) initWorldOnly();
+  if (!isRunning) {
+    isRunning = true;
+    const statusEl = document.getElementById("eventName");
+    if (statusEl) statusEl.textContent = "Running";
+    const startBtn = document.getElementById("startButton");
+    if (startBtn) startBtn.textContent = "Running";
+    try {
+      simulationTick(); // immediate visible movement so Start never appears unresponsive
+      drawAll();
+    } catch (err) {
+      handleRuntimeError(err);
+      return;
+    }
+    gameLoop.lastTimestamp = performance.now();
+    animationFrameId = requestAnimationFrame(gameLoop);
+  }
+}
+function stopSimulation() {
+  if (isRunning) {
+    isRunning = false;
+    if (animationFrameId) cancelAnimationFrame(animationFrameId);
+    animationFrameId = null;
+    const statusEl = document.getElementById("eventName");
+    if (statusEl) statusEl.textContent = "Stopped";
+    const startBtn = document.getElementById("startButton");
+    if (startBtn) startBtn.textContent = "Start";
+  }
+}
+function stepEvaluation() {
+  const oldRunning = isRunning;
+  stopSimulation();
+  const target = stepsSinceLastEval + config.evaluationIntervalSteps;
+  while (stepsSinceLastEval < target && stepsSinceLastEval < config.evaluationIntervalSteps) simulationTick();
+  if (stepsSinceLastEval >= config.evaluationIntervalSteps) performEvolutionStep();
+  drawAll();
+  if (oldRunning) startSimulation();
+}
+function resetSimulation() {
+  stopSimulation();
+  simulationStep = 0; generation = 0; stepsSinceLastEval = 0; totalReplacements = 0;
+  species = []; qdArchive = new Map(); noveltyArchive = []; lineageLog = []; metricsHistory = [];
+  lastEvalStats = { avgFitness: 0, bestFitness: 0, avgNovelty: 0, diversity: 0, bestGenomeSample: "No evaluation yet.", avgMutRate: 0, avgWgtMutRate: 0, bestBlob: null };
+  initWorldOnly();
+  updateSpeciesListUI([]); updateLineageUI(); drawAll();
+}
+function initWorldOnly() {
+  environment = new Environment(CANVAS_WIDTH, CANVAS_HEIGHT);
+  population = Array.from({ length: config.populationSize }, () => new EvoBlob());
+  document.getElementById("populationSize").textContent = config.populationSize;
+  updateAliveCount(config.populationSize);
+}
+function exportBestGenome() {
+  const best = lastEvalStats.bestBlob || population.filter(b => b.isAlive).sort((a, b) => b.rawFitness - a.rawFitness)[0];
+  if (!best) return;
+  downloadJSON(`evoblob-best-genome-gen-${generation}.json`, {
+    app: "Hyper EvoBlob Research Edition",
+    generation,
+    step: simulationStep,
+    seed: currentSeed,
+    genomeLength: best.genome.length,
+    genome: best.genome,
+    descriptor: best.behaviorDescriptor(),
+    fitness: { raw: best.rawFitness, adjusted: best.adjustedFitness, novelty: best.noveltyScore },
+    traits: {
+      maxSpeed: best.maxSpeed, acceleration: best.acceleration, turnRate: best.turnRate, sensorRange: best.sensorRange,
+      maxRadius: best.maxRadius, foodEnergyGain: best.foodEnergyGain, mutationRate: best.mutationRate,
+      weightMutationRate: best.weightMutationRate, curiosityDrive: best.curiosityDrive, riskTolerance: best.riskTolerance, cohesion: best.cohesion
+    }
+  });
+}
+function importGenomeFile(file) {
+  const reader = new FileReader();
+  reader.onload = () => {
+    try {
+      const data = JSON.parse(reader.result);
+      const genome = Array.isArray(data) ? data : data.genome;
+      if (!Array.isArray(genome) || genome.length !== config.genomeLength) throw new Error(`Expected genome length ${config.genomeLength}`);
+      const imported = new EvoBlob(genome.slice());
+      imported.x = CANVAS_WIDTH / 2; imported.y = CANVAS_HEIGHT / 2; imported.energy = config.maxEnergy * 0.85;
+      population.sort((a, b) => a.rawFitness - b.rawFitness);
+      population[0] = imported;
+      environment.rebuildSpatialGrid();
+      drawAll();
+      showEventBanner("Imported elite genome");
+    } catch (err) {
+      alert(`Could not import genome: ${err.message}`);
+    }
+  };
+  reader.readAsText(file);
+}
+function init() {
+  canvas = document.getElementById("simulationCanvas");
+  ctx = canvas.getContext("2d");
+  tooltip = document.getElementById("tooltip");
+  speciesListUL = document.getElementById("species-list");
+  lineageListUL = document.getElementById("lineage-list");
+  chartCanvas = document.getElementById("chartCanvas");
+  chartCtx = chartCanvas.getContext("2d");
+  archiveCanvas = document.getElementById("archiveCanvas");
+  archiveCtx = archiveCanvas.getContext("2d");
+  offscreenPheroCanvas = document.createElement("canvas");
+  offscreenPheroCanvas.width = CANVAS_WIDTH; offscreenPheroCanvas.height = CANVAS_HEIGHT;
+  offscreenPheroCtx = offscreenPheroCanvas.getContext("2d");
+
+  initWorldOnly();
+
+  document.getElementById("startButton").addEventListener("click", startSimulation);
+  document.getElementById("stopButton").addEventListener("click", stopSimulation);
+  document.getElementById("stepButton").addEventListener("click", stepEvaluation);
+  document.getElementById("resetButton").addEventListener("click", resetSimulation);
+  document.getElementById("addFoodButton").addEventListener("click", () => { for (let i = 0; i < 30; i++) environment.addFoodItem(); environment.rebuildSpatialGrid(); drawAll(); });
+  document.getElementById("addThreatButton").addEventListener("click", () => { for (let i = 0; i < 10; i++) environment.addThreatItem(); environment.rebuildSpatialGrid(); drawAll(); });
+  document.getElementById("addMovingThreatButton").addEventListener("click", () => { for (let i = 0; i < 5; i++) environment.addMovingThreatItem(); environment.rebuildSpatialGrid(); drawAll(); });
+  document.getElementById("eventButton").addEventListener("click", () => { environment.triggerEvent(); environment.rebuildSpatialGrid(); drawAll(); });
+
+  const speedSlider = document.getElementById("speedControl");
+  const speedValue = document.getElementById("speedValue");
+  speedSlider.addEventListener("input", () => { simSpeedMultiplier = parseInt(speedSlider.value, 10); speedValue.textContent = `${simSpeedMultiplier}x`; });
+  simSpeedMultiplier = parseInt(speedSlider.value, 10);
+
+  document.getElementById("visPheromones").addEventListener("change", e => { visPheromones = e.target.checked; drawAll(); });
+  document.getElementById("visGrid").addEventListener("change", e => { visGrid = e.target.checked; drawAll(); });
+  document.getElementById("simpleDraw").addEventListener("change", e => { simpleDraw = e.target.checked; drawAll(); });
+  document.getElementById("visSensors").addEventListener("change", e => { visSensors = e.target.checked; drawAll(); });
+  document.getElementById("visArchive").addEventListener("change", e => { visArchive = e.target.checked; drawAll(); });
+  document.getElementById("adaptiveEnvironment").addEventListener("change", e => { adaptiveEnvironment = e.target.checked; });
+  document.getElementById("applySeedButton").addEventListener("click", () => { reseed(document.getElementById("seedInput").value); resetSimulation(); });
+  document.getElementById("exportBestButton").addEventListener("click", exportBestGenome);
+  document.getElementById("importGenomeInput").addEventListener("change", e => { if (e.target.files && e.target.files[0]) importGenomeFile(e.target.files[0]); e.target.value = ""; });
+
+  canvas.addEventListener("mousemove", e => { mousePos.x = e.clientX; mousePos.y = e.clientY; });
+  canvas.addEventListener("mouseout", () => { tooltip.style.display = "none"; });
+  canvas.addEventListener("click", e => {
+    const rect = canvas.getBoundingClientRect();
+    const x = (e.clientX - rect.left) * CANVAS_WIDTH / rect.width;
+    const y = (e.clientY - rect.top) * CANVAS_HEIGHT / rect.height;
+    for (let i = 0; i < 8; i++) environment.addFoodItem(x + random(-35, 35), y + random(-35, 35));
+    environment.addPheromone(x, y, "food", 2);
+    environment.rebuildSpatialGrid(); drawAll();
+  });
+
+  updateSpeciesListUI([]); updateLineageUI(); drawAll();
+  console.info(`Hyper EvoBlob Research Edition initialized. Seed=${currentSeed}, NN=${config.nnInputNodes}/${config.nnHiddenNodes}/${config.nnOutputNodes}, Genome=${config.genomeLength}`);
+}
+
+let __evoblobBooted = false;
+function bootHyperEvoBlob() {
+  if (__evoblobBooted) return;
+  __evoblobBooted = true;
+  try { init(); }
+  catch (err) {
+    console.error("Hyper EvoBlob failed to initialize:", err);
+    const statusEl = document.getElementById("eventName");
+    if (statusEl) statusEl.textContent = "Init Error";
+    alert(`Hyper EvoBlob failed to initialize: ${err && err.message ? err.message : err}`);
+  }
+}
+window.addEventListener("error", e => handleRuntimeError(e.error || new Error(e.message)));
+if (document.readyState === "loading") {
+  document.addEventListener("DOMContentLoaded", bootHyperEvoBlob);
+  window.addEventListener("load", bootHyperEvoBlob);
+} else {
+  bootHyperEvoBlob();
+}
+</script>
 </body>
 </html>
