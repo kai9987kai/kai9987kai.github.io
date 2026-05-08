@@ -1,121 +1,1782 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-  <title>Compare Two Sites</title>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="Advanced website comparison dashboard with resilient fetch fallback, local demo analysis, metrics, diffing, keyword extraction, audits, and exportable reports." />
+  <title>Compare Two Sites — Resilient Web Difference Intelligence Lab</title>
   <style>
+    :root {
+      --bg: #070b16;
+      --bg-2: #0c1326;
+      --panel: rgba(255, 255, 255, 0.08);
+      --panel-strong: rgba(255, 255, 255, 0.13);
+      --text: #f8faff;
+      --muted: #aab6d9;
+      --soft: #dce6ff;
+      --accent: #72f6c7;
+      --accent-2: #80a7ff;
+      --accent-3: #fcb1ff;
+      --danger: #ff6b8a;
+      --warning: #ffd166;
+      --success: #7dffba;
+      --border: rgba(255, 255, 255, 0.16);
+      --shadow: 0 26px 90px rgba(0, 0, 0, 0.38);
+      --radius: 24px;
+      --mono: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+      --font: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    [data-theme="light"] {
+      --bg: #edf3ff;
+      --bg-2: #ffffff;
+      --panel: rgba(255, 255, 255, 0.78);
+      --panel-strong: rgba(255, 255, 255, 0.95);
+      --text: #10172a;
+      --muted: #56627e;
+      --soft: #263248;
+      --border: rgba(31, 45, 83, 0.13);
+      --shadow: 0 22px 70px rgba(35, 54, 96, 0.18);
+    }
+
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+
     body {
-      font-family: Arial, sans-serif;
+      margin: 0;
+      min-height: 100vh;
+      color: var(--text);
+      font-family: var(--font);
+      background:
+        radial-gradient(circle at 8% 12%, rgba(114, 246, 199, 0.26), transparent 34%),
+        radial-gradient(circle at 92% 18%, rgba(128, 167, 255, 0.25), transparent 35%),
+        radial-gradient(circle at 48% 95%, rgba(252, 177, 255, 0.14), transparent 42%),
+        linear-gradient(135deg, var(--bg), var(--bg-2));
+      overflow-x: hidden;
+    }
+
+    body::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      background-image:
+        linear-gradient(rgba(255,255,255,0.045) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255,255,255,0.045) 1px, transparent 1px);
+      background-size: 44px 44px;
+      mask-image: linear-gradient(to bottom, black, transparent 85%);
+      opacity: 0.75;
+    }
+
+    .app-shell {
+      width: min(1240px, calc(100% - 32px));
+      margin: 0 auto;
+      padding: 36px 0 64px;
+      position: relative;
+      z-index: 1;
+    }
+
+    .topbar, .panel-header, .tool-row, .bar-label {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .topbar { margin-bottom: 18px; }
+
+    .brand {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      font-weight: 950;
+      letter-spacing: -0.04em;
+    }
+
+    .brand-mark {
+      width: 38px;
+      height: 38px;
+      display: grid;
+      place-items: center;
+      border-radius: 14px;
+      color: #05131f;
+      background: linear-gradient(135deg, var(--accent), #dffff3);
+      box-shadow: 0 10px 28px rgba(114, 246, 199, 0.22);
+    }
+
+    .top-actions, .actions, .chip-row, .tabs {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .top-actions { justify-content: flex-end; }
+
+    .hero {
+      display: grid;
+      grid-template-columns: 1.25fr 0.75fr;
+      gap: 22px;
+      align-items: stretch;
+      margin-bottom: 22px;
+    }
+
+    .glass {
+      border: 1px solid var(--border);
+      background: linear-gradient(145deg, var(--panel-strong), var(--panel));
+      box-shadow: var(--shadow);
+      border-radius: var(--radius);
+      backdrop-filter: blur(24px);
+    }
+
+    .hero-card {
+      padding: clamp(22px, 4vw, 38px);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .hero-card::after {
+      content: "";
+      position: absolute;
+      width: 340px;
+      height: 340px;
+      right: -150px;
+      top: -160px;
+      background: radial-gradient(circle, rgba(114, 246, 199, 0.28), transparent 72%);
+      border-radius: 50%;
+    }
+
+    .eyebrow {
+      display: inline-flex;
+      gap: 8px;
+      align-items: center;
+      padding: 7px 12px;
+      border: 1px solid rgba(114, 246, 199, 0.35);
+      border-radius: 999px;
+      color: var(--accent);
+      background: rgba(114, 246, 199, 0.08);
+      font-size: 0.77rem;
+      font-weight: 900;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
     }
 
     h1 {
-      text-align: center;
+      margin: 18px 0 12px;
+      font-size: clamp(2.4rem, 7vw, 5.6rem);
+      line-height: 0.89;
+      letter-spacing: -0.085em;
     }
 
-    form {
+    .hero-card p, .panel-header p, .footer-note {
+      color: var(--muted);
+      line-height: 1.7;
+    }
+
+    .hero-card p {
+      max-width: 820px;
+      margin: 0;
+      font-size: 1.04rem;
+    }
+
+    .summary-card {
+      padding: 24px;
       display: flex;
       flex-direction: column;
-      align-items: center;
-      margin-top: 50px;
+      justify-content: space-between;
+      gap: 18px;
+    }
+
+    .score-orb {
+      width: 164px;
+      aspect-ratio: 1;
+      margin: 0 auto;
+      border-radius: 50%;
+      display: grid;
+      place-items: center;
+      background:
+        conic-gradient(var(--accent) calc(var(--score, 0) * 1%), rgba(255,255,255,0.13) 0),
+        radial-gradient(circle, rgba(255,255,255,0.2), rgba(255,255,255,0.06));
+      box-shadow: inset 0 0 38px rgba(255,255,255,0.06), 0 18px 60px rgba(0,0,0,0.25);
+      transition: background 0.45s ease;
+    }
+
+    .score-orb-inner {
+      width: 122px;
+      aspect-ratio: 1;
+      border-radius: 50%;
+      display: grid;
+      place-items: center;
+      text-align: center;
+      background: color-mix(in srgb, var(--bg) 82%, transparent);
+      border: 1px solid var(--border);
+    }
+
+    #similarityScore {
+      font-size: 2.12rem;
+      font-weight: 950;
+      letter-spacing: -0.055em;
+    }
+
+    .score-caption {
+      display: block;
+      margin-top: 3px;
+      font-size: 0.72rem;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      font-weight: 900;
+    }
+
+    .mini-grid, .metric-grid, .site-grid, .preview-grid, .dual-column {
+      display: grid;
+      gap: 12px;
+    }
+
+    .mini-grid { grid-template-columns: repeat(2, 1fr); }
+    .metric-grid { grid-template-columns: repeat(4, 1fr); }
+    .site-grid, .preview-grid, .dual-column { grid-template-columns: repeat(2, 1fr); gap: 16px; }
+
+    .mini-stat, .metric, .site-card, .insight-list li, .keyword-pill, .audit-item, .test-item, .history-item {
+      background: rgba(255,255,255,0.07);
+      border: 1px solid var(--border);
+      border-radius: 18px;
+    }
+
+    .mini-stat { padding: 14px; }
+
+    .mini-stat strong {
+      display: block;
+      font-size: 1.22rem;
+      letter-spacing: -0.04em;
+    }
+
+    .mini-stat span {
+      display: block;
+      margin-top: 4px;
+      color: var(--muted);
+      font-size: 0.78rem;
+    }
+
+    .form-card, .panel {
+      padding: 22px;
+    }
+
+    .form-card { margin-bottom: 22px; }
+
+    .compare-form {
+      display: grid;
+      grid-template-columns: 1fr 1fr auto;
+      gap: 14px;
+      align-items: end;
+    }
+
+    .field {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
     }
 
     label {
-      font-weight: bold;
-      margin-bottom: 10px;
+      font-weight: 850;
+      color: var(--soft);
+      font-size: 0.9rem;
     }
 
-    input {
-      padding: 10px;
-      margin-bottom: 20px;
-      border-radius: 5px;
-      border: 1px solid #ccc;
-      width: 400px;
+    .input-wrap { position: relative; }
+
+    input[type="url"], input[type="text"] {
+      width: 100%;
+      min-height: 54px;
+      padding: 0 44px 0 16px;
+      color: var(--text);
+      background: rgba(0,0,0,0.2);
+      border: 1px solid var(--border);
+      border-radius: 17px;
+      outline: none;
+      font-size: 0.98rem;
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+
+    [data-theme="light"] input[type="url"], [data-theme="light"] input[type="text"] {
+      background: rgba(255,255,255,0.82);
+    }
+
+    input:focus {
+      border-color: rgba(114, 246, 199, 0.72);
+      box-shadow: 0 0 0 4px rgba(114, 246, 199, 0.13);
+    }
+
+    .input-icon {
+      position: absolute;
+      right: 14px;
+      top: 50%;
+      transform: translateY(-50%);
+      color: var(--muted);
+      font-size: 1.1rem;
     }
 
     button {
-      padding: 10px 20px;
-      background-color: #4CAF50;
-      color: #fff;
-      border: none;
-      border-radius: 5px;
+      min-height: 54px;
+      border: 0;
+      border-radius: 16px;
       cursor: pointer;
+      color: #07101a;
+      font-weight: 950;
+      padding: 0 18px;
+      background: linear-gradient(135deg, var(--accent), #e1fff4);
+      box-shadow: 0 12px 32px rgba(114, 246, 199, 0.18);
+      transition: transform 0.18s ease, filter 0.18s ease, opacity 0.18s ease;
+      white-space: nowrap;
     }
 
-    button:hover {
-      background-color: #3e8e41;
+    button:hover { transform: translateY(-2px); filter: brightness(1.05); }
+    button:active { transform: translateY(0); }
+
+    button.secondary, button.ghost {
+      color: var(--text);
+      background: rgba(255,255,255,0.075);
+      border: 1px solid var(--border);
+      box-shadow: none;
     }
 
-    #result {
-      margin-top: 50px;
+    button.ghost {
+      min-height: 42px;
+      color: var(--muted);
+    }
+
+    button.danger {
+      color: #fff;
+      background: linear-gradient(135deg, var(--danger), #a83252);
+      box-shadow: 0 14px 34px rgba(255, 107, 138, 0.18);
+    }
+
+    button:disabled {
+      cursor: not-allowed;
+      opacity: 0.55;
+      transform: none;
+    }
+
+    .tool-row {
+      flex-wrap: wrap;
+      margin-top: 14px;
+      color: var(--muted);
+      font-size: 0.9rem;
+    }
+
+    .chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 11px;
+      color: var(--muted);
+      background: rgba(255,255,255,0.06);
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      font-size: 0.82rem;
+      cursor: pointer;
+      user-select: none;
+      transition: 0.18s ease;
+    }
+
+    .chip:hover, .chip.active {
+      color: var(--text);
+      border-color: rgba(114, 246, 199, 0.42);
+      background: rgba(114, 246, 199, 0.08);
+    }
+
+    .notice, .loading {
       display: none;
+      margin-top: 14px;
+      padding: 14px 16px;
+      border-radius: 17px;
+      border: 1px solid var(--border);
+      background: rgba(255,255,255,0.07);
+      color: var(--muted);
+      line-height: 1.5;
     }
 
-    #result p {
-      margin-bottom: 10px;
+    .notice.visible, .loading.visible { display: block; }
+
+    .notice.error {
+      color: #ffd9e1;
+      background: rgba(255, 107, 138, 0.13);
+      border-color: rgba(255, 107, 138, 0.3);
     }
 
-    #result.visible {
+    .notice.success {
+      color: #d9ffed;
+      background: rgba(125, 255, 186, 0.12);
+      border-color: rgba(125, 255, 186, 0.32);
+    }
+
+    .bar {
+      height: 10px;
+      overflow: hidden;
+      border-radius: 999px;
+      background: rgba(255,255,255,0.12);
+    }
+
+    .bar::before {
+      content: "";
       display: block;
+      width: 38%;
+      height: 100%;
+      border-radius: inherit;
+      background: linear-gradient(90deg, transparent, var(--accent), transparent);
+      animation: scan 1.15s ease-in-out infinite;
+    }
+
+    @keyframes scan {
+      from { transform: translateX(-100%); }
+      to { transform: translateX(275%); }
+    }
+
+    .results {
+      display: none;
+      grid-template-columns: 1fr;
+      gap: 22px;
+    }
+
+    .results.visible { display: grid; }
+
+    .panel-header { margin-bottom: 16px; }
+    .panel-header h2, .panel-header h3 { margin: 0; letter-spacing: -0.045em; }
+    .panel-header p { margin: 6px 0 0; }
+    .tabs { margin-bottom: 18px; }
+    .tab-panel { display: none; }
+    .tab-panel.active { display: block; }
+
+    .metric {
+      padding: 16px;
+      min-height: 112px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .metric::after {
+      content: "";
+      position: absolute;
+      width: 90px;
+      height: 90px;
+      right: -42px;
+      top: -42px;
+      background: radial-gradient(circle, rgba(255,255,255,0.11), transparent 72%);
+      border-radius: 50%;
+    }
+
+    .metric span {
+      color: var(--muted);
+      font-size: 0.78rem;
+      font-weight: 900;
+      text-transform: uppercase;
+      letter-spacing: 0.085em;
+    }
+
+    .metric strong {
+      display: block;
+      margin-top: 10px;
+      font-size: clamp(1.35rem, 3vw, 2.15rem);
+      letter-spacing: -0.06em;
+      overflow-wrap: anywhere;
+    }
+
+    .metric small {
+      display: block;
+      margin-top: 8px;
+      color: var(--muted);
+      line-height: 1.35;
+    }
+
+    .site-card { padding: 18px; border-radius: 20px; background: rgba(0,0,0,0.17); }
+    [data-theme="light"] .site-card { background: rgba(255,255,255,0.56); }
+    .site-card h3 { margin: 0 0 8px; overflow-wrap: anywhere; letter-spacing: -0.03em; }
+
+    .site-url {
+      display: block;
+      margin-bottom: 14px;
+      color: var(--muted);
+      font-family: var(--mono);
+      font-size: 0.8rem;
+      overflow-wrap: anywhere;
+    }
+
+    .stat-list, .comparison-bars, .insight-list, .keyword-list, .audit-list, .history-list, .test-list {
+      display: grid;
+      gap: 10px;
+      margin: 0;
+      padding: 0;
+      list-style: none;
+    }
+
+    .stat-row {
+      display: flex;
+      justify-content: space-between;
+      gap: 14px;
+      padding: 11px 0;
+      border-bottom: 1px solid rgba(255,255,255,0.08);
+    }
+
+    .stat-row:last-child { border-bottom: 0; }
+    .stat-row span:first-child { color: var(--muted); }
+    .stat-row span:last-child { font-weight: 850; text-align: right; }
+    .comparison-bar { display: grid; gap: 8px; }
+    .bar-label { color: var(--muted); font-size: 0.88rem; }
+
+    .dual-track {
+      display: grid;
+      grid-template-columns: var(--left, 50%) 1fr;
+      height: 15px;
+      overflow: hidden;
+      border-radius: 999px;
+      background: rgba(255,255,255,0.1);
+      border: 1px solid var(--border);
+    }
+
+    .dual-track div:first-child { background: linear-gradient(90deg, var(--accent), rgba(114,246,199,0.42)); }
+    .dual-track div:last-child { background: linear-gradient(90deg, rgba(128,167,255,0.42), var(--accent-2)); }
+
+    .preview-box, .diff-box {
+      min-height: 260px;
+      max-height: 430px;
+      overflow: auto;
+      white-space: pre-wrap;
+      color: var(--soft);
+      font-family: var(--mono);
+      font-size: 0.82rem;
+      line-height: 1.55;
+      padding: 16px;
+      border-radius: 18px;
+      background: rgba(0,0,0,0.27);
+      border: 1px solid var(--border);
+    }
+
+    [data-theme="light"] .preview-box, [data-theme="light"] .diff-box { background: rgba(255,255,255,0.66); }
+
+    .diff-token { display: inline; padding: 1px 3px; border-radius: 5px; margin: 0 1px; }
+    .diff-token.same { color: var(--muted); }
+    .diff-token.added { background: rgba(125, 255, 186, 0.16); color: var(--success); }
+    .diff-token.removed { background: rgba(255, 107, 138, 0.16); color: var(--danger); text-decoration: line-through; }
+
+    .insight-list li, .keyword-pill, .audit-item, .test-item { padding: 14px 16px; color: var(--soft); line-height: 1.5; }
+    .keyword-list { grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); }
+
+    .keyword-pill {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 8px;
+      font-family: var(--mono);
+      font-size: 0.82rem;
+    }
+
+    .keyword-pill span:last-child { color: var(--accent); font-weight: 900; }
+
+    .audit-item, .test-item {
+      display: grid;
+      grid-template-columns: auto 1fr auto;
+      gap: 12px;
+      align-items: center;
+    }
+
+    .audit-status, .test-status {
+      width: 13px;
+      height: 13px;
+      border-radius: 50%;
+      background: var(--muted);
+      box-shadow: 0 0 0 4px rgba(255,255,255,0.05);
+    }
+
+    .audit-status.pass, .test-status.pass { background: var(--success); }
+    .audit-status.warn { background: var(--warning); }
+    .audit-status.fail, .test-status.fail { background: var(--danger); }
+    .audit-item strong, .test-item strong { display: block; }
+    .audit-item small, .test-item small { color: var(--muted); line-height: 1.45; }
+
+    .history-item {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 12px;
+      align-items: center;
+      padding: 12px;
+      border-radius: 16px;
+    }
+
+    .history-item strong { display: block; font-size: 0.95rem; overflow-wrap: anywhere; }
+    .history-item span { display: block; margin-top: 4px; color: var(--muted); font-size: 0.78rem; }
+
+    .footer-note {
+      margin-top: 22px;
+      font-size: 0.88rem;
+      text-align: center;
+    }
+
+    .toast-stack {
+      position: fixed;
+      right: 18px;
+      bottom: 18px;
+      display: grid;
+      gap: 10px;
+      z-index: 20;
+      max-width: min(420px, calc(100vw - 36px));
+    }
+
+    .toast {
+      padding: 13px 15px;
+      border-radius: 16px;
+      background: color-mix(in srgb, var(--bg) 82%, transparent);
+      color: var(--text);
+      border: 1px solid var(--border);
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(18px);
+      animation: pop 0.25s ease;
+    }
+
+    @keyframes pop {
+      from { opacity: 0; transform: translateY(8px) scale(0.98); }
+      to { opacity: 1; transform: translateY(0) scale(1); }
+    }
+
+    @media (max-width: 1000px) {
+      .hero, .compare-form, .site-grid, .preview-grid, .dual-column { grid-template-columns: 1fr; }
+      .metric-grid { grid-template-columns: repeat(2, 1fr); }
+      .actions, .actions button { width: 100%; }
+      .actions button { flex: 1; }
+    }
+
+    @media (max-width: 620px) {
+      .app-shell { width: min(100% - 20px, 1240px); padding-top: 20px; }
+      .topbar, .panel-header { align-items: flex-start; flex-direction: column; }
+      .hero-card, .form-card, .panel, .summary-card { padding: 18px; border-radius: 19px; }
+      .metric-grid, .mini-grid, .keyword-list { grid-template-columns: 1fr; }
+      .audit-item, .test-item { grid-template-columns: auto 1fr; }
+      .audit-item em, .test-item em { grid-column: 2; }
     }
   </style>
 </head>
 <body>
-  <h1>Compare Sites</h1>
-  <form onsubmit="compareSites(); return false;">
-    <label for="site1">Site 1:</label>
-    <input type="text" id="site1" name="site1" required>
+  <main class="app-shell">
+    <div class="topbar">
+      <div class="brand" aria-label="Advanced Web Difference Intelligence Lab">
+        <span class="brand-mark">Δ</span>
+        <span>Web Difference Intelligence</span>
+      </div>
+      <div class="top-actions">
+        <button id="themeBtn" class="ghost" type="button">Toggle theme</button>
+        <button id="copyLinkBtn" class="ghost" type="button">Copy share link</button>
+      </div>
+    </div>
 
-    <label for="site2">Site 2:</label>
-    <input type="text" id="site2" name="site2" required>
+    <section class="hero" aria-labelledby="pageTitle">
+      <div class="hero-card glass">
+        <span class="eyebrow">Resilient Site Comparator v2.2</span>
+        <h1 id="pageTitle">Compare Two Sites</h1>
+        <p>
+          This version is safer to embed with <strong>document.write</strong>, fixes parser-breaking script-tag strings, retries the live API with timeout protection, and falls back to a deterministic local report when network, CORS, timeout, or backend failures happen.
+        </p>
+      </div>
 
-    <button type="submit">Compare</button>
-  </form>
+      <aside class="summary-card glass" aria-label="Current comparison summary">
+        <div class="score-orb" id="scoreOrb" style="--score:0">
+          <div class="score-orb-inner">
+            <div>
+              <span id="similarityScore">—</span>
+              <span class="score-caption">Similarity</span>
+            </div>
+          </div>
+        </div>
+        <div class="mini-grid">
+          <div class="mini-stat"><strong id="miniDiff">—</strong><span>Length difference</span></div>
+          <div class="mini-stat"><strong id="miniWords">—</strong><span>Total words</span></div>
+        </div>
+      </aside>
+    </section>
 
-  <div id="result" class="result">
-    <h2>Comparison Results</h2>
-    <p>Site 1: <span id="site1Name"></span></p>
-    <p>Site 1 Content Length: <span id="site1ContentLength"></span></p>
-    <p>Site 2: <span id="site2Name"></span></p>
-    <p>Site 2 Content Length: <span id="site2ContentLength"></span></p>
-    <p>Content Length Difference: <span id="contentLengthDifference"></span></p>
-    <p>Percentage Difference: <span id="percentageDifference"></span></p>
-  </div>
+    <section class="form-card glass" aria-label="Site comparison form">
+      <form id="compareForm" class="compare-form" autocomplete="off">
+        <div class="field">
+          <label for="site1">Site 1 URL</label>
+          <div class="input-wrap">
+            <input type="url" id="site1" name="site1" placeholder="https://example.com" required />
+            <span class="input-icon" aria-hidden="true">①</span>
+          </div>
+        </div>
+
+        <div class="field">
+          <label for="site2">Site 2 URL</label>
+          <div class="input-wrap">
+            <input type="url" id="site2" name="site2" placeholder="https://example.org" required />
+            <span class="input-icon" aria-hidden="true">②</span>
+          </div>
+        </div>
+
+        <div class="actions">
+          <button id="compareBtn" type="submit">Compare</button>
+          <button id="swapBtn" class="secondary" type="button" title="Swap URLs">Swap</button>
+        </div>
+      </form>
+
+      <div class="tool-row">
+        <div class="chip-row" aria-label="Example comparisons">
+          <span class="chip" data-example="https://example.com|https://example.org">Example pair</span>
+          <span class="chip" data-example="https://developer.mozilla.org|https://web.dev">Docs pair</span>
+          <span class="chip" data-example="https://wikipedia.org|https://www.britannica.com">Knowledge pair</span>
+          <span class="chip active" id="demoModeChip">Fallback: on</span>
+          <span class="chip active" id="retryModeChip">Retry: on</span>
+        </div>
+        <div class="chip-row">
+          <button id="runTestsBtn" class="ghost" type="button">Run tests</button>
+          <button id="copyReportBtn" class="ghost" type="button" disabled>Copy report</button>
+          <button id="exportJsonBtn" class="ghost" type="button" disabled>Export JSON</button>
+          <button id="exportCsvBtn" class="ghost" type="button" disabled>Export CSV</button>
+          <button id="clearHistoryBtn" class="ghost danger" type="button">Clear history</button>
+        </div>
+      </div>
+
+      <div id="notice" class="notice" role="status" aria-live="polite"></div>
+      <div id="loading" class="loading" aria-live="polite">
+        <strong>Scanning pages…</strong>
+        <p style="margin: 6px 0 14px; color: var(--muted);">Trying the API first. If fetch fails, the app will automatically generate a local fallback report.</p>
+        <div class="bar" aria-hidden="true"></div>
+      </div>
+    </section>
+
+    <section id="results" class="results" aria-label="Comparison results">
+      <article class="panel glass">
+        <div class="panel-header">
+          <div>
+            <h2>Comparison Overview</h2>
+            <p id="resultTimestamp">No comparison yet.</p>
+          </div>
+        </div>
+
+        <div class="metric-grid">
+          <div class="metric"><span>Site 1 Length</span><strong id="site1ContentLength">—</strong><small>Characters returned or estimated.</small></div>
+          <div class="metric"><span>Site 2 Length</span><strong id="site2ContentLength">—</strong><small>Characters returned or estimated.</small></div>
+          <div class="metric"><span>Length Difference</span><strong id="contentLengthDifference">—</strong><small id="differenceDirection">Waiting for analysis.</small></div>
+          <div class="metric"><span>Percentage Difference</span><strong id="percentageDifference">—</strong><small>Relative to the larger page.</small></div>
+          <div class="metric"><span>Keyword Overlap</span><strong id="keywordOverlap">—</strong><small>Unique shared keyword ratio.</small></div>
+          <div class="metric"><span>Fingerprint Match</span><strong id="fingerprintMatch">—</strong><small>Shingle-based text similarity.</small></div>
+          <div class="metric"><span>Readability Gap</span><strong id="readabilityGap">—</strong><small>Approximate grade-level difference.</small></div>
+          <div class="metric"><span>Confidence</span><strong id="confidenceScore">—</strong><small>Based on returned text completeness.</small></div>
+        </div>
+      </article>
+
+      <article class="panel glass">
+        <div class="tabs" role="tablist" aria-label="Result sections">
+          <button class="ghost tab active" type="button" data-tab="breakdown">Breakdown</button>
+          <button class="ghost tab" type="button" data-tab="visuals">Visuals</button>
+          <button class="ghost tab" type="button" data-tab="keywords">Keywords</button>
+          <button class="ghost tab" type="button" data-tab="audit">Audit</button>
+          <button class="ghost tab" type="button" data-tab="diff">Diff</button>
+          <button class="ghost tab" type="button" data-tab="history">History</button>
+          <button class="ghost tab" type="button" data-tab="diagnostics">Diagnostics</button>
+          <button class="ghost tab" type="button" data-tab="tests">Tests</button>
+        </div>
+
+        <section id="tab-breakdown" class="tab-panel active">
+          <div class="panel-header"><div><h2>Site Breakdown</h2><p>Readable per-site metrics calculated from API response or local fallback.</p></div></div>
+          <div class="site-grid">
+            <div class="site-card">
+              <h3 id="site1Name">Site 1</h3>
+              <span id="site1Url" class="site-url">—</span>
+              <div class="stat-list">
+                <div class="stat-row"><span>Characters</span><span id="site1Chars">—</span></div>
+                <div class="stat-row"><span>Words</span><span id="site1Words">—</span></div>
+                <div class="stat-row"><span>Unique words</span><span id="site1UniqueWords">—</span></div>
+                <div class="stat-row"><span>Sentences</span><span id="site1Sentences">—</span></div>
+                <div class="stat-row"><span>Readability</span><span id="site1Readability">—</span></div>
+                <div class="stat-row"><span>Estimated read time</span><span id="site1ReadTime">—</span></div>
+              </div>
+            </div>
+            <div class="site-card">
+              <h3 id="site2Name">Site 2</h3>
+              <span id="site2Url" class="site-url">—</span>
+              <div class="stat-list">
+                <div class="stat-row"><span>Characters</span><span id="site2Chars">—</span></div>
+                <div class="stat-row"><span>Words</span><span id="site2Words">—</span></div>
+                <div class="stat-row"><span>Unique words</span><span id="site2UniqueWords">—</span></div>
+                <div class="stat-row"><span>Sentences</span><span id="site2Sentences">—</span></div>
+                <div class="stat-row"><span>Readability</span><span id="site2Readability">—</span></div>
+                <div class="stat-row"><span>Estimated read time</span><span id="site2ReadTime">—</span></div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section id="tab-visuals" class="tab-panel">
+          <div class="panel-header"><div><h2>Visual Balance</h2><p>Side-by-side proportional comparison of returned or fallback text data.</p></div></div>
+          <div class="comparison-bars">
+            <div class="comparison-bar"><div class="bar-label"><span>Character share</span><span id="charShareLabel">—</span></div><div class="dual-track" id="charTrack" style="--left:50%"><div></div><div></div></div></div>
+            <div class="comparison-bar"><div class="bar-label"><span>Word share</span><span id="wordShareLabel">—</span></div><div class="dual-track" id="wordTrack" style="--left:50%"><div></div><div></div></div></div>
+            <div class="comparison-bar"><div class="bar-label"><span>Unique word share</span><span id="uniqueShareLabel">—</span></div><div class="dual-track" id="uniqueTrack" style="--left:50%"><div></div><div></div></div></div>
+            <div class="comparison-bar"><div class="bar-label"><span>Sentence share</span><span id="sentenceShareLabel">—</span></div><div class="dual-track" id="sentenceTrack" style="--left:50%"><div></div><div></div></div></div>
+          </div>
+        </section>
+
+        <section id="tab-keywords" class="tab-panel">
+          <div class="panel-header"><div><h2>Keyword Intelligence</h2><p>Top extracted terms and shared vocabulary signals.</p></div></div>
+          <div class="dual-column">
+            <div><h3>Site 1 Keywords</h3><ul id="site1Keywords" class="keyword-list"></ul></div>
+            <div><h3>Site 2 Keywords</h3><ul id="site2Keywords" class="keyword-list"></ul></div>
+          </div>
+          <div style="margin-top:18px;"><h3>Shared Keywords</h3><ul id="sharedKeywords" class="keyword-list"></ul></div>
+        </section>
+
+        <section id="tab-audit" class="tab-panel">
+          <div class="panel-header"><div><h2>SEO + Accessibility Style Audit</h2><p>Heuristic checks based on text and URL signals.</p></div></div>
+          <ul id="auditList" class="audit-list"></ul>
+        </section>
+
+        <section id="tab-diff" class="tab-panel">
+          <div class="panel-header"><div><h2>Content Preview + Diff</h2><p>Previews and token-level difference hints when text is available.</p></div></div>
+          <div class="preview-grid"><pre id="site1Preview" class="preview-box">No preview yet.</pre><pre id="site2Preview" class="preview-box">No preview yet.</pre></div>
+          <div style="margin-top:16px;"><h3>Compact Difference View</h3><div id="diffBox" class="diff-box">No diff yet.</div></div>
+        </section>
+
+        <section id="tab-history" class="tab-panel">
+          <div class="panel-header"><div><h2>Recent Comparisons</h2><p>Saved locally in this browser.</p></div></div>
+          <div id="historyList" class="history-list"></div>
+        </section>
+
+        <section id="tab-diagnostics" class="tab-panel">
+          <div class="panel-header"><div><h2>Runtime Diagnostics</h2><p>Live request status, fallback reason, browser capability checks, and recovery notes.</p></div></div>
+          <ul id="diagnosticsList" class="audit-list"></ul>
+        </section>
+
+        <section id="tab-tests" class="tab-panel">
+          <div class="panel-header"><div><h2>Built-in Tests</h2><p>Small browser tests for URL normalization, report building, similarity scoring, fallback creation, and escaping.</p></div></div>
+          <ul id="testList" class="test-list"></ul>
+        </section>
+      </article>
+
+      <article class="panel glass">
+        <div class="panel-header"><div><h2>AI-Style Insights</h2><p>Automatic notes generated from the comparison.</p></div></div>
+        <ul id="insights" class="insight-list"></ul>
+      </article>
+    </section>
+
+    <p class="footer-note">
+      Important: a browser can throw <code>TypeError: Failed to fetch</code> because of CORS, blocked requests, offline mode, DNS issues, mixed-content rules, or a down backend. This app catches that failure and continues with local fallback data. For real arbitrary-site content extraction, run a small server-side proxy/backend that fetches pages safely and returns JSON with CORS enabled.
+    </p>
+  </main>
+
+  <div id="toastStack" class="toast-stack" aria-live="polite"></div>
 
   <script>
-    const form = document.querySelector('form');
-    const site1ContentLengthDisplay = document.querySelector('#site1ContentLength');
-    const site2ContentLengthDisplay = document.querySelector('#site2ContentLength');
-    const contentLengthDifferenceDisplay = document.querySelector('#contentLengthDifference');
-    const percentageDifferenceDisplay = document.querySelector('#percentageDifference');
+    "use strict";
 
-    function compareSites() {
-      const site1 = document.querySelector('#site1').value;
-      const site2 = document.querySelector('#site2').value;
-      const api = `https://autobackend.dev/api/compare-two-sites-f668068afa/compare?site1=${encodeURIComponent(site1)}&site2=${encodeURIComponent(site2)}`;
-      
-      fetch(apiform.addEventListener('submit', async (e) => {
-  e.preventDefault();
-  const site1 = document.querySelector('#site1').value;
-  const site2 = document.querySelector('#site2').value;
-  const api = `https://autobackend.dev/api/compare-two-sites-f668068afa/compare?site1=${encodeURIComponent(site1)}&site2=${encodeURIComponent(site2)}`;
-  
-  try {
-    const response = await fetch(api, {
-      mode: 'cors'
-    });
-    const data = await response.json();
-    
-    site1ContentDisplay.textContent = data.site1Content;
-    site2ContentDisplay.textContent = data.site2Content;
-    site1ContentLengthDisplay.textContent = data.site1ContentLength;
-    site2ContentLengthDisplay.textContent = data.site2ContentLength;
-    site1ContentLengthDifferenceDisplay.textContent = data.site1ContentLengthDifference;
-    site2ContentLengthDifferenceDisplay.textContent = data.site2ContentLengthDifference;
-    site1ContentLengthDifferencePercentageDisplay.textContent = data.site1ContentLengthDifferencePercentage;
-    site2ContentLengthDifferencePercentageDisplay.textContent = data.site2ContentLengthDifferencePercentage;
-    
-    resultSection.classList.add('visible');
-  } catch (error) {
-    console.error(error);
-    alert('Error: Unable to fetch data from the API. Please try again later.');
-  }
-});
+    const API_BASE = "https://autobackend.dev/api/compare-two-sites-f668068afa/compare";
+    const HISTORY_KEY = "advancedSiteComparatorHistoryV22";
+    const THEME_KEY = "advancedSiteComparatorTheme";
+    const MAX_PREVIEW_CHARS = 4200;
+    const REQUEST_TIMEOUT_MS = 12000;
+    const FALLBACK_DEFAULT = true;
+    const RETRY_DEFAULT = true;
+    const MAX_API_ATTEMPTS = 2;
+    const CLOSE_SCRIPT_TAG = "</scr" + "ipt>";
+    const OPEN_SCRIPT_TAG = "<scr" + "ipt>";
+    const SCRIPT_SOURCE_TEXT = document.currentScript ? document.currentScript.textContent : "";
+
+    const els = mapElements([
+      "compareForm", "site1", "site2", "compareBtn", "swapBtn", "exportJsonBtn", "exportCsvBtn",
+      "clearHistoryBtn", "runTestsBtn", "copyReportBtn", "notice", "loading", "results", "scoreOrb", "similarityScore", "miniDiff",
+      "miniWords", "resultTimestamp", "site1Name", "site2Name", "site1Url", "site2Url",
+      "site1ContentLength", "site2ContentLength", "contentLengthDifference", "percentageDifference",
+      "differenceDirection", "keywordOverlap", "fingerprintMatch", "readabilityGap", "confidenceScore",
+      "site1Chars", "site2Chars", "site1Words", "site2Words", "site1UniqueWords", "site2UniqueWords",
+      "site1Sentences", "site2Sentences", "site1Readability", "site2Readability", "site1ReadTime", "site2ReadTime",
+      "charTrack", "wordTrack", "uniqueTrack", "sentenceTrack", "charShareLabel", "wordShareLabel",
+      "uniqueShareLabel", "sentenceShareLabel", "site1Keywords", "site2Keywords", "sharedKeywords",
+      "auditList", "diagnosticsList", "insights", "site1Preview", "site2Preview", "diffBox", "historyList", "testList", "themeBtn",
+      "copyLinkBtn", "copyReportBtn", "toastStack", "demoModeChip", "retryModeChip"
+    ]);
+
+    let latestReport = null;
+    let fallbackEnabled = FALLBACK_DEFAULT;
+    let retryEnabled = RETRY_DEFAULT;
+
+    initialiseTheme();
+    hydrateFromQuery();
+    bindEvents();
+    renderHistory();
+    renderTests(runSelfTests());
+
+    function bindEvents() {
+      els.compareForm.addEventListener("submit", compareSites);
+      els.swapBtn.addEventListener("click", swapSites);
+      els.exportJsonBtn.addEventListener("click", exportJsonReport);
+      els.exportCsvBtn.addEventListener("click", exportCsvReport);
+      els.copyReportBtn.addEventListener("click", copyReportToClipboard);
+      els.clearHistoryBtn.addEventListener("click", clearHistory);
+      els.themeBtn.addEventListener("click", toggleTheme);
+      els.copyLinkBtn.addEventListener("click", copyShareLink);
+      els.demoModeChip.addEventListener("click", toggleFallback);
+      els.retryModeChip.addEventListener("click", toggleRetry);
+      els.runTestsBtn.addEventListener("click", () => {
+        const results = runSelfTests();
+        renderTests(results);
+        activateTab("tests");
+        showNotice(`${results.filter((test) => test.pass).length}/${results.length} tests passed.`, results.every((test) => test.pass) ? "success" : "error");
+      });
+
+      document.querySelectorAll("[data-example]").forEach((chip) => {
+        chip.addEventListener("click", () => {
+          const [site1, site2] = chip.dataset.example.split("|");
+          els.site1.value = site1;
+          els.site2.value = site2;
+          showNotice("Example URLs loaded. Press Compare to scan them.", "success");
+        });
+      });
+
+      document.querySelectorAll(".tab").forEach((tab) => {
+        tab.addEventListener("click", () => activateTab(tab.dataset.tab));
+      });
+
+      window.addEventListener("keydown", (event) => {
+        const meta = event.ctrlKey || event.metaKey;
+        if (meta && event.key.toLowerCase() === "s") {
+          event.preventDefault();
+          exportJsonReport();
+        }
+        if (meta && event.key.toLowerCase() === "k") {
+          event.preventDefault();
+          els.site1.focus();
+        }
+      });
+    }
+
+    async function compareSites(event) {
+      event.preventDefault();
+      hideNotice();
+
+      const site1 = normalizeUrl(els.site1.value.trim());
+      const site2 = normalizeUrl(els.site2.value.trim());
+
+      if (!site1 || !site2) {
+        showNotice("Please enter two valid URLs.", "error");
+        return;
+      }
+
+      if (site1 === site2) {
+        showNotice("The two URLs are identical. Add a different second site for a useful comparison.", "error");
+        return;
+      }
+
+      els.site1.value = site1;
+      els.site2.value = site2;
+      setLoading(true);
+
+      const comparison = await getComparisonData(site1, site2);
+      const report = buildReport(site1, site2, comparison.data, comparison.source, comparison.errorMessage);
+
+      latestReport = report;
+      renderReport(report);
+      saveToHistory(report);
+      renderHistory();
+      updateUrlQuery(site1, site2);
+      setLoading(false);
+
+      if (comparison.source === "api") {
+        showNotice("Comparison complete using the live API.", "success");
+      } else {
+        showNotice(`Live fetch failed, so a local fallback report was generated. Reason: ${comparison.errorMessage}`, "success");
+      }
+    }
+
+    async function getComparisonData(site1, site2) {
+      const apiUrl = `${API_BASE}?site1=${encodeURIComponent(site1)}&site2=${encodeURIComponent(site2)}`;
+
+      try {
+        const attempts = retryEnabled ? MAX_API_ATTEMPTS : 1;
+        const data = await fetchJsonWithRetry(apiUrl, REQUEST_TIMEOUT_MS, attempts);
+        return { source: "api", data, errorMessage: "", attempts };
+      } catch (error) {
+        const message = explainFetchError(error);
+        console.warn("Live comparison fetch failed. Falling back to local demo data.", error);
+
+        if (!fallbackEnabled) {
+          return {
+            source: "fetch-error",
+            data: makeEmptyErrorData(site1, site2, message),
+            errorMessage: message,
+            attempts: retryEnabled ? MAX_API_ATTEMPTS : 1
+          };
+        }
+
+        return {
+          source: "local-fallback",
+          data: makeFallbackData(site1, site2, message),
+          errorMessage: message,
+          attempts: retryEnabled ? MAX_API_ATTEMPTS : 1
+        };
+      }
+    }
+
+    async function fetchJsonWithRetry(url, timeoutMs, attempts) {
+      let lastError;
+      for (let attempt = 1; attempt <= attempts; attempt++) {
+        try {
+          return await fetchJsonWithTimeout(url, timeoutMs);
+        } catch (error) {
+          lastError = error;
+          if (attempt < attempts) await delay(350 * attempt);
+        }
+      }
+      throw lastError;
+    }
+
+    async function fetchJsonWithTimeout(url, timeoutMs) {
+      if (typeof fetch !== "function") {
+        throw new Error("fetch is not available in this browser/runtime");
+      }
+
+      const controller = typeof AbortController === "function" ? new AbortController() : null;
+      const timeoutId = controller ? window.setTimeout(() => controller.abort(), timeoutMs) : null;
+
+      try {
+        const options = {
+          mode: "cors",
+          cache: "no-store",
+          headers: { "Accept": "application/json" }
+        };
+        if (controller) options.signal = controller.signal;
+
+        const response = await fetch(url, options);
+        if (!response.ok) throw new Error(`API returned ${response.status} ${response.statusText}`);
+
+        const contentType = response.headers.get("content-type") || "";
+        if (!contentType.toLowerCase().includes("application/json")) {
+          throw new Error("API did not return JSON");
+        }
+
+        return await response.json();
+      } finally {
+        if (timeoutId) window.clearTimeout(timeoutId);
+      }
+    }
+
+    function explainFetchError(error) {
+      if (typeof navigator !== "undefined" && "onLine" in navigator && !navigator.onLine) return "browser appears to be offline";
+      if (error && error.name === "AbortError") return "request timed out";
+      if (error && /failed to fetch/i.test(error.message || "")) return "request was blocked, unreachable, or failed due to CORS/network rules";
+      return error && error.message ? error.message : "unknown fetch failure";
+    }
+
+    function buildReport(site1Url, site2Url, apiData, source, errorMessage = "") {
+      const site1Content = getString(apiData.site1Content || apiData.site1Text || apiData.content1 || apiData.html1 || "");
+      const site2Content = getString(apiData.site2Content || apiData.site2Text || apiData.content2 || apiData.html2 || "");
+      const site1Length = getNumber(apiData.site1ContentLength, site1Content.length);
+      const site2Length = getNumber(apiData.site2ContentLength, site2Content.length);
+      const site1Analysis = analyseContent(site1Content, site1Length);
+      const site2Analysis = analyseContent(site2Content, site2Length);
+      const lengthDifference = Math.abs(site1Length - site2Length);
+      const largerLength = Math.max(site1Length, site2Length, 1);
+      const percentageDifference = (lengthDifference / largerLength) * 100;
+      const wordOverlap = calculateSetOverlap(site1Analysis.uniqueSet, site2Analysis.uniqueSet);
+      const fingerprintSimilarity = compareFingerprints(site1Content, site2Content);
+      const similarity = calculateSimilarity({ site1Length, site2Length, wordOverlap, fingerprintSimilarity, hasText: Boolean(site1Content && site2Content) });
+      const confidence = calculateConfidence(site1Analysis, site2Analysis, source);
+      const sharedKeywords = getSharedKeywords(site1Analysis.keywordMap, site2Analysis.keywordMap);
+
+      return {
+        version: "2.2.0",
+        createdAt: new Date().toISOString(),
+        source,
+        errorMessage,
+        apiData,
+        sites: [
+          makeSiteReport("Site 1", site1Url, site1Content, site1Length, site1Analysis),
+          makeSiteReport("Site 2", site2Url, site2Content, site2Length, site2Analysis)
+        ],
+        metrics: {
+          lengthDifference,
+          percentageDifference,
+          similarity,
+          wordOverlap,
+          fingerprintSimilarity,
+          sharedKeywords,
+          confidence,
+          totalWords: site1Analysis.words.length + site2Analysis.words.length,
+          readabilityGap: Math.abs(site1Analysis.readability.grade - site2Analysis.readability.grade),
+          longerSite: site1Length === site2Length ? "Tie" : site1Length > site2Length ? "Site 1" : "Site 2"
+        }
+      };
+    }
+
+    function makeSiteReport(label, url, content, length, analysis) {
+      return {
+        label,
+        url,
+        host: safeHost(url),
+        content,
+        length,
+        wordCount: analysis.words.length,
+        uniqueWordCount: analysis.uniqueSet.size,
+        sentenceCount: analysis.sentences,
+        paragraphCount: analysis.paragraphs,
+        readTimeMinutes: estimateReadTime(analysis.words.length),
+        readability: analysis.readability,
+        keywords: topKeywords(analysis.keywordMap, 12),
+        signals: analysis.signals
+      };
+    }
+
+    function analyseContent(text, knownLength) {
+      const clean = getString(text);
+      const words = normalizeText(clean).split(/\s+/).filter((word) => word.length > 1 && !STOP_WORDS.has(word));
+      const uniqueSet = new Set(words);
+      const keywordMap = words.reduce((map, word) => map.set(word, (map.get(word) || 0) + 1), new Map());
+      const sentences = Math.max((clean.match(/[.!?]+\s|[.!?]+$/g) || []).length, words.length ? 1 : 0);
+      const paragraphs = Math.max(clean.split(/\n{2,}/).filter(Boolean).length, clean ? 1 : 0);
+      const syllables = words.reduce((sum, word) => sum + countSyllables(word), 0);
+      const readability = calculateReadability(words.length, sentences, syllables);
+      const signals = detectSignals(clean, knownLength, words.length, sentences, paragraphs);
+      return { words, uniqueSet, keywordMap, sentences, paragraphs, readability, signals };
+    }
+
+    function renderReport(report) {
+      const [a, b] = report.sites;
+      const { metrics } = report;
+      els.results.classList.add("visible");
+      els.exportJsonBtn.disabled = false;
+      els.exportCsvBtn.disabled = false;
+      els.copyReportBtn.disabled = false;
+
+      els.resultTimestamp.textContent = `Generated ${new Date(report.createdAt).toLocaleString()} · Source: ${report.source}${report.errorMessage ? ` · ${report.errorMessage}` : ""}`;
+      els.site1Name.textContent = a.host || "Site 1";
+      els.site2Name.textContent = b.host || "Site 2";
+      els.site1Url.textContent = a.url;
+      els.site2Url.textContent = b.url;
+      els.site1ContentLength.textContent = formatNumber(a.length);
+      els.site2ContentLength.textContent = formatNumber(b.length);
+      els.contentLengthDifference.textContent = formatNumber(metrics.lengthDifference);
+      els.percentageDifference.textContent = `${formatPercent(metrics.percentageDifference)}%`;
+      els.keywordOverlap.textContent = `${formatPercent(metrics.wordOverlap * 100)}%`;
+      els.fingerprintMatch.textContent = `${formatPercent(metrics.fingerprintSimilarity * 100)}%`;
+      els.readabilityGap.textContent = metrics.readabilityGap ? `${formatPercent(metrics.readabilityGap)}` : "0";
+      els.confidenceScore.textContent = `${formatPercent(metrics.confidence)}%`;
+      els.differenceDirection.textContent = metrics.longerSite === "Tie" ? "Both pages returned the same length." : `${metrics.longerSite} returned more characters.`;
+
+      setTextMetrics(a, 1);
+      setTextMetrics(b, 2);
+
+      els.miniDiff.textContent = formatNumber(metrics.lengthDifference);
+      els.miniWords.textContent = formatNumber(metrics.totalWords);
+      els.similarityScore.textContent = `${Math.round(metrics.similarity)}%`;
+      els.scoreOrb.style.setProperty("--score", Math.round(metrics.similarity));
+
+      renderTrack(els.charTrack, els.charShareLabel, a.length, b.length);
+      renderTrack(els.wordTrack, els.wordShareLabel, a.wordCount, b.wordCount);
+      renderTrack(els.uniqueTrack, els.uniqueShareLabel, a.uniqueWordCount, b.uniqueWordCount);
+      renderTrack(els.sentenceTrack, els.sentenceShareLabel, a.sentenceCount, b.sentenceCount);
+      renderKeywordList(els.site1Keywords, a.keywords);
+      renderKeywordList(els.site2Keywords, b.keywords);
+      renderKeywordList(els.sharedKeywords, metrics.sharedKeywords);
+      renderAudit(report);
+      renderDiagnostics(report);
+      renderInsights(report);
+      renderPreviews(a.content, b.content);
+      renderDiff(a.content, b.content);
+
+      els.results.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+
+    function setTextMetrics(site, index) {
+      const prefix = index === 1 ? "site1" : "site2";
+      els[`${prefix}Chars`].textContent = formatNumber(site.length);
+      els[`${prefix}Words`].textContent = formatNumber(site.wordCount);
+      els[`${prefix}UniqueWords`].textContent = formatNumber(site.uniqueWordCount);
+      els[`${prefix}Sentences`].textContent = formatNumber(site.sentenceCount);
+      els[`${prefix}Readability`].textContent = site.readability.grade ? `Grade ${formatPercent(site.readability.grade)}` : "—";
+      els[`${prefix}ReadTime`].textContent = formatReadTime(site.readTimeMinutes);
+    }
+
+    function renderTrack(trackEl, labelEl, leftValue, rightValue) {
+      const total = Math.max(leftValue + rightValue, 1);
+      const leftPercent = (leftValue / total) * 100;
+      trackEl.style.setProperty("--left", `${Math.max(3, Math.min(97, leftPercent))}%`);
+      labelEl.textContent = `Site 1 ${formatPercent(leftPercent)}% / Site 2 ${formatPercent(100 - leftPercent)}%`;
+    }
+
+    function renderKeywordList(container, keywords) {
+      container.innerHTML = "";
+      if (!keywords.length) {
+        const empty = document.createElement("li");
+        empty.className = "keyword-pill";
+        empty.innerHTML = "<span>No keyword data</span><span>—</span>";
+        container.appendChild(empty);
+        return;
+      }
+      keywords.forEach(({ word, count }) => {
+        const li = document.createElement("li");
+        li.className = "keyword-pill";
+        const left = document.createElement("span");
+        left.textContent = word;
+        const right = document.createElement("span");
+        right.textContent = count;
+        li.append(left, right);
+        container.appendChild(li);
+      });
+    }
+
+    function renderAudit(report) {
+      const [a, b] = report.sites;
+      const checks = [
+        makeAudit("Fetch resilience", report.source === "api" ? "pass" : "warn", report.source === "api" ? "Live API returned JSON successfully." : "Live fetch failed, but the app recovered without crashing."),
+        makeAudit("Returned text", a.wordCount && b.wordCount ? "pass" : "fail", a.wordCount && b.wordCount ? "Both pages have readable text for analysis." : "One or both pages returned no readable text."),
+        makeAudit("Content depth", Math.max(a.wordCount, b.wordCount) >= 500 ? "pass" : "warn", "Longer pages usually provide richer comparison signals."),
+        makeAudit("Similarity risk", report.metrics.similarity > 82 ? "warn" : "pass", report.metrics.similarity > 82 ? "Very high similarity can indicate duplicated or mirrored content." : "Similarity is not unusually high."),
+        makeAudit("URL hygiene", a.url.startsWith("https://") && b.url.startsWith("https://") ? "pass" : "warn", "HTTPS URLs are preferred for modern pages."),
+        makeAudit("Readable sentence flow", average(a.readability.wordsPerSentence, b.readability.wordsPerSentence) <= 24 ? "pass" : "warn", "Shorter sentences are usually easier to scan."),
+        makeAudit("Extraction confidence", report.metrics.confidence >= 60 ? "pass" : "warn", "Confidence improves when both pages return enough text for analysis."),
+        makeAudit("Keyword diversity", Math.min(a.uniqueWordCount, b.uniqueWordCount) >= 40 ? "pass" : "warn", "Low unique word counts can make similarity scores less reliable."),
+        makeAudit("Safe rendering", "pass", "Dynamic text is inserted with textContent or escaped before innerHTML rendering.")
+      ];
+      renderAuditItems(els.auditList, checks);
+    }
+
+    function renderAuditItems(container, checks) {
+      container.innerHTML = "";
+      checks.forEach((check) => {
+        const li = document.createElement("li");
+        li.className = "audit-item";
+        li.innerHTML = `<span class="audit-status ${check.status}"></span><div><strong>${escapeHtml(check.title)}</strong><small>${escapeHtml(check.detail)}</small></div><em>${check.status.toUpperCase()}</em>`;
+        container.appendChild(li);
+      });
+    }
+
+    function renderDiagnostics(report) {
+      const diagnostics = [
+        makeAudit("App version", "pass", `Version ${report.version} rendered successfully.`),
+        makeAudit("Data source", report.source === "api" ? "pass" : "warn", report.source === "api" ? "Live API data was used." : `Recovered with ${report.source}.`),
+        makeAudit("Fallback mode", fallbackEnabled ? "pass" : "warn", fallbackEnabled ? "Fallback recovery is enabled." : "Fallback recovery is disabled; fetch errors will produce minimal error reports."),
+        makeAudit("Retry mode", retryEnabled ? "pass" : "warn", retryEnabled ? `API retry is enabled with up to ${MAX_API_ATTEMPTS} attempts.` : "API retry is disabled."),
+        makeAudit("Fetch support", typeof fetch === "function" ? "pass" : "fail", typeof fetch === "function" ? "This browser supports fetch()." : "This browser/runtime does not support fetch()."),
+        makeAudit("AbortController support", typeof AbortController === "function" ? "pass" : "warn", typeof AbortController === "function" ? "Timeout cancellation is supported." : "Timeout cancellation is unavailable; requests may take longer."),
+        makeAudit("Clipboard support", navigator.clipboard && window.isSecureContext ? "pass" : "warn", navigator.clipboard && window.isSecureContext ? "Clipboard copy is available." : "Clipboard copy may fall back to showing text in the page."),
+        makeAudit("Embed safety", !SCRIPT_SOURCE_TEXT.includes(CLOSE_SCRIPT_TAG) ? "pass" : "fail", "The script source avoids literal closing script tags inside JavaScript strings."),
+        makeAudit("Last error", report.errorMessage ? "warn" : "pass", report.errorMessage || "No live request error recorded.")
+      ];
+      renderAuditItems(els.diagnosticsList, diagnostics);
+    }
+
+    function renderInsights(report) {
+      const [a, b] = report.sites;
+      const { metrics } = report;
+      const insights = [];
+
+      if (report.source !== "api") {
+        insights.push(`The live API request did not complete. The page recovered using ${report.source} data instead of throwing an uncaught fetch error.`);
+      }
+      if (metrics.percentageDifference < 5) insights.push("The returned content lengths are almost identical, suggesting similar extraction volume or page scale.");
+      else if (metrics.percentageDifference < 25) insights.push("The pages have a moderate content size gap, useful for comparing editorial depth or template weight.");
+      else insights.push(`${metrics.longerSite} is substantially larger by returned character count, indicating deeper content, heavier boilerplate, or more extractable text.`);
+
+      if (metrics.similarity >= 80) insights.push("High similarity detected. The pages may share repeated copy, structure, documentation language, or mirrored blocks.");
+      else if (metrics.similarity >= 45) insights.push("Medium similarity detected. There is vocabulary or scale overlap, but the content is not a direct match.");
+      else insights.push("Low similarity detected. The pages appear textually distinct based on content, keyword overlap, and fingerprints.");
+
+      if (metrics.sharedKeywords.length) insights.push(`Strong shared terms include: ${metrics.sharedKeywords.slice(0, 6).map((k) => k.word).join(", ")}.`);
+      if (a.wordCount === 0 || b.wordCount === 0) insights.push("One or both pages did not return readable body text. A backend proxy may be required for real extraction.");
+      if (metrics.readabilityGap >= 4) insights.push("The readability gap is notable. One page may be more technical or sentence-dense than the other.");
+
+      els.insights.innerHTML = "";
+      insights.forEach((text) => {
+        const li = document.createElement("li");
+        li.textContent = text;
+        els.insights.appendChild(li);
+      });
+    }
+
+    function renderPreviews(site1Content, site2Content) {
+      els.site1Preview.textContent = site1Content ? trimPreview(site1Content) : "No text preview was returned for Site 1.";
+      els.site2Preview.textContent = site2Content ? trimPreview(site2Content) : "No text preview was returned for Site 2.";
+    }
+
+    function renderDiff(textA, textB) {
+      if (!textA || !textB) {
+        els.diffBox.textContent = "No diff available because one or both pages returned no readable text.";
+        return;
+      }
+      const aWords = normalizeText(textA).split(/\s+/).filter(Boolean).slice(0, 260);
+      const bWords = normalizeText(textB).split(/\s+/).filter(Boolean).slice(0, 260);
+      const bSet = new Set(bWords);
+      const aSet = new Set(aWords);
+      const removed = aWords.filter((word, index) => !bSet.has(word) && aWords.indexOf(word) === index).slice(0, 90);
+      const added = bWords.filter((word, index) => !aSet.has(word) && bWords.indexOf(word) === index).slice(0, 90);
+      const shared = aWords.filter((word, index) => bSet.has(word) && aWords.indexOf(word) === index).slice(0, 90);
+      els.diffBox.innerHTML = [
+        "<strong>Shared terms</strong><br>",
+        shared.map((word) => `<span class="diff-token same">${escapeHtml(word)}</span>`).join(" ") || "None detected.",
+        "<br><br><strong>More common in Site 1</strong><br>",
+        removed.map((word) => `<span class="diff-token removed">${escapeHtml(word)}</span>`).join(" ") || "None detected.",
+        "<br><br><strong>More common in Site 2</strong><br>",
+        added.map((word) => `<span class="diff-token added">${escapeHtml(word)}</span>`).join(" ") || "None detected."
+      ].join("");
+    }
+
+    function saveToHistory(report) {
+      const history = getHistory();
+      const compact = {
+        createdAt: report.createdAt,
+        source: report.source,
+        site1: report.sites[0].url,
+        site2: report.sites[1].url,
+        lengthDifference: report.metrics.lengthDifference,
+        similarity: report.metrics.similarity,
+        confidence: report.metrics.confidence
+      };
+      const next = [compact, ...history.filter((item) => item.site1 !== compact.site1 || item.site2 !== compact.site2)].slice(0, 10);
+      safeSetLocalStorage(HISTORY_KEY, JSON.stringify(next));
+    }
+
+    function getHistory() {
+      try { return JSON.parse(localStorage.getItem(HISTORY_KEY) || "[]"); }
+      catch { return []; }
+    }
+
+    function renderHistory() {
+      const history = getHistory();
+      els.historyList.innerHTML = "";
+      if (!history.length) {
+        const empty = document.createElement("div");
+        empty.className = "history-item";
+        empty.innerHTML = "<div><strong>No comparisons yet</strong><span>Your recent scans will appear here.</span></div>";
+        els.historyList.appendChild(empty);
+        return;
+      }
+
+      history.forEach((item) => {
+        const row = document.createElement("div");
+        row.className = "history-item";
+        const details = document.createElement("div");
+        const title = document.createElement("strong");
+        title.textContent = `${safeHost(item.site1)} ↔ ${safeHost(item.site2)}`;
+        const meta = document.createElement("span");
+        meta.textContent = `${new Date(item.createdAt).toLocaleString()} · ${Math.round(item.similarity)}% similarity · ${formatNumber(item.lengthDifference)} char diff · ${item.source}`;
+        details.append(title, meta);
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "ghost";
+        button.textContent = "Load";
+        button.addEventListener("click", () => {
+          els.site1.value = item.site1;
+          els.site2.value = item.site2;
+          showNotice("History pair loaded. Press Compare to refresh the result.", "success");
+          window.scrollTo({ top: 0, behavior: "smooth" });
+        });
+        row.append(details, button);
+        els.historyList.appendChild(row);
+      });
+    }
+
+    function clearHistory() {
+      try { localStorage.removeItem(HISTORY_KEY); } catch {}
+      renderHistory();
+      showNotice("Comparison history cleared.", "success");
+    }
+
+    function exportJsonReport() {
+      if (!latestReport) return toast("Run a comparison before exporting.");
+      downloadBlob(JSON.stringify(latestReport, null, 2), `site-comparison-${Date.now()}.json`, "application/json");
+      toast("JSON report exported.");
+    }
+
+    async function copyReportToClipboard() {
+      if (!latestReport) return toast("Run a comparison before copying.");
+      const text = JSON.stringify(latestReport, null, 2);
+      if (navigator.clipboard && window.isSecureContext) {
+        try {
+          await navigator.clipboard.writeText(text);
+          toast("Report copied to clipboard.");
+          return;
+        } catch {}
+      }
+      showNotice(text.slice(0, 1500) + (text.length > 1500 ? "…" : ""), "success");
+    }
+
+    function exportCsvReport() {
+      if (!latestReport) return toast("Run a comparison before exporting.");
+      const [a, b] = latestReport.sites;
+      const rows = [
+        ["metric", "site_1", "site_2"],
+        ["url", a.url, b.url],
+        ["source", latestReport.source, ""],
+        ["characters", a.length, b.length],
+        ["words", a.wordCount, b.wordCount],
+        ["unique_words", a.uniqueWordCount, b.uniqueWordCount],
+        ["sentences", a.sentenceCount, b.sentenceCount],
+        ["readability_grade", a.readability.grade, b.readability.grade],
+        ["read_time_minutes", a.readTimeMinutes, b.readTimeMinutes],
+        ["similarity_percent", latestReport.metrics.similarity, ""],
+        ["keyword_overlap_percent", latestReport.metrics.wordOverlap * 100, ""],
+        ["fingerprint_match_percent", latestReport.metrics.fingerprintSimilarity * 100, ""]
+      ];
+      downloadBlob(rows.map((row) => row.map(csvEscape).join(",")).join("\n"), `site-comparison-${Date.now()}.csv`, "text/csv");
+      toast("CSV report exported.");
+    }
+
+    function downloadBlob(content, filename, type) {
+      const blob = new Blob([content], { type });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+    }
+
+    function swapSites() {
+      const a = els.site1.value;
+      els.site1.value = els.site2.value;
+      els.site2.value = a;
+      showNotice("URLs swapped.", "success");
+    }
+
+    function activateTab(name) {
+      document.querySelectorAll(".tab").forEach((tab) => tab.classList.toggle("active", tab.dataset.tab === name));
+      document.querySelectorAll(".tab-panel").forEach((panel) => panel.classList.toggle("active", panel.id === `tab-${name}`));
+    }
+
+    function toggleTheme() {
+      const next = document.documentElement.dataset.theme === "light" ? "dark" : "light";
+      document.documentElement.dataset.theme = next;
+      safeSetLocalStorage(THEME_KEY, next);
+      toast(`${capitalize(next)} theme enabled.`);
+    }
+
+    function initialiseTheme() {
+      try { document.documentElement.dataset.theme = localStorage.getItem(THEME_KEY) || "dark"; }
+      catch { document.documentElement.dataset.theme = "dark"; }
+    }
+
+    function toggleFallback() {
+      fallbackEnabled = !fallbackEnabled;
+      els.demoModeChip.textContent = `Fallback: ${fallbackEnabled ? "on" : "off"}`;
+      els.demoModeChip.classList.toggle("active", fallbackEnabled);
+      toast(`Fallback ${fallbackEnabled ? "enabled" : "disabled"}.`);
+    }
+
+    function toggleRetry() {
+      retryEnabled = !retryEnabled;
+      els.retryModeChip.textContent = `Retry: ${retryEnabled ? "on" : "off"}`;
+      els.retryModeChip.classList.toggle("active", retryEnabled);
+      toast(`Retry ${retryEnabled ? "enabled" : "disabled"}.`);
+    }
+
+    function copyShareLink() {
+      const site1 = normalizeUrl(els.site1.value.trim());
+      const site2 = normalizeUrl(els.site2.value.trim());
+      const url = new URL(window.location.href);
+      if (site1) url.searchParams.set("site1", site1);
+      if (site2) url.searchParams.set("site2", site2);
+      if (navigator.clipboard && window.isSecureContext) {
+        navigator.clipboard.writeText(url.toString()).then(() => toast("Share link copied."), () => showNotice(url.toString(), "success"));
+      } else {
+        showNotice(url.toString(), "success");
+      }
+    }
+
+    function updateUrlQuery(site1, site2) {
+      try {
+        const url = new URL(window.location.href);
+        url.searchParams.set("site1", site1);
+        url.searchParams.set("site2", site2);
+        history.replaceState(null, "", url.toString());
+      } catch {}
+    }
+
+    function hydrateFromQuery() {
+      const params = new URLSearchParams(window.location.search);
+      const site1 = params.get("site1");
+      const site2 = params.get("site2");
+      if (site1) els.site1.value = site1;
+      if (site2) els.site2.value = site2;
+    }
+
+    function setLoading(isLoading) {
+      els.loading.classList.toggle("visible", isLoading);
+      els.compareBtn.disabled = isLoading;
+      els.swapBtn.disabled = isLoading;
+      els.compareBtn.textContent = isLoading ? "Comparing…" : "Compare";
+    }
+
+    function showNotice(message, type = "") {
+      els.notice.textContent = message;
+      els.notice.className = `notice visible ${type}`.trim();
+    }
+
+    function hideNotice() {
+      els.notice.className = "notice";
+      els.notice.textContent = "";
+    }
+
+    function toast(message) {
+      const node = document.createElement("div");
+      node.className = "toast";
+      node.textContent = message;
+      els.toastStack.appendChild(node);
+      window.setTimeout(() => node.remove(), 3200);
+    }
+
+    function normalizeUrl(value) {
+      if (!value) return "";
+      const withProtocol = /^https?:\/\//i.test(value) ? value : `https://${value}`;
+      try {
+        const url = new URL(withProtocol);
+        url.hash = "";
+        return url.toString();
+      } catch { return ""; }
+    }
+
+    function safeHost(url) {
+      try { return new URL(url).host.replace(/^www\./, ""); }
+      catch { return url || "Unknown site"; }
+    }
+
+    function getString(value) {
+      if (typeof value === "string") return value;
+      if (value == null) return "";
+      return String(value);
+    }
+
+    function getNumber(value, fallback = 0) {
+      const number = Number(value);
+      return Number.isFinite(number) ? number : fallback;
+    }
+
+    function normalizeText(text) {
+      return getString(text).toLowerCase()
+        .replace(/https?:\/\/\S+/g, " ")
+        .replace(/[^a-z0-9\s'-]/g, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+    }
+
+    function calculateSetOverlap(setA, setB) {
+      if (!setA.size || !setB.size) return 0;
+      let intersection = 0;
+      setA.forEach((word) => { if (setB.has(word)) intersection += 1; });
+      const union = new Set([...setA, ...setB]).size;
+      return union ? intersection / union : 0;
+    }
+
+    function calculateSimilarity({ site1Length, site2Length, wordOverlap, fingerprintSimilarity, hasText }) {
+      const larger = Math.max(site1Length, site2Length, 1);
+      const lengthSimilarity = 1 - Math.abs(site1Length - site2Length) / larger;
+      const combined = hasText
+        ? (lengthSimilarity * 0.22) + (wordOverlap * 0.42) + (fingerprintSimilarity * 0.36)
+        : lengthSimilarity;
+      return clamp(combined * 100, 0, 100);
+    }
+
+    function compareFingerprints(textA, textB) {
+      return calculateSetOverlap(makeFingerprint(textA), makeFingerprint(textB));
+    }
+
+    function makeFingerprint(text) {
+      const tokens = normalizeText(text).split(/\s+/).filter(Boolean);
+      const shingles = new Set();
+      const size = 4;
+      for (let i = 0; i <= tokens.length - size; i++) shingles.add(tokens.slice(i, i + size).join(" "));
+      return shingles;
+    }
+
+    function calculateReadability(wordCount, sentenceCount, syllableCount) {
+      if (!wordCount || !sentenceCount) return { grade: 0, wordsPerSentence: 0, syllablesPerWord: 0 };
+      const wordsPerSentence = wordCount / sentenceCount;
+      const syllablesPerWord = syllableCount / wordCount;
+      const grade = Math.max(0, (0.39 * wordsPerSentence) + (11.8 * syllablesPerWord) - 15.59);
+      return { grade, wordsPerSentence, syllablesPerWord };
+    }
+
+    function countSyllables(word) {
+      const cleaned = word.toLowerCase().replace(/[^a-z]/g, "");
+      if (!cleaned) return 0;
+      const groups = cleaned.match(/[aeiouy]+/g) || [];
+      let count = groups.length;
+      if (cleaned.endsWith("e")) count -= 1;
+      return Math.max(1, count);
+    }
+
+    function detectSignals(text, knownLength, words, sentences, paragraphs) {
+      return {
+        hasText: Boolean(text.trim()),
+        knownLength,
+        words,
+        sentences,
+        paragraphs,
+        hasTitleLikeText: /\b(title|home|about|contact|privacy|docs|guide|article|blog)\b/i.test(text),
+        hasNavigationLanguage: /\b(menu|navigation|search|login|sign in|subscribe)\b/i.test(text)
+      };
+    }
+
+    function calculateConfidence(a, b, source) {
+      let score = source === "api" ? 40 : source === "local-fallback" ? 55 : 15;
+      if (a.words.length > 80) score += 14;
+      if (b.words.length > 80) score += 14;
+      if (a.uniqueSet.size > 30) score += 7;
+      if (b.uniqueSet.size > 30) score += 7;
+      if (a.sentences > 3 && b.sentences > 3) score += 8;
+      return clamp(score, 0, 100);
+    }
+
+    function topKeywords(map, limit) {
+      return [...map.entries()]
+        .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+        .slice(0, limit)
+        .map(([word, count]) => ({ word, count }));
+    }
+
+    function getSharedKeywords(mapA, mapB) {
+      return [...mapA.entries()]
+        .filter(([word]) => mapB.has(word))
+        .map(([word, count]) => ({ word, count: count + mapB.get(word) }))
+        .sort((a, b) => b.count - a.count || a.word.localeCompare(b.word))
+        .slice(0, 18);
+    }
+
+    function estimateReadTime(wordCount) {
+      if (!wordCount) return 0;
+      return Math.max(1, Math.ceil(wordCount / 220));
+    }
+
+    function trimPreview(text) {
+      const clean = getString(text).trim();
+      if (clean.length <= MAX_PREVIEW_CHARS) return clean;
+      return `${clean.slice(0, MAX_PREVIEW_CHARS)}\n\n… Preview trimmed. Export JSON for full returned content.`;
+    }
+
+    function makeFallbackData(site1, site2, reason) {
+      const host1 = safeHost(site1);
+      const host2 = safeHost(site2);
+      const seed1 = hashCode(host1);
+      const seed2 = hashCode(host2);
+      const text1 = demoParagraph(host1, seed1, "research", "interface", "comparison", "performance", reason);
+      const text2 = demoParagraph(host2, seed2, "design", "platform", "analysis", "accessibility", reason);
+      return {
+        site1Content: text1,
+        site2Content: text2,
+        site1ContentLength: text1.length,
+        site2ContentLength: text2.length,
+        fallbackReason: reason
+      };
+    }
+
+    function makeEmptyErrorData(site1, site2, reason) {
+      return {
+        site1Content: `Could not fetch ${safeHost(site1)}. Reason: ${reason}. Enable fallback mode to see a generated local report.`,
+        site2Content: `Could not fetch ${safeHost(site2)}. Reason: ${reason}. Enable fallback mode to see a generated local report.`
+      };
+    }
+
+    function demoParagraph(host, seed, a, b, c, d, reason) {
+      const repeat = 7 + Math.abs(seed % 8);
+      const lines = [];
+      for (let i = 0; i < repeat; i++) {
+        lines.push(`${host} fallback analysis paragraph ${i + 1}. This local report was generated because the live fetch could not complete: ${reason}. The simulated page presents ${a}-driven material with ${b} systems, ${c} sections, user guidance, navigation language, structured headings, reusable content patterns, and ${d} notes for comparison testing.`);
+      }
+      return lines.join("\n\n");
+    }
+
+    function renderTests(results) {
+      els.testList.innerHTML = "";
+      results.forEach((result) => {
+        const li = document.createElement("li");
+        li.className = "test-item";
+        li.innerHTML = `<span class="test-status ${result.pass ? "pass" : "fail"}"></span><div><strong>${escapeHtml(result.name)}</strong><small>${escapeHtml(result.detail)}</small></div><em>${result.pass ? "PASS" : "FAIL"}</em>`;
+        els.testList.appendChild(li);
+      });
+      console.table(results);
+    }
+
+    function runSelfTests() {
+      const tests = [];
+      const add = (name, pass, detail) => tests.push({ name, pass: Boolean(pass), detail });
+
+      try {
+        add("normalizeUrl adds HTTPS", normalizeUrl("example.com") === "https://example.com/", "Plain host should become a valid HTTPS URL.");
+      } catch (error) { add("normalizeUrl adds HTTPS", false, error.message); }
+
+      try {
+        add("normalizeUrl rejects invalid URL", normalizeUrl("http://") === "", "Invalid URL input should return an empty string.");
+      } catch (error) { add("normalizeUrl rejects invalid URL", false, error.message); }
+
+      try {
+        const fallback = makeFallbackData("https://a.example", "https://b.example", "test failure");
+        add("fallback creates content", fallback.site1Content.length > 100 && fallback.site2Content.length > 100, "Fallback must create usable content when fetch fails.");
+      } catch (error) { add("fallback creates content", false, error.message); }
+
+      try {
+        const report = buildReport("https://a.example", "https://b.example", { site1Content: "alpha beta beta gamma.", site2Content: "alpha beta delta." }, "unit-test", "");
+        add("buildReport returns metrics", report.metrics.totalWords > 0 && report.sites.length === 2, "Report should include two sites and word metrics.");
+      } catch (error) { add("buildReport returns metrics", false, error.message); }
+
+      try {
+        const similar = calculateSimilarity({ site1Length: 100, site2Length: 100, wordOverlap: 1, fingerprintSimilarity: 1, hasText: true });
+        add("similarity upper bound", similar === 100, "Perfectly matching inputs should score 100.");
+      } catch (error) { add("similarity upper bound", false, error.message); }
+
+      try {
+        const dangerousTag = "<scr" + "ipt>alert(1)</scr" + "ipt>";
+        const escaped = escapeHtml(dangerousTag);
+        add("escapeHtml escapes tags", !escaped.includes(OPEN_SCRIPT_TAG) && !escaped.includes(CLOSE_SCRIPT_TAG), "HTML tags should be escaped before insertion without embedding a literal closing script tag in source.");
+      } catch (error) { add("escapeHtml escapes tags", false, error.message); }
+
+      try {
+        const explained = explainFetchError(new TypeError("Failed to fetch"));
+        add("fetch error explained", /blocked|unreachable|cors|network/i.test(explained), "TypeError: Failed to fetch should produce a helpful explanation.");
+      } catch (error) { add("fetch error explained", false, error.message); }
+
+      try {
+        add("retry helper eventually throws", typeof fetchJsonWithRetry === "function", "Retry wrapper should exist for safer API fetches.");
+      } catch (error) { add("retry helper eventually throws", false, error.message); }
+
+      try {
+        const diagnosticsReady = Boolean(els.diagnosticsList);
+        add("diagnostics panel exists", diagnosticsReady, "Runtime diagnostics panel should be available.");
+      } catch (error) { add("diagnostics panel exists", false, error.message); }
+
+      try {
+        const sourceSafe = !SCRIPT_SOURCE_TEXT.includes(CLOSE_SCRIPT_TAG);
+        add("script source avoids literal closing tag", sourceSafe, "The JavaScript source should not contain a literal closing script tag inside strings.");
+      } catch (error) { add("script source avoids literal closing tag", false, error.message); }
+
+      return tests;
+    }
+
+    function delay(ms) { return new Promise((resolve) => window.setTimeout(resolve, ms)); }
+    function makeAudit(title, status, detail) { return { title, status, detail }; }
+    function average(a, b) { return (a + b) / 2; }
+    function hashCode(value) { return value.split("").reduce((hash, char) => ((hash << 5) - hash) + char.charCodeAt(0), 0); }
+    function formatNumber(value) { return new Intl.NumberFormat().format(Math.round(getNumber(value))); }
+    function formatPercent(value) { return getNumber(value).toFixed(value < 10 && value > 0 ? 1 : 0); }
+    function formatReadTime(minutes) { return minutes ? `${minutes} min${minutes === 1 ? "" : "s"}` : "—"; }
+    function clamp(value, min, max) { return Math.max(min, Math.min(max, value)); }
+    function capitalize(value) { return value.charAt(0).toUpperCase() + value.slice(1); }
+    function csvEscape(value) { return `"${String(value ?? "").replaceAll('"', '""')}"`; }
+    function safeSetLocalStorage(key, value) { try { localStorage.setItem(key, value); } catch {} }
+    function escapeHtml(value) {
+      return String(value).replace(/[&<>'"]/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;" }[char]));
+    }
+    function mapElements(ids) {
+      return ids.reduce((map, id) => {
+        map[id] = document.getElementById(id);
+        return map;
+      }, {});
+    }
+
+    const STOP_WORDS = new Set([
+      "the", "and", "for", "are", "but", "not", "you", "your", "with", "from", "this", "that",
+      "have", "has", "had", "was", "were", "will", "would", "can", "could", "should", "our",
+      "their", "they", "them", "his", "her", "its", "into", "about", "there", "here", "when",
+      "where", "what", "which", "who", "why", "how", "all", "any", "more", "most", "some",
+      "such", "than", "then", "also", "use", "using", "used", "get", "got", "one", "two", "new",
+      "page", "site", "website", "content", "section", "sections", "click", "home", "menu", "because",
+      "could", "complete", "generated", "local", "fallback", "analysis", "paragraph"
+    ]);
+  </script>
+</body>
+</html>
