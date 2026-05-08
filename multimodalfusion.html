@@ -1,0 +1,2246 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Enhanced AI Interface Ultra v4 — Research Training Observatory</title>
+  <meta name="description" content="A single-file TensorFlow.js AI lab with multimodal toy language/image modelling, CSV tabular training, debug logs, charts, metadata persistence, and prediction tools." />
+
+  <!-- Core ML / data / chart libraries. The app is still a pure browser-only single HTML file. -->
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest/dist/tf.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/mobilenet@latest"></script>
+  <script src="https://cdn.jsdelivr.net/npm/papaparse@latest/papaparse.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@latest/dist/chart.umd.min.js"></script>
+
+  <style>
+    :root {
+      --bg: #07111f;
+      --bg-2: #0b1627;
+      --card: rgba(255,255,255,0.075);
+      --card-strong: rgba(255,255,255,0.12);
+      --text: #eff6ff;
+      --muted: #9fb2ca;
+      --line: rgba(255,255,255,0.14);
+      --accent: #55c2ff;
+      --accent-2: #8b5cf6;
+      --good: #34d399;
+      --warn: #fbbf24;
+      --bad: #fb7185;
+      --shadow: 0 20px 70px rgba(0,0,0,0.35);
+      --radius: 22px;
+      --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+      --sans: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    [data-theme="light"] {
+      --bg: #f5f8fc;
+      --bg-2: #eaf1fa;
+      --card: rgba(255,255,255,0.82);
+      --card-strong: rgba(255,255,255,0.95);
+      --text: #0f172a;
+      --muted: #526173;
+      --line: rgba(15,23,42,0.12);
+      --shadow: 0 20px 70px rgba(30,41,59,0.14);
+    }
+
+    * { box-sizing: border-box; }
+
+    html, body {
+      margin: 0;
+      min-height: 100%;
+      background:
+        radial-gradient(circle at 12% 0%, rgba(85,194,255,0.25), transparent 35%),
+        radial-gradient(circle at 80% 12%, rgba(139,92,246,0.22), transparent 30%),
+        linear-gradient(135deg, var(--bg), var(--bg-2));
+      color: var(--text);
+      font-family: var(--sans);
+    }
+
+    body { padding: 24px; }
+
+    button, input, select, textarea { font: inherit; }
+
+    #app {
+      width: min(1380px, 100%);
+      margin: 0 auto;
+      display: grid;
+      gap: 18px;
+    }
+
+    .hero {
+      display: grid;
+      grid-template-columns: 1.55fr 0.95fr;
+      gap: 18px;
+      align-items: stretch;
+    }
+
+    .panel {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(18px);
+      overflow: hidden;
+    }
+
+    .panel.pad { padding: 22px; }
+
+    .hero-title {
+      font-size: clamp(2rem, 5vw, 4.4rem);
+      line-height: 0.95;
+      letter-spacing: -0.07em;
+      margin: 0 0 14px;
+    }
+
+    .hero-title span {
+      background: linear-gradient(90deg, var(--accent), var(--accent-2));
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent;
+    }
+
+    .subtitle {
+      margin: 0;
+      color: var(--muted);
+      font-size: 1.02rem;
+      max-width: 78ch;
+      line-height: 1.6;
+    }
+
+    .toolbar {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-top: 18px;
+    }
+
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0,1fr));
+      gap: 12px;
+    }
+
+    .stat {
+      padding: 14px;
+      border-radius: 18px;
+      background: var(--card-strong);
+      border: 1px solid var(--line);
+      min-height: 88px;
+    }
+
+    .stat .label { color: var(--muted); font-size: 0.8rem; }
+    .stat .value { font-weight: 800; font-size: 1.35rem; margin-top: 6px; }
+    .stat .hint { color: var(--muted); font-size: 0.78rem; margin-top: 6px; }
+
+    .tabs {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      padding: 10px;
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      position: sticky;
+      top: 10px;
+      z-index: 10;
+      backdrop-filter: blur(14px);
+    }
+
+    .tab-btn, button {
+      border: 1px solid var(--line);
+      color: var(--text);
+      background: linear-gradient(180deg, rgba(255,255,255,0.14), rgba(255,255,255,0.06));
+      padding: 10px 14px;
+      border-radius: 14px;
+      cursor: pointer;
+      transition: transform 120ms ease, border-color 120ms ease, background 120ms ease;
+      user-select: none;
+    }
+
+    .tab-btn:hover, button:hover { transform: translateY(-1px); border-color: rgba(85,194,255,0.55); }
+    .tab-btn.active, button.primary { background: linear-gradient(135deg, var(--accent), var(--accent-2)); color: white; border-color: transparent; }
+    button.good { background: linear-gradient(135deg, #10b981, #22c55e); color: white; border-color: transparent; }
+    button.warn { background: linear-gradient(135deg, #f59e0b, #f97316); color: white; border-color: transparent; }
+    button.bad { background: linear-gradient(135deg, #fb7185, #ef4444); color: white; border-color: transparent; }
+    button.ghost { background: transparent; }
+    button:disabled { opacity: 0.55; cursor: not-allowed; transform: none; }
+
+    .section { display: none; }
+    .section.active { display: grid; gap: 18px; }
+
+    .grid-2 { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 18px; }
+    .grid-3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+
+    .card {
+      padding: 18px;
+      border-radius: var(--radius);
+      background: var(--card);
+      border: 1px solid var(--line);
+      box-shadow: 0 8px 36px rgba(0,0,0,0.12);
+    }
+
+    .card h2, .card h3 {
+      margin: 0 0 12px;
+      letter-spacing: -0.03em;
+    }
+
+    .mini-title {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 10px;
+    }
+
+    label {
+      display: block;
+      color: var(--muted);
+      font-size: 0.84rem;
+      margin: 8px 0 6px;
+    }
+
+    textarea, input, select {
+      width: 100%;
+      color: var(--text);
+      background: rgba(0,0,0,0.18);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 11px 12px;
+      outline: none;
+    }
+
+    [data-theme="light"] textarea,
+    [data-theme="light"] input,
+    [data-theme="light"] select { background: rgba(255,255,255,0.82); }
+
+    textarea { min-height: 120px; resize: vertical; line-height: 1.45; }
+    input[type="file"] { padding: 9px; }
+
+    .actions { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 12px; }
+    .hint { color: var(--muted); font-size: 0.85rem; line-height: 1.5; }
+    .mono { font-family: var(--mono); }
+
+    .output {
+      min-height: 74px;
+      padding: 13px;
+      background: rgba(0,0,0,0.2);
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+      line-height: 1.5;
+    }
+
+    [data-theme="light"] .output { background: rgba(255,255,255,0.7); }
+
+    .progress-container {
+      width: 100%;
+      height: 16px;
+      background: rgba(0,0,0,0.25);
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      overflow: hidden;
+      margin-top: 12px;
+    }
+
+    .progress-bar {
+      height: 100%;
+      width: 0%;
+      background: linear-gradient(90deg, var(--accent), var(--accent-2));
+      transition: width 220ms ease;
+    }
+
+    .preview-wrap {
+      max-height: 330px;
+      overflow: auto;
+      border: 1px solid var(--line);
+      border-radius: 16px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.86rem;
+    }
+
+    th, td {
+      border-bottom: 1px solid var(--line);
+      padding: 9px;
+      text-align: left;
+      white-space: nowrap;
+    }
+
+    th { position: sticky; top: 0; background: rgba(11,22,39,0.96); z-index: 1; }
+    [data-theme="light"] th { background: rgba(255,255,255,0.96); }
+
+    .pill-row { display: flex; gap: 8px; flex-wrap: wrap; }
+    .pill {
+      border-radius: 999px;
+      padding: 6px 10px;
+      border: 1px solid var(--line);
+      background: var(--card-strong);
+      color: var(--muted);
+      font-size: 0.8rem;
+    }
+
+    #image-preview {
+      width: 100%;
+      max-height: 260px;
+      object-fit: contain;
+      display: none;
+      border-radius: 16px;
+      background: rgba(0,0,0,0.2);
+      border: 1px solid var(--line);
+      margin-top: 10px;
+    }
+
+    #logs {
+      height: 300px;
+      overflow: auto;
+      font-family: var(--mono);
+      font-size: 0.82rem;
+      line-height: 1.55;
+    }
+
+    .log-info { color: var(--accent); }
+    .log-good { color: var(--good); }
+    .log-warn { color: var(--warn); }
+    .log-bad { color: var(--bad); }
+
+    .small { font-size: 0.82rem; }
+
+    .bar-row { display: grid; grid-template-columns: minmax(110px, 0.9fr) minmax(0, 2fr) 72px; gap: 10px; align-items: center; margin: 7px 0; }
+    .bar-track { height: 11px; border-radius: 999px; background: rgba(255,255,255,0.12); overflow: hidden; border: 1px solid var(--line); }
+    .bar-fill { height: 100%; width: 0%; background: linear-gradient(90deg, var(--accent), var(--accent-2)); }
+    .badge-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+    .badge { border: 1px solid var(--line); border-radius: 999px; padding: 5px 9px; color: var(--muted); background: rgba(255,255,255,0.06); font-size: 0.78rem; }
+    .warn-text { color: var(--warn); }
+    .good-text { color: var(--good); }
+    .muted { color: var(--muted); }
+    .hidden { display: none !important; }
+
+    @media (max-width: 950px) {
+      body { padding: 14px; }
+      .hero, .grid-2, .grid-3, .chart-grid, .toggle-row, .research-strip { grid-template-columns: 1fr; }
+      .tabs { position: static; }
+    }
+  </style>
+</head>
+<body data-theme="dark">
+  <div id="app">
+    <section class="hero">
+      <div class="panel pad">
+        <h1 class="hero-title">Enhanced AI Interface <span>Ultra v4</span></h1>
+        <p class="subtitle">
+          A direct upgrade of your original debug interface: browser-only TensorFlow.js, multimodal text + image toy modelling, CSV classification/regression, dynamic preprocessing, metadata persistence, uncertainty estimates, permutation explainability, anomaly scans, and a new live research training observatory with extra graphs for learning dynamics.
+        </p>
+        <div class="toolbar">
+          <button id="theme-btn" class="ghost">Toggle theme</button>
+          <button id="backend-btn" class="ghost">Switch backend</button>
+          <button id="memory-btn" class="ghost">Refresh memory</button>
+          <button id="clear-all-btn" class="bad">Reset lab state</button>
+        </div>
+      </div>
+      <div class="panel pad">
+        <div class="stats-grid">
+          <div class="stat"><div class="label">TensorFlow backend</div><div class="value" id="backend-stat">loading</div><div class="hint" id="backend-hint">Initialising tf.ready()</div></div>
+          <div class="stat"><div class="label">Tensors</div><div class="value" id="tensor-stat">0</div><div class="hint" id="memory-hint">Memory tracked by tf.memory()</div></div>
+          <div class="stat"><div class="label">Language model</div><div class="value" id="lm-stat">fresh</div><div class="hint" id="lm-hint">MoE multimodal toy generator</div></div>
+          <div class="stat"><div class="label">Tabular model</div><div class="value" id="tabular-stat">none</div><div class="hint" id="tabular-hint">Upload or sample CSV</div></div>
+        </div>
+      </div>
+    </section>
+
+    <nav class="tabs" aria-label="Main sections">
+      <button class="tab-btn active" data-tab="language-section">Language + Image</button>
+      <button class="tab-btn" data-tab="tabular-section">Tabular CSV</button>
+      <button class="tab-btn" data-tab="logs-section">Logs + Diagnostics</button>
+    </nav>
+
+    <section id="language-section" class="section active">
+      <div class="grid-2">
+        <div class="card">
+          <div class="mini-title">
+            <h2>Multimodal toy language model</h2>
+            <span class="pill">Text tokens + MobileNet image embeddings + MoE</span>
+          </div>
+          <label for="text-input">Prompt / fine-tune text</label>
+          <textarea id="text-input" placeholder="Enter text for prompt generation or fine-tuning...">hello world this tiny browser model learns patterns from your examples</textarea>
+
+          <label for="language-corpus">Extra training corpus</label>
+          <textarea id="language-corpus" placeholder="Add more small training sentences here. More varied text gives better toy outputs.">hello world from the enhanced ai lab
+images and words can share a small latent space
+mixture of experts can route patterns through specialist pathways
+browser machine learning is useful for tiny private experiments
+debug logs help explain what the model is doing</textarea>
+
+          <div class="grid-3">
+            <div>
+              <label for="lm-epochs">LM epochs</label>
+              <input type="number" id="lm-epochs" value="12" min="1" max="200" />
+            </div>
+            <div>
+              <label for="lm-temperature">Temperature</label>
+              <input type="number" id="lm-temperature" value="0.85" min="0.1" max="2" step="0.05" />
+            </div>
+            <div>
+              <label for="lm-tokens">Generate tokens</label>
+              <input type="number" id="lm-tokens" value="18" min="1" max="80" />
+            </div>
+          </div>
+
+          <label for="image-input">Optional image input</label>
+          <input type="file" id="image-input" accept="image/*" />
+          <img id="image-preview" alt="Uploaded image preview" />
+
+          <div class="actions">
+            <button id="pretrain-btn" class="primary">Pre-train toy LM</button>
+            <button id="finetune-btn">Fine-tune on prompt</button>
+            <button id="generate-btn" class="good">Generate response</button>
+            <button id="inspect-language-btn" class="ghost">Inspect model</button>
+          </div>
+          <div class="actions">
+            <button id="save-language-btn">Save LM</button>
+            <button id="load-language-btn">Load LM</button>
+            <button id="download-language-btn">Download LM</button>
+            <button id="rebuild-language-btn" class="warn">Rebuild LM</button>
+          </div>
+          <div class="progress-container"><div id="lm-progress-bar" class="progress-bar"></div></div>
+        </div>
+
+        <div class="card">
+          <h2>Language output</h2>
+          <div id="response" class="output">Ready. This is still a small in-browser toy model, not a real large language model.</div>
+          <h3>Vocabulary / top predictions</h3>
+          <div id="language-details" class="output small">No predictions yet.</div>
+          <h3>Language loss</h3>
+          <canvas id="language-chart" height="160"></canvas>
+        </div>
+      </div>
+    </section>
+
+    <section id="tabular-section" class="section">
+      <div class="grid-2">
+        <div class="card">
+          <div class="mini-title">
+            <h2>CSV training</h2>
+            <span class="pill">Classification or regression</span>
+          </div>
+          <label for="csv-input">CSV file</label>
+          <input type="file" id="csv-input" accept=".csv,text/csv" />
+          <div class="actions">
+            <button id="sample-classification-btn" class="ghost">Load iris-style sample</button>
+            <button id="sample-regression-btn" class="ghost">Load house-price sample</button>
+          </div>
+
+          <div class="grid-3">
+            <div>
+              <label for="label-column">Label column</label>
+              <select id="label-column"></select>
+            </div>
+            <div>
+              <label for="task-type">Task type</label>
+              <select id="task-type">
+                <option value="classification">Classification</option>
+                <option value="regression">Regression</option>
+              </select>
+            </div>
+            <div>
+              <label for="hidden-units">Hidden units</label>
+              <input type="number" id="hidden-units" value="96" min="8" max="512" />
+            </div>
+          </div>
+
+          <div class="grid-3">
+            <div>
+              <label for="architecture-type">Architecture</label>
+              <select id="architecture-type">
+                <option value="residual" selected>Residual MLP</option>
+                <option value="compact">Compact fast MLP</option>
+                <option value="wide">Wide dropout MLP</option>
+                <option value="gated">Gated GLU-style MLP</option>
+              </select>
+            </div>
+            <div>
+              <label for="dropout-rate">Dropout</label>
+              <input type="number" id="dropout-rate" value="0.12" step="0.01" min="0" max="0.6" />
+            </div>
+            <div>
+              <label for="random-seed">Shuffle seed</label>
+              <input type="number" id="random-seed" value="2026" min="1" />
+            </div>
+          </div>
+
+          <div class="grid-3">
+            <div>
+              <label for="epochs">Epochs</label>
+              <input type="number" id="epochs" value="40" min="1" max="1000" />
+            </div>
+            <div>
+              <label for="batch-size">Batch size</label>
+              <input type="number" id="batch-size" value="16" min="1" max="512" />
+            </div>
+            <div>
+              <label for="learning-rate">Learning rate</label>
+              <input type="number" id="learning-rate" value="0.001" step="0.0001" min="0.00001" />
+            </div>
+          </div>
+
+          <div class="grid-3">
+            <div>
+              <label for="val-split">Validation split</label>
+              <input type="number" id="val-split" value="0.2" step="0.05" min="0" max="0.8" />
+            </div>
+            <div>
+              <label for="test-split">Test split</label>
+              <input type="number" id="test-split" value="0.15" step="0.05" min="0" max="0.8" />
+            </div>
+            <div>
+              <label for="patience">Early stop patience</label>
+              <input type="number" id="patience" value="8" min="0" max="100" />
+            </div>
+          </div>
+
+          <div class="grid-3">
+            <div>
+              <label for="lr-schedule">Learning-rate schedule</label>
+              <select id="lr-schedule">
+                <option value="constant">Constant</option>
+                <option value="cosine" selected>Cosine decay</option>
+                <option value="onecycle">One-cycle warmup</option>
+                <option value="plateau">Reduce on plateau</option>
+              </select>
+            </div>
+            <div>
+              <label for="mc-samples">MC dropout samples</label>
+              <input type="number" id="mc-samples" value="12" min="1" max="80" />
+            </div>
+            <div>
+              <label for="calibration-alpha">Conformal alpha</label>
+              <input type="number" id="calibration-alpha" value="0.1" min="0.01" max="0.5" step="0.01" />
+            </div>
+          </div>
+
+          <div class="toggle-row">
+            <label><input type="checkbox" id="restore-best" checked /> Restore best validation weights</label>
+            <label><input type="checkbox" id="live-holdout-probe" checked /> Live holdout probe</label>
+            <label><input type="checkbox" id="auto-train-report" checked /> Auto training report</label>
+          </div>
+
+          <div class="actions">
+            <button id="train-tabular-btn" class="primary">Train tabular model</button>
+            <button id="predict-tabular-btn" class="good">Predict</button>
+            <button id="inspect-tabular-btn" class="ghost">Inspect tabular</button>
+            <button id="smart-suggest-btn" class="ghost">Suggest settings</button>
+          </div>
+          <div class="actions">
+            <button id="save-tabular-btn">Save tabular</button>
+            <button id="load-tabular-btn">Load tabular</button>
+            <button id="download-tabular-btn">Download tabular</button>
+            <button id="export-predictions-btn">Export predictions CSV</button>
+            <button id="export-history-btn">Export training history</button>
+            <button id="importance-btn">Explain features</button>
+            <button id="anomaly-btn">Scan anomalies</button>
+          </div>
+          <div class="progress-container"><div id="progress-bar" class="progress-bar"></div></div>
+        </div>
+
+        <div class="card">
+          <h2>Prediction</h2>
+          <label for="predict-input">Raw feature values, comma-separated, or JSON object</label>
+          <input type="text" id="predict-input" placeholder="Upload/train a CSV first to see the feature order." />
+          <div id="feature-order" class="hint">Feature order will appear here after CSV parsing.</div>
+          <div id="predict-output" class="output">No prediction yet.</div>
+          <h3>Live training observatory</h3>
+          <div class="chart-grid">
+            <div class="chart-card"><h3>Loss + validation loss</h3><canvas id="loss-chart" height="150"></canvas></div>
+            <div class="chart-card"><h3>Metric / accuracy / MAE</h3><canvas id="metric-chart" height="150"></canvas></div>
+            <div class="chart-card"><h3>Generalization gap</h3><canvas id="gap-chart" height="150"></canvas></div>
+            <div class="chart-card"><h3>Learning-rate schedule</h3><canvas id="lr-chart" height="150"></canvas></div>
+            <div class="chart-card"><h3>Epoch speed</h3><canvas id="speed-chart" height="150"></canvas></div>
+            <div class="chart-card"><h3>Tensor memory</h3><canvas id="memory-chart" height="150"></canvas></div>
+            <div class="chart-card"><h3>Holdout probe</h3><canvas id="holdout-chart" height="150"></canvas></div>
+            <div class="chart-card"><h3>Weight drift proxy</h3><canvas id="drift-chart" height="150"></canvas></div>
+          </div>
+          <div class="research-strip">
+            <div class="research-chip"><b id="live-best-loss">—</b><span>best validation loss</span></div>
+            <div class="research-chip"><b id="live-gap">—</b><span>latest generalization gap</span></div>
+            <div class="research-chip"><b id="live-lr">—</b><span>current learning rate</span></div>
+            <div class="research-chip"><b id="live-speed">—</b><span>rows per second</span></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="grid-2">
+        <div class="card">
+          <h2>Dataset profile</h2>
+          <div id="profile-output" class="output small">No dataset loaded.</div>
+        </div>
+        <div class="card">
+          <h2>CSV preview</h2>
+          <div id="dataset-preview" class="preview-wrap"><div class="output small">No CSV loaded.</div></div>
+        </div>
+      </div>
+
+      <div class="grid-2">
+        <div class="card">
+          <h2>Model insight lab</h2>
+          <div class="hint">Permutation importance breaks one encoded feature at a time and measures the score drop. It is model-agnostic and works after training.</div>
+          <div id="importance-output" class="output small">Train a tabular model, then click Explain features.</div>
+        </div>
+        <div class="card">
+          <h2>Quality + uncertainty</h2>
+          <div id="quality-output" class="output small">Load a dataset to see data warnings.</div>
+          <h3>Calibration / prediction sets</h3>
+          <div id="uncertainty-output" class="output small">Train with a test split to calibrate uncertainty.</div>
+        </div>
+      </div>
+    </section>
+
+    <section id="logs-section" class="section">
+      <div class="grid-2">
+        <div class="card">
+          <h2>Debug logs</h2>
+          <div id="logs" class="output"></div>
+          <div class="actions">
+            <button id="copy-logs-btn">Copy logs</button>
+            <button id="download-logs-btn">Download logs</button>
+            <button id="clear-logs-btn" class="bad">Clear logs</button>
+          </div>
+        </div>
+        <div class="card">
+          <h2>Diagnostics</h2>
+          <div id="diagnostics" class="output small">Diagnostics will appear after TensorFlow.js is ready.</div>
+          <h3>Model notes</h3>
+          <div class="output small">
+            This keeps your original app idea but fixes important limitations: MobileNet is used as a real image embedding extractor, model metadata is saved with the model, categorical CSV columns work at prediction time, charts update live across loss, metrics, generalization gap, learning rate, memory, speed, holdout probes, and weight drift; early stopping is implemented; and tensors are cleaned up more carefully.
+          </div>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <script>
+    // Enhanced AI Interface Pro
+    // Single-file browser lab. No server. Data stays local unless CDN libraries are loaded by the browser.
+    (async function main() {
+      'use strict';
+
+      const $ = (id) => document.getElementById(id);
+      const now = () => new Date().toLocaleTimeString();
+
+      const LS = {
+        languageMeta: 'enhanced-ai-ultra-language-meta-v3',
+        tabularMeta: 'enhanced-ai-ultra-tabular-meta-v3'
+      };
+
+      const state = {
+        languageModel: null,
+        tabularModel: null,
+        mobileNet: null,
+        imageCacheKey: null,
+        imageEmbedding: null,
+        languageMeta: null,
+        tabularMeta: null,
+        rows: [],
+        columns: [],
+        lastTrainingVectors: null,
+        lastHoldout: null,
+        lastImportance: null,
+        logs: []
+      };
+
+      window.languageModel = null;
+      window.tabularModel = null;
+      window.appendLog = appendLog;
+
+      function appendLog(message, level = 'info') {
+        const entry = `[${now()}] ${message}`;
+        state.logs.push(entry);
+        const div = document.createElement('div');
+        div.className = `log-${level}`;
+        div.textContent = entry;
+        $('logs').appendChild(div);
+        $('logs').scrollTop = $('logs').scrollHeight;
+      }
+
+      function setOutput(id, text) {
+        $(id).textContent = text;
+      }
+
+      function setProgress(id, value) {
+        $(id).style.width = `${Math.max(0, Math.min(100, value))}%`;
+      }
+
+      function downloadText(filename, text, type = 'text/plain') {
+        const blob = new Blob([text], { type });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        a.click();
+        URL.revokeObjectURL(url);
+      }
+
+      function safeNumber(value, fallback) {
+        const n = Number(value);
+        return Number.isFinite(n) ? n : fallback;
+      }
+
+      function shuffleInPlace(arr, seed = 1337) {
+        // Deterministic tiny PRNG so runs are easier to reproduce.
+        let s = seed >>> 0;
+        const rand = () => {
+          s ^= s << 13; s ^= s >>> 17; s ^= s << 5;
+          return ((s >>> 0) / 4294967296);
+        };
+        for (let i = arr.length - 1; i > 0; i--) {
+          const j = Math.floor(rand() * (i + 1));
+          [arr[i], arr[j]] = [arr[j], arr[i]];
+        }
+        return arr;
+      }
+
+      // ---------- Charts ----------
+      const lmChart = new Chart($('language-chart').getContext('2d'), {
+        type: 'line',
+        data: { labels: [], datasets: [
+          { label: 'LM loss', data: [], tension: 0.25 },
+          { label: 'LM val loss', data: [], tension: 0.25 }
+        ]},
+        options: { responsive: true, plugins: { legend: { labels: { color: getComputedStyle(document.body).getPropertyValue('--text') } } }, scales: { y: { beginAtZero: true } } }
+      });
+
+      const tabLossChart = new Chart($('loss-chart').getContext('2d'), {
+        type: 'line',
+        data: { labels: [], datasets: [
+          { label: 'Training loss', data: [], tension: 0.25 },
+          { label: 'Validation loss', data: [], tension: 0.25 }
+        ]},
+        options: { responsive: true, scales: { y: { beginAtZero: true } } }
+      });
+
+      const metricChart = new Chart($('metric-chart').getContext('2d'), {
+        type: 'line',
+        data: { labels: [], datasets: [
+          { label: 'Train metric', data: [], tension: 0.25 },
+          { label: 'Val metric', data: [], tension: 0.25 }
+        ]},
+        options: { responsive: true, scales: { y: { beginAtZero: false } } }
+      });
+
+      const gapChart = new Chart($('gap-chart').getContext('2d'), {
+        type: 'line',
+        data: { labels: [], datasets: [
+          { label: 'val_loss - loss', data: [], tension: 0.25 }
+        ]},
+        options: { responsive: true, scales: { y: { beginAtZero: false } } }
+      });
+
+      const lrChart = new Chart($('lr-chart').getContext('2d'), {
+        type: 'line',
+        data: { labels: [], datasets: [
+          { label: 'Learning rate', data: [], tension: 0.25 }
+        ]},
+        options: { responsive: true, scales: { y: { beginAtZero: true } } }
+      });
+
+      const speedChart = new Chart($('speed-chart').getContext('2d'), {
+        type: 'line',
+        data: { labels: [], datasets: [
+          { label: 'Rows / sec', data: [], tension: 0.25 },
+          { label: 'Epoch ms', data: [], tension: 0.25, hidden: true }
+        ]},
+        options: { responsive: true, scales: { y: { beginAtZero: true } } }
+      });
+
+      const memoryChart = new Chart($('memory-chart').getContext('2d'), {
+        type: 'line',
+        data: { labels: [], datasets: [
+          { label: 'Tensors', data: [], tension: 0.25 },
+          { label: 'Approx MB', data: [], tension: 0.25 }
+        ]},
+        options: { responsive: true, scales: { y: { beginAtZero: true } } }
+      });
+
+      const holdoutChart = new Chart($('holdout-chart').getContext('2d'), {
+        type: 'line',
+        data: { labels: [], datasets: [
+          { label: 'Holdout score', data: [], tension: 0.25 },
+          { label: 'Avg confidence / residual scale', data: [], tension: 0.25 }
+        ]},
+        options: { responsive: true, scales: { y: { beginAtZero: false } } }
+      });
+
+      const driftChart = new Chart($('drift-chart').getContext('2d'), {
+        type: 'line',
+        data: { labels: [], datasets: [
+          { label: 'Weight drift proxy', data: [], tension: 0.25 }
+        ]},
+        options: { responsive: true, scales: { y: { beginAtZero: true } } }
+      });
+
+      function resetChart(chart) {
+        chart.data.labels.length = 0;
+        chart.data.datasets.forEach(ds => ds.data.length = 0);
+        chart.update();
+      }
+
+      function pushChart(chart, label, values) {
+        chart.data.labels.push(label);
+        values.forEach((v, i) => {
+          chart.data.datasets[i].data.push(Number.isFinite(v) ? v : null);
+        });
+        chart.update('none');
+      }
+
+      function resetTrainingObservatory() {
+        [tabLossChart, metricChart, gapChart, lrChart, speedChart, memoryChart, holdoutChart, driftChart].forEach(resetChart);
+        ['live-best-loss', 'live-gap', 'live-lr', 'live-speed'].forEach(id => { if ($(id)) $(id).textContent = '—'; });
+      }
+
+      function setOptimizerLearningRate(model, lr) {
+        const opt = model && model.optimizer;
+        if (!opt) return;
+        if (typeof opt.setLearningRate === 'function') opt.setLearningRate(lr);
+        else if (opt.learningRate != null) opt.learningRate = lr;
+      }
+
+      function computeScheduledLearningRate(baseLr, epoch, epochs, schedule, plateauState) {
+        const t = Math.max(0, Math.min(1, epoch / Math.max(1, epochs - 1)));
+        if (schedule === 'cosine') return baseLr * (0.08 + 0.92 * 0.5 * (1 + Math.cos(Math.PI * t)));
+        if (schedule === 'onecycle') {
+          if (t < 0.3) return baseLr * (0.1 + 2.9 * (t / 0.3));
+          return baseLr * (3.0 - 2.9 * ((t - 0.3) / 0.7));
+        }
+        if (schedule === 'plateau') return baseLr * Math.pow(0.5, plateauState.reductions || 0);
+        return baseLr;
+      }
+
+      function flattenWeightsData(model) {
+        const weights = model.getWeights();
+        const chunks = weights.map(w => Array.from(w.dataSync()));
+        weights.forEach(w => w.dispose());
+        return chunks.flat();
+      }
+
+      function relativeWeightDrift(baseVec, model) {
+        if (!baseVec || !baseVec.length) return NaN;
+        const nowVec = flattenWeightsData(model);
+        let num = 0, den = 0;
+        const n = Math.min(baseVec.length, nowVec.length);
+        for (let i = 0; i < n; i++) {
+          const d = nowVec[i] - baseVec[i];
+          num += d * d;
+          den += baseVec[i] * baseVec[i];
+        }
+        return Math.sqrt(num) / (Math.sqrt(den) + 1e-9);
+      }
+
+      function cloneWeights(model) {
+        return model.getWeights().map(w => w.clone());
+      }
+
+      function disposeWeights(weights) {
+        if (weights) weights.forEach(w => w.dispose());
+      }
+
+      async function liveHoldoutProbe(model, meta, X, y) {
+        if (!X || !X.length || !y || !y.length) return [NaN, NaN];
+        const sampleN = Math.min(64, X.length);
+        const xs = X.slice(0, sampleN);
+        const ys = y.slice(0, sampleN);
+        const pred = await predictArray(model, xs);
+        if (meta.taskType === 'classification') {
+          const probs = pred.map(r => Array.isArray(r) ? r : [r]);
+          const labelCount = Object.keys(meta.labelMap).length;
+          const met = classificationMetrics(probs, ys, labelCount);
+          return [met.accuracy, met.avgConfidence];
+        }
+        const values = pred.map(r => Array.isArray(r) ? r[0] : r);
+        const met = regressionMetrics(values, ys);
+        return [met.mae, met.residualStd];
+      }
+
+      function makeTrainingReport(history, meta) {
+        if (!history || !history.length) return 'No training report yet.';
+        const last = history[history.length - 1];
+        const bestVal = history.reduce((best, h) => Number.isFinite(h.valLoss) && h.valLoss < best.valLoss ? h : best, { valLoss: Infinity, epoch: null });
+        const lossStart = history[0].loss;
+        const lossEnd = last.loss;
+        const improvement = Number.isFinite(lossStart) && Number.isFinite(lossEnd) ? ((lossStart - lossEnd) / Math.max(1e-9, Math.abs(lossStart))) * 100 : NaN;
+        const gap = Number.isFinite(last.valLoss) && Number.isFinite(last.loss) ? last.valLoss - last.loss : NaN;
+        let verdict = 'Stable';
+        if (Number.isFinite(gap) && gap > Math.abs(last.loss) * 0.35) verdict = 'Possible overfitting: validation loss is much higher than training loss.';
+        else if (Number.isFinite(improvement) && improvement < 5) verdict = 'Possible underfitting or learning-rate issue: loss barely moved.';
+        else if (Number.isFinite(gap) && gap < -Math.abs(last.loss) * 0.15) verdict = 'Validation is beating train loss; dataset split may be easy, tiny, or affected by dropout/regularization.';
+        const lines = [
+          `Architecture: ${meta.architecture || 'unknown'} (${meta.taskType})`,
+          `Epochs actually run: ${history.length}`,
+          `Final loss: ${Number(last.loss).toFixed(5)}`,
+          `Best val loss: ${Number.isFinite(bestVal.valLoss) ? bestVal.valLoss.toFixed(5) + ' at epoch ' + bestVal.epoch : 'n/a'}`,
+          `Loss improvement: ${Number.isFinite(improvement) ? improvement.toFixed(2) + '%' : 'n/a'}`,
+          `Final generalization gap: ${Number.isFinite(gap) ? gap.toFixed(5) : 'n/a'}`,
+          `Final LR: ${Number.isFinite(last.lr) ? last.lr.toExponential(3) : 'n/a'}`,
+          `Speed: ${Number.isFinite(last.rowsPerSec) ? last.rowsPerSec.toFixed(1) + ' rows/s' : 'n/a'}`,
+          `Diagnosis: ${verdict}`
+        ];
+        return lines.join('\n');
+      }
+
+      // ---------- Custom MoE layer ----------
+      class MoELayer extends tf.layers.Layer {
+        static get className() { return 'MoELayer'; }
+        constructor(config = {}) {
+          super(config);
+          this.numExperts = config.numExperts || 4;
+          this.units = config.units || 128;
+        }
+        build(inputShape) {
+          const inputDim = inputShape[inputShape.length - 1];
+          this.inputDim = inputDim;
+          this.expertKernels = [];
+          this.expertBiases = [];
+          for (let i = 0; i < this.numExperts; i++) {
+            this.expertKernels.push(this.addWeight(`expert_kernel_${i}`, [inputDim, this.units], 'float32', tf.initializers.glorotNormal()));
+            this.expertBiases.push(this.addWeight(`expert_bias_${i}`, [this.units], 'float32', tf.initializers.zeros()));
+          }
+          this.gateKernel = this.addWeight('gate_kernel', [inputDim, this.numExperts], 'float32', tf.initializers.glorotNormal());
+          this.gateBias = this.addWeight('gate_bias', [this.numExperts], 'float32', tf.initializers.zeros());
+          super.build(inputShape);
+        }
+        call(inputs) {
+          return tf.tidy(() => {
+            const x = Array.isArray(inputs) ? inputs[0] : inputs;
+            const gate = tf.softmax(x.matMul(this.gateKernel.read()).add(this.gateBias.read()), -1);
+            const experts = this.expertKernels.map((kernel, i) => x.matMul(kernel.read()).add(this.expertBiases[i].read()).relu());
+            const stacked = tf.stack(experts, 1);
+            return stacked.mul(gate.expandDims(-1)).sum(1);
+          });
+        }
+        computeOutputShape(inputShape) {
+          return [inputShape[0], this.units];
+        }
+        getConfig() {
+          const base = super.getConfig();
+          return Object.assign(base, { numExperts: this.numExperts, units: this.units });
+        }
+      }
+      tf.serialization.registerClass(MoELayer);
+
+      // ---------- Language/Image model ----------
+      const LM = {
+        maxTextLength: 18,
+        embeddingDim: 32,
+        imageFeatureDim: 1280,
+        hiddenDim: 128,
+        vocabCap: 220,
+        special: ['<pad>', '<unk>', '<bos>', '<eos>']
+      };
+
+      function normaliseText(text) {
+        return String(text || '')
+          .toLowerCase()
+          .replace(/[^a-z0-9\s.,!?'-]/g, ' ')
+          .replace(/\s+/g, ' ')
+          .trim();
+      }
+
+      function splitTokens(text) {
+        const clean = normaliseText(text);
+        if (!clean) return [];
+        return clean.split(/\s+/g);
+      }
+
+      function buildVocabulary(corpus) {
+        const counts = new Map();
+        splitTokens(corpus).forEach(tok => counts.set(tok, (counts.get(tok) || 0) + 1));
+        const sorted = [...counts.entries()].sort((a, b) => b[1] - a[1]).slice(0, LM.vocabCap - LM.special.length).map(x => x[0]);
+        const vocab = [...LM.special, ...sorted];
+        const tokenToId = Object.fromEntries(vocab.map((t, i) => [t, i]));
+        return { vocab, tokenToId };
+      }
+
+      function encodeTokens(tokens, tokenToId) {
+        const ids = tokens.map(t => tokenToId[t] ?? tokenToId['<unk>']);
+        const trimmed = ids.slice(-LM.maxTextLength);
+        const padded = new Array(LM.maxTextLength).fill(tokenToId['<pad>']);
+        const offset = Math.max(0, LM.maxTextLength - trimmed.length);
+        trimmed.forEach((id, i) => padded[offset + i] = id);
+        return padded;
+      }
+
+      function decodeIds(ids, vocab) {
+        return ids.map(id => vocab[id] || '<unk>').filter(t => !LM.special.includes(t)).join(' ');
+      }
+
+      function createLanguageSamples(corpus, tokenToId) {
+        const samples = [];
+        const sentences = String(corpus || '').split(/[\n.!?]+/g).map(s => s.trim()).filter(Boolean);
+        for (const sentence of sentences) {
+          const tokens = ['<bos>', ...splitTokens(sentence), '<eos>'];
+          for (let i = 1; i < tokens.length; i++) {
+            const context = tokens.slice(0, i);
+            const target = tokenToId[tokens[i]] ?? tokenToId['<unk>'];
+            samples.push({ x: encodeTokens(context, tokenToId), y: target });
+          }
+        }
+        return samples;
+      }
+
+      function buildLanguageModel(vocabSize) {
+        if (state.languageModel) state.languageModel.dispose();
+        const textInput = tf.input({ shape: [LM.maxTextLength], dtype: 'int32', name: 'text_tokens' });
+        const imageInput = tf.input({ shape: [LM.imageFeatureDim], name: 'image_embedding' });
+
+        const embedding = tf.layers.embedding({ inputDim: vocabSize, outputDim: LM.embeddingDim, name: 'token_embedding' }).apply(textInput);
+        const flatText = tf.layers.flatten().apply(embedding);
+        const textProj = tf.layers.dense({ units: LM.hiddenDim, activation: 'relu', name: 'text_projection' }).apply(flatText);
+        const textNorm = tf.layers.layerNormalization({ name: 'text_layer_norm' }).apply(textProj);
+
+        const imageProj = tf.layers.dense({ units: LM.hiddenDim, activation: 'relu', name: 'image_projection' }).apply(imageInput);
+        const imageNorm = tf.layers.layerNormalization({ name: 'image_layer_norm' }).apply(imageProj);
+
+        const fused = tf.layers.concatenate({ name: 'text_image_fusion' }).apply([textNorm, imageNorm]);
+        const h1 = tf.layers.dense({ units: LM.hiddenDim * 2, activation: 'relu', name: 'fusion_dense_1' }).apply(fused);
+        const drop = tf.layers.dropout({ rate: 0.12 }).apply(h1);
+        const h2 = tf.layers.dense({ units: LM.hiddenDim, activation: 'relu', name: 'fusion_dense_2' }).apply(drop);
+        const moe = new MoELayer({ numExperts: 4, units: LM.hiddenDim, name: 'mixture_of_experts' }).apply(h2);
+        const residual = tf.layers.add({ name: 'moe_residual' }).apply([h2, moe]);
+        const norm = tf.layers.layerNormalization({ name: 'final_norm' }).apply(residual);
+        const output = tf.layers.dense({ units: vocabSize, activation: 'softmax', name: 'next_token' }).apply(norm);
+
+        const model = tf.model({ inputs: [textInput, imageInput], outputs: output, name: 'enhanced_multimodal_toy_lm' });
+        model.compile({ optimizer: tf.train.adam(0.002), loss: 'sparseCategoricalCrossentropy', metrics: ['accuracy'] });
+        state.languageModel = model;
+        window.languageModel = model;
+        updateStats();
+        appendLog(`Language model built with vocab=${vocabSize}, maxLen=${LM.maxTextLength}, imageDim=${LM.imageFeatureDim}.`, 'good');
+        return model;
+      }
+
+      async function loadMobileNet() {
+        if (state.mobileNet) return state.mobileNet;
+        appendLog('Loading MobileNet v2 feature extractor...', 'info');
+        state.mobileNet = await mobilenet.load({ version: 2, alpha: 1.0 });
+        appendLog('MobileNet loaded. Image embeddings will be cached.', 'good');
+        return state.mobileNet;
+      }
+
+      async function readImageElement(file) {
+        return new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onerror = reject;
+          reader.onload = () => {
+            const img = new Image();
+            img.onload = () => resolve(img);
+            img.onerror = reject;
+            img.src = reader.result;
+          };
+          reader.readAsDataURL(file);
+        });
+      }
+
+      async function getImageEmbedding2D() {
+        const file = $('image-input').files[0];
+        if (!file) return tf.zeros([1, LM.imageFeatureDim]);
+        const key = `${file.name}:${file.size}:${file.lastModified}`;
+        if (state.imageEmbedding && state.imageCacheKey === key) return state.imageEmbedding.clone();
+        if (state.imageEmbedding) state.imageEmbedding.dispose();
+
+        const img = await readImageElement(file);
+        const net = await loadMobileNet();
+        const embedding = tf.tidy(() => {
+          const pixels = tf.browser.fromPixels(img).resizeBilinear([224, 224]).toFloat().div(255).expandDims(0);
+          const infer = net.infer(pixels, true);
+          return infer.reshape([1, LM.imageFeatureDim]);
+        });
+        state.imageCacheKey = key;
+        state.imageEmbedding = embedding.clone();
+        appendLog(`Image embedded as ${embedding.shape.join('x')} tensor.`, 'good');
+        updateStats();
+        return embedding;
+      }
+
+      async function trainLanguage(mode) {
+        const prompt = $('text-input').value;
+        const extra = $('language-corpus').value;
+        const seedCorpus = `
+          hello world from a tiny ai interface
+          debug logging makes experiments easier to understand
+          multimodal models can connect images and words
+          tabular models can classify and regress csv data
+          mixture of experts can route examples to specialist pathways
+          private browser side learning is small but useful
+          ${mode === 'fine' ? prompt : ''}
+        `;
+        const corpus = `${seedCorpus}\n${extra}\n${prompt}`;
+        const vocabPack = buildVocabulary(corpus);
+        state.languageMeta = {
+          createdAt: new Date().toISOString(),
+          vocab: vocabPack.vocab,
+          tokenToId: vocabPack.tokenToId,
+          maxTextLength: LM.maxTextLength,
+          imageFeatureDim: LM.imageFeatureDim,
+          note: 'Toy browser next-token model, not a production LLM.'
+        };
+        const samples = createLanguageSamples(corpus, vocabPack.tokenToId);
+        if (samples.length < 4) {
+          alert('Add more text. The toy language model needs at least a few tokens to train.');
+          return;
+        }
+
+        const model = buildLanguageModel(vocabPack.vocab.length);
+        const imageEmbedding = await getImageEmbedding2D();
+        const xsText = tf.tensor2d(samples.map(s => s.x), [samples.length, LM.maxTextLength], 'int32');
+        const imageRow = await imageEmbedding.array();
+        const xsImage = tf.tensor2d(Array(samples.length).fill(0).map(() => imageRow[0]), [samples.length, LM.imageFeatureDim]);
+        const ys = tf.tensor1d(samples.map(s => s.y), 'int32');
+
+        const epochs = Math.max(1, parseInt($('lm-epochs').value, 10) || 10);
+        resetChart(lmChart);
+        setProgress('lm-progress-bar', 0);
+        setOutput('response', `${mode === 'fine' ? 'Fine-tuning' : 'Pre-training'} on ${samples.length} next-token examples...`);
+
+        try {
+          await model.fit([xsText, xsImage], ys, {
+            epochs,
+            batchSize: Math.min(16, samples.length),
+            validationSplit: samples.length > 12 ? 0.15 : 0,
+            shuffle: true,
+            callbacks: {
+              onEpochBegin: async (epoch) => {
+                epochStartMs = performance.now();
+                const scheduled = computeScheduledLearningRate(lr, epoch, epochs, lrSchedule, plateauState);
+                setOptimizerLearningRate(model, scheduled);
+              },
+              onEpochEnd: async (epoch, logs) => {
+                const loss = logs.loss ?? NaN;
+                const valLoss = logs.val_loss ?? NaN;
+                pushChart(lmChart, String(epoch + 1), [loss, valLoss]);
+                setProgress('lm-progress-bar', ((epoch + 1) / epochs) * 100);
+                appendLog(`LM epoch ${epoch + 1}/${epochs}: loss=${Number(loss).toFixed(4)}${Number.isFinite(valLoss) ? ` val_loss=${Number(valLoss).toFixed(4)}` : ''}`);
+                await tf.nextFrame();
+              }
+            }
+          });
+          setOutput('response', `${mode === 'fine' ? 'Fine-tuning' : 'Pre-training'} complete. Generate a response next.`);
+          setOutput('language-details', `Vocab size: ${vocabPack.vocab.length}\nSample vocab: ${vocabPack.vocab.slice(0, 40).join(', ')}`);
+          appendLog('Language training completed.', 'good');
+        } catch (err) {
+          appendLog(`Language training error: ${err.message || err}`, 'bad');
+        } finally {
+          tf.dispose([xsText, xsImage, ys, imageEmbedding]);
+          updateStats();
+        }
+      }
+
+      function sampleFromProbs(probs, temperature, topK) {
+        const adjusted = probs.map((p, i) => ({ i, p: Math.pow(Math.max(p, 1e-9), 1 / temperature) }));
+        adjusted.sort((a, b) => b.p - a.p);
+        const candidates = adjusted.slice(0, Math.max(1, topK));
+        const total = candidates.reduce((s, x) => s + x.p, 0);
+        let r = Math.random() * total;
+        for (const c of candidates) {
+          r -= c.p;
+          if (r <= 0) return c.i;
+        }
+        return candidates[0].i;
+      }
+
+      async function generateResponse() {
+        if (!state.languageModel || !state.languageMeta) {
+          alert('Pre-train or load the language model first.');
+          return;
+        }
+        const vocab = state.languageMeta.vocab;
+        const tokenToId = state.languageMeta.tokenToId;
+        const promptTokens = ['<bos>', ...splitTokens($('text-input').value)];
+        const generated = [...promptTokens];
+        const maxNew = Math.max(1, parseInt($('lm-tokens').value, 10) || 18);
+        const temp = Math.max(0.1, safeNumber($('lm-temperature').value, 0.85));
+        const imageEmbedding = await getImageEmbedding2D();
+        const topHistory = [];
+
+        try {
+          for (let step = 0; step < maxNew; step++) {
+            const ids = encodeTokens(generated, tokenToId);
+            const xText = tf.tensor2d([ids], [1, LM.maxTextLength], 'int32');
+            const pred = state.languageModel.predict([xText, imageEmbedding]);
+            const probs = Array.from(await pred.data());
+            const nextId = sampleFromProbs(probs, temp, 8);
+            const top = probs.map((p, i) => ({ token: vocab[i], p })).sort((a, b) => b.p - a.p).slice(0, 5);
+            topHistory.push(top.map(t => `${t.token}:${(t.p * 100).toFixed(1)}%`).join('  '));
+            tf.dispose([xText, pred]);
+            const nextToken = vocab[nextId] || '<unk>';
+            if (nextToken === '<eos>') break;
+            generated.push(nextToken);
+          }
+          const clean = decodeIds(generated, vocab);
+          setOutput('response', clean || '(No text generated. Try more training text or lower temperature.)');
+          setOutput('language-details', `Top predictions by step:\n${topHistory.map((x, i) => `${i + 1}. ${x}`).join('\n')}`);
+          appendLog('Generated toy language response.', 'good');
+        } finally {
+          imageEmbedding.dispose();
+          updateStats();
+        }
+      }
+
+      async function saveLanguageModel() {
+        if (!state.languageModel || !state.languageMeta) return alert('No language model to save.');
+        await state.languageModel.save('localstorage://enhanced-ai-pro-language-model');
+        localStorage.setItem(LS.languageMeta, JSON.stringify(state.languageMeta));
+        appendLog('Language model and metadata saved to localStorage.', 'good');
+      }
+
+      async function loadLanguageModel() {
+        try {
+          const model = await tf.loadLayersModel('localstorage://enhanced-ai-pro-language-model');
+          model.compile({ optimizer: tf.train.adam(0.002), loss: 'sparseCategoricalCrossentropy', metrics: ['accuracy'] });
+          if (state.languageModel) state.languageModel.dispose();
+          state.languageModel = model;
+          window.languageModel = model;
+          const meta = localStorage.getItem(LS.languageMeta);
+          state.languageMeta = meta ? JSON.parse(meta) : null;
+          appendLog('Language model loaded from localStorage.', 'good');
+          setOutput('language-details', state.languageMeta ? `Loaded vocab size: ${state.languageMeta.vocab.length}` : 'Model loaded, but metadata was missing.');
+          updateStats();
+        } catch (err) {
+          appendLog(`Error loading language model: ${err.message || err}`, 'bad');
+        }
+      }
+
+      async function downloadLanguageModel() {
+        if (!state.languageModel || !state.languageMeta) return alert('No language model to download.');
+        await state.languageModel.save('downloads://enhanced-ai-pro-language-model');
+        downloadText('enhanced-ai-pro-language-meta.json', JSON.stringify(state.languageMeta, null, 2), 'application/json');
+        appendLog('Language model download started.', 'good');
+      }
+
+      function inspectLanguageModel() {
+        if (!state.languageModel) return setOutput('language-details', 'No language model currently built.');
+        const lines = [];
+        state.languageModel.layers.forEach((layer, i) => {
+          lines.push(`${i + 1}. ${layer.name} | ${layer.getClassName()} | output=${JSON.stringify(layer.outputShape)}`);
+        });
+        lines.push(`\nParameters: ${state.languageModel.countParams().toLocaleString()}`);
+        if (state.languageMeta) lines.push(`Vocabulary: ${state.languageMeta.vocab.length} tokens`);
+        setOutput('language-details', lines.join('\n'));
+      }
+
+      // ---------- CSV / tabular model ----------
+      function isMissing(v) {
+        return v === null || v === undefined || String(v).trim() === '' || String(v).toLowerCase() === 'na' || String(v).toLowerCase() === 'null';
+      }
+
+      function parseCSVText(text) {
+        const result = Papa.parse(text, { header: true, dynamicTyping: false, skipEmptyLines: true, transformHeader: h => String(h).trim() });
+        if (result.errors && result.errors.length) appendLog(`CSV parser warnings: ${result.errors.slice(0, 3).map(e => e.message).join('; ')}`, 'warn');
+        const rows = (result.data || []).filter(row => Object.values(row).some(v => !isMissing(v)));
+        return rows;
+      }
+
+      async function parseCSVFile(file) {
+        const text = await file.text();
+        return parseCSVText(text);
+      }
+
+      function populateLabelSelect(columns) {
+        const select = $('label-column');
+        select.innerHTML = '';
+        columns.forEach((col, i) => {
+          const opt = document.createElement('option');
+          opt.value = col;
+          opt.textContent = col;
+          if (i === columns.length - 1) opt.selected = true;
+          select.appendChild(opt);
+        });
+      }
+
+      function renderPreview(rows, columns) {
+        if (!rows.length) {
+          $('dataset-preview').innerHTML = '<div class="output small">No rows found.</div>';
+          return;
+        }
+        const sample = rows.slice(0, 30);
+        const html = [`<table><thead><tr>${columns.map(c => `<th>${escapeHtml(c)}</th>`).join('')}</tr></thead><tbody>`];
+        sample.forEach(row => {
+          html.push(`<tr>${columns.map(c => `<td>${escapeHtml(row[c])}</td>`).join('')}</tr>`);
+        });
+        html.push('</tbody></table>');
+        $('dataset-preview').innerHTML = html.join('');
+      }
+
+      function escapeHtml(v) {
+        return String(v ?? '').replace(/[&<>"]/g, s => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[s]));
+      }
+
+      function detectColumnTypes(rows, featureCols) {
+        const types = {};
+        for (const col of featureCols) {
+          let total = 0, numeric = 0;
+          for (const row of rows) {
+            const v = row[col];
+            if (isMissing(v)) continue;
+            total++;
+            if (Number.isFinite(Number(v))) numeric++;
+          }
+          types[col] = total > 0 && numeric / total >= 0.9 ? 'numeric' : 'categorical';
+        }
+        return types;
+      }
+
+      function median(values) {
+        const arr = values.filter(Number.isFinite).sort((a, b) => a - b);
+        if (!arr.length) return 0;
+        const mid = Math.floor(arr.length / 2);
+        return arr.length % 2 ? arr[mid] : (arr[mid - 1] + arr[mid]) / 2;
+      }
+
+      function mode(values) {
+        const counts = new Map();
+        values.forEach(v => counts.set(v, (counts.get(v) || 0) + 1));
+        let best = '__MISSING__', n = -1;
+        counts.forEach((count, value) => { if (count > n) { best = value; n = count; } });
+        return best;
+      }
+
+      function hashString(str, buckets) {
+        let h = 2166136261;
+        for (let i = 0; i < str.length; i++) {
+          h ^= str.charCodeAt(i);
+          h += (h << 1) + (h << 4) + (h << 7) + (h << 8) + (h << 24);
+        }
+        return Math.abs(h >>> 0) % buckets;
+      }
+
+      function createTabularMeta(rows, labelCol, taskType) {
+        const featureCols = state.columns.filter(c => c !== labelCol);
+        const colTypes = detectColumnTypes(rows, featureCols);
+        const meta = {
+          createdAt: new Date().toISOString(),
+          labelCol,
+          taskType,
+          featureCols,
+          colTypes,
+          numericStats: {},
+          encoders: {},
+          vectorNames: [],
+          labelMap: null,
+          reverseLabelMap: null,
+          minFeatures: null,
+          maxFeatures: null
+        };
+
+        for (const col of featureCols) {
+          if (colTypes[col] === 'numeric') {
+            const vals = rows.map(r => Number(r[col])).filter(Number.isFinite);
+            meta.numericStats[col] = {
+              median: median(vals),
+              min: vals.length ? Math.min(...vals) : 0,
+              max: vals.length ? Math.max(...vals) : 0,
+              mean: vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : 0
+            };
+            meta.vectorNames.push(col);
+          } else {
+            const values = rows.map(r => isMissing(r[col]) ? '__MISSING__' : String(r[col]).trim());
+            const unique = [...new Set(values)].sort();
+            if (unique.length <= 30) {
+              const levels = unique.includes('__OTHER__') ? unique : [...unique, '__OTHER__'];
+              meta.encoders[col] = { type: 'onehot', levels, mode: mode(values) };
+              levels.forEach(level => meta.vectorNames.push(`${col}=${level}`));
+            } else {
+              const buckets = 16;
+              meta.encoders[col] = { type: 'hash', buckets, mode: mode(values), uniqueCount: unique.length };
+              for (let i = 0; i < buckets; i++) meta.vectorNames.push(`${col}#hash${i}`);
+            }
+          }
+        }
+
+        if (taskType === 'classification') {
+          const labels = rows.map(r => String(r[labelCol]).trim()).filter(v => !isMissing(v));
+          const uniqueLabels = [...new Set(labels)].sort();
+          meta.labelMap = Object.fromEntries(uniqueLabels.map((label, i) => [label, i]));
+          meta.reverseLabelMap = Object.fromEntries(uniqueLabels.map((label, i) => [i, label]));
+        }
+        return meta;
+      }
+
+      function vectorizeRow(row, meta) {
+        const vector = [];
+        for (const col of meta.featureCols) {
+          if (meta.colTypes[col] === 'numeric') {
+            const n = Number(row[col]);
+            vector.push(Number.isFinite(n) ? n : meta.numericStats[col].median);
+          } else {
+            const enc = meta.encoders[col];
+            const raw = isMissing(row[col]) ? enc.mode : String(row[col]).trim();
+            if (enc.type === 'onehot') {
+              const levels = enc.levels;
+              const idx = levels.includes(raw) ? levels.indexOf(raw) : levels.indexOf('__OTHER__');
+              for (let i = 0; i < levels.length; i++) vector.push(i === idx ? 1 : 0);
+            } else {
+              const arr = new Array(enc.buckets).fill(0);
+              arr[hashString(raw, enc.buckets)] = 1;
+              vector.push(...arr);
+            }
+          }
+        }
+        return vector;
+      }
+
+      function buildFeatureMatrix(rows, meta) {
+        const X = [];
+        const y = [];
+        let skipped = 0;
+        for (const row of rows) {
+          const rawLabel = row[meta.labelCol];
+          if (isMissing(rawLabel)) { skipped++; continue; }
+          let label;
+          if (meta.taskType === 'classification') {
+            label = meta.labelMap[String(rawLabel).trim()];
+            if (label === undefined) { skipped++; continue; }
+          } else {
+            label = Number(rawLabel);
+            if (!Number.isFinite(label)) { skipped++; continue; }
+          }
+          X.push(vectorizeRow(row, meta));
+          y.push(label);
+        }
+        appendLog(`Vectorized ${X.length} rows, skipped ${skipped}. Final feature dimension=${meta.vectorNames.length}.`, skipped ? 'warn' : 'good');
+        return { X, y };
+      }
+
+      function normalizeMatrix(X, meta, fit = false) {
+        if (fit) {
+          const dim = X[0].length;
+          const min = new Array(dim).fill(Infinity);
+          const max = new Array(dim).fill(-Infinity);
+          X.forEach(row => row.forEach((v, i) => { if (v < min[i]) min[i] = v; if (v > max[i]) max[i] = v; }));
+          meta.minFeatures = min.map(v => Number.isFinite(v) ? v : 0);
+          meta.maxFeatures = max.map(v => Number.isFinite(v) ? v : 1);
+        }
+        return X.map(row => row.map((v, i) => {
+          const denom = (meta.maxFeatures[i] - meta.minFeatures[i]) || 1;
+          return (v - meta.minFeatures[i]) / denom;
+        }));
+      }
+
+      function mean(values) { return values.length ? values.reduce((a, b) => a + b, 0) / values.length : 0; }
+
+      function std(values) {
+        if (values.length < 2) return 0;
+        const m = mean(values);
+        return Math.sqrt(mean(values.map(v => (v - m) ** 2)));
+      }
+
+      function quantile(values, q) {
+        const arr = values.filter(Number.isFinite).slice().sort((a, b) => a - b);
+        if (!arr.length) return 0;
+        const pos = Math.min(arr.length - 1, Math.max(0, Math.ceil(q * arr.length) - 1));
+        return arr[pos];
+      }
+
+      function classificationMetrics(probs, labels, labelCount) {
+        const matrix = Array.from({ length: labelCount }, () => Array(labelCount).fill(0));
+        let correct = 0;
+        let nll = 0;
+        const confs = [];
+        for (let i = 0; i < probs.length; i++) {
+          const row = probs[i];
+          const pred = row.indexOf(Math.max(...row));
+          const truth = labels[i];
+          matrix[truth][pred]++;
+          if (pred === truth) correct++;
+          const pTrue = Math.max(1e-9, row[truth] || 1e-9);
+          nll -= Math.log(pTrue);
+          confs.push(Math.max(...row));
+        }
+        return { accuracy: labels.length ? correct / labels.length : 0, nll: labels.length ? nll / labels.length : 0, avgConfidence: mean(confs), matrix };
+      }
+
+      function regressionMetrics(preds, labels) {
+        const errors = preds.map((p, i) => p - labels[i]);
+        const abs = errors.map(Math.abs);
+        const mse = mean(errors.map(e => e * e));
+        const yMean = mean(labels);
+        const ssRes = errors.reduce((s, e) => s + e * e, 0);
+        const ssTot = labels.reduce((s, y) => s + (y - yMean) ** 2, 0) || 1;
+        return { mse, rmse: Math.sqrt(mse), mae: mean(abs), r2: 1 - ssRes / ssTot, residualStd: std(errors) };
+      }
+
+      async function predictArray(model, X) {
+        if (!X.length) return [];
+        const x = tf.tensor2d(X);
+        const pred = model.predict(x);
+        const arr = await pred.array();
+        tf.dispose([x, pred]);
+        return arr;
+      }
+
+      async function calibrateUncertainty(model, meta, X, y) {
+        if (!X.length) {
+          meta.uncertainty = null;
+          setOutput('uncertainty-output', 'No holdout rows were available for calibration. Increase test split.');
+          return 'No holdout uncertainty calibration.';
+        }
+        const rawPred = await predictArray(model, X);
+        if (meta.taskType === 'classification') {
+          const probs = rawPred.map(r => Array.isArray(r) ? r : [r]);
+          const scores = probs.map((row, i) => 1 - Math.max(1e-9, row[y[i]] || 0));
+          const alpha = $('calibration-alpha') ? Math.max(0.01, Math.min(0.5, safeNumber($('calibration-alpha').value, 0.1))) : 0.1;
+          const q90 = quantile(scores, 1 - alpha);
+          const labelCount = Object.keys(meta.labelMap).length;
+          const met = classificationMetrics(probs, y, labelCount);
+          meta.uncertainty = { type: 'classification_conformal', q90, alpha, holdoutN: y.length, accuracy: met.accuracy, avgConfidence: met.avgConfidence, matrix: met.matrix };
+          const matrixLines = met.matrix.map((row, i) => `${meta.reverseLabelMap[i] ?? i}: ${row.join(' ')}`).join('\n');
+          const report = `Holdout accuracy: ${(met.accuracy * 100).toFixed(2)}%\nAvg confidence: ${(met.avgConfidence * 100).toFixed(2)}%\nConformal score q${Math.round((1 - alpha) * 100)}: ${q90.toFixed(4)}\nPrediction set rule: include labels with p ≥ ${(1 - q90).toFixed(4)}\n\nConfusion matrix rows=true, cols=pred:\n${matrixLines}`;
+          setOutput('uncertainty-output', report);
+          return report;
+        }
+        const preds = rawPred.map(r => Array.isArray(r) ? r[0] : r);
+        const absErrors = preds.map((p, i) => Math.abs(p - y[i]));
+        const q90 = quantile(absErrors, 0.9);
+        const met = regressionMetrics(preds, y);
+        meta.uncertainty = { type: 'regression_residual_conformal', q90, alpha, holdoutN: y.length, rmse: met.rmse, mae: met.mae, r2: met.r2, residualStd: met.residualStd };
+        const report = `Holdout RMSE: ${met.rmse.toFixed(4)}\nHoldout MAE: ${met.mae.toFixed(4)}\nHoldout R²: ${met.r2.toFixed(4)}\n${Math.round((1 - alpha) * 100)}% residual interval: ±${q90.toFixed(4)}\nResidual std: ${met.residualStd.toFixed(4)}`;
+        setOutput('uncertainty-output', report);
+        return report;
+      }
+
+      function aggregateQualityWarnings() {
+        if (!state.rows.length) return 'No dataset loaded.';
+        const warnings = [];
+        const seen = new Set();
+        let duplicates = 0;
+        for (const row of state.rows) {
+          const key = JSON.stringify(row);
+          if (seen.has(key)) duplicates++; else seen.add(key);
+        }
+        if (duplicates) warnings.push(`Duplicate rows detected: ${duplicates}`);
+        for (const col of state.columns) {
+          const vals = state.rows.map(r => r[col]);
+          const missingRatio = vals.filter(isMissing).length / vals.length;
+          const unique = new Set(vals.filter(v => !isMissing(v)).map(v => String(v))).size;
+          const numericVals = vals.map(Number).filter(Number.isFinite);
+          if (missingRatio > 0.25) warnings.push(`${col}: high missing ratio ${(missingRatio * 100).toFixed(1)}%`);
+          if (/id|uuid|email|phone|name/i.test(col) && unique / vals.length > 0.8) warnings.push(`${col}: may be identifier-like and could overfit.`);
+          if (numericVals.length > 4) {
+            const m = mean(numericVals), sd = std(numericVals);
+            const outliers = sd ? numericVals.filter(v => Math.abs(v - m) > 3 * sd).length : 0;
+            if (outliers) warnings.push(`${col}: ${outliers} rough z-score outlier(s).`);
+          }
+        }
+        return warnings.length ? warnings.map(w => `• ${w}`).join('\n') : 'No major quality warnings found. Still validate labels, leakage, and train/test split manually.';
+      }
+
+      function updateQualityOutput() {
+        const summary = aggregateQualityWarnings();
+        setOutput('quality-output', summary);
+      }
+
+      function createTabularModel(inputDim, taskType, labelCount, hiddenUnits, lr, architecture = 'residual', dropoutRate = 0.12) {
+        if (state.tabularModel) state.tabularModel.dispose();
+        const input = tf.input({ shape: [inputDim], name: 'tabular_vector' });
+        const drop = Math.max(0, Math.min(0.6, dropoutRate));
+        let x;
+
+        if (architecture === 'compact') {
+          x = tf.layers.dense({ units: Math.max(8, Math.floor(hiddenUnits / 2)), activation: 'relu', kernelRegularizer: tf.regularizers.l2({ l2: 1e-5 }), name: 'compact_dense_1' }).apply(input);
+          x = tf.layers.dropout({ rate: drop, name: 'compact_dropout' }).apply(x);
+          x = tf.layers.dense({ units: Math.max(6, Math.floor(hiddenUnits / 4)), activation: 'relu', name: 'compact_dense_2' }).apply(x);
+        } else if (architecture === 'wide') {
+          x = tf.layers.dense({ units: hiddenUnits * 2, activation: 'relu', kernelRegularizer: tf.regularizers.l2({ l2: 2e-5 }), name: 'wide_dense_1' }).apply(input);
+          x = tf.layers.batchNormalization({ name: 'wide_bn_1' }).apply(x);
+          x = tf.layers.dropout({ rate: Math.min(0.6, drop + 0.08), name: 'wide_dropout_1' }).apply(x);
+          x = tf.layers.dense({ units: hiddenUnits, activation: 'relu', name: 'wide_dense_2' }).apply(x);
+          x = tf.layers.dropout({ rate: drop, name: 'wide_dropout_2' }).apply(x);
+        } else if (architecture === 'gated') {
+          const a = tf.layers.dense({ units: hiddenUnits, activation: 'relu', kernelRegularizer: tf.regularizers.l2({ l2: 2e-5 }), name: 'gated_value' }).apply(input);
+          const g = tf.layers.dense({ units: hiddenUnits, activation: 'sigmoid', name: 'gated_gate' }).apply(input);
+          x = tf.layers.multiply({ name: 'gated_feature_product' }).apply([a, g]);
+          x = tf.layers.layerNormalization({ name: 'gated_layer_norm' }).apply(x);
+          x = tf.layers.dropout({ rate: drop, name: 'gated_dropout_1' }).apply(x);
+          const refine = tf.layers.dense({ units: hiddenUnits, activation: 'relu', name: 'gated_refine' }).apply(x);
+          x = tf.layers.add({ name: 'gated_residual_add' }).apply([x, refine]);
+        } else {
+          const h1 = tf.layers.dense({ units: hiddenUnits, activation: 'relu', kernelRegularizer: tf.regularizers.l2({ l2: 1e-5 }), name: 'res_dense_1' }).apply(input);
+          const h1n = tf.layers.batchNormalization({ name: 'res_bn_1' }).apply(h1);
+          const h1d = tf.layers.dropout({ rate: drop, name: 'res_dropout_1' }).apply(h1n);
+          const h2 = tf.layers.dense({ units: hiddenUnits, activation: 'relu', name: 'res_dense_2' }).apply(h1d);
+          const skip = tf.layers.dense({ units: hiddenUnits, activation: 'linear', name: 'res_skip_projection' }).apply(input);
+          x = tf.layers.add({ name: 'residual_add' }).apply([h2, skip]);
+          x = tf.layers.layerNormalization({ name: 'res_layer_norm' }).apply(x);
+          x = tf.layers.dropout({ rate: Math.max(0, drop / 2), name: 'res_dropout_2' }).apply(x);
+        }
+
+        const head = tf.layers.dense({ units: Math.max(8, Math.floor(hiddenUnits / 3)), activation: 'relu', name: 'prediction_head' }).apply(x);
+        const output = taskType === 'classification'
+          ? tf.layers.dense({ units: labelCount, activation: 'softmax', name: 'class_probs' }).apply(head)
+          : tf.layers.dense({ units: 1, name: 'regression_value' }).apply(head);
+        const model = tf.model({ inputs: input, outputs: output, name: `enhanced_tabular_${architecture}` });
+        if (taskType === 'classification') {
+          model.compile({ optimizer: tf.train.adam(lr), loss: 'sparseCategoricalCrossentropy', metrics: ['accuracy'] });
+        } else {
+          model.compile({ optimizer: tf.train.adam(lr), loss: 'meanSquaredError', metrics: ['mae'] });
+        }
+        state.tabularModel = model;
+        window.tabularModel = model;
+        return model;
+      }
+
+      async function loadRows(rows, sourceName) {
+        if (!rows || !rows.length) {
+          appendLog('No rows found in CSV.', 'bad');
+          return;
+        }
+        state.rows = rows;
+        state.columns = Object.keys(rows[0]);
+        populateLabelSelect(state.columns);
+        renderPreview(state.rows, state.columns);
+        profileDataset();
+        updateQualityOutput();
+        appendLog(`Loaded ${rows.length} rows and ${state.columns.length} columns from ${sourceName}.`, 'good');
+      }
+
+      function profileDataset() {
+        if (!state.rows.length) return;
+        const lines = [];
+        lines.push(`Rows: ${state.rows.length}`);
+        lines.push(`Columns: ${state.columns.length}`);
+        lines.push('');
+        for (const col of state.columns) {
+          const vals = state.rows.map(r => r[col]);
+          const missing = vals.filter(isMissing).length;
+          const nums = vals.map(Number).filter(Number.isFinite);
+          const unique = new Set(vals.filter(v => !isMissing(v)).map(v => String(v))).size;
+          const numericRatio = vals.length ? nums.length / (vals.length - missing || 1) : 0;
+          lines.push(`${col}: unique=${unique}, missing=${missing}, numericRatio=${numericRatio.toFixed(2)}${nums.length ? `, median=${median(nums).toFixed(3)}` : ''}`);
+        }
+        lines.push('');
+        lines.push('Quality warnings are shown in the Quality + uncertainty card.');
+        setOutput('profile-output', lines.join('\n'));
+      }
+
+      function renderFeatureOrder(meta) {
+        $('feature-order').innerHTML = `Feature columns (${meta.featureCols.length}): <span class="mono">${meta.featureCols.join(', ')}</span><br>Final vector dimension after encoding: <span class="mono">${meta.vectorNames.length}</span>`;
+        const example = meta.featureCols.map(col => meta.colTypes[col] === 'numeric' ? String(meta.numericStats[col].median) : (meta.encoders[col].mode || 'value')).join(', ');
+        $('predict-input').placeholder = example;
+      }
+
+      async function trainTabularModel() {
+        if (!state.rows.length) return alert('Please upload or load a sample CSV first.');
+        const labelCol = $('label-column').value || state.columns[state.columns.length - 1];
+        const taskType = $('task-type').value;
+        const epochs = Math.max(1, parseInt($('epochs').value, 10) || 20);
+        const batchSize = Math.max(1, parseInt($('batch-size').value, 10) || 16);
+        const lr = Math.max(1e-6, safeNumber($('learning-rate').value, 0.001));
+        const valSplit = Math.max(0, Math.min(0.8, safeNumber($('val-split').value, 0.2)));
+        const testSplit = Math.max(0, Math.min(0.8, safeNumber($('test-split').value, 0.15)));
+        const patience = Math.max(0, parseInt($('patience').value, 10) || 0);
+        const hidden = Math.max(8, parseInt($('hidden-units').value, 10) || 96);
+        const architecture = $('architecture-type').value || 'residual';
+        const dropoutRate = Math.max(0, Math.min(0.6, safeNumber($('dropout-rate').value, 0.12)));
+        const seed = Math.max(1, parseInt($('random-seed').value, 10) || 2026);
+        const lrSchedule = $('lr-schedule') ? $('lr-schedule').value : 'constant';
+        const restoreBest = $('restore-best') ? $('restore-best').checked : true;
+        const liveProbeEnabled = $('live-holdout-probe') ? $('live-holdout-probe').checked : true;
+        const autoReport = $('auto-train-report') ? $('auto-train-report').checked : true;
+
+        const meta = createTabularMeta(state.rows, labelCol, taskType);
+        const { X, y } = buildFeatureMatrix(state.rows, meta);
+        if (X.length < 4) return alert('Not enough valid rows after preprocessing.');
+        const zipped = shuffleInPlace(X.map((row, i) => ({ row, label: y[i] })), seed);
+        const testCount = Math.max(0, Math.floor(zipped.length * testSplit));
+        const test = zipped.slice(0, testCount);
+        const train = zipped.slice(testCount);
+        const trainXRaw = train.map(x => x.row);
+        const testXRaw = test.map(x => x.row);
+        const trainX = normalizeMatrix(trainXRaw, meta, true);
+        const testX = testXRaw.length ? normalizeMatrix(testXRaw, meta, false) : [];
+        const trainY = train.map(x => x.label);
+        const testY = test.map(x => x.label);
+
+        const labelCount = taskType === 'classification' ? Object.keys(meta.labelMap).length : 1;
+        if (taskType === 'classification' && labelCount < 2) return alert('Classification needs at least 2 label classes.');
+
+        const model = createTabularModel(meta.vectorNames.length, taskType, labelCount, hidden, lr, architecture, dropoutRate);
+        meta.architecture = architecture;
+        meta.dropoutRate = dropoutRate;
+        meta.seed = seed;
+        meta.lrSchedule = lrSchedule;
+        state.tabularMeta = meta;
+        renderFeatureOrder(meta);
+        resetTrainingObservatory();
+        setProgress('progress-bar', 0);
+
+        const xTrain = tf.tensor2d(trainX);
+        const yTrain = taskType === 'classification' ? tf.tensor1d(trainY, 'int32') : tf.tensor2d(trainY, [trainY.length, 1]);
+        let best = Infinity;
+        let stale = 0;
+        let bestWeights = null;
+        const plateauState = { reductions: 0, sinceReduction: 0 };
+        const trainHistory = [];
+        const initialWeightVec = flattenWeightsData(model);
+        let epochStartMs = performance.now();
+
+        appendLog(`Training tabular ${taskType}: architecture=${architecture}, schedule=${lrSchedule}, train=${train.length}, test=${test.length}, valSplit=${valSplit}.`, 'info');
+        try {
+          await model.fit(xTrain, yTrain, {
+            epochs,
+            batchSize,
+            validationSplit: valSplit,
+            shuffle: true,
+            callbacks: {
+              onEpochEnd: async (epoch, logs) => {
+                const loss = logs.loss ?? NaN;
+                const valLoss = logs.val_loss ?? NaN;
+                const trainMetric = logs.acc ?? logs.accuracy ?? logs.mae ?? NaN;
+                const valMetric = logs.val_acc ?? logs.val_accuracy ?? logs.val_mae ?? NaN;
+                const label = String(epoch + 1);
+                const latestLr = computeScheduledLearningRate(lr, epoch, epochs, lrSchedule, plateauState);
+                const gap = Number.isFinite(valLoss) && Number.isFinite(loss) ? valLoss - loss : NaN;
+                const epochMs = performance.now() - epochStartMs;
+                const rowsPerSec = epochMs > 0 ? train.length / (epochMs / 1000) : NaN;
+                const mem = tf.memory();
+                const drift = relativeWeightDrift(initialWeightVec, model);
+                const holdout = liveProbeEnabled ? await liveHoldoutProbe(model, meta, testX, testY) : [NaN, NaN];
+
+                pushChart(tabLossChart, label, [loss, valLoss]);
+                pushChart(metricChart, label, [trainMetric, valMetric]);
+                pushChart(gapChart, label, [gap]);
+                pushChart(lrChart, label, [latestLr]);
+                pushChart(speedChart, label, [rowsPerSec, epochMs]);
+                pushChart(memoryChart, label, [mem.numTensors, mem.numBytes / (1024 * 1024)]);
+                pushChart(holdoutChart, label, holdout);
+                pushChart(driftChart, label, [drift]);
+                $('live-best-loss').textContent = Number.isFinite(best) ? best.toFixed(5) : '—';
+                $('live-gap').textContent = Number.isFinite(gap) ? gap.toFixed(5) : '—';
+                $('live-lr').textContent = Number.isFinite(latestLr) ? latestLr.toExponential(2) : '—';
+                $('live-speed').textContent = Number.isFinite(rowsPerSec) ? rowsPerSec.toFixed(1) : '—';
+                setProgress('progress-bar', ((epoch + 1) / epochs) * 100);
+                trainHistory.push({ epoch: epoch + 1, loss, valLoss, trainMetric, valMetric, gap, lr: latestLr, epochMs, rowsPerSec, tensors: mem.numTensors, mb: mem.numBytes / (1024 * 1024), holdoutScore: holdout[0], holdoutAux: holdout[1], drift });
+                appendLog(`Tabular epoch ${epoch + 1}/${epochs}: loss=${Number(loss).toFixed(4)}${Number.isFinite(valLoss) ? ` val_loss=${Number(valLoss).toFixed(4)}` : ''}${Number.isFinite(trainMetric) ? ` metric=${Number(trainMetric).toFixed(4)}` : ''}${Number.isFinite(gap) ? ` gap=${Number(gap).toFixed(4)}` : ''}${Number.isFinite(latestLr) ? ` lr=${latestLr.toExponential(2)}` : ''}`);
+                if (Number.isFinite(valLoss)) {
+                  if (valLoss < best - 1e-5) {
+                    best = valLoss;
+                    stale = 0;
+                    disposeWeights(bestWeights);
+                    bestWeights = cloneWeights(model);
+                  } else {
+                    stale++;
+                    if (lrSchedule === 'plateau' && stale > 0 && stale % Math.max(2, Math.floor(Math.max(1, patience || 6) / 2)) === 0) {
+                      plateauState.reductions += 1;
+                      appendLog(`Plateau scheduler reduced LR factor to ${Math.pow(0.5, plateauState.reductions).toFixed(3)}.`, 'warn');
+                    }
+                  }
+                }
+                if (patience > 0 && Number.isFinite(valLoss)) {
+                  if (stale >= patience) {
+                    model.stopTraining = true;
+                    appendLog(`Early stopping at epoch ${epoch + 1}.`, 'warn');
+                  }
+                }
+                await tf.nextFrame();
+              }
+            }
+          });
+
+          if (restoreBest && bestWeights) {
+            model.setWeights(bestWeights);
+            appendLog('Restored best validation weights after training.', 'good');
+          }
+
+          let testReport = 'No holdout test split.';
+          if (testX.length) {
+            const xTest = tf.tensor2d(testX);
+            const yTest = taskType === 'classification' ? tf.tensor1d(testY, 'int32') : tf.tensor2d(testY, [testY.length, 1]);
+            const evalOut = model.evaluate(xTest, yTest);
+            const evalArray = Array.isArray(evalOut) ? evalOut : [evalOut];
+            const evalValues = await Promise.all(evalArray.map(t => t.data()));
+            testReport = taskType === 'classification'
+              ? `Test loss: ${evalValues[0][0].toFixed(4)}\nTest accuracy: ${evalValues[1] ? evalValues[1][0].toFixed(4) : 'n/a'}`
+              : `Test MSE: ${evalValues[0][0].toFixed(4)}\nTest MAE: ${evalValues[1] ? evalValues[1][0].toFixed(4) : 'n/a'}`;
+            tf.dispose([xTest, yTest, ...evalArray]);
+          }
+
+          state.lastTrainingVectors = { X: normalizeMatrix(X, meta, false), y };
+          state.lastHoldout = { X: testX, y: testY };
+          meta.trainingHistory = trainHistory;
+          const uncertaintyReport = await calibrateUncertainty(model, meta, testX, testY);
+          setOutput('predict-output', `Training complete.\n${testReport}\n\n${uncertaintyReport.split('\n').slice(0, 5).join('\n')}`);
+          appendLog('Tabular training completed.', 'good');
+          updateStats();
+        } catch (err) {
+          appendLog(`Tabular training error: ${err.message || err}`, 'bad');
+        } finally {
+          disposeWeights(bestWeights);
+          tf.dispose([xTrain, yTrain]);
+          updateStats();
+        }
+      }
+
+      function parsePredictInput(meta) {
+        const raw = $('predict-input').value.trim();
+        if (!raw) throw new Error('Enter feature values first.');
+        if (raw.startsWith('{')) {
+          return JSON.parse(raw);
+        }
+        const parts = raw.split(',').map(x => x.trim());
+        if (parts.length !== meta.featureCols.length) {
+          throw new Error(`Expected ${meta.featureCols.length} raw values in this order: ${meta.featureCols.join(', ')}`);
+        }
+        const row = {};
+        meta.featureCols.forEach((col, i) => { row[col] = parts[i]; });
+        return row;
+      }
+
+      async function stochasticPredictTabular(norm, samples) {
+        const x = tf.tensor2d(norm);
+        const draws = [];
+        for (let i = 0; i < samples; i++) {
+          const out = tf.tidy(() => state.tabularModel.apply(x, { training: true }));
+          draws.push(Array.from(await out.data()));
+          out.dispose();
+          await tf.nextFrame();
+        }
+        x.dispose();
+        return draws;
+      }
+
+      function summariseMCDropout(draws, meta) {
+        if (!draws || !draws.length) return '';
+        if (meta.taskType === 'classification') {
+          const labelCount = draws[0].length;
+          const means = Array(labelCount).fill(0);
+          for (const d of draws) for (let i = 0; i < labelCount; i++) means[i] += d[i] / draws.length;
+          const entropy = -means.reduce((s, p) => s + (p > 0 ? p * Math.log(p) : 0), 0);
+          const top = means.map((p, i) => ({ label: meta.reverseLabelMap[i] ?? String(i), p })).sort((a, b) => b.p - a.p)[0];
+          return `
+
+MC dropout probe (${draws.length} samples):
+Mean top class: ${top.label} (${(top.p * 100).toFixed(2)}%)
+Predictive entropy: ${entropy.toFixed(4)}`;
+        }
+        const vals = draws.map(d => d[0]);
+        return `
+
+MC dropout probe (${draws.length} samples):
+Mean: ${mean(vals).toFixed(6)}
+Std: ${std(vals).toFixed(6)}
+Min/Max: ${Math.min(...vals).toFixed(6)} / ${Math.max(...vals).toFixed(6)}`;
+      }
+
+      async function predictTabular() {
+        if (!state.tabularModel || !state.tabularMeta) return alert('Train or load a tabular model first.');
+        try {
+          const row = parsePredictInput(state.tabularMeta);
+          const vector = vectorizeRow(row, state.tabularMeta);
+          const norm = normalizeMatrix([vector], state.tabularMeta, false);
+          const x = tf.tensor2d(norm);
+          const pred = state.tabularModel.predict(x);
+          const arr = Array.from(await pred.data());
+          let text;
+          if (state.tabularMeta.taskType === 'classification') {
+            const top = arr.map((p, i) => ({ label: state.tabularMeta.reverseLabelMap[i] ?? String(i), p })).sort((a, b) => b.p - a.p);
+            const u = state.tabularMeta.uncertainty;
+            let setLine = '';
+            if (u && u.type === 'classification_conformal') {
+              const threshold = 1 - u.q90;
+              const set = top.filter(t => t.p >= threshold).map(t => t.label);
+              setLine = `\nConformal prediction set: {${set.length ? set.join(', ') : top[0].label}}\nSet threshold: p ≥ ${threshold.toFixed(4)} from ${u.holdoutN} holdout rows`;
+            }
+            text = `Predicted class: ${top[0].label}\nConfidence: ${(top[0].p * 100).toFixed(2)}%${setLine}\n\nTop classes:\n${top.slice(0, 5).map(t => `${t.label}: ${(t.p * 100).toFixed(2)}%`).join('\n')}`;
+          } else {
+            const u = state.tabularMeta.uncertainty;
+            const interval = u && u.type === 'regression_residual_conformal' ? `\nApprox 90% interval: ${(arr[0] - u.q90).toFixed(6)} to ${(arr[0] + u.q90).toFixed(6)}` : '';
+            text = `Predicted value: ${arr[0].toFixed(6)}${interval}`;
+          }
+          const samples = $('mc-samples') ? Math.max(1, Math.min(80, parseInt($('mc-samples').value, 10) || 1)) : 1;
+          if (samples > 1) {
+            const draws = await stochasticPredictTabular(norm, samples);
+            text += summariseMCDropout(draws, state.tabularMeta);
+          }
+          setOutput('predict-output', text);
+          tf.dispose([x, pred]);
+          appendLog('Tabular prediction generated.', 'good');
+          updateStats();
+        } catch (err) {
+          setOutput('predict-output', `Prediction error: ${err.message || err}`);
+          appendLog(`Prediction error: ${err.message || err}`, 'bad');
+        }
+      }
+
+      async function saveTabularModel() {
+        if (!state.tabularModel || !state.tabularMeta) return alert('No tabular model to save.');
+        await state.tabularModel.save('localstorage://enhanced-ai-pro-tabular-model');
+        localStorage.setItem(LS.tabularMeta, JSON.stringify(state.tabularMeta));
+        appendLog('Tabular model and metadata saved to localStorage.', 'good');
+      }
+
+      async function loadTabularModel() {
+        try {
+          const model = await tf.loadLayersModel('localstorage://enhanced-ai-pro-tabular-model');
+          const meta = JSON.parse(localStorage.getItem(LS.tabularMeta) || 'null');
+          if (!meta) throw new Error('Metadata missing from localStorage.');
+          if (state.tabularModel) state.tabularModel.dispose();
+          const lr = Math.max(1e-6, safeNumber($('learning-rate').value, 0.001));
+          if (meta.taskType === 'classification') model.compile({ optimizer: tf.train.adam(lr), loss: 'sparseCategoricalCrossentropy', metrics: ['accuracy'] });
+          else model.compile({ optimizer: tf.train.adam(lr), loss: 'meanSquaredError', metrics: ['mae'] });
+          state.tabularModel = model;
+          state.tabularMeta = meta;
+          window.tabularModel = model;
+          $('task-type').value = meta.taskType;
+          renderFeatureOrder(meta);
+          appendLog('Tabular model loaded from localStorage.', 'good');
+          updateStats();
+        } catch (err) {
+          appendLog(`Error loading tabular model: ${err.message || err}`, 'bad');
+        }
+      }
+
+      async function downloadTabularModel() {
+        if (!state.tabularModel || !state.tabularMeta) return alert('No tabular model to download.');
+        await state.tabularModel.save('downloads://enhanced-ai-pro-tabular-model');
+        downloadText('enhanced-ai-pro-tabular-meta.json', JSON.stringify(state.tabularMeta, null, 2), 'application/json');
+        appendLog('Tabular model download started.', 'good');
+      }
+
+      async function exportPredictionsCSV() {
+        if (!state.tabularModel || !state.tabularMeta || !state.rows.length) return alert('Train/load a model and keep a dataset loaded first.');
+        const meta = state.tabularMeta;
+        const vectors = normalizeMatrix(state.rows.map(row => vectorizeRow(row, meta)), meta, false);
+        const x = tf.tensor2d(vectors);
+        const pred = state.tabularModel.predict(x);
+        const data = await pred.array();
+        const outRows = state.rows.map((row, i) => {
+          const clone = Object.assign({}, row);
+          if (meta.taskType === 'classification') {
+            const probs = data[i];
+            const best = probs.map((p, idx) => ({ p, idx })).sort((a, b) => b.p - a.p)[0];
+            clone.predicted_label = meta.reverseLabelMap[best.idx] ?? String(best.idx);
+            clone.predicted_confidence = best.p;
+          } else {
+            clone.predicted_value = Array.isArray(data[i]) ? data[i][0] : data[i];
+          }
+          return clone;
+        });
+        downloadText('enhanced-ai-pro-predictions.csv', Papa.unparse(outRows), 'text/csv');
+        tf.dispose([x, pred]);
+        appendLog('Prediction CSV exported.', 'good');
+      }
+
+      async function computePermutationImportance() {
+        if (!state.tabularModel || !state.tabularMeta || !state.lastTrainingVectors) return alert('Train a tabular model first.');
+        const meta = state.tabularMeta;
+        const sourceX = (state.lastHoldout && state.lastHoldout.X && state.lastHoldout.X.length) ? state.lastHoldout.X : state.lastTrainingVectors.X;
+        const sourceY = (state.lastHoldout && state.lastHoldout.y && state.lastHoldout.y.length) ? state.lastHoldout.y : state.lastTrainingVectors.y;
+        const maxRows = Math.min(120, sourceX.length);
+        const X = sourceX.slice(0, maxRows).map(r => r.slice());
+        const y = sourceY.slice(0, maxRows);
+        if (X.length < 3) return alert('Need at least 3 rows for importance.');
+
+        const score = async (matrix) => {
+          const pred = await predictArray(state.tabularModel, matrix);
+          if (meta.taskType === 'classification') {
+            let loss = 0;
+            for (let i = 0; i < pred.length; i++) loss -= Math.log(Math.max(1e-9, pred[i][y[i]] || 1e-9));
+            return loss / pred.length;
+          }
+          const vals = pred.map(r => Array.isArray(r) ? r[0] : r);
+          return mean(vals.map((p, i) => (p - y[i]) ** 2));
+        };
+
+        setOutput('importance-output', 'Computing permutation importance...');
+        const base = await score(X);
+        const dim = X[0].length;
+        const maxDim = Math.min(dim, 80);
+        const importances = [];
+        for (let j = 0; j < maxDim; j++) {
+          const permuted = X.map(row => row.slice());
+          const col = X.map(row => row[j]);
+          shuffleInPlace(col, 9900 + j);
+          for (let i = 0; i < permuted.length; i++) permuted[i][j] = col[i];
+          const broken = await score(permuted);
+          importances.push({ feature: meta.vectorNames[j] || `x${j}`, delta: broken - base });
+          if (j % 8 === 0) await tf.nextFrame();
+        }
+        importances.sort((a, b) => b.delta - a.delta);
+        state.lastImportance = importances;
+        const maxDelta = Math.max(1e-9, ...importances.slice(0, 12).map(x => Math.max(0, x.delta)));
+        const rows = importances.slice(0, 12).map(item => {
+          const pct = Math.max(0, item.delta) / maxDelta * 100;
+          return `<div class="bar-row"><div class="mono">${escapeHtml(item.feature)}</div><div class="bar-track"><div class="bar-fill" style="width:${pct.toFixed(1)}%"></div></div><div class="mono">${item.delta.toFixed(4)}</div></div>`;
+        }).join('');
+        $('importance-output').innerHTML = `<div>Baseline error score: <span class="mono">${base.toFixed(5)}</span></div><div class="badge-row"><span class="badge">Rows used: ${X.length}</span><span class="badge">Encoded dims scanned: ${maxDim}/${dim}</span><span class="badge">Task: ${meta.taskType}</span></div>${rows || 'No importance values.'}`;
+        appendLog('Permutation feature importance computed.', 'good');
+      }
+
+      function scanAnomalies() {
+        if (!state.rows.length) return alert('Load a dataset first.');
+        const labelCol = $('label-column').value || state.columns[state.columns.length - 1];
+        const taskType = $('task-type').value;
+        const meta = state.tabularMeta || createTabularMeta(state.rows, labelCol, taskType);
+        if (!meta.minFeatures || !meta.maxFeatures) {
+          const built = buildFeatureMatrix(state.rows, meta);
+          normalizeMatrix(built.X, meta, true);
+        }
+        const vectors = state.rows.map(row => vectorizeRow(row, meta));
+        const norm = normalizeMatrix(vectors, meta, false);
+        const dims = norm[0] ? norm[0].length : 0;
+        const means = Array(dims).fill(0);
+        norm.forEach(row => row.forEach((v, i) => { means[i] += v; }));
+        for (let i = 0; i < dims; i++) means[i] /= norm.length;
+        const scores = norm.map((row, idx) => ({ idx, score: Math.sqrt(row.reduce((s, v, i) => s + (v - means[i]) ** 2, 0) / Math.max(1, dims)) }));
+        scores.sort((a, b) => b.score - a.score);
+        const top = scores.slice(0, 10).map(s => `Row ${s.idx + 1}: anomaly score=${s.score.toFixed(4)} | ${meta.featureCols.slice(0, 5).map(c => `${c}=${state.rows[s.idx][c]}`).join(', ')}`).join('\n');
+        setOutput('quality-output', `${aggregateQualityWarnings()}\n\nTop distance-based anomaly candidates:\n${top}`);
+        appendLog('Anomaly scan completed.', 'good');
+      }
+
+      function exportTrainingHistory() {
+        const hist = state.tabularMeta && state.tabularMeta.trainingHistory;
+        if (!hist || !hist.length) return alert('Train a tabular model first.');
+        const csv = Papa.unparse(hist);
+        downloadText('training-history.csv', csv, 'text/csv');
+        downloadText('training-report.txt', makeTrainingReport(hist, state.tabularMeta), 'text/plain');
+        appendLog('Training history and report exported.', 'good');
+      }
+
+      function smartSuggestSettings() {
+        if (!state.rows.length) return alert('Load a dataset first.');
+        const labelCol = $('label-column').value || state.columns[state.columns.length - 1];
+        const features = state.columns.filter(c => c !== labelCol);
+        const rows = state.rows.length;
+        const highCard = features.filter(col => new Set(state.rows.map(r => String(r[col]))).size > 30).length;
+        $('epochs').value = rows < 80 ? 80 : rows < 500 ? 50 : 25;
+        $('batch-size').value = rows < 100 ? 8 : rows < 1000 ? 32 : 64;
+        $('hidden-units').value = features.length > 20 || highCard ? 128 : 64;
+        $('dropout-rate').value = rows < 100 ? 0.18 : highCard ? 0.22 : 0.12;
+        $('architecture-type').value = rows < 80 ? 'compact' : highCard ? 'gated' : rows > 800 ? 'wide' : 'residual';
+        $('patience').value = rows < 80 ? 12 : 8;
+        appendLog('Suggested tabular settings based on row count and feature cardinality.', 'good');
+        setOutput('quality-output', `${aggregateQualityWarnings()}\n\nSuggested settings applied:\narchitecture=${$('architecture-type').value}\nepochs=${$('epochs').value}\nbatch=${$('batch-size').value}\nhidden=${$('hidden-units').value}\ndropout=${$('dropout-rate').value}`);
+      }
+
+      function inspectTabularModel() {
+        if (!state.tabularModel) return setOutput('profile-output', 'No tabular model built or loaded.');
+        const lines = [];
+        lines.push(`Parameters: ${state.tabularModel.countParams().toLocaleString()}`);
+        lines.push('');
+        state.tabularModel.layers.forEach((layer, i) => lines.push(`${i + 1}. ${layer.name} | ${layer.getClassName()} | output=${JSON.stringify(layer.outputShape)}`));
+        if (state.tabularMeta) {
+          lines.push('');
+          lines.push(`Task: ${state.tabularMeta.taskType}`);
+          lines.push(`Label: ${state.tabularMeta.labelCol}`);
+          lines.push(`Raw features: ${state.tabularMeta.featureCols.join(', ')}`);
+          lines.push(`Encoded dimension: ${state.tabularMeta.vectorNames.length}`);
+          if (state.tabularMeta.labelMap) lines.push(`Labels: ${Object.keys(state.tabularMeta.labelMap).join(', ')}`);
+          if (state.tabularMeta.architecture) lines.push(`Architecture: ${state.tabularMeta.architecture}, dropout=${state.tabularMeta.dropoutRate}`);
+          if (state.tabularMeta.uncertainty) lines.push(`Uncertainty: ${state.tabularMeta.uncertainty.type}, holdout=${state.tabularMeta.uncertainty.holdoutN}`);
+        }
+        setOutput('profile-output', lines.join('\n'));
+      }
+
+      // ---------- Samples ----------
+      const sampleClassificationCSV = `sepal_length,sepal_width,petal_length,petal_width,color_hint,species
+5.1,3.5,1.4,0.2,green,setosa
+4.9,3.0,1.4,0.2,green,setosa
+4.7,3.2,1.3,0.2,green,setosa
+5.0,3.6,1.4,0.2,green,setosa
+5.4,3.9,1.7,0.4,green,setosa
+7.0,3.2,4.7,1.4,purple,versicolor
+6.4,3.2,4.5,1.5,purple,versicolor
+6.9,3.1,4.9,1.5,purple,versicolor
+5.5,2.3,4.0,1.3,purple,versicolor
+6.5,2.8,4.6,1.5,purple,versicolor
+6.3,3.3,6.0,2.5,blue,virginica
+5.8,2.7,5.1,1.9,blue,virginica
+7.1,3.0,5.9,2.1,blue,virginica
+6.3,2.9,5.6,1.8,blue,virginica
+7.6,3.0,6.6,2.1,blue,virginica
+5.2,3.4,1.5,0.2,green,setosa
+6.7,3.1,4.4,1.4,purple,versicolor
+6.4,2.8,5.6,2.2,blue,virginica`;
+
+      const sampleRegressionCSV = `rooms,size_sqft,age,area,near_station,price
+2,650,18,north,yes,220000
+3,860,12,north,yes,315000
+4,1200,8,west,no,420000
+2,540,35,east,no,185000
+5,1600,4,west,yes,610000
+3,900,20,south,no,285000
+4,1300,14,south,yes,455000
+1,430,40,east,no,145000
+5,1800,6,north,yes,690000
+3,780,28,east,yes,260000
+4,1100,16,west,no,390000
+2,700,22,south,no,235000
+6,2200,3,west,yes,860000
+3,970,10,north,no,340000
+4,1250,5,south,yes,510000
+1,390,45,east,no,125000`;
+
+      // ---------- Diagnostics and UI ----------
+      function updateStats() {
+        const mem = tf.memory();
+        $('backend-stat').textContent = tf.getBackend();
+        $('backend-hint').textContent = `tfjs ${tf.version.tfjs || ''}`;
+        $('tensor-stat').textContent = String(mem.numTensors);
+        $('memory-hint').textContent = `${mem.numBytes ? (mem.numBytes / 1024 / 1024).toFixed(2) : '0.00'} MB tracked`;
+        $('lm-stat').textContent = state.languageModel ? `${state.languageModel.countParams().toLocaleString()} params` : 'fresh';
+        $('lm-hint').textContent = state.languageMeta ? `${state.languageMeta.vocab.length} vocab tokens` : 'No saved vocab yet';
+        $('tabular-stat').textContent = state.tabularModel ? `${state.tabularModel.countParams().toLocaleString()} params` : 'none';
+        $('tabular-hint').textContent = state.tabularMeta ? `${state.tabularMeta.taskType}, ${state.tabularMeta.vectorNames.length} features` : 'Upload or sample CSV';
+        $('diagnostics').textContent = JSON.stringify({
+          backend: tf.getBackend(),
+          tfjs: tf.version.tfjs,
+          memory: mem,
+          languageModel: state.languageModel ? { params: state.languageModel.countParams(), layers: state.languageModel.layers.length } : null,
+          tabularModel: state.tabularModel ? { params: state.tabularModel.countParams(), layers: state.tabularModel.layers.length } : null,
+          rowsLoaded: state.rows.length,
+          holdoutRows: state.lastHoldout ? state.lastHoldout.y.length : 0,
+          uncertainty: state.tabularMeta && state.tabularMeta.uncertainty ? state.tabularMeta.uncertainty.type : null
+        }, null, 2);
+      }
+
+      function setActiveTab(tabId) {
+        document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.toggle('active', btn.dataset.tab === tabId));
+        document.querySelectorAll('.section').forEach(sec => sec.classList.toggle('active', sec.id === tabId));
+      }
+
+      async function switchBackend() {
+        const current = tf.getBackend();
+        const candidates = ['webgl', 'wasm', 'cpu'].filter(Boolean);
+        const idx = candidates.indexOf(current);
+        const next = candidates[(idx + 1) % candidates.length] || 'cpu';
+        try {
+          await tf.setBackend(next);
+          await tf.ready();
+          appendLog(`Switched TensorFlow backend to ${tf.getBackend()}.`, 'good');
+        } catch (err) {
+          appendLog(`Could not switch backend to ${next}: ${err.message || err}`, 'bad');
+        }
+        updateStats();
+      }
+
+      function resetLabState() {
+        if (!confirm('Reset in-memory models, cached image embedding, charts, and loaded CSV rows? Saved localStorage models will remain unless overwritten.')) return;
+        if (state.languageModel) state.languageModel.dispose();
+        if (state.tabularModel) state.tabularModel.dispose();
+        if (state.imageEmbedding) state.imageEmbedding.dispose();
+        state.languageModel = null;
+        state.tabularModel = null;
+        state.imageEmbedding = null;
+        state.imageCacheKey = null;
+        state.languageMeta = null;
+        state.tabularMeta = null;
+        state.rows = [];
+        state.columns = [];
+        window.languageModel = null;
+        window.tabularModel = null;
+        resetChart(lmChart);
+        resetTrainingObservatory();
+        setProgress('lm-progress-bar', 0);
+        setProgress('progress-bar', 0);
+        setOutput('response', 'Lab state reset.');
+        setOutput('predict-output', 'No prediction yet.');
+        setOutput('profile-output', 'No dataset loaded.');
+        setOutput('quality-output', 'Load a dataset to see data warnings.');
+        setOutput('uncertainty-output', 'Train with a test split to calibrate uncertainty.');
+        $('importance-output').innerHTML = 'Train a tabular model, then click Explain features.';
+        $('dataset-preview').innerHTML = '<div class="output small">No CSV loaded.</div>';
+        updateStats();
+        appendLog('In-memory lab state reset.', 'warn');
+      }
+
+      // ---------- Events ----------
+      document.querySelectorAll('.tab-btn').forEach(btn => btn.addEventListener('click', () => setActiveTab(btn.dataset.tab)));
+
+      $('theme-btn').addEventListener('click', () => {
+        document.body.dataset.theme = document.body.dataset.theme === 'dark' ? 'light' : 'dark';
+        appendLog(`Theme changed to ${document.body.dataset.theme}.`);
+      });
+      $('backend-btn').addEventListener('click', switchBackend);
+      $('memory-btn').addEventListener('click', updateStats);
+      $('clear-all-btn').addEventListener('click', resetLabState);
+
+      $('image-input').addEventListener('change', async () => {
+        const file = $('image-input').files[0];
+        const img = $('image-preview');
+        if (!file) { img.style.display = 'none'; return; }
+        img.src = URL.createObjectURL(file);
+        img.style.display = 'block';
+        if (state.imageEmbedding) { state.imageEmbedding.dispose(); state.imageEmbedding = null; state.imageCacheKey = null; }
+        appendLog(`Selected image: ${file.name}`);
+        updateStats();
+      });
+
+      $('pretrain-btn').addEventListener('click', () => trainLanguage('pre'));
+      $('finetune-btn').addEventListener('click', () => trainLanguage('fine'));
+      $('generate-btn').addEventListener('click', generateResponse);
+      $('inspect-language-btn').addEventListener('click', inspectLanguageModel);
+      $('save-language-btn').addEventListener('click', saveLanguageModel);
+      $('load-language-btn').addEventListener('click', loadLanguageModel);
+      $('download-language-btn').addEventListener('click', downloadLanguageModel);
+      $('rebuild-language-btn').addEventListener('click', () => {
+        if (state.languageModel) state.languageModel.dispose();
+        state.languageModel = null;
+        state.languageMeta = null;
+        setOutput('response', 'Language model cleared. Pre-train to rebuild with a fresh vocabulary.');
+        appendLog('Language model cleared for rebuild.', 'warn');
+        updateStats();
+      });
+
+      $('csv-input').addEventListener('change', async () => {
+        const file = $('csv-input').files[0];
+        if (!file) return;
+        try {
+          const rows = await parseCSVFile(file);
+          await loadRows(rows, file.name);
+        } catch (err) {
+          appendLog(`CSV load error: ${err.message || err}`, 'bad');
+        }
+      });
+
+      $('sample-classification-btn').addEventListener('click', () => {
+        $('task-type').value = 'classification';
+        loadRows(parseCSVText(sampleClassificationCSV), 'built-in iris-style sample');
+      });
+      $('sample-regression-btn').addEventListener('click', () => {
+        $('task-type').value = 'regression';
+        loadRows(parseCSVText(sampleRegressionCSV), 'built-in house-price sample');
+      });
+
+      $('train-tabular-btn').addEventListener('click', trainTabularModel);
+      $('predict-tabular-btn').addEventListener('click', predictTabular);
+      $('inspect-tabular-btn').addEventListener('click', inspectTabularModel);
+      $('smart-suggest-btn').addEventListener('click', smartSuggestSettings);
+      $('importance-btn').addEventListener('click', computePermutationImportance);
+      $('anomaly-btn').addEventListener('click', scanAnomalies);
+      $('save-tabular-btn').addEventListener('click', saveTabularModel);
+      $('load-tabular-btn').addEventListener('click', loadTabularModel);
+      $('download-tabular-btn').addEventListener('click', downloadTabularModel);
+      $('export-predictions-btn').addEventListener('click', exportPredictionsCSV);
+      $('export-history-btn').addEventListener('click', exportTrainingHistory);
+
+      $('copy-logs-btn').addEventListener('click', async () => {
+        await navigator.clipboard.writeText(state.logs.join('\n'));
+        appendLog('Logs copied to clipboard.', 'good');
+      });
+      $('download-logs-btn').addEventListener('click', () => downloadText('enhanced-ai-pro-logs.txt', state.logs.join('\n')));
+      $('clear-logs-btn').addEventListener('click', () => { state.logs = []; $('logs').innerHTML = ''; appendLog('Logs cleared.'); });
+
+      // ---------- Init ----------
+      await tf.ready();
+      appendLog(`TensorFlow.js ready on backend: ${tf.getBackend()}`, 'good');
+      updateStats();
+      setInterval(updateStats, 5000);
+    })().catch(err => {
+      const log = document.getElementById('logs');
+      if (log) log.textContent += `[fatal] ${err.stack || err}\n`;
+      console.error(err);
+    });
+  </script>
+</body>
+</html>
