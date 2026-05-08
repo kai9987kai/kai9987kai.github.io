@@ -1,0 +1,1509 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Advanced Media Picture-in-Picture Studio</title>
+  <style>
+    :root {
+      --bg: #0f172a;
+      --bg-soft: #111827;
+      --card: rgba(255, 255, 255, 0.08);
+      --card-strong: rgba(255, 255, 255, 0.12);
+      --text: #e5e7eb;
+      --muted: #94a3b8;
+      --accent: #38bdf8;
+      --accent-2: #a78bfa;
+      --danger: #fb7185;
+      --success: #34d399;
+      --warning: #fbbf24;
+      --border: rgba(255, 255, 255, 0.16);
+      --shadow: 0 24px 80px rgba(0, 0, 0, 0.35);
+      --radius: 24px;
+      color-scheme: dark;
+    }
+
+    body.light {
+      --bg: #f8fafc;
+      --bg-soft: #e2e8f0;
+      --card: rgba(255, 255, 255, 0.88);
+      --card-strong: rgba(255, 255, 255, 0.98);
+      --text: #0f172a;
+      --muted: #475569;
+      --border: rgba(15, 23, 42, 0.14);
+      --shadow: 0 24px 70px rgba(15, 23, 42, 0.16);
+      color-scheme: light;
+    }
+
+    * { box-sizing: border-box; }
+
+    html, body {
+      margin: 0;
+      min-height: 100%;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
+      background:
+        radial-gradient(circle at top left, rgba(56, 189, 248, 0.22), transparent 34rem),
+        radial-gradient(circle at top right, rgba(167, 139, 250, 0.18), transparent 34rem),
+        linear-gradient(135deg, var(--bg), var(--bg-soft));
+      color: var(--text);
+    }
+
+    button, input, select {
+      font: inherit;
+    }
+
+    button {
+      border: 0;
+      border-radius: 14px;
+      background: linear-gradient(135deg, var(--accent), var(--accent-2));
+      color: #020617;
+      font-weight: 800;
+      padding: 11px 16px;
+      cursor: pointer;
+      box-shadow: 0 12px 30px rgba(56, 189, 248, 0.18);
+      transition: transform 150ms ease, filter 150ms ease, opacity 150ms ease;
+    }
+
+    button:hover { transform: translateY(-1px); filter: brightness(1.05); }
+    button:active { transform: translateY(0); }
+    button.secondary { background: var(--card-strong); color: var(--text); box-shadow: none; border: 1px solid var(--border); }
+    button.danger { background: linear-gradient(135deg, var(--danger), #f97316); color: white; }
+    button:disabled { opacity: 0.45; cursor: not-allowed; transform: none; }
+
+    #app {
+      width: min(1440px, calc(100vw - 28px));
+      margin: 0 auto;
+      padding: 28px 0 60px;
+    }
+
+    .hero {
+      display: grid;
+      grid-template-columns: 1.35fr 0.65fr;
+      gap: 18px;
+      align-items: stretch;
+      margin-bottom: 18px;
+    }
+
+    .panel {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(16px);
+    }
+
+    .title-card {
+      padding: 28px;
+      overflow: hidden;
+      position: relative;
+    }
+
+    .title-card::after {
+      content: "";
+      position: absolute;
+      inset: auto -10% -40% auto;
+      width: 420px;
+      height: 420px;
+      border-radius: 50%;
+      background: radial-gradient(circle, rgba(56, 189, 248, 0.22), transparent 62%);
+      pointer-events: none;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: clamp(2rem, 5vw, 4.2rem);
+      letter-spacing: -0.06em;
+      line-height: 0.95;
+    }
+
+    .subtitle {
+      max-width: 830px;
+      margin: 14px 0 0;
+      color: var(--muted);
+      font-size: 1.05rem;
+      line-height: 1.6;
+    }
+
+    .quick-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 22px;
+      position: relative;
+      z-index: 1;
+    }
+
+    .status-card {
+      padding: 22px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      min-height: 240px;
+    }
+
+    .status-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      width: fit-content;
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      padding: 8px 12px;
+      color: var(--muted);
+      background: rgba(255, 255, 255, 0.06);
+      font-size: 0.88rem;
+    }
+
+    .dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 999px;
+      background: var(--warning);
+      box-shadow: 0 0 18px currentColor;
+    }
+
+    .dot.good { background: var(--success); }
+    .dot.bad { background: var(--danger); }
+
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 10px;
+      margin-top: 18px;
+    }
+
+    .stat {
+      padding: 14px;
+      border-radius: 18px;
+      border: 1px solid var(--border);
+      background: rgba(255, 255, 255, 0.05);
+    }
+
+    .stat small {
+      display: block;
+      color: var(--muted);
+      margin-bottom: 6px;
+    }
+
+    .stat strong {
+      display: block;
+      font-size: 1rem;
+      overflow-wrap: anywhere;
+    }
+
+    .workspace {
+      display: grid;
+      grid-template-columns: minmax(0, 1.3fr) minmax(360px, 0.7fr);
+      gap: 18px;
+      align-items: start;
+    }
+
+    #container {
+      margin: 0;
+      padding: 18px;
+    }
+
+    .drop-zone {
+      position: relative;
+      min-height: 540px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: calc(var(--radius) - 6px);
+      border: 1px dashed var(--border);
+      background:
+        linear-gradient(45deg, rgba(255, 255, 255, 0.04) 25%, transparent 25%, transparent 50%, rgba(255, 255, 255, 0.04) 50%, rgba(255, 255, 255, 0.04) 75%, transparent 75%, transparent);
+      background-size: 32px 32px;
+      overflow: hidden;
+      isolation: isolate;
+    }
+
+    .drop-zone.dragover {
+      border-color: var(--accent);
+      box-shadow: inset 0 0 0 2px rgba(56, 189, 248, 0.25);
+    }
+
+    .empty-state {
+      text-align: center;
+      max-width: 460px;
+      padding: 28px;
+      color: var(--muted);
+      z-index: 1;
+    }
+
+    .empty-state .icon {
+      font-size: 4rem;
+      margin-bottom: 10px;
+    }
+
+    .empty-state h2 {
+      margin: 0 0 10px;
+      color: var(--text);
+      letter-spacing: -0.03em;
+    }
+
+    #mediaPlayer,
+    #imagePlayer {
+      display: none;
+      width: 100%;
+      height: 100%;
+      max-height: min(72vh, 760px);
+      object-fit: contain;
+      border-radius: 20px;
+      background: #000;
+      z-index: 2;
+    }
+
+    .media-toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 14px;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .toolbar-group {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: center;
+    }
+
+    .controls-panel {
+      padding: 18px;
+      display: grid;
+      gap: 14px;
+    }
+
+    .section {
+      border: 1px solid var(--border);
+      background: rgba(255, 255, 255, 0.045);
+      border-radius: 20px;
+      padding: 14px;
+    }
+
+    .section h2 {
+      margin: 0 0 12px;
+      font-size: 0.95rem;
+      letter-spacing: 0.02em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    .grid.one { grid-template-columns: 1fr; }
+
+    label {
+      display: grid;
+      gap: 6px;
+      color: var(--muted);
+      font-size: 0.88rem;
+    }
+
+    input,
+    select {
+      width: 100%;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      background: rgba(255, 255, 255, 0.08);
+      color: var(--text);
+      padding: 10px 11px;
+      outline: none;
+    }
+
+    input[type="file"] {
+      padding: 10px;
+      cursor: pointer;
+    }
+
+    input[type="color"] {
+      min-height: 42px;
+      padding: 4px;
+    }
+
+    input[type="range"] {
+      padding: 0;
+      accent-color: var(--accent);
+    }
+
+    select option {
+      background: #111827;
+      color: white;
+    }
+
+    body.light select option {
+      background: white;
+      color: #111827;
+    }
+
+    .hint {
+      color: var(--muted);
+      font-size: 0.84rem;
+      line-height: 1.5;
+      margin: 8px 0 0;
+    }
+
+    .shortcut-list {
+      display: grid;
+      gap: 8px;
+      font-size: 0.88rem;
+      color: var(--muted);
+    }
+
+    .shortcut-list span {
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 8px;
+    }
+
+    kbd {
+      border: 1px solid var(--border);
+      border-bottom-width: 3px;
+      border-radius: 8px;
+      padding: 2px 7px;
+      color: var(--text);
+      background: rgba(255, 255, 255, 0.08);
+      white-space: nowrap;
+    }
+
+    #floatingImg {
+      position: fixed;
+      right: 18px;
+      bottom: 18px;
+      display: none;
+      width: 420px;
+      height: 260px;
+      min-width: 180px;
+      min-height: 120px;
+      max-width: calc(100vw - 28px);
+      max-height: calc(100vh - 28px);
+      border: 3px solid #38bdf8;
+      border-radius: 18px;
+      background: #111827;
+      box-shadow: 0 28px 100px rgba(0, 0, 0, 0.45);
+      resize: both;
+      overflow: hidden;
+      z-index: 9999;
+      backdrop-filter: blur(12px);
+    }
+
+    #floatingImg .float-header {
+      height: 42px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      padding: 0 10px;
+      background: rgba(2, 6, 23, 0.82);
+      color: white;
+      cursor: move;
+      user-select: none;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+    }
+
+    #floatingImg .float-title {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-width: 0;
+      font-size: 0.82rem;
+      font-weight: 800;
+    }
+
+    #floatingImg .float-title span:last-child {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    #floatingImg .float-actions {
+      display: flex;
+      gap: 6px;
+    }
+
+    #floatingImg .float-actions button {
+      padding: 5px 8px;
+      min-width: 30px;
+      border-radius: 9px;
+      box-shadow: none;
+      font-weight: 900;
+    }
+
+    #floatingImg .float-body {
+      width: 100%;
+      height: calc(100% - 42px);
+      display: grid;
+      place-items: center;
+      background: #000;
+    }
+
+    #floatingImg img,
+    #floatingImg video {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      display: block;
+    }
+
+    .toast {
+      position: fixed;
+      left: 50%;
+      bottom: 24px;
+      transform: translateX(-50%) translateY(16px);
+      background: rgba(15, 23, 42, 0.92);
+      color: white;
+      padding: 12px 16px;
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      border-radius: 999px;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 200ms ease, transform 200ms ease;
+      z-index: 20000;
+      box-shadow: 0 18px 50px rgba(0, 0, 0, 0.25);
+    }
+
+    .toast.show {
+      opacity: 1;
+      transform: translateX(-50%) translateY(0);
+    }
+
+    .snapshot-strip {
+      display: flex;
+      gap: 10px;
+      overflow-x: auto;
+      padding-bottom: 4px;
+    }
+
+    .snapshot-strip a {
+      display: block;
+      width: 84px;
+      height: 58px;
+      flex: 0 0 auto;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      overflow: hidden;
+      background: rgba(255, 255, 255, 0.08);
+    }
+
+    .snapshot-strip img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+
+    @media (max-width: 980px) {
+      .hero,
+      .workspace {
+        grid-template-columns: 1fr;
+      }
+
+      .drop-zone {
+        min-height: 380px;
+      }
+    }
+
+    @media (max-width: 620px) {
+      #app { width: min(100vw - 16px, 1440px); padding-top: 8px; }
+      .grid { grid-template-columns: 1fr; }
+      .title-card, .status-card, #container, .controls-panel { padding: 14px; border-radius: 18px; }
+      .stats { grid-template-columns: 1fr; }
+      #floatingImg { width: calc(100vw - 24px); height: 240px; right: 12px; bottom: 12px; }
+    }
+  </style>
+</head>
+<body>
+  <main id="app">
+    <section class="hero">
+      <div class="panel title-card">
+        <h1>Advanced Media Picture-in-Picture Studio</h1>
+        <p class="subtitle">
+          Load video or image files, launch native video PiP where supported, use Document PiP for richer floating media where available, or fall back to a draggable in-page mini player.
+        </p>
+        <div class="quick-actions">
+          <button id="pickFileButton">Choose Media</button>
+          <button id="pipButton">Start PiP</button>
+          <button id="toggleFloatingButton" class="secondary">Toggle Floating Preview</button>
+          <button id="snapshotButton" class="secondary">Take Snapshot</button>
+          <button id="themeButton" class="secondary">Toggle Theme</button>
+        </div>
+      </div>
+
+      <aside class="panel status-card" aria-live="polite">
+        <div>
+          <div class="status-pill"><span id="supportDot" class="dot"></span><span id="supportText">Checking support...</span></div>
+          <div class="stats">
+            <div class="stat"><small>File</small><strong id="fileName">No file loaded</strong></div>
+            <div class="stat"><small>Type</small><strong id="fileType">—</strong></div>
+            <div class="stat"><small>Size</small><strong id="fileSize">—</strong></div>
+            <div class="stat"><small>Media Info</small><strong id="mediaInfo">—</strong></div>
+          </div>
+        </div>
+        <p class="hint" id="statusMessage">Drop a video or image into the preview area, or choose a local file.</p>
+      </aside>
+    </section>
+
+    <section class="workspace">
+      <section id="container" class="panel">
+        <input type="file" id="mediaInput" accept="video/*,image/*" hidden>
+
+        <div id="dropZone" class="drop-zone">
+          <div id="emptyState" class="empty-state">
+            <div class="icon">🎬</div>
+            <h2>Drop media here</h2>
+            <p>Supports local videos and images. Everything runs in your browser.</p>
+          </div>
+          <video id="mediaPlayer" controls playsinline preload="metadata" style="display:none;"></video>
+          <img id="imagePlayer" alt="Selected media preview" style="display:none;">
+        </div>
+
+        <div class="media-toolbar">
+          <div class="toolbar-group">
+            <button id="playPauseButton" class="secondary">Play/Pause</button>
+            <button id="muteButton" class="secondary">Mute</button>
+            <button id="resetButton" class="secondary">Reset View</button>
+          </div>
+          <div class="toolbar-group">
+            <button id="closePiPButton" class="danger">Close PiP</button>
+          </div>
+        </div>
+      </section>
+
+      <aside class="panel controls-panel">
+        <div class="section">
+          <h2>Original Controls</h2>
+          <div class="grid">
+            <label for="pipWidth">Width
+              <input type="number" id="pipWidth" min="180" max="1400" step="10">
+            </label>
+            <label for="pipHeight">Height
+              <input type="number" id="pipHeight" min="120" max="1000" step="10">
+            </label>
+            <label for="showControls">Show Controls
+              <select id="showControls">
+                <option value="true">Yes</option>
+                <option value="false">No</option>
+              </select>
+            </label>
+            <label for="borderStyle">Border Style
+              <select id="borderStyle">
+                <option value="solid">Solid</option>
+                <option value="dashed">Dashed</option>
+                <option value="dotted">Dotted</option>
+                <option value="double">Double</option>
+                <option value="groove">Groove</option>
+                <option value="none">None</option>
+              </select>
+            </label>
+            <label for="borderColor">Border Color
+              <input type="color" id="borderColor">
+            </label>
+            <label for="bgColor">Background Color
+              <input type="color" id="bgColor">
+            </label>
+            <label for="borderRadius">Border Radius
+              <input type="number" id="borderRadius" min="0" max="80">
+            </label>
+            <label for="opacity">Opacity <span id="opacityValue"></span>
+              <input type="range" id="opacity" min="0" max="1" step="0.05">
+            </label>
+            <label for="loopVideo">Loop Video
+              <select id="loopVideo">
+                <option value="true">Yes</option>
+                <option value="false">No</option>
+              </select>
+            </label>
+            <label for="zIndex">Z-Index
+              <input type="number" id="zIndex" min="1" max="2147483647">
+            </label>
+          </div>
+        </div>
+
+        <div class="section">
+          <h2>Advanced PiP</h2>
+          <div class="grid">
+            <label for="pipEngine">PiP Engine
+              <select id="pipEngine">
+                <option value="auto">Auto Best</option>
+                <option value="native">Native Video PiP</option>
+                <option value="document">Document PiP</option>
+                <option value="floating">In-page Floating</option>
+              </select>
+            </label>
+            <label for="positionPreset">Position Preset
+              <select id="positionPreset">
+                <option value="bottom-right">Bottom Right</option>
+                <option value="bottom-left">Bottom Left</option>
+                <option value="top-right">Top Right</option>
+                <option value="top-left">Top Left</option>
+                <option value="center">Center</option>
+              </select>
+            </label>
+            <label for="fitMode">Fit Mode
+              <select id="fitMode">
+                <option value="contain">Contain</option>
+                <option value="cover">Cover</option>
+                <option value="fill">Fill</option>
+                <option value="scale-down">Scale Down</option>
+              </select>
+            </label>
+            <label for="videoSpeed">Playback Speed
+              <select id="videoSpeed">
+                <option value="0.25">0.25×</option>
+                <option value="0.5">0.5×</option>
+                <option value="0.75">0.75×</option>
+                <option value="1">1×</option>
+                <option value="1.25">1.25×</option>
+                <option value="1.5">1.5×</option>
+                <option value="2">2×</option>
+              </select>
+            </label>
+            <label for="volume">Volume <span id="volumeValue"></span>
+              <input type="range" id="volume" min="0" max="1" step="0.05">
+            </label>
+            <label for="mirrorMedia">Mirror
+              <select id="mirrorMedia">
+                <option value="false">No</option>
+                <option value="true">Yes</option>
+              </select>
+            </label>
+          </div>
+          <p class="hint">Auto Best uses native video PiP for video where possible, Document PiP for images where supported, then falls back to the draggable floating preview.</p>
+        </div>
+
+        <div class="section">
+          <h2>Visual Filters</h2>
+          <div class="grid">
+            <label for="brightness">Brightness <span id="brightnessValue"></span>
+              <input type="range" id="brightness" min="0" max="200" step="5">
+            </label>
+            <label for="contrast">Contrast <span id="contrastValue"></span>
+              <input type="range" id="contrast" min="0" max="200" step="5">
+            </label>
+            <label for="saturate">Saturation <span id="saturateValue"></span>
+              <input type="range" id="saturate" min="0" max="250" step="5">
+            </label>
+            <label for="blur">Blur <span id="blurValue"></span>
+              <input type="range" id="blur" min="0" max="20" step="1">
+            </label>
+          </div>
+        </div>
+
+        <div class="section">
+          <h2>Snapshots</h2>
+          <div id="snapshotStrip" class="snapshot-strip" aria-label="Captured snapshots"></div>
+          <p class="hint">Snapshots are generated locally from the current video frame or image preview.</p>
+        </div>
+
+        <div class="section">
+          <h2>Keyboard Shortcuts</h2>
+          <div class="shortcut-list">
+            <span><kbd>Space</kbd> Play / pause video</span>
+            <span><kbd>P</kbd> Start PiP</span>
+            <span><kbd>F</kbd> Toggle floating preview</span>
+            <span><kbd>S</kbd> Take snapshot</span>
+            <span><kbd>Esc</kbd> Close PiP / floating preview</span>
+          </div>
+        </div>
+      </aside>
+    </section>
+  </main>
+
+  <div id="floatingImg" role="dialog" aria-label="Floating media preview">
+    <div class="float-header" id="floatHeader">
+      <div class="float-title"><span>↕</span><span id="floatTitle">Floating Preview</span></div>
+      <div class="float-actions">
+        <button id="pinFloatButton" title="Move to selected preset" type="button">⌖</button>
+        <button id="minimizeFloatButton" title="Minimize" type="button">–</button>
+        <button id="closeFloatButton" title="Close" type="button">×</button>
+      </div>
+    </div>
+    <div class="float-body" id="floatBody"></div>
+  </div>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      const $ = (id) => document.getElementById(id);
+
+      const els = {
+        mediaPlayer: $('mediaPlayer'),
+        imagePlayer: $('imagePlayer'),
+        mediaInput: $('mediaInput'),
+        pickFileButton: $('pickFileButton'),
+        pipButton: $('pipButton'),
+        pipWidth: $('pipWidth'),
+        pipHeight: $('pipHeight'),
+        floatingImg: $('floatingImg'),
+        floatingBody: $('floatBody'),
+        floatHeader: $('floatHeader'),
+        floatTitle: $('floatTitle'),
+        showControls: $('showControls'),
+        borderStyle: $('borderStyle'),
+        borderColor: $('borderColor'),
+        bgColor: $('bgColor'),
+        borderRadius: $('borderRadius'),
+        opacity: $('opacity'),
+        loopVideo: $('loopVideo'),
+        zIndex: $('zIndex'),
+        pipEngine: $('pipEngine'),
+        positionPreset: $('positionPreset'),
+        fitMode: $('fitMode'),
+        videoSpeed: $('videoSpeed'),
+        volume: $('volume'),
+        mirrorMedia: $('mirrorMedia'),
+        brightness: $('brightness'),
+        contrast: $('contrast'),
+        saturate: $('saturate'),
+        blur: $('blur'),
+        dropZone: $('dropZone'),
+        emptyState: $('emptyState'),
+        supportDot: $('supportDot'),
+        supportText: $('supportText'),
+        statusMessage: $('statusMessage'),
+        fileName: $('fileName'),
+        fileType: $('fileType'),
+        fileSize: $('fileSize'),
+        mediaInfo: $('mediaInfo'),
+        playPauseButton: $('playPauseButton'),
+        muteButton: $('muteButton'),
+        resetButton: $('resetButton'),
+        closePiPButton: $('closePiPButton'),
+        toggleFloatingButton: $('toggleFloatingButton'),
+        snapshotButton: $('snapshotButton'),
+        themeButton: $('themeButton'),
+        closeFloatButton: $('closeFloatButton'),
+        minimizeFloatButton: $('minimizeFloatButton'),
+        pinFloatButton: $('pinFloatButton'),
+        snapshotStrip: $('snapshotStrip'),
+        toast: $('toast'),
+        opacityValue: $('opacityValue'),
+        volumeValue: $('volumeValue'),
+        brightnessValue: $('brightnessValue'),
+        contrastValue: $('contrastValue'),
+        saturateValue: $('saturateValue'),
+        blurValue: $('blurValue')
+      };
+
+      const defaults = {
+        pipWidth: 420,
+        pipHeight: 260,
+        showControls: 'true',
+        borderStyle: 'solid',
+        borderColor: '#38bdf8',
+        bgColor: '#000000',
+        borderRadius: 18,
+        opacity: 1,
+        loopVideo: 'false',
+        zIndex: 9999,
+        pipEngine: 'auto',
+        positionPreset: 'bottom-right',
+        fitMode: 'contain',
+        videoSpeed: '1',
+        volume: 1,
+        mirrorMedia: 'false',
+        brightness: 100,
+        contrast: 100,
+        saturate: 100,
+        blur: 0,
+        theme: 'dark'
+      };
+
+      const state = {
+        objectURL: '',
+        file: null,
+        isVideo: true,
+        pipWindow: null,
+        floatingVideo: null,
+        floatingMinimized: false,
+        drag: {
+          active: false,
+          offsetX: 0,
+          offsetY: 0
+        }
+      };
+
+      init();
+
+      function init() {
+        loadSettings();
+        bindEvents();
+        updateSupportStatus();
+        applyAllSettings();
+        updateButtonStates();
+      }
+
+      function bindEvents() {
+        els.pickFileButton.addEventListener('click', () => els.mediaInput.click());
+        els.mediaInput.addEventListener('change', () => {
+          const file = els.mediaInput.files && els.mediaInput.files[0];
+          if (file) loadFile(file);
+        });
+
+        ['dragenter', 'dragover'].forEach((type) => {
+          els.dropZone.addEventListener(type, (event) => {
+            event.preventDefault();
+            els.dropZone.classList.add('dragover');
+          });
+        });
+
+        ['dragleave', 'drop'].forEach((type) => {
+          els.dropZone.addEventListener(type, (event) => {
+            event.preventDefault();
+            els.dropZone.classList.remove('dragover');
+          });
+        });
+
+        els.dropZone.addEventListener('drop', (event) => {
+          const file = event.dataTransfer.files && event.dataTransfer.files[0];
+          if (file) loadFile(file);
+        });
+
+        els.pipButton.addEventListener('click', startPiP);
+        els.closePiPButton.addEventListener('click', closePiP);
+        els.toggleFloatingButton.addEventListener('click', toggleFloatingPiP);
+        els.snapshotButton.addEventListener('click', takeSnapshot);
+        els.themeButton.addEventListener('click', toggleTheme);
+        els.playPauseButton.addEventListener('click', playPause);
+        els.muteButton.addEventListener('click', toggleMute);
+        els.resetButton.addEventListener('click', resetView);
+        els.closeFloatButton.addEventListener('click', hideFloatingPiP);
+        els.minimizeFloatButton.addEventListener('click', toggleFloatingMinimized);
+        els.pinFloatButton.addEventListener('click', () => placeFloating(els.positionPreset.value));
+
+        const settingInputs = [
+          els.pipWidth, els.pipHeight, els.showControls, els.borderStyle, els.borderColor,
+          els.bgColor, els.borderRadius, els.opacity, els.loopVideo, els.zIndex,
+          els.pipEngine, els.positionPreset, els.fitMode, els.videoSpeed, els.volume,
+          els.mirrorMedia, els.brightness, els.contrast, els.saturate, els.blur
+        ];
+
+        settingInputs.forEach((input) => {
+          input.addEventListener('input', () => {
+            applyAllSettings();
+            saveSettings();
+          });
+          input.addEventListener('change', () => {
+            applyAllSettings();
+            saveSettings();
+          });
+        });
+
+        els.floatHeader.addEventListener('pointerdown', startDrag);
+        window.addEventListener('pointermove', dragFloating);
+        window.addEventListener('pointerup', stopDrag);
+
+        els.mediaPlayer.addEventListener('loadedmetadata', updateMediaInfo);
+        els.mediaPlayer.addEventListener('play', syncFloatingVideo);
+        els.mediaPlayer.addEventListener('pause', syncFloatingVideo);
+        els.mediaPlayer.addEventListener('timeupdate', syncFloatingVideoSoft);
+        els.mediaPlayer.addEventListener('volumechange', syncFloatingVideo);
+        els.mediaPlayer.addEventListener('ratechange', syncFloatingVideo);
+        els.mediaPlayer.addEventListener('enterpictureinpicture', () => setStatus('Native video PiP is active.'));
+        els.mediaPlayer.addEventListener('leavepictureinpicture', () => setStatus('Native video PiP closed.'));
+        els.imagePlayer.addEventListener('load', updateMediaInfo);
+
+        document.addEventListener('keydown', handleShortcuts);
+        window.addEventListener('beforeunload', cleanupObjectURL);
+      }
+
+      function loadSettings() {
+        const stored = JSON.parse(localStorage.getItem('advancedMediaPiPSettings') || '{}');
+        const settings = { ...defaults, ...stored };
+
+        for (const [key, value] of Object.entries(settings)) {
+          if (els[key]) els[key].value = value;
+        }
+
+        document.body.classList.toggle('light', settings.theme === 'light');
+      }
+
+      function saveSettings() {
+        const settings = {
+          pipWidth: els.pipWidth.value,
+          pipHeight: els.pipHeight.value,
+          showControls: els.showControls.value,
+          borderStyle: els.borderStyle.value,
+          borderColor: els.borderColor.value,
+          bgColor: els.bgColor.value,
+          borderRadius: els.borderRadius.value,
+          opacity: els.opacity.value,
+          loopVideo: els.loopVideo.value,
+          zIndex: els.zIndex.value,
+          pipEngine: els.pipEngine.value,
+          positionPreset: els.positionPreset.value,
+          fitMode: els.fitMode.value,
+          videoSpeed: els.videoSpeed.value,
+          volume: els.volume.value,
+          mirrorMedia: els.mirrorMedia.value,
+          brightness: els.brightness.value,
+          contrast: els.contrast.value,
+          saturate: els.saturate.value,
+          blur: els.blur.value,
+          theme: document.body.classList.contains('light') ? 'light' : 'dark'
+        };
+        localStorage.setItem('advancedMediaPiPSettings', JSON.stringify(settings));
+      }
+
+      function loadFile(file) {
+        if (!file.type.startsWith('video/') && !file.type.startsWith('image/')) {
+          toast('Please choose a video or image file.');
+          return;
+        }
+
+        cleanupObjectURL();
+        state.file = file;
+        state.objectURL = URL.createObjectURL(file);
+        state.isVideo = file.type.startsWith('video/');
+
+        els.fileName.textContent = file.name;
+        els.fileType.textContent = state.isVideo ? 'Video' : 'Image';
+        els.fileSize.textContent = formatBytes(file.size);
+        els.mediaInfo.textContent = 'Loading...';
+        els.emptyState.style.display = 'none';
+
+        if (state.isVideo) {
+          els.mediaPlayer.src = state.objectURL;
+          els.mediaPlayer.style.display = 'block';
+          els.imagePlayer.style.display = 'none';
+          els.imagePlayer.removeAttribute('src');
+          els.mediaPlayer.load();
+        } else {
+          els.imagePlayer.src = state.objectURL;
+          els.imagePlayer.style.display = 'block';
+          els.mediaPlayer.style.display = 'none';
+          els.mediaPlayer.removeAttribute('src');
+        }
+
+        applyAllSettings();
+        updateButtonStates();
+        setStatus(`${state.isVideo ? 'Video' : 'Image'} loaded: ${file.name}`);
+      }
+
+      function cleanupObjectURL() {
+        if (state.objectURL) {
+          URL.revokeObjectURL(state.objectURL);
+          state.objectURL = '';
+        }
+      }
+
+      function applyAllSettings() {
+        const width = clampNumber(els.pipWidth.value, 180, 1400, defaults.pipWidth);
+        const height = clampNumber(els.pipHeight.value, 120, 1000, defaults.pipHeight);
+        const radius = clampNumber(els.borderRadius.value, 0, 80, defaults.borderRadius);
+        const opacity = clampNumber(els.opacity.value, 0, 1, defaults.opacity);
+        const z = clampNumber(els.zIndex.value, 1, 2147483647, defaults.zIndex);
+        const filter = buildFilter();
+        const transform = els.mirrorMedia.value === 'true' ? 'scaleX(-1)' : 'none';
+
+        els.opacityValue.textContent = `${Math.round(opacity * 100)}%`;
+        els.volumeValue.textContent = `${Math.round(Number(els.volume.value) * 100)}%`;
+        els.brightnessValue.textContent = `${els.brightness.value}%`;
+        els.contrastValue.textContent = `${els.contrast.value}%`;
+        els.saturateValue.textContent = `${els.saturate.value}%`;
+        els.blurValue.textContent = `${els.blur.value}px`;
+
+        els.mediaPlayer.controls = els.showControls.value === 'true';
+        els.mediaPlayer.loop = els.loopVideo.value === 'true';
+        els.mediaPlayer.playbackRate = Number(els.videoSpeed.value);
+        els.mediaPlayer.volume = clampNumber(els.volume.value, 0, 1, 1);
+        els.mediaPlayer.style.backgroundColor = els.bgColor.value;
+        els.imagePlayer.style.backgroundColor = els.bgColor.value;
+
+        [els.mediaPlayer, els.imagePlayer].forEach((media) => {
+          media.style.opacity = opacity;
+          media.style.objectFit = els.fitMode.value;
+          media.style.filter = filter;
+          media.style.transform = transform;
+        });
+
+        Object.assign(els.floatingImg.style, {
+          width: `${width}px`,
+          height: `${height}px`,
+          borderStyle: els.borderStyle.value,
+          borderColor: els.borderColor.value,
+          backgroundColor: els.bgColor.value,
+          borderRadius: `${radius}px`,
+          opacity: String(opacity),
+          zIndex: String(z)
+        });
+
+        const floatingMedia = els.floatingBody.querySelector('img, video');
+        if (floatingMedia) {
+          floatingMedia.style.objectFit = els.fitMode.value;
+          floatingMedia.style.filter = filter;
+          floatingMedia.style.transform = transform;
+        }
+
+        if (state.floatingVideo) syncFloatingVideo();
+      }
+
+      function buildFilter() {
+        return `brightness(${els.brightness.value}%) contrast(${els.contrast.value}%) saturate(${els.saturate.value}%) blur(${els.blur.value}px)`;
+      }
+
+      async function startPiP() {
+        if (!state.file) {
+          toast('Load a video or image first.');
+          return;
+        }
+
+        const engine = els.pipEngine.value;
+
+        try {
+          if (engine === 'floating') {
+            showFloatingPiP();
+            return;
+          }
+
+          if (engine === 'document') {
+            await openDocumentPiP();
+            return;
+          }
+
+          if (engine === 'native') {
+            await openNativeVideoPiP();
+            return;
+          }
+
+          if (state.isVideo && document.pictureInPictureEnabled && els.mediaPlayer.requestPictureInPicture) {
+            await openNativeVideoPiP();
+          } else if ('documentPictureInPicture' in window) {
+            await openDocumentPiP();
+          } else {
+            showFloatingPiP();
+          }
+        } catch (error) {
+          console.warn(error);
+          toast(error.message || 'Could not start PiP. Using floating preview instead.');
+          showFloatingPiP();
+        }
+      }
+
+      async function openNativeVideoPiP() {
+        if (!state.isVideo) {
+          throw new Error('Native PiP only works with video. Use Auto, Document PiP, or Floating for images.');
+        }
+
+        if (!document.pictureInPictureEnabled || !els.mediaPlayer.requestPictureInPicture) {
+          throw new Error('Native video PiP is not supported in this browser.');
+        }
+
+        if (els.mediaPlayer.readyState < 1) {
+          throw new Error('Please wait for the video metadata to load.');
+        }
+
+        if (document.pictureInPictureElement) {
+          await document.exitPictureInPicture();
+          return;
+        }
+
+        await els.mediaPlayer.requestPictureInPicture();
+      }
+
+      async function openDocumentPiP() {
+        if (!('documentPictureInPicture' in window)) {
+          throw new Error('Document PiP is not supported in this browser.');
+        }
+
+        const width = clampNumber(els.pipWidth.value, 180, 1400, defaults.pipWidth);
+        const height = clampNumber(els.pipHeight.value, 120, 1000, defaults.pipHeight);
+
+        if (state.pipWindow && !state.pipWindow.closed) {
+          state.pipWindow.close();
+          state.pipWindow = null;
+          return;
+        }
+
+        state.pipWindow = await window.documentPictureInPicture.requestWindow({ width, height });
+        state.pipWindow.addEventListener('pagehide', () => {
+          state.pipWindow = null;
+          setStatus('Document PiP closed.');
+        });
+
+        const doc = state.pipWindow.document;
+        doc.title = 'Media PiP';
+        doc.body.innerHTML = '';
+
+        const style = doc.createElement('style');
+        style.textContent = `
+          * { box-sizing: border-box; }
+          html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; background: ${els.bgColor.value}; color: white; font-family: system-ui, sans-serif; }
+          .wrap { width: 100vw; height: 100vh; display: grid; grid-template-rows: 38px 1fr; border: 3px ${els.borderStyle.value} ${els.borderColor.value}; border-radius: ${Number(els.borderRadius.value)}px; overflow: hidden; background: ${els.bgColor.value}; }
+          .bar { display: flex; align-items: center; justify-content: space-between; gap: 8px; background: rgba(2, 6, 23, 0.86); padding: 0 10px; font-size: 12px; font-weight: 800; }
+          .name { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+          button { border: 0; border-radius: 8px; padding: 4px 8px; cursor: pointer; font-weight: 800; }
+          .stage { min-width: 0; min-height: 0; display: grid; place-items: center; background: ${els.bgColor.value}; }
+          img, video { width: 100%; height: 100%; object-fit: ${els.fitMode.value}; opacity: ${els.opacity.value}; filter: ${buildFilter()}; transform: ${els.mirrorMedia.value === 'true' ? 'scaleX(-1)' : 'none'}; background: ${els.bgColor.value}; }
+        `;
+        doc.head.appendChild(style);
+
+        const wrap = doc.createElement('div');
+        wrap.className = 'wrap';
+
+        const bar = doc.createElement('div');
+        bar.className = 'bar';
+
+        const name = doc.createElement('div');
+        name.className = 'name';
+        name.textContent = state.file ? state.file.name : 'Media PiP';
+
+        const closeButton = doc.createElement('button');
+        closeButton.textContent = 'Close';
+        closeButton.addEventListener('click', () => state.pipWindow && state.pipWindow.close());
+
+        const stage = doc.createElement('div');
+        stage.className = 'stage';
+
+        if (state.isVideo) {
+          const video = doc.createElement('video');
+          video.src = state.objectURL;
+          video.controls = els.showControls.value === 'true';
+          video.loop = els.loopVideo.value === 'true';
+          video.volume = els.mediaPlayer.volume;
+          video.muted = els.mediaPlayer.muted;
+          video.playbackRate = els.mediaPlayer.playbackRate;
+          video.currentTime = els.mediaPlayer.currentTime || 0;
+          stage.appendChild(video);
+          if (!els.mediaPlayer.paused) video.play().catch(() => {});
+        } else {
+          const img = doc.createElement('img');
+          img.src = state.objectURL;
+          img.alt = state.file ? state.file.name : 'Selected image';
+          stage.appendChild(img);
+        }
+
+        bar.append(name, closeButton);
+        wrap.append(bar, stage);
+        doc.body.appendChild(wrap);
+        setStatus('Document PiP is active.');
+      }
+
+      function toggleFloatingPiP() {
+        if (els.floatingImg.style.display === 'none' || !els.floatingImg.style.display) {
+          showFloatingPiP();
+        } else {
+          hideFloatingPiP();
+        }
+      }
+
+      function showFloatingPiP() {
+        if (!state.file) {
+          toast('Load a video or image first.');
+          return;
+        }
+
+        els.floatingBody.replaceChildren();
+        state.floatingVideo = null;
+        els.floatTitle.textContent = state.file.name;
+
+        const media = document.createElement(state.isVideo ? 'video' : 'img');
+        media.src = state.objectURL;
+
+        if (state.isVideo) {
+          media.controls = els.showControls.value === 'true';
+          media.loop = els.loopVideo.value === 'true';
+          media.volume = els.mediaPlayer.volume;
+          media.muted = els.mediaPlayer.muted;
+          media.playbackRate = els.mediaPlayer.playbackRate;
+          media.currentTime = els.mediaPlayer.currentTime || 0;
+          state.floatingVideo = media;
+          if (!els.mediaPlayer.paused) media.play().catch(() => {});
+        } else {
+          media.alt = state.file.name;
+        }
+
+        media.style.objectFit = els.fitMode.value;
+        media.style.filter = buildFilter();
+        media.style.transform = els.mirrorMedia.value === 'true' ? 'scaleX(-1)' : 'none';
+
+        els.floatingBody.appendChild(media);
+        els.floatingImg.style.display = 'block';
+        state.floatingMinimized = false;
+        els.floatingBody.style.display = 'grid';
+        applyAllSettings();
+        placeFloating(els.positionPreset.value);
+        setStatus('In-page floating preview is active. Drag the header to move it.');
+      }
+
+      function hideFloatingPiP() {
+        els.floatingImg.style.display = 'none';
+        els.floatingBody.replaceChildren();
+        state.floatingVideo = null;
+        setStatus('Floating preview closed.');
+      }
+
+      function toggleFloatingMinimized() {
+        if (els.floatingImg.style.display === 'none') return;
+        state.floatingMinimized = !state.floatingMinimized;
+        els.floatingBody.style.display = state.floatingMinimized ? 'none' : 'grid';
+        els.floatingImg.style.height = state.floatingMinimized ? '42px' : `${clampNumber(els.pipHeight.value, 120, 1000, defaults.pipHeight)}px`;
+      }
+
+      function placeFloating(position) {
+        const margin = 18;
+        const rect = els.floatingImg.getBoundingClientRect();
+        const maxLeft = window.innerWidth - rect.width - margin;
+        const maxTop = window.innerHeight - rect.height - margin;
+        let left = maxLeft;
+        let top = maxTop;
+
+        if (position === 'bottom-left') { left = margin; top = maxTop; }
+        if (position === 'top-right') { left = maxLeft; top = margin; }
+        if (position === 'top-left') { left = margin; top = margin; }
+        if (position === 'center') { left = (window.innerWidth - rect.width) / 2; top = (window.innerHeight - rect.height) / 2; }
+
+        els.floatingImg.style.left = `${Math.max(margin, left)}px`;
+        els.floatingImg.style.top = `${Math.max(margin, top)}px`;
+        els.floatingImg.style.right = 'auto';
+        els.floatingImg.style.bottom = 'auto';
+      }
+
+      function startDrag(event) {
+        if (event.target.closest('button')) return;
+        state.drag.active = true;
+        const rect = els.floatingImg.getBoundingClientRect();
+        state.drag.offsetX = event.clientX - rect.left;
+        state.drag.offsetY = event.clientY - rect.top;
+        els.floatHeader.setPointerCapture(event.pointerId);
+      }
+
+      function dragFloating(event) {
+        if (!state.drag.active) return;
+        const rect = els.floatingImg.getBoundingClientRect();
+        const margin = 8;
+        const left = clampNumber(event.clientX - state.drag.offsetX, margin, window.innerWidth - rect.width - margin, margin);
+        const top = clampNumber(event.clientY - state.drag.offsetY, margin, window.innerHeight - rect.height - margin, margin);
+        els.floatingImg.style.left = `${left}px`;
+        els.floatingImg.style.top = `${top}px`;
+        els.floatingImg.style.right = 'auto';
+        els.floatingImg.style.bottom = 'auto';
+      }
+
+      function stopDrag() {
+        state.drag.active = false;
+      }
+
+      function playPause() {
+        if (!state.isVideo || !state.file) return;
+        if (els.mediaPlayer.paused) {
+          els.mediaPlayer.play().catch((error) => toast(error.message || 'Playback failed.'));
+        } else {
+          els.mediaPlayer.pause();
+        }
+      }
+
+      function toggleMute() {
+        if (!state.isVideo || !state.file) return;
+        els.mediaPlayer.muted = !els.mediaPlayer.muted;
+        els.muteButton.textContent = els.mediaPlayer.muted ? 'Unmute' : 'Mute';
+        syncFloatingVideo();
+      }
+
+      function resetView() {
+        Object.entries(defaults).forEach(([key, value]) => {
+          if (key !== 'theme' && els[key]) els[key].value = value;
+        });
+        applyAllSettings();
+        saveSettings();
+        placeFloating(els.positionPreset.value);
+        toast('View settings reset.');
+      }
+
+      async function closePiP() {
+        try {
+          if (document.pictureInPictureElement) await document.exitPictureInPicture();
+          if (state.pipWindow && !state.pipWindow.closed) state.pipWindow.close();
+          hideFloatingPiP();
+        } catch (error) {
+          console.warn(error);
+        }
+      }
+
+      function syncFloatingVideo() {
+        if (!state.floatingVideo) return;
+        state.floatingVideo.volume = els.mediaPlayer.volume;
+        state.floatingVideo.muted = els.mediaPlayer.muted;
+        state.floatingVideo.playbackRate = els.mediaPlayer.playbackRate;
+        state.floatingVideo.loop = els.mediaPlayer.loop;
+
+        if (Math.abs(state.floatingVideo.currentTime - els.mediaPlayer.currentTime) > 0.5) {
+          state.floatingVideo.currentTime = els.mediaPlayer.currentTime || 0;
+        }
+
+        if (els.mediaPlayer.paused && !state.floatingVideo.paused) state.floatingVideo.pause();
+        if (!els.mediaPlayer.paused && state.floatingVideo.paused) state.floatingVideo.play().catch(() => {});
+      }
+
+      function syncFloatingVideoSoft() {
+        if (!state.floatingVideo) return;
+        if (Math.abs(state.floatingVideo.currentTime - els.mediaPlayer.currentTime) > 1) {
+          state.floatingVideo.currentTime = els.mediaPlayer.currentTime || 0;
+        }
+      }
+
+      function takeSnapshot() {
+        if (!state.file) {
+          toast('Load media first.');
+          return;
+        }
+
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        let source;
+        let width;
+        let height;
+
+        if (state.isVideo) {
+          if (els.mediaPlayer.readyState < 2) {
+            toast('Wait until the video frame is ready.');
+            return;
+          }
+          source = els.mediaPlayer;
+          width = els.mediaPlayer.videoWidth;
+          height = els.mediaPlayer.videoHeight;
+        } else {
+          source = els.imagePlayer;
+          width = els.imagePlayer.naturalWidth;
+          height = els.imagePlayer.naturalHeight;
+        }
+
+        if (!width || !height) {
+          toast('Could not read media dimensions.');
+          return;
+        }
+
+        canvas.width = width;
+        canvas.height = height;
+        ctx.filter = buildFilter();
+
+        if (els.mirrorMedia.value === 'true') {
+          ctx.translate(width, 0);
+          ctx.scale(-1, 1);
+        }
+
+        ctx.drawImage(source, 0, 0, width, height);
+
+        const url = canvas.toDataURL('image/png');
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `media-snapshot-${Date.now()}.png`;
+        link.title = 'Download snapshot';
+
+        const thumb = document.createElement('img');
+        thumb.src = url;
+        thumb.alt = 'Snapshot thumbnail';
+        link.appendChild(thumb);
+        els.snapshotStrip.prepend(link);
+
+        while (els.snapshotStrip.children.length > 12) {
+          els.snapshotStrip.lastElementChild.remove();
+        }
+
+        toast('Snapshot captured. Click the thumbnail to download.');
+      }
+
+      function toggleTheme() {
+        document.body.classList.toggle('light');
+        saveSettings();
+      }
+
+      function updateMediaInfo() {
+        if (!state.file) return;
+
+        if (state.isVideo) {
+          const duration = Number.isFinite(els.mediaPlayer.duration) ? formatTime(els.mediaPlayer.duration) : 'Unknown duration';
+          els.mediaInfo.textContent = `${els.mediaPlayer.videoWidth || '—'}×${els.mediaPlayer.videoHeight || '—'} • ${duration}`;
+        } else {
+          els.mediaInfo.textContent = `${els.imagePlayer.naturalWidth || '—'}×${els.imagePlayer.naturalHeight || '—'}`;
+        }
+      }
+
+      function updateSupportStatus() {
+        const native = !!(document.pictureInPictureEnabled && HTMLVideoElement.prototype.requestPictureInPicture);
+        const docPip = 'documentPictureInPicture' in window;
+
+        if (native && docPip) {
+          els.supportDot.className = 'dot good';
+          els.supportText.textContent = 'Native PiP + Document PiP available';
+        } else if (native) {
+          els.supportDot.className = 'dot good';
+          els.supportText.textContent = 'Native video PiP available';
+        } else if (docPip) {
+          els.supportDot.className = 'dot good';
+          els.supportText.textContent = 'Document PiP available';
+        } else {
+          els.supportDot.className = 'dot bad';
+          els.supportText.textContent = 'Using floating fallback';
+        }
+      }
+
+      function updateButtonStates() {
+        const hasFile = !!state.file;
+        [els.pipButton, els.toggleFloatingButton, els.snapshotButton, els.playPauseButton, els.muteButton, els.closePiPButton].forEach((button) => {
+          button.disabled = !hasFile;
+        });
+        els.playPauseButton.disabled = !hasFile || !state.isVideo;
+        els.muteButton.disabled = !hasFile || !state.isVideo;
+      }
+
+      function setStatus(message) {
+        els.statusMessage.textContent = message;
+      }
+
+      function toast(message) {
+        els.toast.textContent = message;
+        els.toast.classList.add('show');
+        clearTimeout(toast.timeout);
+        toast.timeout = setTimeout(() => els.toast.classList.remove('show'), 2600);
+      }
+
+      function handleShortcuts(event) {
+        const tag = document.activeElement && document.activeElement.tagName;
+        const typing = ['INPUT', 'SELECT', 'TEXTAREA'].includes(tag);
+        if (typing) return;
+
+        if (event.code === 'Space') {
+          event.preventDefault();
+          playPause();
+        }
+        if (event.key.toLowerCase() === 'p') startPiP();
+        if (event.key.toLowerCase() === 'f') toggleFloatingPiP();
+        if (event.key.toLowerCase() === 's') takeSnapshot();
+        if (event.key === 'Escape') closePiP();
+      }
+
+      function formatBytes(bytes) {
+        if (!Number.isFinite(bytes) || bytes === 0) return '0 B';
+        const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+        const index = Math.floor(Math.log(bytes) / Math.log(1024));
+        return `${(bytes / Math.pow(1024, index)).toFixed(index === 0 ? 0 : 1)} ${units[index]}`;
+      }
+
+      function formatTime(seconds) {
+        const h = Math.floor(seconds / 3600);
+        const m = Math.floor((seconds % 3600) / 60);
+        const s = Math.floor(seconds % 60);
+        return h > 0
+          ? `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
+          : `${m}:${String(s).padStart(2, '0')}`;
+      }
+
+      function clampNumber(value, min, max, fallback) {
+        const number = Number(value);
+        if (!Number.isFinite(number)) return fallback;
+        return Math.min(max, Math.max(min, number));
+      }
+    });
+  </script>
+</body>
+</html>
