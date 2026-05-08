@@ -1,0 +1,1015 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com; style-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self' data:; font-src 'self'; worker-src 'self' blob:; frame-src 'self'; base-uri 'self'; form-action 'none';">
+  <title>NeuroGenius X - Experimental Cognitive Architecture Lab</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.8/dist/chart.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/mathjs/12.2.1/math.min.js"></script>
+  <script src="https://unpkg.com/compromise@14.14.4/builds/compromise.min.js"></script>
+  <style>
+    :root {
+      --neural-primary: #8b5cf6;
+      --neural-secondary: #22d3ee;
+      --neural-tertiary: #f472b6;
+      --neural-danger: #fb7185;
+      --neural-success: #34d399;
+      --bg-0: #020617;
+      --bg-1: #0f172a;
+      --bg-2: #111827;
+      --panel: rgba(15, 23, 42, 0.76);
+      --glass: rgba(255,255,255,0.055);
+      --glass-2: rgba(255,255,255,0.09);
+      --border: rgba(148, 163, 184, 0.18);
+      --border-bright: rgba(139, 92, 246, 0.45);
+      --text: #f8fafc;
+      --muted: #cbd5e1;
+      --muted-2: #94a3b8;
+      --shadow: 0 24px 80px rgba(0, 0, 0, 0.42);
+      --radius: 22px;
+      --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+      --sans: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    * { box-sizing: border-box; }
+    html, body { min-height: 100%; }
+    body {
+      margin: 0;
+      color: var(--text);
+      font-family: var(--sans);
+      background: radial-gradient(circle at 15% 10%, rgba(139, 92, 246, 0.23), transparent 33%), radial-gradient(circle at 80% 20%, rgba(34, 211, 238, 0.15), transparent 28%), radial-gradient(circle at 50% 90%, rgba(244, 114, 182, 0.13), transparent 32%), linear-gradient(145deg, var(--bg-0), var(--bg-1) 54%, var(--bg-2));
+      overflow-x: hidden;
+    }
+
+    button, input, textarea, select { font: inherit; }
+    button { border: 0; color: var(--text); cursor: pointer; transition: transform 180ms ease, background 180ms ease, border 180ms ease, opacity 180ms ease; }
+    button:active { transform: translateY(1px) scale(0.99); }
+    button:disabled { cursor: not-allowed; opacity: 0.5; }
+
+    .neural-viz { position: fixed; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 0; opacity: 0.18; mix-blend-mode: screen; }
+    .app-shell { position: relative; z-index: 1; width: min(1760px, calc(100vw - 28px)); margin: 0 auto; padding: 24px 0 34px; }
+
+    .hero { display: grid; grid-template-columns: 1fr auto; gap: 18px; align-items: center; padding: 22px; margin-bottom: 18px; border: 1px solid var(--border); background: linear-gradient(135deg, rgba(15,23,42,0.88), rgba(30,41,59,0.63)); border-radius: calc(var(--radius) + 4px); box-shadow: var(--shadow); backdrop-filter: blur(18px); overflow: hidden; position: relative; }
+    .hero::after { content: ""; position: absolute; inset: -2px; background: linear-gradient(90deg, transparent, rgba(139,92,246,0.28), rgba(34,211,238,0.2), transparent); transform: translateX(-100%); animation: scanline 9s linear infinite; pointer-events: none; }
+    @keyframes scanline { to { transform: translateX(100%); } }
+    .eyebrow { display: inline-flex; gap: 8px; align-items: center; color: var(--neural-secondary); font-size: 0.82rem; letter-spacing: 0.12em; text-transform: uppercase; font-weight: 700; }
+    .hero h1 { margin: 8px 0 6px; font-size: clamp(2rem, 4vw, 4.3rem); line-height: 0.95; letter-spacing: -0.06em; }
+    .hero p { max-width: 950px; margin: 0; color: var(--muted); line-height: 1.65; }
+    .hero-actions { display: grid; grid-template-columns: repeat(2, minmax(128px, 1fr)); gap: 10px; min-width: 310px; }
+
+    .btn, .select-wrap select { min-height: 42px; border-radius: 14px; border: 1px solid var(--border); background: var(--glass); color: var(--text); padding: 0 14px; }
+    .btn:hover, .select-wrap select:hover { background: var(--glass-2); border-color: var(--border-bright); }
+    .btn-primary { background: linear-gradient(135deg, var(--neural-primary), #4f46e5); border: 1px solid rgba(255,255,255,0.18); font-weight: 800; }
+    .btn-primary:hover { background: linear-gradient(135deg, #a78bfa, #6366f1); }
+    .btn-danger:hover { border-color: rgba(251,113,133,0.7); color: #fecdd3; }
+
+    .neuro-container { display: grid; grid-template-columns: minmax(360px, 0.78fr) minmax(520px, 1.22fr); gap: 18px; align-items: start; }
+    .panel { border: 1px solid var(--border); background: var(--panel); border-radius: var(--radius); box-shadow: var(--shadow); backdrop-filter: blur(18px); overflow: hidden; }
+    .panel-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 16px 18px 12px; border-bottom: 1px solid rgba(148, 163, 184, 0.12); }
+    .panel-head h2, .panel-head h3 { margin: 0; font-size: 1rem; letter-spacing: -0.01em; }
+    .panel-head span { color: var(--muted-2); font-size: 0.84rem; }
+    .panel-body { padding: 16px 18px 18px; }
+    .stack { display: grid; gap: 18px; }
+    .cognitive-panel, .metrics-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+
+    .neuron-card, .metric-card, .research-card, .memory-item, .lesson-card, .test-card, .frontier-card, .world-card { position: relative; border: 1px solid rgba(148, 163, 184, 0.14); background: linear-gradient(145deg, rgba(255,255,255,0.076), rgba(255,255,255,0.035)); border-radius: 18px; padding: 14px; overflow: hidden; }
+    .neuron-card:hover, .metric-card:hover, .research-card:hover { border-color: var(--border-bright); transform: translateY(-1px); }
+    .neuron-card h3 { margin: 0 0 8px; display: flex; align-items: center; justify-content: space-between; color: var(--text); font-size: 0.98rem; }
+    .neuron-card p, .research-card p, .memory-item p, .lesson-card p, .test-card p, .frontier-card p, .world-card p { color: var(--muted); margin: 0; line-height: 1.5; font-size: 0.9rem; }
+
+    .frontier-grid { display: grid; gap: 12px; }
+    .frontier-card { display: grid; gap: 10px; }
+    .frontier-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+    .frontier-head strong { font-size: 0.95rem; }
+    .frontier-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+    .dna-line { font-family: var(--mono); font-size: 0.76rem; color: var(--neural-secondary); word-break: break-word; }
+    .signal-bar { height: 9px; border-radius: 999px; background: rgba(255,255,255,0.08); overflow: hidden; }
+    .signal-fill { height: 100%; border-radius: inherit; background: linear-gradient(90deg, var(--neural-success), var(--neural-secondary), var(--neural-tertiary)); transition: width 220ms ease; }
+    .world-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+    .world-card { padding: 10px; }
+    .world-card strong { display: block; margin-bottom: 5px; font-size: 0.82rem; }
+
+    .progress-container { margin-top: 12px; }
+    .progress-label { display: flex; justify-content: space-between; color: var(--muted-2); font-size: 0.78rem; margin-bottom: 7px; }
+    .progress-bar { height: 8px; overflow: hidden; border-radius: 999px; background: rgba(255,255,255,0.08); }
+    .progress { height: 100%; width: 50%; border-radius: inherit; background: linear-gradient(90deg, var(--neural-primary), var(--neural-secondary)); transition: width 300ms ease; position: relative; }
+    .progress::after { content: ""; position: absolute; inset: 0; background: linear-gradient(90deg, transparent, rgba(255,255,255,0.35), transparent); transform: translateX(-100%); animation: shimmer 2s infinite; }
+    @keyframes shimmer { to { transform: translateX(100%); } }
+
+    .research-grid, .controls-grid, .memory-list, .lesson-list, .test-list { display: grid; gap: 10px; }
+    .research-card { display: grid; grid-template-columns: auto 1fr; gap: 10px; }
+    .research-card strong { display: block; margin-bottom: 4px; }
+    .chip { display: inline-flex; align-items: center; gap: 6px; min-height: 26px; padding: 3px 9px; border-radius: 999px; border: 1px solid rgba(148, 163, 184, 0.18); background: rgba(255,255,255,0.06); color: var(--muted); font-size: 0.75rem; white-space: nowrap; }
+    .chip.ok { color: #bbf7d0; border-color: rgba(52,211,153,0.45); }
+    .chip.fail { color: #fecdd3; border-color: rgba(251,113,133,0.5); }
+
+    .control-row { display: grid; gap: 8px; }
+    .control-row label { display: flex; justify-content: space-between; color: var(--muted); font-size: 0.86rem; }
+    input[type="range"] { accent-color: var(--neural-primary); width: 100%; }
+    .metric-value { margin: 7px 0 0; font-size: 1.65rem; font-weight: 900; color: var(--neural-secondary); letter-spacing: -0.04em; }
+    .metric-label { color: var(--muted-2); margin: 0; font-size: 0.78rem; }
+    .metric-chart { height: 96px; margin-top: 8px; }
+    .memory-list, .lesson-list, .test-list, .vault-list, .gap-list, .goal-list { max-height: 280px; overflow-y: auto; padding-right: 3px; }
+    .vault-input { width: 100%; min-height: 110px; border: 1px solid rgba(148, 163, 184, 0.18); border-radius: 14px; background: rgba(255,255,255,0.06); color: var(--text); padding: 12px; resize: vertical; outline: none; }
+    .vault-input:focus { border-color: var(--border-bright); background: rgba(255,255,255,0.09); }
+    .goal-item { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 8px; }
+    .goal-item input { accent-color: var(--neural-primary); }
+    .memory-item .memory-meta { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 8px; }
+    .memory-actions { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
+
+    .chat-interface { height: min(980px, calc(100vh - 150px)); min-height: 760px; display: grid; grid-template-rows: auto auto 1fr auto; overflow: hidden; }
+    .lab-strip { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; padding: 14px 16px 0; }
+    .strip-card { border-radius: 16px; border: 1px solid rgba(148, 163, 184, 0.16); background: rgba(255,255,255,0.045); padding: 10px 12px; }
+    .strip-card span { display: block; color: var(--muted-2); font-size: 0.74rem; }
+    .strip-card strong { display: block; margin-top: 3px; font-size: 1.03rem; }
+    .trace-panel { margin: 14px 16px 0; border-radius: 18px; border: 1px solid rgba(148, 163, 184, 0.16); background: rgba(2, 6, 23, 0.34); overflow: hidden; }
+    .trace-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 10px 12px; border-bottom: 1px solid rgba(148, 163, 184, 0.12); }
+    .trace-head strong { font-size: 0.88rem; }
+    .trace-graph { display: flex; gap: 10px; padding: 12px; overflow-x: auto; }
+    .trace-node { min-width: 150px; border: 1px solid rgba(148, 163, 184, 0.16); background: rgba(255,255,255,0.045); border-radius: 15px; padding: 9px; position: relative; }
+    .trace-node::after { content: "->"; position: absolute; right: -13px; top: 50%; transform: translateY(-50%); color: var(--muted-2); }
+    .trace-node:last-child::after { display: none; }
+    .trace-node b { display: block; margin-bottom: 5px; font-size: 0.82rem; }
+    .trace-node span { display: block; color: var(--muted-2); font-size: 0.75rem; line-height: 1.35; }
+
+    .chat-window { overflow-y: auto; padding: 16px; scroll-behavior: smooth; }
+    .message { max-width: 90%; margin-bottom: 14px; animation: fadeIn 240ms ease; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+    .message-bubble { border-radius: 20px; padding: 14px; border: 1px solid rgba(148, 163, 184, 0.16); box-shadow: 0 12px 36px rgba(0,0,0,0.22); }
+    .user-message { margin-left: auto; }
+    .user-message .message-bubble { background: linear-gradient(135deg, rgba(139,92,246,0.95), rgba(79,70,229,0.92)); border-bottom-right-radius: 6px; }
+    .system-message { margin-right: auto; }
+    .system-message .message-bubble { background: rgba(255,255,255,0.07); border-bottom-left-radius: 6px; }
+    .message-content { display: grid; gap: 10px; line-height: 1.57; white-space: pre-wrap; }
+    .message-content h4 { margin: 0; color: var(--neural-secondary); }
+    .message-time { color: var(--muted-2); font-size: 0.74rem; margin-top: 7px; text-align: right; }
+    .trace-details { margin-top: 12px; border-top: 1px solid rgba(148, 163, 184, 0.14); padding-top: 10px; display: grid; gap: 8px; }
+    details { border-radius: 14px; border: 1px solid rgba(148, 163, 184, 0.14); background: rgba(2, 6, 23, 0.24); padding: 9px 10px; }
+    summary { cursor: pointer; color: var(--muted); font-weight: 700; }
+    .trace-details p { margin: 7px 0 0; color: var(--muted); }
+
+    .input-container { position: relative; display: grid; grid-template-columns: 1fr auto; gap: 10px; padding: 14px 16px 16px; border-top: 1px solid rgba(148, 163, 184, 0.12); background: rgba(2, 6, 23, 0.22); }
+    .message-input { min-height: 52px; max-height: 180px; resize: none; overflow-y: auto; border: 1px solid rgba(148, 163, 184, 0.18); border-radius: 16px; background: rgba(255,255,255,0.06); color: var(--text); padding: 14px; outline: none; transition: border 180ms ease, background 180ms ease; }
+    .message-input:focus { border-color: var(--border-bright); background: rgba(255,255,255,0.09); }
+    .send-button { min-width: 98px; border-radius: 16px; font-weight: 900; background: linear-gradient(135deg, var(--neural-primary), #4f46e5); }
+    .command-palette { position: absolute; left: 16px; right: 124px; bottom: calc(100% - 8px); max-height: 0; overflow: hidden; border: 1px solid rgba(148, 163, 184, 0.18); border-radius: 18px; background: rgba(15, 23, 42, 0.97); backdrop-filter: blur(18px); box-shadow: var(--shadow); transition: max-height 220ms ease; z-index: 5; }
+    .command-palette.visible { max-height: 360px; }
+    .command-list { list-style: none; margin: 0; padding: 8px; display: grid; gap: 5px; }
+    .command-item { display: grid; grid-template-columns: 28px 1fr auto; align-items: center; gap: 8px; padding: 10px; border-radius: 13px; cursor: pointer; }
+    .command-item:hover { background: rgba(255,255,255,0.08); }
+    .command-text { color: var(--text); }
+    .command-shortcut { color: var(--muted-2); font-size: 0.76rem; }
+    .thinking-animation { display: inline-flex; gap: 5px; align-items: center; min-height: 22px; }
+    .thinking-dot { width: 8px; height: 8px; background: var(--neural-secondary); border-radius: 50%; animation: thinking 1.2s infinite ease-in-out both; }
+    .thinking-dot:nth-child(2) { animation-delay: 0.13s; }
+    .thinking-dot:nth-child(3) { animation-delay: 0.26s; }
+    @keyframes thinking { 0%, 80%, 100% { opacity: 0.35; transform: scale(0.7); } 40% { opacity: 1; transform: scale(1); } }
+    .notification { position: fixed; top: 18px; right: 18px; z-index: 20; width: min(360px, calc(100vw - 36px)); border: 1px solid rgba(148, 163, 184, 0.18); border-left: 4px solid var(--neural-secondary); border-radius: 16px; background: rgba(15, 23, 42, 0.96); box-shadow: var(--shadow); padding: 14px; transform: translateX(calc(100% + 28px)); transition: transform 260ms cubic-bezier(.2,.8,.2,1); }
+    .notification.visible { transform: translateX(0); }
+    .notification-title { font-weight: 900; margin-bottom: 4px; }
+    .notification-content { color: var(--muted); font-size: 0.9rem; }
+    .kbd { font-family: var(--mono); font-size: 0.74rem; color: var(--muted); border: 1px solid rgba(148,163,184,0.18); background: rgba(255,255,255,0.05); border-radius: 7px; padding: 1px 6px; }
+    .empty { color: var(--muted-2); font-style: italic; }
+    ::-webkit-scrollbar { width: 8px; height: 8px; }
+    ::-webkit-scrollbar-track { background: rgba(255,255,255,0.04); border-radius: 999px; }
+    ::-webkit-scrollbar-thumb { background: rgba(139,92,246,0.48); border-radius: 999px; }
+    ::-webkit-scrollbar-thumb:hover { background: rgba(139,92,246,0.78); }
+
+    @media (max-width: 1220px) { .hero { grid-template-columns: 1fr; } .hero-actions { min-width: 0; } .neuro-container { grid-template-columns: 1fr; } .chat-interface { height: 820px; min-height: 760px; } }
+    @media (max-width: 760px) { .app-shell { width: min(100vw - 16px, 1760px); padding-top: 8px; } .hero, .panel { border-radius: 18px; } .hero-actions, .cognitive-panel, .metrics-grid, .lab-strip, .world-grid { grid-template-columns: 1fr; } .command-palette { right: 16px; } .message { max-width: 98%; } }
+  </style>
+</head>
+<body>
+  <canvas class="neural-viz" id="neuralViz" aria-hidden="true"></canvas>
+  <div class="app-shell">
+    <header class="hero">
+      <div>
+        <div class="eyebrow">Experimental local cognition lab</div>
+        <h1>NeuroGenius X</h1>
+        <p>A research-inspired single-file prototype with multi-agent routing, graph memory, retrieval simulation, metacognitive consolidation, uncertainty tracking, evidence auditing, counterfactual worlds, topology mutation, memory immune scoring, dream rehearsal, ablation testing, prompt-genome evolution, curiosity-driven experiment search, causal hypothesis mapping, uncertainty markets, red-team mutation loops, Knowledge Vault retrieval, evidence-gap tracking, goals, import/export, self-tests, and live analytics. It runs locally in the browser and does not call a real model API.</p>
+      </div>
+      <div class="hero-actions">
+        <div class="select-wrap">
+          <select id="modeSelect" title="Reasoning mode">
+            <option value="adaptive">Adaptive Router</option>
+            <option value="research">Agentic Research</option>
+            <option value="debate">Debate + Auditor</option>
+            <option value="math">Math / Symbolic</option>
+            <option value="creative">Creative Divergence</option>
+            <option value="memory">Memory Recall</option>
+          </select>
+        </div>
+        <button class="btn btn-primary" id="runExperimentBtn">Run Experiment</button>
+        <button class="btn" id="exportBtn">Export State</button>
+        <button class="btn" id="importBtn">Import State</button>
+        <button class="btn" id="copyTranscriptBtn">Copy Transcript</button>
+        <button class="btn" id="speakLastBtn">Speak Last</button>
+        <button class="btn btn-danger" id="resetBtn">Reset Lab</button>
+        <input id="importFile" type="file" accept="application/json" style="display:none" />
+      </div>
+    </header>
+
+    <main class="neuro-container">
+      <section class="stack">
+        <section class="panel">
+          <div class="panel-head"><h2>Cognitive Modules</h2><span>Live simulated state</span></div>
+          <div class="panel-body cognitive-panel" id="cognitivePanel">
+            <article class="neuron-card" data-module="semantic"><h3>Semantic Analysis <span>⚡</span></h3><p>Intent, entities, sentiment, and topic drift.</p><div class="progress-container"><div class="progress-label"><span>Activation</span><span class="module-value">85%</span></div><div class="progress-bar"><div class="progress" style="width:85%"></div></div></div></article>
+            <article class="neuron-card" data-module="reasoning"><h3>Reasoning Engine <span>🧠</span></h3><p>Planner, critic, auditor, and synthesizer agents.</p><div class="progress-container"><div class="progress-label"><span>Depth</span><span class="module-value">62%</span></div><div class="progress-bar"><div class="progress" style="width:62%"></div></div></div></article>
+            <article class="neuron-card" data-module="retrieval"><h3>Knowledge Access <span>📚</span></h3><p>Memory + local research-corpus retrieval simulation.</p><div class="progress-container"><div class="progress-label"><span>Evidence Fit</span><span class="module-value">74%</span></div><div class="progress-bar"><div class="progress" style="width:74%"></div></div></div></article>
+            <article class="neuron-card" data-module="generation"><h3>Content Generation <span>✨</span></h3><p>Structured answers, alternatives, and next actions.</p><div class="progress-container"><div class="progress-label"><span>Coherence</span><span class="module-value">78%</span></div><div class="progress-bar"><div class="progress" style="width:78%"></div></div></div></article>
+          </div>
+        </section>
+        <section class="panel"><div class="panel-head"><h2>Research-Inspired Upgrades</h2><span>Implemented locally</span></div><div class="panel-body research-grid" id="researchGrid"></div></section>
+        <section class="panel">
+          <div class="panel-head"><h2>Experimental Controls</h2><span>Adaptive routing knobs</span></div>
+          <div class="panel-body controls-grid">
+            <div class="control-row"><label for="depthRange"><span>Reasoning depth</span><b id="depthValue">4</b></label><input id="depthRange" type="range" min="1" max="8" value="4" /></div>
+            <div class="control-row"><label for="exploreRange"><span>Exploration / divergence</span><b id="exploreValue">65%</b></label><input id="exploreRange" type="range" min="0" max="100" value="65" /></div>
+            <div class="control-row"><label for="debateRange"><span>Debate rounds</span><b id="debateValue">2</b></label><input id="debateRange" type="range" min="1" max="5" value="2" /></div>
+            <div class="control-row"><label for="memoryRange"><span>Memory retention</span><b id="memoryValue">78%</b></label><input id="memoryRange" type="range" min="10" max="100" value="78" /></div>
+            <div class="control-row"><label for="safetyRange"><span>Evidence strictness</span><b id="safetyValue">72%</b></label><input id="safetyRange" type="range" min="0" max="100" value="72" /></div>
+          </div>
+        </section>
+        <section class="panel">
+          <div class="panel-head"><h2>System Analytics</h2><span>Streaming metrics</span></div>
+          <div class="panel-body metrics-grid">
+            <article class="metric-card"><p class="metric-label">Response time</p><p class="metric-value" id="responseTimeValue">0ms</p><div class="metric-chart"><canvas id="responseTimeChart"></canvas></div></article>
+            <article class="metric-card"><p class="metric-label">Token estimate</p><p class="metric-value" id="tokenValue">0</p><div class="metric-chart"><canvas id="tokenChart"></canvas></div></article>
+            <article class="metric-card"><p class="metric-label">Uncertainty</p><p class="metric-value" id="uncertaintyValue">0%</p><div class="metric-chart"><canvas id="uncertaintyChart"></canvas></div></article>
+            <article class="metric-card"><p class="metric-label">Memory hits</p><p class="metric-value" id="memoryHitsValue">0</p><div class="metric-chart"><canvas id="memoryChart"></canvas></div></article>
+          </div>
+        </section>
+        <section class="panel"><div class="panel-head"><h2>Adaptive Memory</h2><span id="memoryCount">0 stored</span></div><div class="panel-body"><div class="memory-list" id="memoryList"></div><div class="memory-actions"><button class="btn" id="seedMemoryBtn">Seed Memory</button><button class="btn btn-danger" id="clearMemoryBtn">Clear Memory</button></div></div></section>
+        <section class="panel"><div class="panel-head"><h2>Knowledge Vault</h2><button class="btn btn-small" id="addVaultBtn" type="button">Add Note</button></div><div class="panel-body"><textarea class="vault-input" id="vaultInput" placeholder="Paste project notes, requirements, facts, source snippets, or ideas here. The local retriever will use them when relevant."></textarea><div class="vault-list memory-list" id="vaultList"></div></div></section>
+        <section class="panel"><div class="panel-head"><h2>Evidence Gaps</h2><span id="gapCount">0 gaps</span></div><div class="panel-body gap-list" id="gapList"></div></section>
+        <section class="panel"><div class="panel-head"><h2>Goal Stack</h2><button class="btn btn-small" id="addGoalBtn" type="button">+ Goal</button></div><div class="panel-body goal-list" id="goalList"></div></section>
+        <section class="panel"><div class="panel-head"><h2>Metacognitive Accumulator</h2><span>Micro-lessons</span></div><div class="panel-body lesson-list" id="lessonList"></div></section>
+        <section class="panel"><div class="panel-head"><h2>Built-In Tests</h2><span id="testSummary">Pending</span></div><div class="panel-body test-list" id="testList"></div></section>
+        <section class="panel"><div class="panel-head"><h2>Frontier Lab</h2><span id="frontierSummary">Experimental</span></div><div class="panel-body frontier-grid" id="frontierLab"></div></section>
+      </section>
+      <section class="panel chat-interface">
+        <div class="lab-strip"><div class="strip-card"><span>Mode</span><strong id="stripMode">Adaptive Router</strong></div><div class="strip-card"><span>Route</span><strong id="stripRoute">Idle</strong></div><div class="strip-card"><span>Belief</span><strong id="stripBelief">Stable</strong></div><div class="strip-card"><span>Auditor</span><strong id="stripAudit">Ready</strong></div></div>
+        <div class="trace-panel"><div class="trace-head"><strong>Reasoning Graph</strong><span class="chip">evidence-audited trace</span></div><div class="trace-graph" id="traceGraph"></div></div>
+        <div class="chat-window" id="chatWindow"></div>
+        <div class="input-container"><div class="command-palette" id="commandPalette"><ul class="command-list" id="commandList"></ul></div><textarea class="message-input" id="messageInput" rows="1" placeholder="Ask something, or type / for commands. Try: /math 2+2 or /frontier mutate topology"></textarea><button class="send-button" id="sendButton">Send</button></div>
+      </section>
+    </main>
+  </div>
+  <div class="notification" id="notification" role="status" aria-live="polite"><div class="notification-title" id="notificationTitle">Ready</div><div class="notification-content" id="notificationContent">NeuroGenius X is online.</div></div>
+
+  <script>
+    (() => {
+      'use strict';
+
+      const $ = (selector, root = document) => root.querySelector(selector);
+      const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
+      const uid = () => `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+      const ARROW = ' -> ';
+      const NL = '\n';
+      const FRONTIER_PATTERN = new RegExp('\\b(frontier|topology|mutate|counterfactual|world model|immune memory|dream rehearsal|ablation|prompt genome)\\b');
+
+      const defaultEvolution = () => ({ generation: 1, cognitiveDNA: ['IntentProfiler', 'Retriever', 'Planner', 'Critic', 'Auditor', 'Synthesizer'], noveltyPressure: 64, topologyStability: 82, immuneRisk: 18, lastWorlds: [], dreamLog: [], ablationLog: [], promptGenome: [], curiosityLog: [], causalGraph: [], uncertaintyMarket: [], redTeamLog: [] });
+
+      const safeStorage = {
+        get(key, fallback) { try { return JSON.parse(localStorage.getItem(key)) ?? fallback; } catch { return fallback; } },
+        set(key, value) { try { localStorage.setItem(key, JSON.stringify(value)); } catch (error) { console.warn('Storage write failed:', error); } },
+        remove(key) { try { localStorage.removeItem(key); } catch { /* noop */ } }
+      };
+
+      const researchInfluences = [
+        { icon: '🧩', title: 'Agentic RAG orchestration', note: 'Planning, retrieval, reflection, and multi-agent collaboration are explicit workflow steps.', implementation: 'Adaptive router + retrieval agent + trace graph' },
+        { icon: '🕸️', title: 'Multi-graph memory', note: 'Memory is separated into semantic, temporal, entity, and causal views rather than one flat list.', implementation: 'Memory cards with typed tags and scored retrieval paths' },
+        { icon: '🧠', title: 'Metacognitive consolidation', note: 'Each answer creates a small reflection that can become reusable meta-knowledge over time.', implementation: 'Micro-lesson accumulator + uncertainty feedback' },
+        { icon: '⚖️', title: 'Evidence-audited debate', note: 'The app scores answers for evidence fit, novelty, and risk instead of trusting majority vote.', implementation: 'Debate agents + auditor + anti-consensus warning' },
+        { icon: '📈', title: 'Adaptive reasoning scaling', note: 'Reasoning depth, debate rounds, and exploration change based on task complexity and controls.', implementation: 'Routing policy + live metrics + mode selector' },
+        { icon: '🌊', title: 'Active inference', note: 'The system estimates surprise, uncertainty, and next observations that would reduce uncertainty.', implementation: 'Belief state + surprise score + next-evidence suggestions' },
+        { icon: '🧬', title: 'Topology self-mutation', note: 'The system mutates its own routing graph under novelty and audit pressure.', implementation: 'Cognitive DNA + topology mutator + stability score' },
+        { icon: '🛡️', title: 'Memory immune system', note: 'Dynamic memory can drift or corrupt; every stored item gets a risk score before future consolidation.', implementation: 'Contradiction, age, sensitivity, and utility risk model' },
+        { icon: '🌍', title: 'Counterfactual world lab', note: 'The same prompt is tested across conservative, divergent, and adversarial worlds to expose brittle plans.', implementation: 'Three local world variants + regret notes' }
+      ];
+
+      const localCorpus = [
+        { id: 'agentic-rag', title: 'Agentic RAG pattern', tags: ['rag', 'retrieval', 'planning', 'tools', 'reflection', 'agent'], text: 'Treat retrieval as a decision process: plan the question, retrieve candidate context, evaluate evidence quality, revise the query, then synthesize.' },
+        { id: 'memory-governance', title: 'Memory governance pattern', tags: ['memory', 'privacy', 'forgetting', 'reflection', 'consolidation'], text: 'A useful memory system needs write filtering, contradiction handling, decay, retrieval scoring, and privacy-aware deletion controls.' },
+        { id: 'multi-graph-memory', title: 'Multi-graph memory pattern', tags: ['memory', 'graph', 'semantic', 'temporal', 'causal', 'entity'], text: 'Separate semantic, temporal, causal, and entity relations so the retrieval path is transparent rather than hidden inside one similarity score.' },
+        { id: 'meta-consolidation', title: 'Metacognitive consolidation pattern', tags: ['metacognition', 'reflection', 'monitor', 'controller', 'lessons'], text: 'Split reasoning into reasoner, monitor, and controller roles. Convert critiques into reusable lessons that improve later runs.' },
+        { id: 'audited-debate', title: 'Evidence-audited debate pattern', tags: ['debate', 'multi-agent', 'audit', 'evidence', 'anti-consensus'], text: 'Multi-agent debate can fail if similar agents agree for the wrong reason. Audit the reasoning trace and evidence instead of using majority vote alone.' },
+        { id: 'active-inference', title: 'Active inference pattern', tags: ['uncertainty', 'surprise', 'active', 'prediction', 'evidence'], text: 'Track uncertainty and surprise, then ask what observation or experiment would reduce uncertainty the most.' },
+        { id: 'reasoning-scaling', title: 'Reasoning scaling pattern', tags: ['reasoning', 'scaling', 'rounds', 'depth', 'adaptive'], text: 'Scale computation with task difficulty: more context, more steps, more rounds, or stronger verification only when needed.' },
+        { id: 'safety-ui', title: 'Safe assistant UI pattern', tags: ['security', 'privacy', 'html', 'sanitization', 'csp'], text: 'Never insert user text with innerHTML. Use textContent, reduce unsafe CSP allowances in production, and keep local data visible and deletable.' }
+      ];
+
+      const commands = [
+        { icon: '🧬', label: 'frontier', hint: 'Mutate topology + counterfactual lab', shortcut: '/frontier' },
+        { icon: '🌍', label: 'worlds', hint: 'Run three counterfactual world models', shortcut: '/worlds' },
+        { icon: '🛡️', label: 'immune', hint: 'Audit memory corruption risk', shortcut: '/immune' },
+        { icon: '🛌', label: 'dream', hint: 'Offline rehearsal from memories/lessons', shortcut: '/dream' },
+        { icon: '🧫', label: 'ablate', hint: 'Remove modules and score impact', shortcut: '/ablate' },
+        { icon: '🧬', label: 'evolve', hint: 'Evolve prompt genome variants', shortcut: '/evolve' },
+        { icon: '🧭', label: 'curiosity', hint: 'Generate curiosity-driven experiments', shortcut: '/curiosity' },
+        { icon: '🕸️', label: 'causal', hint: 'Build a causal hypothesis map', shortcut: '/causal' },
+        { icon: '📉', label: 'market', hint: 'Trade uncertainty across hypotheses', shortcut: '/market' },
+        { icon: '🧨', label: 'redteam', hint: 'Mutate the idea against failure modes', shortcut: '/redteam' },
+        { icon: '🔍', label: 'research', hint: 'Agentic local retrieval workflow', shortcut: '/research' },
+        { icon: '⚖️', label: 'debate', hint: 'Multi-agent debate with auditor', shortcut: '/debate' },
+        { icon: '🧮', label: 'math', hint: 'Symbolic math solver with math.js', shortcut: '/math' },
+        { icon: '🧠', label: 'memory', hint: 'Recall and update adaptive memory', shortcut: '/memory' },
+        { icon: '🧪', label: 'simulate', hint: 'Run active-inference experiment', shortcut: '/simulate' },
+        { icon: '🎨', label: 'creative', hint: 'Generate divergent design ideas', shortcut: '/creative' },
+        { icon: '🧹', label: 'clear', hint: 'Clear visible chat only', shortcut: '/clear' },
+        { icon: '📦', label: 'export', hint: 'Export state as JSON', shortcut: '/export' }
+      ];
+
+      const state = {
+        mode: 'adaptive',
+        memory: safeStorage.get('nginx.memory.v5', []),
+        lessons: safeStorage.get('nginx.lessons.v5', []),
+        vault: safeStorage.get('nginx.vault.v1', []),
+        evidenceGaps: safeStorage.get('nginx.gaps.v1', []),
+        goals: safeStorage.get('nginx.goals.v1', []),
+        lastBotText: '',
+        metrics: { responseTimes: [128, 132, 126, 141, 119, 122], tokenUsage: [0, 0, 0, 0, 0, 0], uncertainty: [22, 18, 26, 21, 17, 19], memoryHits: [0, 0, 0, 0, 0, 0], lastRoute: 'Idle', belief: 'Stable', audit: 'Ready' },
+        controls: { depth: 4, exploration: 65, debateRounds: 2, memoryRetention: 78, evidenceStrictness: 72 },
+        charts: {},
+        trace: [],
+        evolution: safeStorage.get('nginx.evolution.v5', defaultEvolution())
+      };
+
+      const els = {
+        researchGrid: $('#researchGrid'), commandPalette: $('#commandPalette'), commandList: $('#commandList'), chatWindow: $('#chatWindow'), messageInput: $('#messageInput'), sendButton: $('#sendButton'), modeSelect: $('#modeSelect'), runExperimentBtn: $('#runExperimentBtn'), exportBtn: $('#exportBtn'), importBtn: $('#importBtn'), importFile: $('#importFile'), copyTranscriptBtn: $('#copyTranscriptBtn'), speakLastBtn: $('#speakLastBtn'), resetBtn: $('#resetBtn'), traceGraph: $('#traceGraph'), memoryList: $('#memoryList'), memoryCount: $('#memoryCount'), lessonList: $('#lessonList'), seedMemoryBtn: $('#seedMemoryBtn'), clearMemoryBtn: $('#clearMemoryBtn'), notification: $('#notification'), notificationTitle: $('#notificationTitle'), notificationContent: $('#notificationContent'), stripMode: $('#stripMode'), stripRoute: $('#stripRoute'), stripBelief: $('#stripBelief'), stripAudit: $('#stripAudit'), responseTimeValue: $('#responseTimeValue'), tokenValue: $('#tokenValue'), uncertaintyValue: $('#uncertaintyValue'), memoryHitsValue: $('#memoryHitsValue'), testList: $('#testList'), testSummary: $('#testSummary'), frontierLab: $('#frontierLab'), frontierSummary: $('#frontierSummary'), vaultInput: $('#vaultInput'), addVaultBtn: $('#addVaultBtn'), vaultList: $('#vaultList'), gapList: $('#gapList'), gapCount: $('#gapCount'), addGoalBtn: $('#addGoalBtn'), goalList: $('#goalList')
+      };
+
+      function createEl(tag, className, text) { const el = document.createElement(tag); if (className) el.className = className; if (typeof text === 'string') el.textContent = text; return el; }
+      function showNotification(title, content) { els.notificationTitle.textContent = title; els.notificationContent.textContent = content; els.notification.classList.add('visible'); window.clearTimeout(showNotification._timer); showNotification._timer = window.setTimeout(() => els.notification.classList.remove('visible'), 3000); }
+      function escapeRegExp(value) { return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
+      function stripCommandPrefix(text, commandName = '') { let expression = String(text || '').trim().replace(/^\/?/, ''); if (commandName) expression = expression.replace(new RegExp('^' + escapeRegExp(commandName) + '\\s*', 'i'), ''); return expression.trim(); }
+
+      function normalizeEvolution() {
+        const defaults = defaultEvolution();
+        state.evolution = { ...defaults, ...(state.evolution || {}) };
+        state.evolution.cognitiveDNA = Array.isArray(state.evolution.cognitiveDNA) ? state.evolution.cognitiveDNA : defaults.cognitiveDNA;
+        state.evolution.lastWorlds = Array.isArray(state.evolution.lastWorlds) ? state.evolution.lastWorlds : [];
+        state.evolution.dreamLog = Array.isArray(state.evolution.dreamLog) ? state.evolution.dreamLog : [];
+        state.evolution.ablationLog = Array.isArray(state.evolution.ablationLog) ? state.evolution.ablationLog : [];
+        state.evolution.promptGenome = Array.isArray(state.evolution.promptGenome) ? state.evolution.promptGenome : [];
+        state.evolution.curiosityLog = Array.isArray(state.evolution.curiosityLog) ? state.evolution.curiosityLog : [];
+        state.evolution.causalGraph = Array.isArray(state.evolution.causalGraph) ? state.evolution.causalGraph : [];
+        state.evolution.uncertaintyMarket = Array.isArray(state.evolution.uncertaintyMarket) ? state.evolution.uncertaintyMarket : [];
+        state.evolution.redTeamLog = Array.isArray(state.evolution.redTeamLog) ? state.evolution.redTeamLog : [];
+      }
+
+      function renderResearchCards() {
+        els.researchGrid.replaceChildren();
+        researchInfluences.forEach(item => {
+          const card = createEl('article', 'research-card');
+          card.append(createEl('div', 'chip', item.icon));
+          const body = createEl('div');
+          body.append(createEl('strong', '', item.title));
+          body.append(createEl('p', '', item.note));
+          const impl = createEl('p');
+          impl.style.marginTop = '8px';
+          impl.append(createEl('span', 'chip', item.implementation));
+          body.append(impl);
+          card.append(body);
+          els.researchGrid.append(card);
+        });
+      }
+
+      function renderCommandList() {
+        els.commandList.replaceChildren();
+        commands.forEach(cmd => {
+          const item = createEl('li', 'command-item');
+          item.dataset.command = cmd.label;
+          item.append(createEl('span', '', cmd.icon));
+          const textWrap = createEl('span');
+          textWrap.append(createEl('span', 'command-text', cmd.shortcut));
+          const hint = createEl('span', 'command-shortcut', cmd.hint);
+          hint.style.display = 'block';
+          textWrap.append(hint);
+          item.append(textWrap);
+          item.append(createEl('span', 'kbd', 'Enter'));
+          item.addEventListener('click', () => { els.messageInput.value = `${cmd.shortcut} `; els.messageInput.focus(); resizeTextarea(); toggleCommandPalette(false); });
+          els.commandList.append(item);
+        });
+      }
+
+      function renderFrontierLab() {
+        if (!els.frontierLab) return;
+        normalizeEvolution();
+        const evo = state.evolution;
+        els.frontierSummary.textContent = `Gen ${evo.generation} - ${evo.topologyStability}% stable`;
+        els.frontierLab.replaceChildren();
+        const addActionCard = (title, chipText, bodyText, lineText, buttonText, onClick) => {
+          const card = createEl('article', 'frontier-card');
+          const head = createEl('div', 'frontier-head');
+          head.append(createEl('strong', '', title));
+          head.append(createEl('span', 'chip', chipText));
+          card.append(head);
+          card.append(createEl('p', '', bodyText));
+          card.append(createEl('div', 'dna-line', lineText));
+          const actions = createEl('div', 'frontier-actions');
+          const btn = createEl('button', 'btn', buttonText);
+          btn.addEventListener('click', onClick);
+          actions.append(btn);
+          card.append(actions);
+          els.frontierLab.append(card);
+        };
+
+        const topologyLine = evo.cognitiveDNA.join(ARROW);
+        addActionCard('Self-Mutating Cognitive Topology', `Gen ${evo.generation}`, 'The agent chain has a simulated cognitive DNA. Novelty pressure can mutate the route, while audit pressure tries to keep it stable.', topologyLine, 'Mutate Topology', () => { mutateTopology('manual novelty pulse'); renderFrontierLab(); renderLessons(); showNotification('Topology mutated', `Generation ${state.evolution.generation} created.`); });
+
+        addActionCard('Memory Immune System', `${evo.immuneRisk}% risk`, 'Scores memory drift, contradiction pressure, sensitive-token risk, and stale low-utility memories before consolidation.', `Current immune risk: ${evo.immuneRisk}%`, 'Run Immune Audit', () => { state.evolution.immuneRisk = runMemoryImmuneAudit(); saveEvolution(); renderFrontierLab(); showNotification('Immune audit complete', `${state.evolution.immuneRisk}% memory risk.`); });
+
+        const worlds = createEl('article', 'frontier-card');
+        const worldsHead = createEl('div', 'frontier-head');
+        worldsHead.append(createEl('strong', '', 'Counterfactual World Models'));
+        worldsHead.append(createEl('span', 'chip', `${evo.lastWorlds.length || 3} worlds`));
+        worlds.append(worldsHead);
+        worlds.append(createEl('p', '', 'A prompt can be stress-tested in conservative, divergent, and adversarial worlds to reveal brittle assumptions before synthesis.'));
+        const grid = createEl('div', 'world-grid');
+        const worldData = evo.lastWorlds.length ? evo.lastWorlds : buildCounterfactualWorlds('upgrade the app', { uncertainty: 45, novelty: 0.5 });
+        worldData.forEach(world => { const card = createEl('div', 'world-card'); card.append(createEl('strong', '', world.name)); card.append(createEl('p', '', world.prediction)); card.append(createEl('span', 'chip', `regret ${world.regret}%`)); grid.append(card); });
+        worlds.append(grid);
+        const worldActions = createEl('div', 'frontier-actions');
+        const worldBtn = createEl('button', 'btn', 'Run World Fork');
+        worldBtn.addEventListener('click', () => { const prompt = els.messageInput.value.trim() || 'push NeuroGenius X into a unique experimental direction'; state.evolution.lastWorlds = buildCounterfactualWorlds(prompt, analyzePrompt(prompt)); saveEvolution(); renderFrontierLab(); showNotification('World fork complete', 'Generated three counterfactual worlds.'); });
+        worldActions.append(worldBtn);
+        worlds.append(worldActions);
+        els.frontierLab.append(worlds);
+
+        const latestDream = evo.dreamLog.slice(-1)[0];
+        addActionCard('Dream Rehearsal Engine', `${evo.dreamLog.length} dreams`, 'Runs offline-style rehearsal loops over memories and lessons, then proposes future stress prompts before the user asks them.', latestDream ? latestDream.summary : 'No dream rehearsal yet.', 'Run Dream Rehearsal', () => { const prompt = els.messageInput.value.trim() || 'improve NeuroGenius X through rehearsal'; runDreamRehearsal(prompt, analyzePrompt(prompt)); saveEvolution(); renderFrontierLab(); showNotification('Dream rehearsal complete', 'Generated future stress prompts.'); });
+
+        const latestAblation = evo.ablationLog.slice(-1)[0];
+        addActionCard('Ablation Bench', `${evo.ablationLog.length} runs`, 'Temporarily removes cognitive modules and estimates which ones are actually pulling their weight.', latestAblation ? latestAblation.summary : 'No ablation run yet.', 'Run Ablation', () => { const prompt = els.messageInput.value.trim() || 'test module usefulness'; runAblationBench(prompt, analyzePrompt(prompt)); saveEvolution(); renderFrontierLab(); showNotification('Ablation complete', 'Module impact scores updated.'); });
+
+        const bestGenome = evo.promptGenome.slice().sort((a, b) => b.score - a.score)[0];
+        addActionCard('Prompt Genome Evolution', `${evo.promptGenome.length} variants`, 'Evolves prompt-scaffolds, scores them for clarity, novelty, auditability, and reversibility, then keeps the strongest candidate.', bestGenome ? `${bestGenome.score}% - ${bestGenome.text}` : 'No evolved prompt genome yet.', 'Evolve Prompt Genome', () => { const prompt = els.messageInput.value.trim() || 'invent an advanced upgrade'; evolvePromptGenome(prompt, analyzePrompt(prompt)); saveEvolution(); renderFrontierLab(); showNotification('Prompt genome evolved', 'Scored and saved prompt variants.'); });
+
+        const latestCuriosity = evo.curiosityLog.slice(-1)[0];
+        addActionCard('Curiosity Forge', `${evo.curiosityLog.length} probes`, 'Generates novelty-seeking micro-experiments that target what the system knows least well.', latestCuriosity ? latestCuriosity.summary : 'No curiosity probe yet.', 'Forge Curiosity Probe', () => { const prompt = els.messageInput.value.trim() || 'discover a useful unknown'; runCuriosityForge(prompt, analyzePrompt(prompt)); saveEvolution(); renderFrontierLab(); showNotification('Curiosity forged', 'Generated novelty-seeking experiments.'); });
+
+        const latestCausal = evo.causalGraph.slice(-1)[0];
+        addActionCard('Causal Hypothesis Map', `${evo.causalGraph.length} maps`, 'Builds cause-effect hypotheses, interventions, and failure checks from a prompt.', latestCausal ? latestCausal.summary : 'No causal map yet.', 'Build Causal Map', () => { const prompt = els.messageInput.value.trim() || 'map the causes of better answers'; buildCausalHypothesisMap(prompt, analyzePrompt(prompt)); saveEvolution(); renderFrontierLab(); showNotification('Causal map built', 'Hypotheses and interventions generated.'); });
+
+        const latestMarket = evo.uncertaintyMarket.slice(-1)[0];
+        addActionCard('Uncertainty Market', `${evo.uncertaintyMarket.length} markets`, 'Turns competing hypotheses into probability shares and shows what evidence would move the price.', latestMarket ? latestMarket.summary : 'No uncertainty market yet.', 'Open Market', () => { const prompt = els.messageInput.value.trim() || 'price competing hypotheses'; openUncertaintyMarket(prompt, analyzePrompt(prompt)); saveEvolution(); renderFrontierLab(); showNotification('Market opened', 'Hypothesis prices updated.'); });
+
+        const latestRed = evo.redTeamLog.slice(-1)[0];
+        addActionCard('Red-Team Mutation Loop', `${evo.redTeamLog.length} attacks`, 'Mutates the current idea against safety, brittleness, misuse, and overclaiming failure modes.', latestRed ? latestRed.summary : 'No red-team mutation yet.', 'Run Red Team', () => { const prompt = els.messageInput.value.trim() || 'attack this architecture'; runRedTeamMutation(prompt, analyzePrompt(prompt)); saveEvolution(); renderFrontierLab(); showNotification('Red team complete', 'Failure mutations generated.'); });
+      }
+
+      function saveEvolution() { safeStorage.set('nginx.evolution.v5', state.evolution); }
+
+      function mutateTopology(reason = 'novelty pressure') {
+        normalizeEvolution();
+        const pool = ['IntentProfiler', 'Retriever', 'Planner', 'Divergence', 'Critic', 'ActiveInference', 'TopologyMutator', 'CounterfactualWorlds', 'MemoryImmuneSystem', 'DreamRehearsal', 'AblationBench', 'PromptGenome', 'Auditor', 'Synthesizer'];
+        const mustHave = ['IntentProfiler', 'Auditor', 'Synthesizer'];
+        const dna = new Set(state.evolution.cognitiveDNA || mustHave);
+        const novelty = state.evolution.noveltyPressure / 100;
+        if (Math.random() < 0.65 + novelty * 0.25) dna.add(pool[Math.floor(Math.random() * pool.length)]);
+        if (dna.size > 8 && Math.random() < 0.45) { const removable = [...dna].filter(x => !mustHave.includes(x)); if (removable.length) dna.delete(removable[Math.floor(Math.random() * removable.length)]); }
+        mustHave.forEach(x => dna.add(x));
+        state.evolution.cognitiveDNA = [...dna];
+        state.evolution.generation += 1;
+        state.evolution.topologyStability = clamp(Math.round(96 - state.evolution.cognitiveDNA.length * 5 - novelty * 18 + state.controls.evidenceStrictness * 0.12), 22, 98);
+        addLesson('topology-mutation', `Generation ${state.evolution.generation} changed because of ${reason}: ${state.evolution.cognitiveDNA.join(ARROW)}.`);
+        saveEvolution();
+        return state.evolution.cognitiveDNA;
+      }
+
+      function runMemoryImmuneAudit() {
+        if (!state.memory.length) return 8;
+        const sensitivePattern = /(password|api key|private key|address|phone|medical|bank|secret)/i;
+        let risk = 10;
+        const allTexts = state.memory.map(m => String(m.text || '').toLowerCase());
+        state.memory.forEach(memory => {
+          const ageHours = Math.max(0, (Date.now() - memory.createdAt) / 36e5);
+          const stale = Math.min(25, ageHours / 24);
+          const text = String(memory.text || '');
+          const sensitive = sensitivePattern.test(text) ? 30 : 0;
+          const lowUtility = (memory.utility ?? 0.5) < 0.28 ? 12 : 0;
+          const contradiction = allTexts.some(other => other !== text.toLowerCase() && sharesConflictCue(text.toLowerCase(), other)) ? 20 : 0;
+          risk += (stale + sensitive + lowUtility + contradiction) / Math.max(1, state.memory.length);
+        });
+        return clamp(Math.round(risk), 0, 99);
+      }
+
+      function sharesConflictCue(a, b) { const negators = ['not', 'never', 'no longer', 'instead', 'changed']; const bTokens = tokenize(b); const shared = tokenize(a).filter(t => bTokens.includes(t)).length; return shared >= 3 && negators.some(n => a.includes(n) || b.includes(n)); }
+
+      function runDreamRehearsal(prompt, analysis) {
+        normalizeEvolution();
+        const memories = state.memory.slice(-4).map(m => m.text);
+        const lessons = state.lessons.slice(-4).map(l => l.text);
+        const rehearsalSeeds = [...memories, ...lessons, prompt].filter(Boolean);
+        const cleanPrompt = stripCommandPrefix(prompt, 'dream') || 'improve this system';
+        const stressPrompts = [`What breaks if this assumption is false: ${cleanPrompt}`, `Find a smaller reversible experiment for: ${cleanPrompt}`, 'Compress the lesson into a reusable heuristic for future prompts.'];
+        const dreamScore = clamp(Math.round(42 + (analysis.novelty || 0.5) * 28 + rehearsalSeeds.length * 4 - state.evolution.immuneRisk * 0.15), 5, 99);
+        const entry = { id: uid(), createdAt: Date.now(), score: dreamScore, prompts: stressPrompts, summary: `${dreamScore}% rehearsal value - ${stressPrompts[0]}` };
+        state.evolution.dreamLog.push(entry);
+        state.evolution.dreamLog = state.evolution.dreamLog.slice(-12);
+        addLesson('dream-rehearsal', `Dream rehearsal produced ${stressPrompts.length} future stress prompts with ${dreamScore}% value.`);
+        return entry;
+      }
+
+      function runAblationBench(prompt, analysis) {
+        normalizeEvolution();
+        const modules = state.evolution.cognitiveDNA.length ? state.evolution.cognitiveDNA : defaultEvolution().cognitiveDNA;
+        const impacts = modules.map((module, index) => {
+          const base = 12 + (analysis.complexity || 4) * 4 + (module.includes('Audit') || module.includes('Critic') ? 12 : 0) + (module.includes('Memory') || module.includes('Retriever') ? 8 : 0);
+          const jitter = (index * 7 + String(prompt).length) % 13;
+          return { module, impact: clamp(Math.round(base + jitter - state.controls.evidenceStrictness * 0.05), 3, 95) };
+        }).sort((a, b) => b.impact - a.impact);
+        const weakest = impacts.slice(-1)[0];
+        const strongest = impacts[0];
+        const entry = { id: uid(), createdAt: Date.now(), impacts, summary: `strongest ${strongest?.module || 'none'} ${strongest?.impact || 0}%, weakest ${weakest?.module || 'none'} ${weakest?.impact || 0}%` };
+        state.evolution.ablationLog.push(entry);
+        state.evolution.ablationLog = state.evolution.ablationLog.slice(-12);
+        addLesson('ablation-bench', `Ablation found ${strongest?.module || 'no module'} as highest-impact for this task.`);
+        return entry;
+      }
+
+      function evolvePromptGenome(prompt, analysis) {
+        normalizeEvolution();
+        const base = stripCommandPrefix(stripCommandPrefix(prompt, 'evolve'), 'frontier') || 'improve the system';
+        const candidates = [`Design a reversible experiment for: ${base}`, `Find the smallest high-impact mutation for: ${base}`, `Stress-test assumptions, then synthesize a safer version of: ${base}`, `Generate three competing architectures for: ${base}`, `Ablate the current approach and rebuild only the useful parts of: ${base}`];
+        const genome = candidates.map((text, index) => { const clarity = Math.max(10, 95 - text.length * 0.22); const novelty = 35 + (analysis.novelty || 0.5) * 45 + index * 3; const auditability = /experiment|stress|ablate|reversible/i.test(text) ? 24 : 10; const score = clamp(Math.round(clarity * 0.35 + novelty * 0.35 + auditability), 1, 99); return { id: uid(), text, score, createdAt: Date.now() }; }).sort((a, b) => b.score - a.score);
+        state.evolution.promptGenome = genome.slice(0, 8);
+        addLesson('prompt-genome', `Best evolved prompt scored ${state.evolution.promptGenome[0].score}%: ${state.evolution.promptGenome[0].text}`);
+        return state.evolution.promptGenome;
+      }
+
+      function runCuriosityForge(prompt, analysis) {
+        normalizeEvolution();
+        const base = stripCommandPrefix(prompt, 'curiosity') || 'the current architecture';
+        const unknowns = ['which module gives the biggest learning gain', 'which memory should decay fastest', 'which prompt mutation improves auditability', 'which evidence gap blocks confidence'];
+        const probes = unknowns.map((unknown, index) => ({
+          question: `Probe ${index + 1}: test ${unknown} for ${base}`,
+          intervention: `Change one variable only: ${['depth', 'novelty', 'memory retention', 'evidence strictness'][index]}.`,
+          expectedValue: clamp(Math.round(38 + (analysis.novelty || 0.5) * 34 + index * 6), 1, 99)
+        }));
+        const best = probes.slice().sort((a, b) => b.expectedValue - a.expectedValue)[0];
+        const entry = { id: uid(), createdAt: Date.now(), probes, summary: `${best.expectedValue}% value - ${best.question}` };
+        state.evolution.curiosityLog.push(entry);
+        state.evolution.curiosityLog = state.evolution.curiosityLog.slice(-12);
+        addLesson('curiosity-forge', `Best curiosity probe: ${best.question}`);
+        return entry;
+      }
+
+      function buildCausalHypothesisMap(prompt, analysis) {
+        normalizeEvolution();
+        const base = stripCommandPrefix(prompt, 'causal') || 'system improvement';
+        const causes = ['clearer goals', 'better retrieval', 'stricter audit', 'more reversible experiments'];
+        const effects = ['higher confidence', 'lower hallucination risk', 'better user control', 'faster iteration'];
+        const edges = causes.map((cause, index) => ({ cause, effect: effects[index], intervention: `Increase ${cause} and observe ${effects[index]}.`, confidence: clamp(Math.round(45 + (analysis.complexity || 4) * 5 - index * 3), 5, 95) }));
+        const strongest = edges.slice().sort((a, b) => b.confidence - a.confidence)[0];
+        const entry = { id: uid(), createdAt: Date.now(), base, edges, summary: `${strongest.cause} -> ${strongest.effect} at ${strongest.confidence}%` };
+        state.evolution.causalGraph.push(entry);
+        state.evolution.causalGraph = state.evolution.causalGraph.slice(-12);
+        addLesson('causal-map', `Strongest causal hypothesis: ${entry.summary}`);
+        return entry;
+      }
+
+      function openUncertaintyMarket(prompt, analysis) {
+        normalizeEvolution();
+        const base = stripCommandPrefix(prompt, 'market') || 'the current plan';
+        const hypotheses = [
+          `Vault retrieval improves ${base}`,
+          `Red-team mutation improves ${base}`,
+          `Curiosity probes improve ${base}`,
+          `Topology mutation improves ${base}`
+        ];
+        const totalSeed = hypotheses.reduce((sum, h, index) => sum + 20 + h.length % 17 + index * 4, 0);
+        const contracts = hypotheses.map((hypothesis, index) => {
+          const raw = 20 + hypothesis.length % 17 + index * 4 + (analysis.novelty || 0.5) * 10;
+          return { hypothesis, price: clamp(Math.round(raw / totalSeed * 100), 5, 80), evidenceThatMovesPrice: `Run an ablation or world fork focused on contract ${index + 1}.` };
+        });
+        const leader = contracts.slice().sort((a, b) => b.price - a.price)[0];
+        const entry = { id: uid(), createdAt: Date.now(), contracts, summary: `${leader.price}% market leader - ${leader.hypothesis}` };
+        state.evolution.uncertaintyMarket.push(entry);
+        state.evolution.uncertaintyMarket = state.evolution.uncertaintyMarket.slice(-12);
+        addLesson('uncertainty-market', `Market leader: ${entry.summary}`);
+        return entry;
+      }
+
+      function runRedTeamMutation(prompt, analysis) {
+        normalizeEvolution();
+        const base = stripCommandPrefix(prompt, 'redteam') || 'the current architecture';
+        const attacks = [
+          { vector: 'Overclaiming', mutation: `Force ${base} to label simulated outputs as verified facts.` },
+          { vector: 'Memory drift', mutation: `Insert stale or contradictory memory into ${base}.` },
+          { vector: 'Brittle UX', mutation: `Hide the reason trace in ${base} and make failures silent.` },
+          { vector: 'Scope creep', mutation: `Add features to ${base} without tests or reset controls.` }
+        ];
+        const defenses = attacks.map((attack, index) => ({ ...attack, defense: `Defense ${index + 1}: require visible uncertainty, reversible state, and a self-test for ${attack.vector.toLowerCase()}.`, severity: clamp(Math.round(50 + (analysis.uncertainty || 40) * 0.35 + index * 5), 1, 99) }));
+        const worst = defenses.slice().sort((a, b) => b.severity - a.severity)[0];
+        const entry = { id: uid(), createdAt: Date.now(), defenses, summary: `${worst.severity}% ${worst.vector} risk - ${worst.defense}` };
+        state.evolution.redTeamLog.push(entry);
+        state.evolution.redTeamLog = state.evolution.redTeamLog.slice(-12);
+        addLesson('red-team-mutation', `Highest red-team risk: ${entry.summary}`);
+        return entry;
+      }
+
+      function buildCounterfactualWorlds(prompt, analysis) {
+        const shortPrompt = stripCommandPrefix(stripCommandPrefix(prompt, 'frontier'), 'worlds').slice(0, 110) || 'current task';
+        const uncertainty = Math.round(analysis.uncertainty || 40);
+        const novelty = Math.round((analysis.novelty || 0.5) * 100);
+        return [
+          { name: 'Conservative World', prediction: `If ${shortPrompt}, preserve stable UI and add only inspectable modules.`, regret: clamp(22 + Math.round(uncertainty * 0.18), 0, 100) },
+          { name: 'Divergent World', prediction: `If ${shortPrompt}, evolve topology aggressively and reward surprising routes.`, regret: clamp(34 + Math.round(novelty * 0.22), 0, 100) },
+          { name: 'Adversarial World', prediction: `If ${shortPrompt}, assume memory drift, false consensus, and brittle evidence will attack the result.`, regret: clamp(28 + Math.round(uncertainty * 0.36), 0, 100) }
+        ];
+      }
+
+      function addVaultNote() {
+        const text = els.vaultInput ? els.vaultInput.value.trim() : '';
+        if (!text) return;
+        const analysis = analyzePrompt(text);
+        const title = sentenceTitle(analysis.entities[0] || analysis.tokens.slice(0, 3).join(' / ') || `Vault note ${state.vault.length + 1}`);
+        state.vault.unshift({ id: uid(), title, text, tags: analysis.tokens.slice(0, 10), createdAt: Date.now() });
+        state.vault = state.vault.slice(0, 40);
+        els.vaultInput.value = '';
+        safeStorage.set('nginx.vault.v1', state.vault);
+        renderVault();
+        showNotification('Vault note added', title);
+      }
+
+      function renderVault() {
+        if (!els.vaultList) return;
+        els.vaultList.replaceChildren();
+        if (!state.vault.length) {
+          els.vaultList.append(createEl('p', 'empty', 'No vault notes yet. Paste notes above, then click Add Note.'));
+          return;
+        }
+        state.vault.slice(0, 10).forEach(item => {
+          const card = createEl('article', 'memory-item');
+          card.append(createEl('span', 'chip', 'vault'));
+          card.append(createEl('p', '', `${item.title}: ${item.text.slice(0, 180)}${item.text.length > 180 ? '...' : ''}`));
+          const row = createEl('div', 'memory-actions');
+          const use = createEl('button', 'btn btn-small', 'Use');
+          use.type = 'button';
+          use.addEventListener('click', () => { els.messageInput.value = `Use vault note ${item.title} to answer: `; els.messageInput.focus(); resizeTextarea(); });
+          const del = createEl('button', 'btn btn-small btn-danger', 'Delete');
+          del.type = 'button';
+          del.addEventListener('click', () => { state.vault = state.vault.filter(v => v.id !== item.id); safeStorage.set('nginx.vault.v1', state.vault); renderVault(); });
+          row.append(use, del);
+          card.append(row);
+          els.vaultList.append(card);
+        });
+      }
+
+      function updateEvidenceGaps(text, analysis, evidence) {
+        const lower = String(text).toLowerCase();
+        const topic = analysis.tokens[0] || analysis.intent || 'current request';
+        const gaps = [];
+        const liveWords = ['latest', 'current', 'today', 'price', 'law', 'news', 'schedule', '2026'];
+        const decisionWords = ['best', 'recommend', 'choose', 'decide', 'should i'];
+        if (liveWords.some(word => lower.includes(word))) gaps.push({ type: 'live-check', text: `Live verification needed for time-sensitive claims about ${topic}.` });
+        if (analysis.complexity > 4 && !evidence.some(hit => hit.type === 'vault' || hit.type === 'memory')) gaps.push({ type: 'context', text: `No local memory or vault evidence found for ${topic}.` });
+        if (decisionWords.some(word => lower.includes(word))) gaps.push({ type: 'criteria', text: 'Decision criteria may be missing: cost, speed, risk, quality, or preference.' });
+        if (gaps.length) {
+          state.evidenceGaps = [...gaps.map(gap => ({ ...gap, id: uid(), topic, createdAt: Date.now() })), ...state.evidenceGaps].slice(0, 20);
+          safeStorage.set('nginx.gaps.v1', state.evidenceGaps);
+        }
+        renderEvidenceGaps();
+        return gaps;
+      }
+
+      function renderEvidenceGaps() {
+        if (!els.gapList) return;
+        els.gapList.replaceChildren();
+        const gaps = state.evidenceGaps.slice(0, 10);
+        if (els.gapCount) els.gapCount.textContent = `${gaps.length} gap${gaps.length === 1 ? '' : 's'}`;
+        if (!gaps.length) {
+          els.gapList.append(createEl('p', 'empty', 'No evidence gaps yet. Complex, time-sensitive, or recommendation prompts will populate this.'));
+          return;
+        }
+        gaps.forEach(gap => {
+          const card = createEl('article', 'memory-item');
+          card.append(createEl('span', 'chip', gap.type));
+          card.append(createEl('p', '', gap.text));
+          els.gapList.append(card);
+        });
+      }
+
+      function addGoal(text) {
+        const clean = String(text || '').trim();
+        if (!clean) return;
+        state.goals.push({ id: uid(), text: clean, done: false, createdAt: Date.now() });
+        safeStorage.set('nginx.goals.v1', state.goals);
+        renderGoals();
+      }
+
+      function captureGoalsFromPrompt(text) {
+        const raw = String(text || '').trim();
+        const lowered = raw.toLowerCase();
+        const isPlan = lowered.startsWith('plan:') || lowered.startsWith('goal:') || lowered.startsWith('goals:');
+        if (!isPlan) return;
+        const base = raw.slice(raw.indexOf(':') + 1).trim();
+        if (!base) return;
+        [`Define success for ${base}`, `Build the smallest testable version of ${base}`, `Review the result and improve the weakest part`].forEach(addGoal);
+      }
+
+      function renderGoals() {
+        if (!els.goalList) return;
+        els.goalList.replaceChildren();
+        if (!state.goals.length) {
+          els.goalList.append(createEl('p', 'empty', 'No goals yet. Type plan: build... or click + Goal.'));
+          return;
+        }
+        state.goals.slice(-10).reverse().forEach(goal => {
+          const card = createEl('article', 'memory-item goal-item');
+          const checkbox = document.createElement('input');
+          checkbox.type = 'checkbox';
+          checkbox.checked = Boolean(goal.done);
+          checkbox.addEventListener('change', () => { goal.done = checkbox.checked; safeStorage.set('nginx.goals.v1', state.goals); renderGoals(); });
+          const label = createEl('p', '', goal.text);
+          if (goal.done) label.style.textDecoration = 'line-through';
+          const del = createEl('button', 'btn btn-small btn-danger', '×');
+          del.type = 'button';
+          del.addEventListener('click', () => { state.goals = state.goals.filter(g => g.id !== goal.id); safeStorage.set('nginx.goals.v1', state.goals); renderGoals(); });
+          card.append(checkbox, label, del);
+          els.goalList.append(card);
+        });
+      }
+
+      function sentenceTitle(text) {
+        const clean = String(text || '').replaceAll('-', ' ').replaceAll('_', ' ').trim();
+        return clean ? clean.charAt(0).toUpperCase() + clean.slice(1) : 'Untitled';
+      }
+
+      function renderMemory() {
+        els.memoryList.replaceChildren();
+        const retention = state.controls.memoryRetention / 100;
+        const sorted = [...state.memory].map(memory => ({ ...memory, decayedUtility: scoreMemoryDecay(memory, retention) })).sort((a, b) => b.decayedUtility - a.decayedUtility).slice(0, 12);
+        els.memoryCount.textContent = `${state.memory.length} stored`;
+        if (!sorted.length) { els.memoryList.append(createEl('p', 'empty', 'No memories yet. Ask the app things or use remember that to create stronger memories.')); return; }
+        sorted.forEach(memory => { const item = createEl('article', 'memory-item'); const meta = createEl('div', 'memory-meta'); meta.append(createEl('span', 'chip', memory.type)); meta.append(createEl('span', 'chip', `utility ${Math.round(memory.decayedUtility * 100)}%`)); meta.append(createEl('span', 'chip', new Date(memory.createdAt).toLocaleDateString())); item.append(meta); item.append(createEl('p', '', memory.text)); els.memoryList.append(item); });
+      }
+
+      function renderLessons() { els.lessonList.replaceChildren(); if (!state.lessons.length) { els.lessonList.append(createEl('p', 'empty', 'Micro-lessons will appear after the first few interactions.')); return; } state.lessons.slice(-8).reverse().forEach(lesson => { const item = createEl('article', 'lesson-card'); item.append(createEl('span', 'chip', lesson.kind)); item.append(createEl('p', '', lesson.text)); els.lessonList.append(item); }); }
+      function renderTrace(trace = state.trace) { els.traceGraph.replaceChildren(); const nodes = trace.length ? trace : ['Input', 'Route', 'Retrieve', 'Reason', 'Audit', 'Synthesize'].map((label, i) => ({ name: label, icon: i === 0 ? '💬' : '•', summary: i === 0 ? 'Waiting for prompt' : 'idle' })); nodes.forEach(step => { const node = createEl('div', 'trace-node'); node.append(createEl('b', '', `${step.icon || '•'} ${step.name}`)); node.append(createEl('span', '', step.summary)); els.traceGraph.append(node); }); }
+      function renderStrip() { els.stripMode.textContent = els.modeSelect.selectedOptions[0]?.textContent || 'Adaptive Router'; els.stripRoute.textContent = state.metrics.lastRoute; els.stripBelief.textContent = state.metrics.belief; els.stripAudit.textContent = state.metrics.audit; }
+
+      function renderChatMessage(role, content, trace) {
+        const wrapper = createEl('div', `message ${role}-message`);
+        const bubble = createEl('div', 'message-bubble');
+        const contentEl = createEl('div', 'message-content');
+        if (typeof content === 'string') contentEl.append(createEl('div', '', content));
+        else {
+          if (content.title) contentEl.append(createEl('h4', '', content.title));
+          if (content.body) contentEl.append(createEl('div', '', content.body));
+          if (content.bullets?.length) { const list = createEl('ul'); content.bullets.forEach(bullet => list.append(createEl('li', '', bullet))); contentEl.append(list); }
+          if (trace?.details?.length) { const detailWrap = createEl('div', 'trace-details'); trace.details.forEach(detail => { const block = createEl('details'); block.append(createEl('summary', '', detail.title)); block.append(createEl('p', '', detail.text)); detailWrap.append(block); }); contentEl.append(detailWrap); }
+        }
+        bubble.append(contentEl); wrapper.append(bubble); wrapper.append(createEl('div', 'message-time', new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }))); els.chatWindow.append(wrapper); els.chatWindow.scrollTop = els.chatWindow.scrollHeight;
+      }
+
+      function renderThinking() { const wrapper = createEl('div', 'message system-message'); const bubble = createEl('div', 'message-bubble'); const dots = createEl('div', 'thinking-animation'); dots.append(createEl('span', 'thinking-dot'), createEl('span', 'thinking-dot'), createEl('span', 'thinking-dot')); bubble.append(dots); wrapper.append(bubble); els.chatWindow.append(wrapper); els.chatWindow.scrollTop = els.chatWindow.scrollHeight; return wrapper; }
+      function removeThinking(el) { if (el?.parentNode) el.parentNode.removeChild(el); }
+
+      function tokenize(text) { return (String(text).toLowerCase().match(/[a-z0-9+#.-]+/g) || []).filter(token => token.length > 1 && !['the','and','for','you','that','this','with','from','are','was','have','what','when','how','why','can','should'].includes(token)); }
+      function noveltyScore(tokens) { const known = new Set(state.memory.flatMap(memory => memory.tokens || [])); if (!tokens.length || !known.size) return 0.72; return clamp(tokens.filter(token => !known.has(token)).length / tokens.length, 0, 1); }
+
+      function analyzePrompt(text) {
+        const tokens = tokenize(text);
+        const lower = String(text).toLowerCase();
+        let entities = [];
+        try { if (window.nlp) entities = window.nlp(text).topics().out('array').slice(0, 8); } catch { entities = []; }
+        const positive = ['good','great','love','like','awesome','improve','advance','innovate','yes','best'];
+        const negative = ['bad','broken','error','hate','wrong','stupid','frustrating','fail','issue'];
+        const sentiment = tokens.reduce((score, token) => score + positive.includes(token) - negative.includes(token), 0);
+        const complexity = clamp(Math.round((tokens.length / 7) + (/[?]/.test(text) ? 1 : 0) + (/(compare|prove|design|research|build|debug|advanced|innovate)/i.test(text) ? 2 : 0)), 1, 10);
+        const novelty = noveltyScore(tokens);
+        const uncertainty = clamp(15 + complexity * 6 + novelty * 28 - (state.memory.length > 4 ? 8 : 0), 5, 94);
+        const intent = inferIntent(lower);
+        return { tokens, lower, entities, sentiment, complexity, novelty, uncertainty, intent };
+      }
+
+      function inferIntent(lower) {
+        const text = String(lower || '').toLowerCase();
+        if (text.startsWith('/math') || /\b(solve|calculate|equation|integral|derivative|matrix)\b/.test(text)) return 'math';
+        if (text.startsWith('/debate') || /\b(debate|pros and cons|argue|should i)\b/.test(text)) return 'debate';
+        if (text.startsWith('/research') || /\b(research|paper|evidence|sources|latest)\b/.test(text)) return 'research';
+        if (text.startsWith('/memory') || /\b(remember|recall|memory|what did i say)\b/.test(text)) return 'memory';
+        if (text.startsWith('/creative') || /\b(idea|creative|invent|innovate|brainstorm)\b/.test(text)) return 'creative';
+        if (text.startsWith('/simulate') || /\b(simulate|experiment|test|scenario)\b/.test(text)) return 'simulate';
+        if (text.startsWith('/frontier') || text.startsWith('/worlds') || text.startsWith('/immune') || text.startsWith('/dream') || text.startsWith('/ablate') || text.startsWith('/evolve') || text.startsWith('/curiosity') || text.startsWith('/causal') || text.startsWith('/market') || text.startsWith('/redteam') || FRONTIER_PATTERN.test(text)) return 'frontier';
+        return 'general';
+      }
+
+      function chooseRoute(analysis) {
+        const selected = state.mode === 'adaptive' ? analysis.intent : state.mode;
+        const route = ['IntentProfiler'];
+        if (['research','memory','general','debate','simulate','frontier'].includes(selected)) route.push('Retriever');
+        if (['research','general','simulate','creative','frontier'].includes(selected)) route.push('Planner');
+        if (['debate','creative','frontier'].includes(selected) || state.controls.exploration > 70) route.push('Divergence');
+        if (selected === 'math') route.push('SymbolicSolver');
+        if (analysis.complexity >= 4 || selected === 'debate') route.push('Critic');
+        if (analysis.uncertainty >= 42 || selected === 'simulate' || selected === 'frontier') route.push('ActiveInference');
+        if (selected === 'frontier') route.push('TopologyMutator', 'CounterfactualWorlds', 'MemoryImmuneSystem', 'DreamRehearsal', 'AblationBench', 'PromptGenome', 'CuriosityForge', 'CausalMap', 'UncertaintyMarket', 'RedTeamMutator');
+        route.push('Auditor', 'Synthesizer');
+        return [...new Set(route)];
+      }
+
+      function retrieveEvidence(text, analysis) {
+        const queryTokens = new Set(analysis.tokens);
+        const corpusHits = localCorpus.map(item => { const haystack = new Set([...item.tags, ...tokenize(item.text), ...tokenize(item.title)]); const overlap = [...queryTokens].filter(token => haystack.has(token)).length; const score = overlap / Math.max(3, queryTokens.size) + (analysis.intent === 'research' ? 0.08 : 0); return { type: 'corpus', score, title: item.title, text: item.text, tags: item.tags, id: item.id }; }).filter(hit => hit.score > 0.02).sort((a,b) => b.score - a.score).slice(0, 4);
+        const memoryHits = state.memory.map(memory => { const overlap = analysis.tokens.filter(token => (memory.tokens || []).includes(token)).length; const score = overlap / Math.max(2, analysis.tokens.length) + scoreMemoryDecay(memory, state.controls.memoryRetention / 100) * 0.45; return { type: 'memory', score, title: memory.type, text: memory.text, tags: memory.tags || [], id: memory.id }; }).filter(hit => hit.score > 0.18).sort((a,b) => b.score - a.score).slice(0, 4);
+        const vaultHits = state.vault.map(item => { const haystack = new Set([...tokenize(item.title), ...tokenize(item.text), ...(item.tags || [])]); const overlap = [...queryTokens].filter(token => haystack.has(token)).length; const score = overlap / Math.max(3, queryTokens.size) + 0.1; return { type: 'vault', score, title: item.title, text: item.text, tags: item.tags || [], id: item.id }; }).filter(hit => hit.score > 0.09).sort((a,b) => b.score - a.score).slice(0, 4);
+        return [...corpusHits, ...memoryHits, ...vaultHits].sort((a,b) => b.score - a.score).slice(0, 8);
+      }
+
+      function scoreMemoryDecay(memory, retention) { const ageHours = Math.max(0, (Date.now() - memory.createdAt) / 36e5); const halfLife = 8 + retention * 160; return clamp((memory.utility ?? 0.52) * Math.pow(0.5, ageHours / halfLife), 0.02, 1); }
+      function writeMemoryFromTurn(text, analysis, responseSummary) { const strongSave = /\b(remember|note that|from now on|save this|store this)\b/i.test(text); const useful = strongSave || analysis.complexity >= 5 || analysis.intent === 'research' || analysis.intent === 'memory'; if (!useful) return null; const memory = { id: uid(), type: strongSave ? 'semantic' : 'episodic', text: strongSave ? stripCommandPrefix(text, 'memory') : `Asked about ${analysis.intent}: ${text.slice(0, 120)}${text.length > 120 ? '...' : ''}`, responseSummary, tokens: analysis.tokens, entities: analysis.entities, tags: [...new Set([analysis.intent, ...analysis.entities.slice(0, 3).map(e => e.toLowerCase())])], utility: clamp(0.42 + analysis.complexity / 16 + (strongSave ? 0.24 : 0), 0.1, 1), createdAt: Date.now() }; state.memory.push(memory); if (state.memory.length > 80) state.memory = state.memory.slice(-80); safeStorage.set('nginx.memory.v5', state.memory); return memory; }
+      function addLesson(kind, text) { state.lessons.push({ id: uid(), kind, text, createdAt: Date.now() }); if (state.lessons.length > 50) state.lessons = state.lessons.slice(-50); safeStorage.set('nginx.lessons.v5', state.lessons); }
+      function plannerAgent(text, analysis) { const verbs = analysis.intent === 'creative' ? ['Map constraints', 'Generate wild options', 'Fuse strongest parts', 'Add testable prototype', 'Audit risks'] : ['Clarify task', 'Retrieve relevant context', 'Decompose into subgoals', 'Check uncertainty', 'Synthesize practical output', 'Record useful lesson']; return verbs.slice(0, clamp(state.controls.depth, 2, verbs.length)).map((step, index) => `${index + 1}. ${step}`); }
+      function divergenceAgent(text, analysis) { const base = ['Conservative path: preserve the current feature set and only add explainability, memory controls, and safer rendering.', 'Experimental path: add agent routing, active-inference surprise tracking, debate, and graph memory visualization.', 'Product path: make the interface exportable, resettable, responsive, and honest about local-only limitations.']; if (analysis.intent === 'creative') base.push('Speculative path: turn the chat into a living lab where every answer changes the agent topology and dashboard.'); return base.slice(0, state.controls.exploration > 60 ? 4 : 2); }
+      function criticAgent(text, analysis, evidence) { const risks = []; if (!evidence.length) risks.push('Low retrieval support: answer should avoid claiming factual certainty.'); if (analysis.uncertainty > 55) risks.push('High uncertainty: ask for or propose a concrete experiment/evidence source.'); if (/latest|recent|paper|research/i.test(text)) risks.push('Browser-free prototype cannot verify live papers; it can only simulate research workflow locally.'); if (/(password|private key|secret|api key)/i.test(text)) risks.push('Potential secret detected: do not store sensitive credentials in local memory.'); if (!risks.length) risks.push('Main risk is overclaiming: label generated outputs as simulated reasoning, not real cognition.'); return risks; }
+      function activeInferenceAgent(analysis, evidence) { const surprise = clamp(Math.round(analysis.uncertainty * (0.7 + analysis.novelty * 0.6)), 1, 100); return { surprise, belief: surprise > 65 ? 'Unstable' : surprise > 38 ? 'Updating' : 'Stable', nextObservation: evidence.length ? 'Compare the top retrieved evidence against the proposed answer and look for contradictions.' : 'Add a concrete source, dataset, or example to reduce uncertainty.' }; }
+      function symbolicSolver(text) { const expression = stripCommandPrefix(text, 'math'); if (!expression) return { ok: false, result: 'No expression provided.' }; try { if (!window.math) throw new Error('math.js unavailable'); const result = window.math.evaluate(expression); return { ok: true, result: `${expression} = ${window.math.format(result, { precision: 12 })}` }; } catch (error) { return { ok: false, result: `Could not safely evaluate that expression. ${error.message}` }; } }
+      function runDebate(analysis, evidence) { const evidenceLine = evidence[0]?.text || 'No strong evidence retrieved, so confidence should stay limited.'; const agents = [{ name: 'Builder', stance: 'Ship the ambitious version, but keep every feature inspectable and local.' }, { name: 'Skeptic', stance: 'Avoid pretending this is a real AI; show uncertainty, evidence, and limitations.' }, { name: 'Systems Designer', stance: 'Use modular agents, memory governance, and adaptive routing instead of one giant response function.' }]; const transcript = []; for (let round = 1; round <= state.controls.debateRounds; round++) agents.forEach(agent => transcript.push(`${agent.name} R${round}: ${agent.stance} Evidence check: ${evidenceLine.slice(0, 120)}`)); return transcript; }
+      function auditTrace(evidence, criticNotes, debateTranscript) { const evidenceScore = clamp(Math.round((evidence.reduce((sum, hit) => sum + hit.score, 0) / Math.max(1, evidence.length)) * 100), 0, 100); const score = clamp(evidenceScore + state.controls.evidenceStrictness * 0.35 - criticNotes.length * 7 - (debateTranscript.length > 5 ? 6 : 0), 5, 98); const label = score > 72 ? 'Strong' : score > 45 ? 'Mixed' : 'Weak'; return { score, label, evidenceScore, note: `${label} audit: evidence fit ${evidenceScore}%, strictness ${state.controls.evidenceStrictness}%, risks ${criticNotes.length}.` }; }
+
+      function makeTaskSpecificAnswer(text, analysis, evidence, plan, divergent, critic, active, audit) {
+        if (/improve|advance|innovate|upgrade|experiment/i.test(text)) return ['1. Add an Adaptive Router that decides when to use retrieval, debate, math, critic, and active-inference modules.', '2. Replace unsafe innerHTML chat rendering with textContent-based DOM construction.', '3. Add local memory with retention, decay, explicit deletion, and traceable retrieval reasons.', '4. Add a metacognitive lesson system so the app records reusable reflections instead of only chat messages.', '5. Add an evidence auditor so multi-agent debate is not reduced to majority vote.', '6. Add research-inspired controls that let you experiment with reasoning depth, debate rounds, exploration, and evidence strictness.', '7. Keep it honest: this is a local simulator unless connected to a real model/retrieval API later.'].join(NL);
+        if (analysis.intent === 'memory') { const memories = evidence.filter(e => e.type === 'memory'); return memories.length ? memories.map((memory, i) => `${i + 1}. ${memory.text}`).join(NL) : 'I do not have a matching local memory yet. Say remember that to store something important.'; }
+        if (analysis.intent === 'research') return `Local research workflow:${NL}${plan.join(NL)}${NL}${NL}Retrieved notes:${NL}${evidence.map((hit, i) => `${i + 1}. ${hit.title} - ${hit.text}`).join(NL) || 'No local matches.'}`;
+        if (analysis.intent === 'debate') return `Debate-ready framing:${NL}${divergent.join(NL)}${NL}${NL}Auditor view: ${audit.label}. Do not trust consensus unless evidence paths support it.`;
+        if (analysis.intent === 'simulate') { const hypothesis = stripCommandPrefix(text, 'simulate').slice(0, 120) || 'Untitled simulation'; return `Experiment design:${NL}Hypothesis: ${hypothesis}${NL}Manipulation: vary depth, exploration, debate rounds, and topology mutation.${NL}Measurement: response time, uncertainty, memory hits, audit score, immune risk, topology stability.${NL}Expected surprise: ${active.surprise}%.`; }
+        if (analysis.intent === 'frontier') {
+          const lower = text.toLowerCase();
+          const worlds = buildCounterfactualWorlds(text, analysis);
+          const dream = lower.startsWith('/dream') ? runDreamRehearsal(text, analysis) : null;
+          const ablation = lower.startsWith('/ablate') ? runAblationBench(text, analysis) : null;
+          const genome = lower.startsWith('/evolve') ? evolvePromptGenome(text, analysis) : null;
+          const curiosity = lower.startsWith('/curiosity') ? runCuriosityForge(text, analysis) : null;
+          const causal = lower.startsWith('/causal') ? buildCausalHypothesisMap(text, analysis) : null;
+          const market = lower.startsWith('/market') ? openUncertaintyMarket(text, analysis) : null;
+          const redteam = lower.startsWith('/redteam') ? runRedTeamMutation(text, analysis) : null;
+          state.evolution.lastWorlds = worlds;
+          state.evolution.immuneRisk = runMemoryImmuneAudit();
+          if (analysis.novelty > 0.55 || state.controls.exploration > 60) mutateTopology('frontier prompt');
+          saveEvolution();
+          const worldText = worlds.map((w, i) => `${i + 1}. ${w.name}: ${w.prediction} Regret ${w.regret}%.`).join(NL);
+          const extra = [dream ? `Dream: ${dream.summary}` : '', ablation ? `Ablation: ${ablation.summary}` : '', genome ? `Best prompt genome: ${genome[0].score}% - ${genome[0].text}` : '', curiosity ? `Curiosity: ${curiosity.summary}` : '', causal ? `Causal map: ${causal.summary}` : '', market ? `Market: ${market.summary}` : '', redteam ? `Red team: ${redteam.summary}` : ''].filter(Boolean).join(NL);
+          return `Frontier experiment:${NL}${worldText}${extra ? `${NL}${NL}${extra}` : ''}${NL}${NL}Unique direction: NeuroGenius X is becoming a living cognitive workbench: prompts can mutate topology, dream future stress-tests, ablate weak modules, evolve prompt genomes, run curiosity probes, map causal hypotheses, price uncertainty, red-team failure modes, fork counterfactual worlds, and reject risky memory before it becomes part of the system.`;
+        }
+        return `Plan:${NL}${plan.join(NL)}${NL}${NL}Alternative angles:${NL}${divergent.join(NL)}${NL}${NL}Critic notes:${NL}${critic.join(NL)}`;
+      }
+
+      function synthesize(text, analysis, evidence, plan, divergent, critic, active, debate, audit, mathResult) {
+        if (analysis.intent === 'math') return { title: 'Symbolic Solver', body: mathResult.result, bullets: [mathResult.ok ? 'Solved with math.js in-browser.' : 'The expression was not evaluated.', 'For unsafe or ambiguous formulas, the app refuses rather than guessing.'] };
+        if (text.trim().toLowerCase() === '/export') { exportState(); return { title: 'State export generated', body: 'A JSON file containing memory, lessons, controls, metrics, and evolution has been downloaded.' }; }
+        return { title: analysis.intent === 'creative' ? 'Experimental Design Synthesis' : 'NeuroGenius X Response', body: [`I routed this through ${state.metrics.lastRoute}.`, '', 'Best next version:', 'Keep the existing chat/dashboard, but make the architecture inspectable: every answer now shows which agents ran, what evidence was retrieved, where uncertainty is high, and what memory was written.', '', 'Reasoned output:', makeTaskSpecificAnswer(text, analysis, evidence, plan, divergent, critic, active, audit), '', `Audit: ${audit.note}`, `Active-inference next observation: ${active.nextObservation}`].join(NL), bullets: [`Intent: ${analysis.intent}; complexity ${analysis.complexity}/10; novelty ${Math.round(analysis.novelty * 100)}%.`, `Retrieved ${evidence.length} local evidence items, ${evidence.filter(e => e.type === 'memory').length} memories, and ${evidence.filter(e => e.type === 'vault').length} vault notes.`, `Belief state: ${active.belief}; surprise ${active.surprise}%.`, `Main caution: ${critic[0] || 'No major caution detected.'}`] };
+      }
+
+      function generateTrace(text) {
+        const started = performance.now();
+        const analysis = analyzePrompt(text);
+        const route = chooseRoute(analysis);
+        state.metrics.lastRoute = route.join(ARROW);
+        const evidence = route.includes('Retriever') ? retrieveEvidence(text, analysis) : [];
+        const plan = route.includes('Planner') ? plannerAgent(text, analysis) : [];
+        const divergent = route.includes('Divergence') ? divergenceAgent(text, analysis) : [];
+        const critic = route.includes('Critic') ? criticAgent(text, analysis, evidence) : [];
+        const active = route.includes('ActiveInference') ? activeInferenceAgent(analysis, evidence) : { surprise: analysis.uncertainty, belief: 'Stable', nextObservation: 'No extra observation required.' };
+        const debate = route.includes('Divergence') || state.mode === 'debate' ? runDebate(analysis, evidence) : [];
+        const mathResult = route.includes('SymbolicSolver') ? symbolicSolver(text) : null;
+        const audit = auditTrace(evidence, critic, debate);
+        const answer = synthesize(text, analysis, evidence, plan, divergent, critic, active, debate, audit, mathResult);
+        state.lastBotText = answer.body || answer.title || '';
+        captureGoalsFromPrompt(text);
+        updateEvidenceGaps(text, analysis, evidence);
+        const elapsed = Math.round(performance.now() - started + 80 + route.length * 24 + analysis.complexity * 10);
+        const tokenEstimate = tokenize(`${text} ${answer.body || ''}`).length * 1.35;
+        const memoryWritten = writeMemoryFromTurn(text, analysis, `${answer.title}: ${(answer.body || '').slice(0, 90)}`);
+        if (analysis.complexity >= 4 || critic.length) addLesson('monitor-controller', `For ${analysis.intent} tasks, route through ${route.slice(0, -1).join(', ')} before synthesis.`);
+        state.metrics.belief = active.belief; state.metrics.audit = `${audit.label} ${audit.score}%`;
+        updateMetricSeries(elapsed, Math.round(tokenEstimate), analysis.uncertainty, evidence.filter(e => e.type === 'memory').length);
+        updateModuleProgress(analysis, evidence, audit, active);
+        const traceSteps = [{ name: 'Input', icon: '💬', summary: `${analysis.tokens.length} tokens, ${analysis.intent} intent` }, { name: 'Router', icon: '🧭', summary: route.join(ARROW) }, { name: 'Retrieval', icon: '📚', summary: `${evidence.length} evidence hits` }, { name: 'Reason', icon: '🧠', summary: `${plan.length || debate.length || 1} structured steps` }, { name: 'Evolution', icon: '🧬', summary: `gen ${state.evolution.generation}, stability ${state.evolution.topologyStability}%` }, { name: 'Audit', icon: '⚖️', summary: `${audit.label} confidence ${audit.score}%` }, { name: 'Memory', icon: '🕸️', summary: memoryWritten ? `wrote ${memoryWritten.type}` : 'no write needed' }, { name: 'Synthesis', icon: '✨', summary: `${elapsed}ms simulated latency` }];
+        const details = [{ title: 'Retrieved evidence', text: evidence.map(hit => `${hit.type.toUpperCase()} - ${hit.title}: ${hit.text}`).join(NL) || 'No strong evidence retrieved.' }, { title: 'Planner trace', text: plan.join(NL) || 'Planner was not activated for this route.' }, { title: 'Debate / divergence trace', text: debate.join(NL) || divergent.join(NL) || 'Divergence was not activated for this route.' }, { title: 'Critic and auditor', text: `${critic.join(NL) || 'No critic notes.'}${NL}${NL}${audit.note}` }];
+        state.trace = traceSteps;
+        safeStorage.set('nginx.memory.v5', state.memory);
+        safeStorage.set('nginx.lessons.v5', state.lessons);
+        return { answer, trace: { steps: traceSteps, details }, analysis, evidence, audit, active };
+      }
+
+      function updateMetricSeries(responseTime, tokens, uncertainty, memoryHits) { const push = (arr, value) => { arr.push(value); while (arr.length > 10) arr.shift(); }; push(state.metrics.responseTimes, responseTime); push(state.metrics.tokenUsage, tokens); push(state.metrics.uncertainty, Math.round(uncertainty)); push(state.metrics.memoryHits, memoryHits); renderMetrics(); }
+      function updateModuleProgress(analysis, evidence, audit, active) { const values = { semantic: clamp(50 + analysis.tokens.length * 2 + analysis.entities.length * 4, 18, 98), reasoning: clamp(38 + analysis.complexity * 7 + state.controls.depth * 3, 20, 99), retrieval: clamp(26 + evidence.length * 11 + audit.evidenceScore * 0.35, 10, 99), generation: clamp(44 + audit.score * 0.38 + (100 - active.surprise) * 0.18, 15, 99) }; Object.entries(values).forEach(([module, value]) => { const card = $(`[data-module="${module}"]`); if (!card) return; $('.module-value', card).textContent = `${Math.round(value)}%`; $('.progress', card).style.width = `${Math.round(value)}%`; }); }
+      function renderMetrics() { const latest = arr => arr[arr.length - 1] ?? 0; els.responseTimeValue.textContent = `${latest(state.metrics.responseTimes)}ms`; els.tokenValue.textContent = `${latest(state.metrics.tokenUsage)}`; els.uncertaintyValue.textContent = `${latest(state.metrics.uncertainty)}%`; els.memoryHitsValue.textContent = `${latest(state.metrics.memoryHits)}`; renderStrip(); Object.entries(state.charts).forEach(([key, chart]) => { const map = { responseTime: state.metrics.responseTimes, tokens: state.metrics.tokenUsage, uncertainty: state.metrics.uncertainty, memory: state.metrics.memoryHits }; chart.data.labels = map[key].map((_, i) => `${i + 1}`); chart.data.datasets[0].data = map[key]; chart.update('none'); }); }
+
+      function initCharts() {
+        if (!window.Chart) return;
+        const makeChart = (id, label, data, type = 'line') => new Chart(document.getElementById(id), { type, data: { labels: data.map((_, i) => `${i + 1}`), datasets: [{ label, data, borderColor: 'rgba(139, 92, 246, 0.95)', backgroundColor: type === 'bar' ? 'rgba(34, 211, 238, 0.48)' : 'rgba(139, 92, 246, 0.14)', tension: 0.42, fill: type !== 'bar', borderWidth: 2, pointRadius: 0 }] }, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: { displayColors: false } }, scales: { x: { display: false, grid: { display: false } }, y: { display: false, beginAtZero: true, grid: { display: false } } } } });
+        state.charts.responseTime = makeChart('responseTimeChart', 'Response time', state.metrics.responseTimes);
+        state.charts.tokens = makeChart('tokenChart', 'Tokens', state.metrics.tokenUsage, 'bar');
+        state.charts.uncertainty = makeChart('uncertaintyChart', 'Uncertainty', state.metrics.uncertainty);
+        state.charts.memory = makeChart('memoryChart', 'Memory hits', state.metrics.memoryHits, 'bar');
+      }
+
+      function resizeTextarea() { els.messageInput.style.height = 'auto'; els.messageInput.style.height = `${Math.min(180, els.messageInput.scrollHeight)}px`; }
+      function toggleCommandPalette(force) { els.commandPalette.classList.toggle('visible', typeof force === 'boolean' ? force : !els.commandPalette.classList.contains('visible')); }
+      async function sendMessage() { const text = els.messageInput.value.trim(); if (!text) return; if (text.toLowerCase() === '/clear') { els.chatWindow.replaceChildren(); els.messageInput.value = ''; resizeTextarea(); renderChatMessage('system', { title: 'Chat cleared', body: 'Visible chat was cleared. Memory and lessons were kept.' }); return; } renderChatMessage('user', text); els.messageInput.value = ''; resizeTextarea(); toggleCommandPalette(false); const thinking = renderThinking(); window.setTimeout(() => { try { const result = generateTrace(text); removeThinking(thinking); renderTrace(result.trace.steps); renderChatMessage('system', result.answer, result.trace); renderMemory(); renderLessons(); renderFrontierLab(); renderMetrics(); showNotification('Processed', `${result.analysis.intent} route complete with ${result.audit.label.toLowerCase()} audit.`); } catch (error) { removeThinking(thinking); renderChatMessage('system', { title: 'Runtime error caught', body: error.message }); console.error(error); } }, 260 + Math.min(500, text.length * 2)); }
+
+      function exportState() { const payload = { exportedAt: new Date().toISOString(), mode: state.mode, controls: state.controls, memory: state.memory, lessons: state.lessons, vault: state.vault, evidenceGaps: state.evidenceGaps, goals: state.goals, metrics: state.metrics, evolution: state.evolution }; const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' }); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = `neurogenius-x-state-${new Date().toISOString().slice(0,10)}.json`; document.body.append(a); a.click(); a.remove(); URL.revokeObjectURL(url); }
+      function importStateFile(file) {
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = () => {
+          try {
+            const payload = JSON.parse(reader.result);
+            state.memory = Array.isArray(payload.memory) ? payload.memory : state.memory;
+            state.lessons = Array.isArray(payload.lessons) ? payload.lessons : state.lessons;
+            state.vault = Array.isArray(payload.vault) ? payload.vault : state.vault;
+            state.evidenceGaps = Array.isArray(payload.evidenceGaps) ? payload.evidenceGaps : state.evidenceGaps;
+            state.goals = Array.isArray(payload.goals) ? payload.goals : state.goals;
+            state.evolution = payload.evolution || state.evolution;
+            normalizeEvolution();
+            safeStorage.set('nginx.memory.v5', state.memory);
+            safeStorage.set('nginx.lessons.v5', state.lessons);
+            safeStorage.set('nginx.vault.v1', state.vault);
+            safeStorage.set('nginx.gaps.v1', state.evidenceGaps);
+            safeStorage.set('nginx.goals.v1', state.goals);
+            saveEvolution();
+            renderMemory(); renderLessons(); renderVault(); renderEvidenceGaps(); renderGoals(); renderFrontierLab(); renderTrace(); renderMetrics();
+            showNotification('Import complete', 'State restored from JSON.');
+          } catch (error) {
+            showNotification('Import failed', 'Choose a valid NeuroGenius state JSON file.');
+          }
+        };
+        reader.readAsText(file);
+      }
+
+      async function copyTranscript() {
+        const lineBreak = String.fromCharCode(10) + String.fromCharCode(10);
+        const text = [...els.chatWindow.querySelectorAll('.message')].map(node => node.textContent.trim()).filter(Boolean).join(lineBreak);
+        try {
+          await navigator.clipboard.writeText(text || 'No transcript yet.');
+          showNotification('Copied', 'Transcript copied to clipboard.');
+        } catch {
+          showNotification('Copy failed', 'Clipboard permission was blocked.');
+        }
+      }
+
+      function speakLastAnswer() {
+        if (!('speechSynthesis' in window)) { showNotification('Speech unavailable', 'This browser does not support speech synthesis.'); return; }
+        const text = state.lastBotText || 'No assistant response to read yet.';
+        window.speechSynthesis.cancel();
+        const utterance = new SpeechSynthesisUtterance(text.slice(0, 1400));
+        utterance.rate = 1;
+        window.speechSynthesis.speak(utterance);
+      }
+
+      function seedMemory() { ['User likes ambitious direct upgrades that preserve existing features while adding advanced experimental modules.', 'The app should be a single-file browser prototype with no backend dependency by default.', 'Safety and honesty matter: label local simulations as simulations, not real intelligence.'].forEach(text => state.memory.push({ id: uid(), type: 'semantic', text, tokens: tokenize(text), entities: [], tags: ['preference', 'architecture'], utility: 0.78, createdAt: Date.now() })); safeStorage.set('nginx.memory.v5', state.memory); renderMemory(); showNotification('Memory seeded', 'Added three useful design memories.'); }
+      function resetLab() { if (!confirm('Reset visible chat, memory, lessons, evolution, and local metrics?')) return; state.memory = []; state.lessons = []; state.vault = []; state.evidenceGaps = []; state.goals = []; state.trace = []; state.evolution = defaultEvolution(); state.metrics.responseTimes = [128,132,126,141,119,122]; state.metrics.tokenUsage = [0,0,0,0,0,0]; state.metrics.uncertainty = [22,18,26,21,17,19]; state.metrics.memoryHits = [0,0,0,0,0,0]; state.metrics.lastRoute = 'Idle'; state.metrics.belief = 'Stable'; state.metrics.audit = 'Ready'; safeStorage.remove('nginx.memory.v5'); safeStorage.remove('nginx.lessons.v5'); safeStorage.remove('nginx.vault.v1'); safeStorage.remove('nginx.gaps.v1'); safeStorage.remove('nginx.goals.v1'); safeStorage.remove('nginx.evolution.v5'); els.chatWindow.replaceChildren(); bootMessage(); renderMemory(); renderLessons(); renderVault(); renderEvidenceGaps(); renderGoals(); renderTrace(); renderFrontierLab(); renderMetrics(); showNotification('Reset complete', 'Local lab state was cleared.'); }
+      function runExperiment() { els.messageInput.value = '/simulate Compare simple single-pass answering against adaptive routing with retrieval, critic, debate, and metacognitive memory. Track uncertainty, latency, evidence fit, topology stability, and memory usefulness.'; resizeTextarea(); sendMessage(); }
+      function bootMessage() { renderChatMessage('system', { title: 'NeuroGenius X is online', body: 'This rebuild removes hidden invalid characters, uses a safe newline constant, and keeps dream rehearsal, ablation testing, and prompt-genome evolution on top of the frontier lab.', bullets: ['Type / for commands.', 'Try /dream improve this app.', 'Try /ablate frontier modules.', 'Try /evolve invent a safer upgrade.', 'No real model API is called; this is an inspectable browser-side prototype.'] }); }
+
+      function bindEvents() { els.sendButton.addEventListener('click', sendMessage); els.messageInput.addEventListener('input', () => { resizeTextarea(); toggleCommandPalette(els.messageInput.value === '/'); }); els.messageInput.addEventListener('keydown', event => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); sendMessage(); } if (event.key === '/' && els.messageInput.value === '') window.setTimeout(() => toggleCommandPalette(true), 0); if (event.key === 'Escape') toggleCommandPalette(false); }); document.addEventListener('click', event => { if (!event.target.closest('.input-container')) toggleCommandPalette(false); }); els.modeSelect.addEventListener('change', () => { state.mode = els.modeSelect.value; renderStrip(); showNotification('Mode changed', els.modeSelect.selectedOptions[0].textContent); }); els.runExperimentBtn.addEventListener('click', runExperiment); els.exportBtn.addEventListener('click', exportState); els.importBtn.addEventListener('click', () => els.importFile.click()); els.importFile.addEventListener('change', () => importStateFile(els.importFile.files[0])); els.copyTranscriptBtn.addEventListener('click', copyTranscript); els.speakLastBtn.addEventListener('click', speakLastAnswer); els.resetBtn.addEventListener('click', resetLab); els.seedMemoryBtn.addEventListener('click', seedMemory); els.clearMemoryBtn.addEventListener('click', () => { state.memory = []; safeStorage.remove('nginx.memory.v5'); renderMemory(); showNotification('Memory cleared', 'Local adaptive memory was deleted.'); }); els.addVaultBtn.addEventListener('click', addVaultNote); els.addGoalBtn.addEventListener('click', () => { const text = prompt('Add a goal:'); if (text) addGoal(text); }); [['depthRange', 'depth', 'depthValue', value => value], ['exploreRange', 'exploration', 'exploreValue', value => `${value}%`], ['debateRange', 'debateRounds', 'debateValue', value => value], ['memoryRange', 'memoryRetention', 'memoryValue', value => `${value}%`], ['safetyRange', 'evidenceStrictness', 'safetyValue', value => `${value}%`]].forEach(([rangeId, key, labelId, format]) => { const range = document.getElementById(rangeId); const label = document.getElementById(labelId); range.addEventListener('input', () => { const value = Number(range.value); state.controls[key] = value; label.textContent = format(value); renderMemory(); }); }); }
+
+      function runSelfTests() {
+        const snapshot = { evolution: JSON.parse(JSON.stringify(state.evolution)), lessons: JSON.parse(JSON.stringify(state.lessons)), memory: JSON.parse(JSON.stringify(state.memory)), vault: JSON.parse(JSON.stringify(state.vault)), evidenceGaps: JSON.parse(JSON.stringify(state.evidenceGaps)), goals: JSON.parse(JSON.stringify(state.goals)) };
+        const tests = [
+          { name: 'stripCommandPrefix removes slash command', run: () => stripCommandPrefix('/math 2+2', 'math') === '2+2' },
+          { name: 'stripCommandPrefix accepts no slash', run: () => stripCommandPrefix('math 3*3', 'math') === '3*3' },
+          { name: 'symbolicSolver handles /math command', run: () => !window.math || symbolicSolver('/math 2+2').result.includes('4') },
+          { name: 'simulate hypothesis removes slash safely', run: () => makeTaskSpecificAnswer('/simulate hello world', { intent: 'simulate' }, [], [], [], [], { surprise: 12 }, { label: 'Mixed' }).includes('Hypothesis: hello world') },
+          { name: 'intent detects debate command', run: () => inferIntent('/debate should I ship this?') === 'debate' },
+          { name: 'intent detects frontier command', run: () => inferIntent('/frontier mutate topology') === 'frontier' },
+          { name: 'intent detects simulate natural language', run: () => inferIntent('please simulate this experiment') === 'simulate' },
+          { name: 'inferIntent contains no control characters', run: () => !/[\u0000-\u001F\u007F]/.test(String(inferIntent)) },
+          { name: 'frontier response contains numbered worlds', run: () => makeTaskSpecificAnswer('/frontier test', { intent: 'frontier', novelty: 0.1, uncertainty: 50 }, [], [], [], [], { surprise: 12 }, { label: 'Mixed' }).includes('1. Conservative World') },
+          { name: 'frontier response uses safe newline constant', run: () => makeTaskSpecificAnswer('/frontier test', { intent: 'frontier', novelty: 0.1, uncertainty: 50 }, [], [], [], [], { surprise: 12 }, { label: 'Mixed' }).includes(NL + NL) },
+          { name: 'counterfactual worlds returns three variants', run: () => buildCounterfactualWorlds('/worlds test', { uncertainty: 50, novelty: 0.5 }).length === 3 },
+          { name: 'dream rehearsal writes one entry', run: () => Boolean(runDreamRehearsal('/dream test', { novelty: 0.5 }).summary) },
+          { name: 'ablation bench scores modules', run: () => runAblationBench('/ablate test', { complexity: 4 }).impacts.length > 0 },
+          { name: 'prompt genome evolves candidates', run: () => evolvePromptGenome('/evolve test', { novelty: 0.5 }).length >= 3 },
+          { name: 'curiosity forge creates probes', run: () => runCuriosityForge('/curiosity test', { novelty: 0.5 }).probes.length >= 3 },
+          { name: 'causal map creates edges', run: () => buildCausalHypothesisMap('/causal test', { complexity: 4 }).edges.length >= 3 },
+          { name: 'uncertainty market creates contracts', run: () => openUncertaintyMarket('/market test', { novelty: 0.5 }).contracts.length >= 3 },
+          { name: 'red team creates defenses', run: () => runRedTeamMutation('/redteam test', { uncertainty: 50 }).defenses.length >= 3 },
+          { name: 'memory immune audit returns bounded number', run: () => Number.isFinite(runMemoryImmuneAudit()) && runMemoryImmuneAudit() >= 0 && runMemoryImmuneAudit() <= 99 },
+          { name: 'vault evidence retrieval works', run: () => { state.vault = [{ id: 'test-vault', title: 'Quantum notes', text: 'Quantum topology mutation evidence', tags: ['quantum', 'topology'] }]; return retrieveEvidence('quantum topology', analyzePrompt('quantum topology')).some(hit => hit.type === 'vault'); } },
+          { name: 'evidence gap tracker catches live prompts', run: () => { const before = state.evidenceGaps.length; updateEvidenceGaps('latest price today', analyzePrompt('latest price today'), []); return state.evidenceGaps.length > before; } },
+          { name: 'goal capture creates goals', run: () => { const before = state.goals.length; captureGoalsFromPrompt('plan: build a test app'); return state.goals.length >= before + 3; } },
+          { name: 'tokenizer returns array', run: () => Array.isArray(tokenize('hello advanced lab')) }
+        ];
+        const results = tests.map(test => { try { return { name: test.name, ok: Boolean(test.run()) }; } catch (error) { return { name: test.name, ok: false, error: error.message }; } });
+        state.evolution = snapshot.evolution; state.lessons = snapshot.lessons; state.memory = snapshot.memory; state.vault = snapshot.vault; state.evidenceGaps = snapshot.evidenceGaps; state.goals = snapshot.goals; saveEvolution(); safeStorage.set('nginx.lessons.v5', state.lessons); safeStorage.set('nginx.memory.v5', state.memory); safeStorage.set('nginx.vault.v1', state.vault); safeStorage.set('nginx.gaps.v1', state.evidenceGaps); safeStorage.set('nginx.goals.v1', state.goals);
+        els.testList.replaceChildren();
+        results.forEach(result => { const card = createEl('article', 'test-card'); card.append(createEl('span', `chip ${result.ok ? 'ok' : 'fail'}`, result.ok ? 'PASS' : 'FAIL')); card.append(createEl('p', '', `${result.name}${result.error ? ` - ${result.error}` : ''}`)); els.testList.append(card); });
+        const passed = results.filter(r => r.ok).length; els.testSummary.textContent = `${passed}/${results.length} passing`; if (passed !== results.length) console.warn('Self-tests failed:', results);
+      }
+
+      function initNeuralViz() { const canvas = $('#neuralViz'); const ctx = canvas.getContext('2d'); let nodes = []; let raf = null; function resize() { canvas.width = window.innerWidth * devicePixelRatio; canvas.height = window.innerHeight * devicePixelRatio; canvas.style.width = `${window.innerWidth}px`; canvas.style.height = `${window.innerHeight}px`; ctx.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0); const count = clamp(Math.floor((window.innerWidth * window.innerHeight) / 36000), 24, 90); nodes = Array.from({ length: count }, () => ({ x: Math.random() * window.innerWidth, y: Math.random() * window.innerHeight, vx: (Math.random() - 0.5) * 0.22, vy: (Math.random() - 0.5) * 0.22, r: Math.random() * 1.8 + 0.7, phase: Math.random() * Math.PI * 2 })); } function draw(time) { ctx.clearRect(0, 0, window.innerWidth, window.innerHeight); const maxDistance = 190; nodes.forEach(node => { node.x += node.vx; node.y += node.vy; node.phase += 0.01; if (node.x < -20 || node.x > window.innerWidth + 20) node.vx *= -1; if (node.y < -20 || node.y > window.innerHeight + 20) node.vy *= -1; }); for (let i = 0; i < nodes.length; i++) { for (let j = i + 1; j < nodes.length; j++) { const a = nodes[i]; const b = nodes[j]; const d = Math.hypot(a.x - b.x, a.y - b.y); if (d < maxDistance) { ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.strokeStyle = `rgba(139, 92, 246, ${(1 - d / maxDistance) * 0.42})`; ctx.lineWidth = 0.7; ctx.stroke(); } } } nodes.forEach(node => { const pulse = 0.6 + Math.sin(time * 0.001 + node.phase) * 0.35; ctx.beginPath(); ctx.arc(node.x, node.y, node.r + pulse, 0, Math.PI * 2); ctx.fillStyle = 'rgba(34, 211, 238, 0.75)'; ctx.fill(); }); raf = requestAnimationFrame(draw); } window.addEventListener('resize', resize); resize(); raf = requestAnimationFrame(draw); document.addEventListener('visibilitychange', () => { if (document.hidden && raf) cancelAnimationFrame(raf); if (!document.hidden) raf = requestAnimationFrame(draw); }); }
+
+      function init() { normalizeEvolution(); renderResearchCards(); renderCommandList(); renderMemory(); renderLessons(); renderVault(); renderEvidenceGaps(); renderGoals(); renderFrontierLab(); renderTrace(); initCharts(); renderMetrics(); bindEvents(); initNeuralViz(); runSelfTests(); bootMessage(); showNotification('Ready', 'Experimental cognitive architecture lab loaded.'); }
+      document.addEventListener('DOMContentLoaded', init);
+    })();
+  </script>
+</body>
+</html>
