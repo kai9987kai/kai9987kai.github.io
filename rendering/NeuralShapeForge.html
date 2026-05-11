@@ -1,208 +1,1468 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Advanced 3D Shape with Neural Rendering and Interactive Features</title>
-    <style>
-        body {
-            margin: 0;
-            overflow: hidden;
-            background-color: #000;
-            color: #fff;
-            font-family: Arial, sans-serif;
-        }
-        #rendererContainer {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-        }
-        canvas {
-            position: fixed;
-            top: 0;
-            left: 0;
-        }
-        #controls {
-            position: fixed;
-            top: 10px;
-            left: 10px;
-            background-color: rgba(0, 0, 0, 0.7);
-            padding: 10px;
-            border-radius: 5px;
-        }
-        button {
-            margin: 5px;
-            padding: 5px 10px;
-        }
-    </style>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Neural 3D Shape Lab — GAN Deformer, Style Transfer & Audio Reactive Rendering</title>
+  <style>
+    :root {
+      --bg: #050710;
+      --panel: rgba(7, 12, 24, 0.78);
+      --panel-strong: rgba(5, 8, 18, 0.92);
+      --text: #edf6ff;
+      --muted: #8da2bd;
+      --accent: #65f7ff;
+      --accent-2: #ff5df7;
+      --good: #7dff9b;
+      --warn: #ffd166;
+      --danger: #ff6b7a;
+      --line: rgba(255,255,255,0.12);
+      --shadow: 0 20px 70px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.07);
+    }
+
+    * { box-sizing: border-box; }
+
+    html, body {
+      margin: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background:
+        radial-gradient(circle at 20% 15%, rgba(101,247,255,0.18), transparent 28%),
+        radial-gradient(circle at 80% 30%, rgba(255,93,247,0.15), transparent 32%),
+        radial-gradient(circle at 50% 95%, rgba(125,255,155,0.08), transparent 34%),
+        var(--bg);
+      color: var(--text);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
+      user-select: none;
+    }
+
+    #rendererContainer {
+      position: fixed;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+    }
+
+    canvas.webgl {
+      position: fixed;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      display: block;
+      cursor: grab;
+    }
+
+    canvas.webgl:active { cursor: grabbing; }
+
+    #vignette {
+      pointer-events: none;
+      position: fixed;
+      inset: 0;
+      background:
+        linear-gradient(180deg, rgba(5,7,16,0.0), rgba(5,7,16,0.58)),
+        radial-gradient(circle at center, transparent 34%, rgba(0,0,0,0.47) 100%);
+      mix-blend-mode: normal;
+      z-index: 2;
+    }
+
+    #topbar {
+      position: fixed;
+      top: 14px;
+      left: 14px;
+      right: 14px;
+      display: flex;
+      align-items: stretch;
+      justify-content: space-between;
+      gap: 12px;
+      z-index: 5;
+      pointer-events: none;
+    }
+
+    .brand, .stats, .panel {
+      pointer-events: auto;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(18px) saturate(1.4);
+      border-radius: 18px;
+    }
+
+    .brand {
+      min-width: min(520px, calc(100vw - 28px));
+      padding: 14px 16px;
+    }
+
+    .brand h1 {
+      margin: 0;
+      font-size: clamp(1.05rem, 2.2vw, 1.55rem);
+      line-height: 1.1;
+      letter-spacing: -0.03em;
+    }
+
+    .brand p {
+      margin: 7px 0 0;
+      color: var(--muted);
+      font-size: 0.88rem;
+      max-width: 760px;
+    }
+
+    .stats {
+      min-width: 285px;
+      padding: 10px 12px;
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 7px;
+      align-content: center;
+    }
+
+    .stat {
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 12px;
+      padding: 7px 9px;
+      background: rgba(255,255,255,0.035);
+    }
+
+    .stat span {
+      display: block;
+      color: var(--muted);
+      font-size: 0.68rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+
+    .stat strong {
+      display: block;
+      margin-top: 2px;
+      font-size: 0.92rem;
+      font-variant-numeric: tabular-nums;
+    }
+
+    #controls {
+      position: fixed;
+      left: 14px;
+      bottom: 14px;
+      z-index: 5;
+      width: min(420px, calc(100vw - 28px));
+      max-height: min(72vh, 720px);
+      overflow: auto;
+      padding: 13px;
+    }
+
+    #rightPanel {
+      position: fixed;
+      right: 14px;
+      bottom: 14px;
+      z-index: 5;
+      width: min(340px, calc(100vw - 28px));
+      max-height: min(66vh, 640px);
+      overflow: auto;
+      padding: 13px;
+    }
+
+    .section {
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 16px;
+      padding: 11px;
+      background: rgba(255,255,255,0.035);
+      margin-bottom: 10px;
+    }
+
+    .section:last-child { margin-bottom: 0; }
+
+    .section h2 {
+      margin: 0 0 9px;
+      font-size: 0.82rem;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      color: var(--accent);
+      font-weight: 800;
+    }
+
+    .buttonGrid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+    }
+
+    button, select, input[type="file"]::file-selector-button {
+      border: 1px solid rgba(255,255,255,0.14);
+      color: var(--text);
+      background:
+        linear-gradient(180deg, rgba(255,255,255,0.12), rgba(255,255,255,0.035));
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.12), 0 8px 18px rgba(0,0,0,0.18);
+      border-radius: 12px;
+      padding: 9px 10px;
+      font-weight: 760;
+      font-size: 0.83rem;
+      cursor: pointer;
+      transition: transform 160ms ease, border-color 160ms ease, background 160ms ease;
+    }
+
+    button:hover, select:hover {
+      transform: translateY(-1px);
+      border-color: rgba(101,247,255,0.45);
+      background:
+        linear-gradient(180deg, rgba(101,247,255,0.20), rgba(255,93,247,0.08));
+    }
+
+    button:active { transform: translateY(1px); }
+
+    button.primary {
+      color: #041016;
+      background: linear-gradient(135deg, var(--accent), var(--accent-2));
+      border-color: rgba(255,255,255,0.35);
+    }
+
+    button.good { color: #06140b; background: linear-gradient(135deg, var(--good), #65f7ff); }
+    button.warn { color: #1d1200; background: linear-gradient(135deg, var(--warn), #ff9f6e); }
+
+    .controlRow {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 8px;
+      align-items: center;
+      margin: 9px 0;
+    }
+
+    .controlRow label {
+      color: var(--muted);
+      font-size: 0.84rem;
+      line-height: 1.25;
+    }
+
+    .valueBadge {
+      min-width: 54px;
+      text-align: right;
+      color: var(--accent);
+      font-variant-numeric: tabular-nums;
+      font-weight: 800;
+      font-size: 0.82rem;
+    }
+
+    input[type="range"] {
+      width: 100%;
+      accent-color: var(--accent);
+    }
+
+    select, input[type="file"] {
+      width: 100%;
+      margin: 0;
+    }
+
+    select {
+      appearance: none;
+      padding-right: 32px;
+      background-image:
+        linear-gradient(45deg, transparent 50%, var(--accent) 50%),
+        linear-gradient(135deg, var(--accent) 50%, transparent 50%),
+        linear-gradient(180deg, rgba(255,255,255,0.12), rgba(255,255,255,0.035));
+      background-position:
+        calc(100% - 18px) calc(50% - 3px),
+        calc(100% - 12px) calc(50% - 3px),
+        0 0;
+      background-size: 6px 6px, 6px 6px, 100% 100%;
+      background-repeat: no-repeat;
+    }
+
+    .toggleLine {
+      display: flex;
+      gap: 9px;
+      align-items: center;
+      justify-content: space-between;
+      padding: 7px 0;
+      color: var(--muted);
+      font-size: 0.84rem;
+    }
+
+    .switch {
+      position: relative;
+      width: 46px;
+      height: 26px;
+      flex: 0 0 auto;
+    }
+
+    .switch input { display: none; }
+
+    .sliderSwitch {
+      position: absolute;
+      inset: 0;
+      cursor: pointer;
+      border-radius: 30px;
+      background: rgba(255,255,255,0.12);
+      border: 1px solid rgba(255,255,255,0.12);
+      transition: 180ms ease;
+    }
+
+    .sliderSwitch:before {
+      content: "";
+      position: absolute;
+      width: 19px;
+      height: 19px;
+      left: 3px;
+      top: 2.5px;
+      border-radius: 50%;
+      background: #d9e8ff;
+      box-shadow: 0 3px 12px rgba(0,0,0,0.35);
+      transition: 180ms ease;
+    }
+
+    .switch input:checked + .sliderSwitch {
+      background: linear-gradient(135deg, rgba(101,247,255,0.9), rgba(255,93,247,0.8));
+    }
+
+    .switch input:checked + .sliderSwitch:before {
+      transform: translateX(19px);
+      background: #05101a;
+    }
+
+    #console {
+      height: 150px;
+      overflow: auto;
+      border-radius: 13px;
+      background: rgba(0,0,0,0.42);
+      border: 1px solid rgba(255,255,255,0.08);
+      padding: 9px;
+      font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+      font-size: 0.74rem;
+      line-height: 1.45;
+      color: #bfeaff;
+      white-space: pre-wrap;
+    }
+
+    .pillRow {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-top: 8px;
+    }
+
+    .pill {
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 999px;
+      padding: 5px 8px;
+      color: var(--muted);
+      background: rgba(255,255,255,0.04);
+      font-size: 0.72rem;
+    }
+
+    .pill.on {
+      color: #061016;
+      border-color: rgba(255,255,255,0.25);
+      background: linear-gradient(135deg, var(--accent), var(--good));
+      font-weight: 800;
+    }
+
+    #toast {
+      position: fixed;
+      left: 50%;
+      bottom: 24px;
+      transform: translateX(-50%) translateY(20px);
+      opacity: 0;
+      z-index: 8;
+      max-width: min(520px, calc(100vw - 28px));
+      padding: 10px 14px;
+      border: 1px solid rgba(101,247,255,0.34);
+      border-radius: 999px;
+      background: var(--panel-strong);
+      box-shadow: var(--shadow);
+      color: var(--text);
+      pointer-events: none;
+      transition: opacity 220ms ease, transform 220ms ease;
+      font-size: 0.9rem;
+    }
+
+    #toast.show {
+      opacity: 1;
+      transform: translateX(-50%) translateY(0);
+    }
+
+    .miniHint {
+      margin-top: 8px;
+      color: var(--muted);
+      font-size: 0.76rem;
+      line-height: 1.35;
+    }
+
+    .kbd {
+      color: var(--text);
+      border: 1px solid rgba(255,255,255,0.16);
+      background: rgba(255,255,255,0.06);
+      border-radius: 6px;
+      padding: 1px 5px;
+      font-family: inherit;
+      font-weight: 800;
+      font-size: 0.72rem;
+    }
+
+    .hidden { display: none !important; }
+
+    @media (max-width: 880px) {
+      #topbar { flex-direction: column; }
+      .brand, .stats { width: 100%; min-width: 0; }
+      .stats { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+      #rightPanel { display: none; }
+    }
+
+    @media (max-width: 560px) {
+      .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      #controls { max-height: 56vh; }
+      .buttonGrid { grid-template-columns: 1fr; }
+    }
+  </style>
 </head>
 <body>
-<div id="rendererContainer"></div>
-<div id="controls">
-    <button id="trainButton">Train Network</button>
-    <button id="styleTransferButton">Apply Style Transfer</button>
-    <button id="audioToggle">Toggle Audio</button>
-</div>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/simplex-noise/2.4.0/simplex-noise.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/tensorflow/3.18.0/tf.min.js"></script>
-<script>
-    // Configurable parameters
-    const cameraConfig = {
-        fov: 75,
-        aspect: window.innerWidth / window.innerHeight,
-        near: 0.1,
-        far: 1000,
-        positionZ: 8
-    };
+  <div id="rendererContainer"></div>
+  <div id="vignette"></div>
 
-    // Set up the Three.js scene
-    const scene = new THREE.Scene();
-    const camera = new THREE.PerspectiveCamera(cameraConfig.fov, cameraConfig.aspect, cameraConfig.near, cameraConfig.far);
-    camera.position.z = cameraConfig.positionZ;
-    const renderer = new THREE.WebGLRenderer({ alpha: true });
-    renderer.setPixelRatio(window.devicePixelRatio);
-    renderer.setSize(window.innerWidth, window.innerHeight);
-    document.getElementById('rendererContainer').appendChild(renderer.domElement);
+  <header id="topbar">
+    <section class="brand">
+      <h1>Neural 3D Shape Lab</h1>
+      <p>GAN-style neural deformation, reversible mesh warping, procedural style transfer, audio-reactive synthesis, particles, presets, screenshots and live telemetry.</p>
+      <div class="pillRow" id="featurePills"></div>
+    </section>
 
-    // Create a geometry and material for the rotating shape
-    const geometry = new THREE.TorusKnotGeometry(1, 0.4, 128, 32);
-    const material = new THREE.MeshNormalMaterial();
-    const torusKnot = new THREE.Mesh(geometry, material);
-    scene.add(torusKnot);
+    <section class="stats" aria-label="Live simulation statistics">
+      <div class="stat"><span>FPS</span><strong id="fpsStat">--</strong></div>
+      <div class="stat"><span>Vertices</span><strong id="vertexStat">--</strong></div>
+      <div class="stat"><span>GAN Steps</span><strong id="stepStat">0</strong></div>
+      <div class="stat"><span>TF Memory</span><strong id="memoryStat">--</strong></div>
+    </section>
+  </header>
 
-    // Add basic lighting
-    const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
-    scene.add(ambientLight);
-    const pointLight = new THREE.PointLight(0xffffff, 1);
-    pointLight.position.set(5, 5, 5);
-    scene.add(pointLight);
+  <aside id="controls" class="panel" aria-label="Controls">
+    <div class="section">
+      <h2>Core Actions</h2>
+      <div class="buttonGrid">
+        <button id="trainButton" class="primary">Train Network</button>
+        <button id="styleTransferButton">Apply Style Transfer</button>
+        <button id="audioToggle" class="good">Toggle Audio</button>
+        <button id="pauseButton">Pause</button>
+        <button id="resetMeshButton">Reset Mesh</button>
+        <button id="screenshotButton" class="warn">Screenshot</button>
+      </div>
+      <p class="miniHint">Drag to rotate, wheel to zoom. Keyboard: <span class="kbd">T</span> train, <span class="kbd">S</span> style, <span class="kbd">A</span> audio, <span class="kbd">Space</span> pause, <span class="kbd">R</span> reset.</p>
+    </div>
 
-    // Advanced Neural Network (GAN)
-    const generator = tf.sequential();
-    generator.add(tf.layers.dense({units: 32, inputShape: [3], activation: 'relu'}));
-    generator.add(tf.layers.dense({units: 64, activation: 'relu'}));
-    generator.add(tf.layers.dense({units: 3, activation: 'tanh'}));
+    <div class="section">
+      <h2>Shape & Render Mode</h2>
+      <div class="controlRow">
+        <label for="shapeSelect">Geometry</label>
+        <span class="valueBadge" id="shapeBadge">Torus</span>
+      </div>
+      <select id="shapeSelect">
+        <option value="torus">Torus Knot</option>
+        <option value="sphere">Neural Sphere</option>
+        <option value="icosa">Crystal Icosahedron</option>
+        <option value="super">Superformula Bloom</option>
+      </select>
 
-    const discriminator = tf.sequential();
-    discriminator.add(tf.layers.dense({units: 64, inputShape: [3], activation: 'relu'}));
-    discriminator.add(tf.layers.dense({units: 32, activation: 'relu'}));
-    discriminator.add(tf.layers.dense({units: 1, activation: 'sigmoid'}));
+      <div class="controlRow">
+        <label for="styleSelect">Palette</label>
+        <span class="valueBadge" id="styleBadge">Cyber</span>
+      </div>
+      <select id="styleSelect"></select>
 
-    const gan = tf.sequential();
-    gan.add(generator);
-    gan.add(discriminator);
+      <div class="toggleLine">
+        <span>Wireframe overlay</span>
+        <label class="switch"><input id="wireToggle" type="checkbox" /><span class="sliderSwitch"></span></label>
+      </div>
+      <div class="toggleLine">
+        <span>Auto style drift</span>
+        <label class="switch"><input id="styleDriftToggle" type="checkbox" checked /><span class="sliderSwitch"></span></label>
+      </div>
+      <div class="toggleLine">
+        <span>Starfield trails</span>
+        <label class="switch"><input id="trailToggle" type="checkbox" /><span class="sliderSwitch"></span></label>
+      </div>
+    </div>
 
-    gan.compile({
-        optimizer: tf.train.adam(0.0002, 0.5),
-        loss: 'binaryCrossentropy'
-    });
+    <div class="section">
+      <h2>Neural Deformation</h2>
+      <div class="controlRow"><label for="strengthSlider">Neural strength</label><span class="valueBadge" id="strengthValue">0.42</span></div>
+      <input id="strengthSlider" type="range" min="0" max="1.4" step="0.01" value="0.42" />
+      <div class="controlRow"><label for="noiseSlider">Organic noise</label><span class="valueBadge" id="noiseValue">0.22</span></div>
+      <input id="noiseSlider" type="range" min="0" max="1.0" step="0.01" value="0.22" />
+      <div class="controlRow"><label for="rotationSlider">Rotation speed</label><span class="valueBadge" id="rotationValue">0.55</span></div>
+      <input id="rotationSlider" type="range" min="0" max="2.5" step="0.01" value="0.55" />
+      <div class="controlRow"><label for="pulseSlider">Pulse speed</label><span class="valueBadge" id="pulseValue">0.80</span></div>
+      <input id="pulseSlider" type="range" min="0" max="3" step="0.01" value="0.80" />
+      <div class="toggleLine">
+        <span>Auto train in background</span>
+        <label class="switch"><input id="autoTrainToggle" type="checkbox" /><span class="sliderSwitch"></span></label>
+      </div>
+    </div>
 
-    // GAN training function
-    async function trainGAN(epochs = 100, batchSize = 32) {
-        const realData = tf.randomNormal([batchSize, 3]);
-        const fakeData = tf.randomNormal([batchSize, 3]);
+    <div class="section">
+      <h2>Audio Reactor</h2>
+      <div class="controlRow"><label for="audioSlider">Audio reactivity</label><span class="valueBadge" id="audioReactValue">0.50</span></div>
+      <input id="audioSlider" type="range" min="0" max="1" step="0.01" value="0.50" />
+      <div class="controlRow"><label for="gainSlider">Master gain</label><span class="valueBadge" id="gainValue">0.05</span></div>
+      <input id="gainSlider" type="range" min="0" max="0.18" step="0.005" value="0.05" />
+    </div>
 
-        for (let i = 0; i < epochs; i++) {
-            const realLabels = tf.ones([batchSize, 1]);
-            const fakeLabels = tf.zeros([batchSize, 1]);
+    <div class="section">
+      <h2>Presets</h2>
+      <div class="buttonGrid">
+        <button id="savePresetButton">Save Preset</button>
+        <button id="downloadPresetButton">Export Preset</button>
+      </div>
+      <div style="height: 8px"></div>
+      <input id="presetFile" type="file" accept="application/json" />
+    </div>
+  </aside>
 
-            await discriminator.trainOnBatch(realData, realLabels);
-            await discriminator.trainOnBatch(generator.predict(fakeData), fakeLabels);
+  <aside id="rightPanel" class="panel" aria-label="Training console">
+    <div class="section">
+      <h2>Neural Console</h2>
+      <div id="console"></div>
+    </div>
+    <div class="section">
+      <h2>Model Telemetry</h2>
+      <div class="stat"><span>Generator Loss</span><strong id="genLossStat">--</strong></div>
+      <div style="height: 7px"></div>
+      <div class="stat"><span>Discriminator Loss</span><strong id="discLossStat">--</strong></div>
+      <div style="height: 7px"></div>
+      <div class="stat"><span>Audio State</span><strong id="audioStat">Off</strong></div>
+      <p class="miniHint">The network learns a compact procedural distribution, then its output is sampled as a vertex displacement field. This keeps the original GAN idea but makes the visual loop stable.</p>
+    </div>
+  </aside>
 
-            const ganLabels = tf.ones([batchSize, 1]);
-            await gan.trainOnBatch(fakeData, ganLabels);
+  <div id="toast"></div>
 
-            if (i % 10 === 0) {
-                console.log(`Epoch ${i}: Generator loss: ${gan.history.loss[0]}, Discriminator loss: ${discriminator.history.loss[0]}`);
-            }
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/simplex-noise/2.4.0/simplex-noise.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest/dist/tf.min.js"></script>
+
+  <script>
+    (() => {
+      'use strict';
+
+      const container = document.getElementById('rendererContainer');
+      const $ = (id) => document.getElementById(id);
+
+      const els = {
+        fps: $('fpsStat'),
+        vertices: $('vertexStat'),
+        steps: $('stepStat'),
+        memory: $('memoryStat'),
+        genLoss: $('genLossStat'),
+        discLoss: $('discLossStat'),
+        audioStat: $('audioStat'),
+        console: $('console'),
+        toast: $('toast'),
+        featurePills: $('featurePills'),
+        shapeBadge: $('shapeBadge'),
+        styleBadge: $('styleBadge'),
+        strengthValue: $('strengthValue'),
+        noiseValue: $('noiseValue'),
+        rotationValue: $('rotationValue'),
+        pulseValue: $('pulseValue'),
+        audioReactValue: $('audioReactValue'),
+        gainValue: $('gainValue')
+      };
+
+      const palettes = [
+        { name: 'Cyber', a: 0x65f7ff, b: 0xff5df7, c: 0x7dff9b },
+        { name: 'Solar', a: 0xffd166, b: 0xff6b35, c: 0x4cc9f0 },
+        { name: 'Aurora', a: 0x6dffb8, b: 0x7b61ff, c: 0xe0fbfc },
+        { name: 'Plasma', a: 0xff006e, b: 0x8338ec, c: 0x3a86ff },
+        { name: 'Toxic', a: 0xcaffbf, b: 0x39ff14, c: 0x00bbf9 },
+        { name: 'Ember', a: 0xffba08, b: 0xd00000, c: 0x370617 },
+        { name: 'Oceanic', a: 0x90e0ef, b: 0x0077b6, c: 0x03045e }
+      ];
+
+      const state = {
+        paused: false,
+        shape: 'torus',
+        styleIndex: 0,
+        styleDrift: true,
+        trails: false,
+        wireframe: false,
+        autoTrain: false,
+        neuralStrength: 0.42,
+        organicNoise: 0.22,
+        rotationSpeed: 0.55,
+        pulseSpeed: 0.8,
+        audioReactivity: 0.5,
+        gain: 0.05,
+        audioOn: false,
+        trainedSteps: 0,
+        genLoss: NaN,
+        discLoss: NaN,
+        pointerX: 0,
+        pointerY: 0,
+        zoom: 8,
+        quality: Math.min(2, window.devicePixelRatio || 1),
+        fieldBusy: false,
+        lastFieldUpdate: 0,
+        lastAutoTrain: 0,
+        lastStyleDrift: 0,
+        lastNormals: 0,
+        lastToast: 0
+      };
+
+      let scene, camera, renderer, root, mesh, wireMesh, particleField, neuralField;
+      let generator, discriminator, gan, tfAvailable = false;
+      let audioContext, oscA, oscB, gainNode, filterNode;
+      let simplex = null;
+      let basePositions = null;
+      let baseNormals = null;
+      let dragging = false;
+      let lastPointer = { x: 0, y: 0 };
+      let fpsTracker = { last: performance.now(), frames: 0, fps: 0 };
+      let lastTime = performance.now();
+
+      const shaderMaterial = new THREE.ShaderMaterial({
+        transparent: false,
+        wireframe: false,
+        uniforms: {
+          uTime: { value: 0 },
+          uEnergy: { value: 0.4 },
+          uAudio: { value: 0 },
+          uPointer: { value: new THREE.Vector2(0, 0) },
+          uColorA: { value: new THREE.Color(palettes[0].a) },
+          uColorB: { value: new THREE.Color(palettes[0].b) },
+          uColorC: { value: new THREE.Color(palettes[0].c) }
+        },
+        vertexShader: `
+          varying vec3 vNormal;
+          varying vec3 vWorld;
+          varying vec2 vUv;
+          void main() {
+            vUv = uv;
+            vNormal = normalize(normalMatrix * normal);
+            vec4 world = modelMatrix * vec4(position, 1.0);
+            vWorld = world.xyz;
+            gl_Position = projectionMatrix * viewMatrix * world;
+          }
+        `,
+        fragmentShader: `
+          precision highp float;
+          uniform float uTime;
+          uniform float uEnergy;
+          uniform float uAudio;
+          uniform vec2 uPointer;
+          uniform vec3 uColorA;
+          uniform vec3 uColorB;
+          uniform vec3 uColorC;
+          varying vec3 vNormal;
+          varying vec3 vWorld;
+          varying vec2 vUv;
+
+          void main() {
+            vec3 N = normalize(vNormal);
+            vec3 V = normalize(cameraPosition - vWorld);
+            vec3 L1 = normalize(vec3(0.55, 0.85, 0.42));
+            vec3 L2 = normalize(vec3(-0.7, 0.35, -0.48));
+
+            float lambert = max(dot(N, L1), 0.0) * 0.78 + max(dot(N, L2), 0.0) * 0.34;
+            float rim = pow(1.0 - max(dot(N, V), 0.0), 2.25);
+            float bands = 0.5 + 0.5 * sin(vWorld.x * 3.2 + vWorld.y * 2.0 - vWorld.z * 2.8 + uTime * 1.35);
+            float scan = 0.5 + 0.5 * sin((vUv.y + vUv.x) * 42.0 + uTime * 4.0);
+            float pulse = 0.5 + 0.5 * sin(uTime * 2.0 + length(vWorld) * 3.0);
+
+            vec3 base = mix(uColorA, uColorB, bands);
+            base = mix(base, uColorC, smoothstep(0.42, 1.0, pulse) * 0.55);
+            base += uColorC * rim * (0.45 + uAudio * 1.35);
+            base += vec3(scan) * 0.045 * (0.4 + uEnergy);
+
+            float glow = rim * (0.85 + uEnergy * 0.8 + uAudio * 1.3);
+            vec3 color = base * (0.24 + lambert + glow);
+            color = pow(color, vec3(0.86));
+            gl_FragColor = vec4(color, 1.0);
+          }
+        `
+      });
+
+      function log(message, tone = 'info') {
+        const now = new Date();
+        const stamp = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+        const icon = tone === 'good' ? '✓' : tone === 'warn' ? '!' : tone === 'bad' ? '×' : '•';
+        els.console.textContent += `[${stamp}] ${icon} ${message}\n`;
+        els.console.scrollTop = els.console.scrollHeight;
+      }
+
+      function toast(message) {
+        els.toast.textContent = message;
+        els.toast.classList.add('show');
+        state.lastToast = performance.now();
+        window.setTimeout(() => {
+          if (performance.now() - state.lastToast >= 1050) els.toast.classList.remove('show');
+        }, 1200);
+      }
+
+      function colorToUniform(hex) {
+        return new THREE.Color(hex);
+      }
+
+      function setPalette(index, announce = true) {
+        state.styleIndex = ((index % palettes.length) + palettes.length) % palettes.length;
+        const p = palettes[state.styleIndex];
+        shaderMaterial.uniforms.uColorA.value.copy(colorToUniform(p.a));
+        shaderMaterial.uniforms.uColorB.value.copy(colorToUniform(p.b));
+        shaderMaterial.uniforms.uColorC.value.copy(colorToUniform(p.c));
+        els.styleBadge.textContent = p.name;
+        $('styleSelect').value = String(state.styleIndex);
+        updateFeaturePills();
+        if (announce) {
+          log(`Style transfer applied: ${p.name} palette.`, 'good');
+          toast(`Style transfer: ${p.name}`);
         }
-        console.log('GAN training completed');
-    }
+      }
 
-    // Apply GAN-generated noise
-    async function applyGANNoise(geometry, time) {
-        const positionAttribute = geometry.attributes.position;
-        const noise = await generator.predict(tf.randomNormal([positionAttribute.count, 3])).data();
-        
-        for (let i = 0; i < positionAttribute.count; i++) {
-            const x = positionAttribute.getX(i);
-            const y = positionAttribute.getY(i);
-            const z = positionAttribute.getZ(i);
-            const noiseValue = noise[i * 3];
-            positionAttribute.setXYZ(i, x + noiseValue * 0.2, y + noiseValue * 0.2, z + noiseValue * 0.2);
+      function updateFeaturePills() {
+        const pills = [
+          ['GAN field', tfAvailable],
+          ['Audio', state.audioOn],
+          ['Wireframe', state.wireframe],
+          ['Auto-train', state.autoTrain],
+          ['Style drift', state.styleDrift],
+          ['Trails', state.trails]
+        ];
+        els.featurePills.innerHTML = pills.map(([name, on]) => `<span class="pill ${on ? 'on' : ''}">${name}</span>`).join('');
+      }
+
+      function makeSuperformulaGeometry(res = 82) {
+        const positions = [];
+        const normals = [];
+        const uvs = [];
+        const indices = [];
+
+        function superRadius(angle, m, n1, n2, n3, a = 1, b = 1) {
+          const part1 = Math.pow(Math.abs(Math.cos(m * angle / 4) / a), n2);
+          const part2 = Math.pow(Math.abs(Math.sin(m * angle / 4) / b), n3);
+          return Math.pow(part1 + part2, -1 / n1);
         }
-        positionAttribute.needsUpdate = true;
-    }
 
-    // Style transfer (simulated)
-    function applyStyleTransfer() {
-        const colors = [0xff0000, 0x00ff00, 0x0000ff, 0xffff00, 0xff00ff, 0x00ffff];
-        const newMaterial = new THREE.MeshPhongMaterial({
-            color: colors[Math.floor(Math.random() * colors.length)],
-            specular: 0x555555,
-            shininess: 30
-        });
-        torusKnot.material = newMaterial;
-    }
-
-    // Procedural audio generation
-    let audioContext, oscillator;
-    function toggleAudio() {
-        if (!audioContext) {
-            audioContext = new (window.AudioContext || window.webkitAudioContext)();
-            oscillator = audioContext.createOscillator();
-            oscillator.type = 'sine';
-            oscillator.connect(audioContext.destination);
-            oscillator.start();
-        } else if (audioContext.state === 'suspended') {
-            audioContext.resume();
-        } else if (audioContext.state === 'running') {
-            audioContext.suspend();
+        for (let y = 0; y <= res; y++) {
+          const v = y / res;
+          const phi = -Math.PI / 2 + v * Math.PI;
+          const r2 = superRadius(phi, 7, 0.35, 1.7, 1.7);
+          for (let x = 0; x <= res; x++) {
+            const u = x / res;
+            const theta = -Math.PI + u * Math.PI * 2;
+            const r1 = superRadius(theta, 5, 0.28, 1.6, 1.6);
+            const px = 1.55 * r1 * Math.cos(theta) * r2 * Math.cos(phi);
+            const py = 1.55 * r1 * Math.sin(theta) * r2 * Math.cos(phi);
+            const pz = 1.55 * r2 * Math.sin(phi);
+            positions.push(px, py, pz);
+            normals.push(px, py, pz);
+            uvs.push(u, v);
+          }
         }
-    }
 
-    function updateAudio(noiseValue) {
-        if (audioContext && audioContext.state === 'running') {
-            const frequency = 220 + noiseValue * 880; // Map noise to frequency range 220-1100 Hz
-            oscillator.frequency.setValueAtTime(frequency, audioContext.currentTime);
+        for (let y = 0; y < res; y++) {
+          for (let x = 0; x < res; x++) {
+            const a = y * (res + 1) + x;
+            const b = a + 1;
+            const c = a + (res + 1);
+            const d = c + 1;
+            indices.push(a, c, b, b, c, d);
+          }
         }
-    }
 
-    // Handle window resize
-    window.addEventListener('resize', () => {
-        camera.aspect = window.innerWidth / window.innerHeight;
-        camera.updateProjectionMatrix();
+        const geometry = new THREE.BufferGeometry();
+        geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+        geometry.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3));
+        geometry.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+        geometry.setIndex(indices);
+        geometry.computeVertexNormals();
+        geometry.computeBoundingSphere();
+        return geometry;
+      }
+
+      function createGeometry(type) {
+        switch (type) {
+          case 'sphere':
+            return new THREE.SphereGeometry(1.72, 112, 64);
+          case 'icosa':
+            return new THREE.IcosahedronGeometry(1.95, 5);
+          case 'super':
+            return makeSuperformulaGeometry(78);
+          case 'torus':
+          default:
+            return new THREE.TorusKnotGeometry(1.38, 0.46, 192, 42, 2, 3);
+        }
+      }
+
+      function captureBaseGeometry(geometry) {
+        basePositions = new Float32Array(geometry.attributes.position.array);
+        if (geometry.attributes.normal) {
+          baseNormals = new Float32Array(geometry.attributes.normal.array);
+        } else {
+          geometry.computeVertexNormals();
+          baseNormals = new Float32Array(geometry.attributes.normal.array);
+        }
+        neuralField = new Float32Array(geometry.attributes.position.count * 4);
+        els.vertices.textContent = geometry.attributes.position.count.toLocaleString();
+      }
+
+      function setShape(type) {
+        state.shape = type;
+        const labels = { torus: 'Torus', sphere: 'Sphere', icosa: 'Crystal', super: 'Super' };
+        const geometry = createGeometry(type);
+        captureBaseGeometry(geometry);
+
+        if (mesh) {
+          mesh.geometry.dispose();
+          mesh.geometry = geometry;
+        } else {
+          mesh = new THREE.Mesh(geometry, shaderMaterial);
+          mesh.castShadow = true;
+          mesh.receiveShadow = true;
+          root.add(mesh);
+        }
+
+        if (wireMesh) {
+          wireMesh.geometry.dispose();
+          wireMesh.geometry = geometry.clone();
+        } else {
+          wireMesh = new THREE.Mesh(geometry.clone(), new THREE.MeshBasicMaterial({
+            color: 0xffffff,
+            transparent: true,
+            opacity: 0.1,
+            wireframe: true,
+            depthWrite: false
+          }));
+          root.add(wireMesh);
+        }
+        wireMesh.visible = state.wireframe;
+        els.shapeBadge.textContent = labels[type] || type;
+        $('shapeSelect').value = type;
+        refreshNeuralField(performance.now() * 0.001, true);
+        log(`Geometry switched to ${labels[type] || type}; base mesh recaptured for reversible deformation.`, 'good');
+      }
+
+      function initThree() {
+        scene = new THREE.Scene();
+        scene.fog = new THREE.FogExp2(0x050710, 0.035);
+
+        camera = new THREE.PerspectiveCamera(68, window.innerWidth / window.innerHeight, 0.05, 1200);
+        camera.position.set(0, 0.4, state.zoom);
+
+        renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true, alpha: false });
+        renderer.domElement.className = 'webgl';
+        renderer.setPixelRatio(state.quality);
         renderer.setSize(window.innerWidth, window.innerHeight);
-    });
+        renderer.setClearColor(0x050710, 1);
+        renderer.outputEncoding = THREE.sRGBEncoding;
+        renderer.shadowMap.enabled = true;
+        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+        container.appendChild(renderer.domElement);
 
-    // Animation loop
-    let time = 0;
-    async function animate() {
+        root = new THREE.Group();
+        scene.add(root);
+
+        const ambient = new THREE.AmbientLight(0xbfdcff, 0.32);
+        scene.add(ambient);
+
+        const key = new THREE.PointLight(0x65f7ff, 1.5, 30);
+        key.position.set(4.8, 4.2, 6);
+        scene.add(key);
+
+        const fill = new THREE.PointLight(0xff5df7, 1.05, 28);
+        fill.position.set(-5.5, -2.5, 4.2);
+        scene.add(fill);
+
+        const rim = new THREE.PointLight(0x7dff9b, 0.75, 24);
+        rim.position.set(0, 5.5, -6.5);
+        scene.add(rim);
+
+        createParticleField();
+        setShape(state.shape);
+      }
+
+      function createParticleField() {
+        const count = 1500;
+        const positions = new Float32Array(count * 3);
+        const sizes = new Float32Array(count);
+        for (let i = 0; i < count; i++) {
+          const radius = 16 + Math.random() * 42;
+          const theta = Math.random() * Math.PI * 2;
+          const phi = Math.acos(2 * Math.random() - 1);
+          positions[i * 3] = radius * Math.sin(phi) * Math.cos(theta);
+          positions[i * 3 + 1] = radius * Math.sin(phi) * Math.sin(theta);
+          positions[i * 3 + 2] = radius * Math.cos(phi);
+          sizes[i] = 1 + Math.random() * 3;
+        }
+        const geometry = new THREE.BufferGeometry();
+        geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+        geometry.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
+        const material = new THREE.PointsMaterial({
+          color: 0x9cecff,
+          size: 0.032,
+          transparent: true,
+          opacity: 0.72,
+          depthWrite: false,
+          blending: THREE.AdditiveBlending
+        });
+        particleField = new THREE.Points(geometry, material);
+        scene.add(particleField);
+      }
+
+      function safeNoise3D(x, y, z) {
+        if (simplex && typeof simplex.noise3D === 'function') return simplex.noise3D(x, y, z);
+        return Math.sin(x * 12.9898 + y * 78.233 + z * 37.719) * 0.5 + Math.sin(x * 3.1 - y * 4.7 + z * 2.2) * 0.5;
+      }
+
+      async function initTensorFlow() {
+        if (!window.tf) {
+          log('TensorFlow.js did not load. Falling back to procedural noise deformation.', 'warn');
+          tfAvailable = false;
+          updateFeaturePills();
+          return;
+        }
+
+        try {
+          await tf.ready();
+          try { await tf.setBackend('webgl'); } catch (_) { /* keep active backend */ }
+
+          generator = tf.sequential({ name: 'neural_deformer_generator' });
+          generator.add(tf.layers.dense({ units: 48, inputShape: [4], activation: 'relu' }));
+          generator.add(tf.layers.dense({ units: 72, activation: 'relu' }));
+          generator.add(tf.layers.dense({ units: 48, activation: 'relu' }));
+          generator.add(tf.layers.dense({ units: 4, activation: 'tanh' }));
+          generator.compile({ optimizer: tf.train.adam(0.00035, 0.5), loss: 'meanSquaredError' });
+
+          discriminator = tf.sequential({ name: 'neural_deformer_discriminator' });
+          discriminator.add(tf.layers.dense({ units: 72, inputShape: [4], activation: 'relu' }));
+          discriminator.add(tf.layers.dense({ units: 48, activation: 'relu' }));
+          discriminator.add(tf.layers.dense({ units: 1, activation: 'sigmoid' }));
+          discriminator.compile({ optimizer: tf.train.adam(0.00028, 0.5), loss: 'binaryCrossentropy' });
+
+          discriminator.trainable = false;
+          gan = tf.sequential({ name: 'visual_gan' });
+          gan.add(generator);
+          gan.add(discriminator);
+          gan.compile({ optimizer: tf.train.adam(0.00022, 0.5), loss: 'binaryCrossentropy' });
+          discriminator.trainable = true;
+
+          tfAvailable = true;
+          log(`TensorFlow.js ready on ${tf.getBackend()} backend.`, 'good');
+          updateFeaturePills();
+          await trainGAN(18, 32, false);
+        } catch (error) {
+          tfAvailable = false;
+          log(`TensorFlow init failed: ${error.message}. Using procedural fallback.`, 'bad');
+          updateFeaturePills();
+        }
+      }
+
+      function makeRealTrainingBatch(batchSize) {
+        return tf.tidy(() => {
+          const x = tf.randomUniform([batchSize, 1], -1, 1);
+          const y = tf.randomUniform([batchSize, 1], -1, 1);
+          const z = tf.randomUniform([batchSize, 1], -1, 1);
+          const t = tf.randomUniform([batchSize, 1], -1, 1);
+          const dx = tf.sin(x.mul(3.1).add(t.mul(2.0))).mul(0.75);
+          const dy = tf.cos(y.mul(4.7).sub(t.mul(1.4))).mul(0.75);
+          const dz = tf.sin(z.mul(2.8).add(x.mul(1.2))).mul(0.75);
+          const energy = tf.sin(x.mul(2.0).add(y.mul(2.2)).add(z.mul(1.7))).mul(0.65);
+          return tf.concat([dx, dy, dz, energy], 1);
+        });
+      }
+
+      async function trainGAN(epochs = 60, batchSize = 48, notify = true) {
+        if (!tfAvailable || !generator || !discriminator || !gan) {
+          log('Training skipped because TensorFlow.js is unavailable.', 'warn');
+          return;
+        }
+
+        if (notify) {
+          log(`Training neural field for ${epochs} epochs...`);
+          toast('Training neural renderer...');
+        }
+
+        const ones = tf.ones([batchSize, 1]);
+        const zeros = tf.zeros([batchSize, 1]);
+
+        try {
+          for (let i = 0; i < epochs; i++) {
+            // IMPORTANT: tf.tidy() cannot contain await or return a Promise.
+            // So each tensor group is created synchronously, then async trainOnBatch is awaited outside.
+            const realData = makeRealTrainingBatch(batchSize);
+            const latentForFake = tf.randomNormal([batchSize, 4]);
+            const fakeData = generator.predict(latentForFake);
+
+            const dReal = await discriminator.trainOnBatch(realData, ones);
+            const dFake = await discriminator.trainOnBatch(fakeData, zeros);
+
+            realData.dispose();
+            latentForFake.dispose();
+            fakeData.dispose();
+
+            const ganInput = tf.randomNormal([batchSize, 4]);
+            const gLoss = await gan.trainOnBatch(ganInput, ones);
+            ganInput.dispose();
+
+            state.trainedSteps += 1;
+            state.genLoss = Array.isArray(gLoss) ? gLoss[0] : gLoss;
+            const dRealValue = Array.isArray(dReal) ? dReal[0] : dReal;
+            const dFakeValue = Array.isArray(dFake) ? dFake[0] : dFake;
+            state.discLoss = (dRealValue + dFakeValue) / 2;
+
+            if (i % 12 === 0 || i === epochs - 1) {
+              updateStats();
+              await tf.nextFrame();
+            }
+          }
+
+          if (notify) log(`Training complete. Steps: ${state.trainedSteps}.`, 'good');
+          refreshNeuralField(performance.now() * 0.001, true);
+        } catch (error) {
+          log(`Training error: ${error.message}`, 'bad');
+        } finally {
+          ones.dispose();
+          zeros.dispose();
+        }
+      }
+
+      async function refreshNeuralField(time, force = false) {
+        if (!tfAvailable || !generator || !mesh || state.fieldBusy) return;
+        if (!force && performance.now() - state.lastFieldUpdate < 180) return;
+        state.fieldBusy = true;
+        state.lastFieldUpdate = performance.now();
+
+        const pos = mesh.geometry.attributes.position;
+        const count = pos.count;
+        const input = new Float32Array(count * 4);
+        const scale = 2.45;
+        const phase = Math.sin(time * 0.7);
+        for (let i = 0; i < count; i++) {
+          input[i * 4] = basePositions[i * 3] / scale;
+          input[i * 4 + 1] = basePositions[i * 3 + 1] / scale;
+          input[i * 4 + 2] = basePositions[i * 3 + 2] / scale;
+          input[i * 4 + 3] = phase;
+        }
+
+        let inputTensor, outputTensor;
+        try {
+          inputTensor = tf.tensor2d(input, [count, 4]);
+          outputTensor = generator.predict(inputTensor);
+          const data = await outputTensor.data();
+          neuralField.set(data);
+        } catch (error) {
+          log(`Field refresh failed: ${error.message}`, 'warn');
+        } finally {
+          if (inputTensor) inputTensor.dispose();
+          if (outputTensor) outputTensor.dispose();
+          state.fieldBusy = false;
+        }
+      }
+
+      function resetMesh() {
+        if (!mesh || !basePositions) return;
+        mesh.geometry.attributes.position.array.set(basePositions);
+        mesh.geometry.attributes.position.needsUpdate = true;
+        if (mesh.geometry.attributes.normal && baseNormals) {
+          mesh.geometry.attributes.normal.array.set(baseNormals);
+          mesh.geometry.attributes.normal.needsUpdate = true;
+        }
+        if (wireMesh) {
+          wireMesh.geometry.attributes.position.array.set(basePositions);
+          wireMesh.geometry.attributes.position.needsUpdate = true;
+        }
+        log('Mesh reset to clean base geometry.', 'good');
+        toast('Mesh reset');
+      }
+
+      function applyDeformation(time) {
+        if (!mesh || !basePositions || !baseNormals) return;
+        const geometry = mesh.geometry;
+        const positions = geometry.attributes.position;
+        const count = positions.count;
+        const posArray = positions.array;
+        const pulse = 0.5 + 0.5 * Math.sin(time * state.pulseSpeed * 2.4);
+        const audioBoost = state.audioOn ? state.audioReactivity * (0.4 + pulse) : 0;
+        const strength = state.neuralStrength * (0.55 + pulse * 0.45 + audioBoost * 0.35);
+        const organic = state.organicNoise;
+        const pointerFalloff = 0.18 + Math.abs(state.pointerX) * 0.08 + Math.abs(state.pointerY) * 0.08;
+
+        for (let i = 0; i < count; i++) {
+          const ix = i * 3;
+          const fx = i * 4;
+          const bx = basePositions[ix];
+          const by = basePositions[ix + 1];
+          const bz = basePositions[ix + 2];
+          const nx = baseNormals[ix];
+          const ny = baseNormals[ix + 1];
+          const nz = baseNormals[ix + 2];
+
+          const procedural = safeNoise3D(bx * 1.35 + time * 0.18, by * 1.35 - time * 0.13, bz * 1.35 + time * 0.1);
+          const netX = neuralField ? neuralField[fx] || 0 : 0;
+          const netY = neuralField ? neuralField[fx + 1] || 0 : 0;
+          const netZ = neuralField ? neuralField[fx + 2] || 0 : 0;
+          const energy = neuralField ? neuralField[fx + 3] || 0 : procedural;
+          const mouseWave = Math.sin((bx * state.pointerX + by * state.pointerY) * 4.0 + time * 2.0) * pointerFalloff;
+          const displacement = procedural * organic + energy * strength * 0.18 + mouseWave * 0.08;
+
+          posArray[ix] = bx + nx * displacement + netX * strength * 0.11;
+          posArray[ix + 1] = by + ny * displacement + netY * strength * 0.11;
+          posArray[ix + 2] = bz + nz * displacement + netZ * strength * 0.11;
+        }
+
+        positions.needsUpdate = true;
+        if (time - state.lastNormals > 0.12) {
+          geometry.computeVertexNormals();
+          state.lastNormals = time;
+        }
+
+        if (wireMesh) {
+          wireMesh.geometry.attributes.position.array.set(posArray);
+          wireMesh.geometry.attributes.position.needsUpdate = true;
+        }
+
+        shaderMaterial.uniforms.uEnergy.value = strength;
+        shaderMaterial.uniforms.uAudio.value = state.audioOn ? audioBoost : 0;
+        shaderMaterial.uniforms.uPointer.value.set(state.pointerX, state.pointerY);
+      }
+
+      function initAudio() {
+        if (audioContext) return;
+        audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        oscA = audioContext.createOscillator();
+        oscB = audioContext.createOscillator();
+        gainNode = audioContext.createGain();
+        filterNode = audioContext.createBiquadFilter();
+
+        oscA.type = 'sine';
+        oscB.type = 'triangle';
+        filterNode.type = 'lowpass';
+        filterNode.frequency.value = 900;
+        filterNode.Q.value = 6;
+        gainNode.gain.value = 0;
+
+        oscA.connect(filterNode);
+        oscB.connect(filterNode);
+        filterNode.connect(gainNode);
+        gainNode.connect(audioContext.destination);
+        oscA.start();
+        oscB.start();
+      }
+
+      function toggleAudio() {
+        initAudio();
+        if (!audioContext) return;
+        state.audioOn = !state.audioOn;
+        if (state.audioOn) {
+          audioContext.resume();
+          gainNode.gain.setTargetAtTime(state.gain, audioContext.currentTime, 0.05);
+          log('Procedural audio enabled.', 'good');
+          toast('Audio reactor on');
+        } else {
+          gainNode.gain.setTargetAtTime(0, audioContext.currentTime, 0.05);
+          log('Procedural audio muted.');
+          toast('Audio reactor off');
+        }
+        updateStats();
+        updateFeaturePills();
+      }
+
+      function updateAudio(time) {
+        if (!audioContext || !oscA || !state.audioOn) return;
+        const energy = 0.5 + 0.5 * Math.sin(time * (1.6 + state.pulseSpeed));
+        const pointer = Math.hypot(state.pointerX, state.pointerY);
+        const freqA = 130 + energy * 520 + state.neuralStrength * 180 + pointer * 80;
+        const freqB = freqA * (1.5 + 0.02 * Math.sin(time));
+        oscA.frequency.setTargetAtTime(freqA, audioContext.currentTime, 0.04);
+        oscB.frequency.setTargetAtTime(freqB, audioContext.currentTime, 0.05);
+        filterNode.frequency.setTargetAtTime(560 + energy * 2600 + pointer * 600, audioContext.currentTime, 0.08);
+        gainNode.gain.setTargetAtTime(state.audioOn ? state.gain : 0, audioContext.currentTime, 0.04);
+      }
+
+      function applyStyleTransfer() {
+        setPalette(state.styleIndex + 1, true);
+      }
+
+      function updateStats() {
+        els.steps.textContent = String(state.trainedSteps);
+        els.genLoss.textContent = Number.isFinite(state.genLoss) ? state.genLoss.toFixed(4) : '--';
+        els.discLoss.textContent = Number.isFinite(state.discLoss) ? state.discLoss.toFixed(4) : '--';
+        els.audioStat.textContent = state.audioOn ? 'Running' : 'Off';
+        if (window.tf && tfAvailable) {
+          const mem = tf.memory();
+          els.memory.textContent = `${mem.numTensors} tensors`;
+        } else {
+          els.memory.textContent = 'fallback';
+        }
+      }
+
+      function animate(nowMs) {
         requestAnimationFrame(animate);
-        time++;
-        torusKnot.rotation.x += 0.01;
-        torusKnot.rotation.y += 0.01;
-        
-        await applyGANNoise(geometry, time);
-        
-        const noiseValue = (Math.sin(time * 0.01) + 1) / 2; // Simplified noise value for audio
-        updateAudio(noiseValue);
-        
+        const dt = Math.min(0.05, (nowMs - lastTime) / 1000 || 0.016);
+        lastTime = nowMs;
+        const time = nowMs * 0.001;
+
+        fpsTracker.frames++;
+        if (nowMs - fpsTracker.last >= 500) {
+          fpsTracker.fps = Math.round((fpsTracker.frames * 1000) / (nowMs - fpsTracker.last));
+          fpsTracker.frames = 0;
+          fpsTracker.last = nowMs;
+          els.fps.textContent = String(fpsTracker.fps);
+          updateStats();
+        }
+
+        if (!state.paused) {
+          root.rotation.y += dt * state.rotationSpeed * 0.55;
+          root.rotation.x += dt * state.rotationSpeed * 0.18;
+          root.rotation.z = Math.sin(time * 0.18) * 0.08;
+          particleField.rotation.y -= dt * 0.012;
+          particleField.rotation.x += dt * 0.006;
+          shaderMaterial.uniforms.uTime.value = time;
+          applyDeformation(time);
+          refreshNeuralField(time, false);
+          updateAudio(time);
+
+          if (state.autoTrain && nowMs - state.lastAutoTrain > 1800) {
+            state.lastAutoTrain = nowMs;
+            trainGAN(4, 28, false);
+          }
+
+          if (state.styleDrift && nowMs - state.lastStyleDrift > 22000) {
+            state.lastStyleDrift = nowMs;
+            setPalette(state.styleIndex + 1, false);
+            log(`Auto style drift moved to ${palettes[state.styleIndex].name}.`);
+          }
+        }
+
+        camera.position.z += (state.zoom - camera.position.z) * 0.08;
+        camera.position.x += (state.pointerX * 0.7 - camera.position.x) * 0.025;
+        camera.position.y += (-state.pointerY * 0.42 + 0.35 - camera.position.y) * 0.025;
+        camera.lookAt(0, 0, 0);
+
+        renderer.autoClear = !state.trails;
+        if (!state.trails) renderer.clear();
         renderer.render(scene, camera);
-    }
+      }
 
-    animate();
+      function savePreset(localOnly = true) {
+        const preset = {
+          shape: state.shape,
+          styleIndex: state.styleIndex,
+          styleDrift: state.styleDrift,
+          trails: state.trails,
+          wireframe: state.wireframe,
+          autoTrain: state.autoTrain,
+          neuralStrength: state.neuralStrength,
+          organicNoise: state.organicNoise,
+          rotationSpeed: state.rotationSpeed,
+          pulseSpeed: state.pulseSpeed,
+          audioReactivity: state.audioReactivity,
+          gain: state.gain
+        };
+        localStorage.setItem('neural3dshapeLabPreset', JSON.stringify(preset));
+        if (localOnly) {
+          log('Preset saved to localStorage.', 'good');
+          toast('Preset saved');
+        }
+        return preset;
+      }
 
-    // Event listeners for buttons
-    document.getElementById('trainButton').addEventListener('click', () => trainGAN());
-    document.getElementById('styleTransferButton').addEventListener('click', applyStyleTransfer);
-    document.getElementById('audioToggle').addEventListener('click', toggleAudio);
+      function applyPreset(preset) {
+        Object.assign(state, {
+          styleDrift: Boolean(preset.styleDrift),
+          trails: Boolean(preset.trails),
+          wireframe: Boolean(preset.wireframe),
+          autoTrain: Boolean(preset.autoTrain),
+          neuralStrength: Number(preset.neuralStrength ?? state.neuralStrength),
+          organicNoise: Number(preset.organicNoise ?? state.organicNoise),
+          rotationSpeed: Number(preset.rotationSpeed ?? state.rotationSpeed),
+          pulseSpeed: Number(preset.pulseSpeed ?? state.pulseSpeed),
+          audioReactivity: Number(preset.audioReactivity ?? state.audioReactivity),
+          gain: Number(preset.gain ?? state.gain)
+        });
+        syncUIFromState();
+        setPalette(Number(preset.styleIndex ?? state.styleIndex), false);
+        setShape(preset.shape || state.shape);
+        updateFeaturePills();
+        log('Preset loaded.', 'good');
+        toast('Preset loaded');
+      }
 
-    // Initial GAN training
-    trainGAN(10); // Start with a small number of epochs
-</script>
+      function loadPreset() {
+        try {
+          const raw = localStorage.getItem('neural3dshapeLabPreset');
+          if (raw) applyPreset(JSON.parse(raw));
+        } catch (error) {
+          log(`Could not load saved preset: ${error.message}`, 'warn');
+        }
+      }
+
+      function downloadPreset() {
+        const preset = savePreset(false);
+        const blob = new Blob([JSON.stringify(preset, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'neural-3d-shape-lab-preset.json';
+        a.click();
+        URL.revokeObjectURL(url);
+        log('Preset exported as JSON.', 'good');
+      }
+
+      function screenshot() {
+        const a = document.createElement('a');
+        a.href = renderer.domElement.toDataURL('image/png');
+        a.download = `neural-3d-shape-${Date.now()}.png`;
+        a.click();
+        log('Screenshot exported.', 'good');
+        toast('Screenshot saved');
+      }
+
+      function syncUIFromState() {
+        $('strengthSlider').value = state.neuralStrength;
+        $('noiseSlider').value = state.organicNoise;
+        $('rotationSlider').value = state.rotationSpeed;
+        $('pulseSlider').value = state.pulseSpeed;
+        $('audioSlider').value = state.audioReactivity;
+        $('gainSlider').value = state.gain;
+        $('wireToggle').checked = state.wireframe;
+        $('styleDriftToggle').checked = state.styleDrift;
+        $('trailToggle').checked = state.trails;
+        $('autoTrainToggle').checked = state.autoTrain;
+        els.strengthValue.textContent = state.neuralStrength.toFixed(2);
+        els.noiseValue.textContent = state.organicNoise.toFixed(2);
+        els.rotationValue.textContent = state.rotationSpeed.toFixed(2);
+        els.pulseValue.textContent = state.pulseSpeed.toFixed(2);
+        els.audioReactValue.textContent = state.audioReactivity.toFixed(2);
+        els.gainValue.textContent = state.gain.toFixed(3);
+        if (shaderMaterial) shaderMaterial.wireframe = false;
+        if (wireMesh) wireMesh.visible = state.wireframe;
+        updateFeaturePills();
+      }
+
+      function bindUI() {
+        const styleSelect = $('styleSelect');
+        styleSelect.innerHTML = palettes.map((p, i) => `<option value="${i}">${p.name}</option>`).join('');
+
+        $('trainButton').addEventListener('click', () => trainGAN(70, 48, true));
+        $('styleTransferButton').addEventListener('click', applyStyleTransfer);
+        $('audioToggle').addEventListener('click', toggleAudio);
+        $('pauseButton').addEventListener('click', () => {
+          state.paused = !state.paused;
+          $('pauseButton').textContent = state.paused ? 'Resume' : 'Pause';
+          log(state.paused ? 'Animation paused.' : 'Animation resumed.');
+          toast(state.paused ? 'Paused' : 'Resumed');
+        });
+        $('resetMeshButton').addEventListener('click', resetMesh);
+        $('screenshotButton').addEventListener('click', screenshot);
+        $('savePresetButton').addEventListener('click', () => savePreset(true));
+        $('downloadPresetButton').addEventListener('click', downloadPreset);
+
+        $('shapeSelect').addEventListener('change', (e) => setShape(e.target.value));
+        styleSelect.addEventListener('change', (e) => setPalette(Number(e.target.value), true));
+
+        const sliderBindings = [
+          ['strengthSlider', 'neuralStrength', els.strengthValue, 2],
+          ['noiseSlider', 'organicNoise', els.noiseValue, 2],
+          ['rotationSlider', 'rotationSpeed', els.rotationValue, 2],
+          ['pulseSlider', 'pulseSpeed', els.pulseValue, 2],
+          ['audioSlider', 'audioReactivity', els.audioReactValue, 2],
+          ['gainSlider', 'gain', els.gainValue, 3]
+        ];
+        sliderBindings.forEach(([id, key, label, digits]) => {
+          $(id).addEventListener('input', (e) => {
+            state[key] = Number(e.target.value);
+            label.textContent = state[key].toFixed(digits);
+          });
+        });
+
+        $('wireToggle').addEventListener('change', (e) => {
+          state.wireframe = e.target.checked;
+          if (wireMesh) wireMesh.visible = state.wireframe;
+          updateFeaturePills();
+        });
+        $('styleDriftToggle').addEventListener('change', (e) => { state.styleDrift = e.target.checked; updateFeaturePills(); });
+        $('trailToggle').addEventListener('change', (e) => {
+          state.trails = e.target.checked;
+          if (!state.trails) renderer.clear();
+          updateFeaturePills();
+        });
+        $('autoTrainToggle').addEventListener('change', (e) => { state.autoTrain = e.target.checked; updateFeaturePills(); });
+
+        $('presetFile').addEventListener('change', async (e) => {
+          const file = e.target.files && e.target.files[0];
+          if (!file) return;
+          try {
+            const text = await file.text();
+            applyPreset(JSON.parse(text));
+          } catch (error) {
+            log(`Preset import failed: ${error.message}`, 'bad');
+          } finally {
+            e.target.value = '';
+          }
+        });
+
+        window.addEventListener('resize', () => {
+          camera.aspect = window.innerWidth / window.innerHeight;
+          camera.updateProjectionMatrix();
+          renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        renderer.domElement.addEventListener('pointerdown', (e) => {
+          dragging = true;
+          lastPointer.x = e.clientX;
+          lastPointer.y = e.clientY;
+          renderer.domElement.setPointerCapture(e.pointerId);
+        });
+
+        renderer.domElement.addEventListener('pointermove', (e) => {
+          const nx = (e.clientX / window.innerWidth) * 2 - 1;
+          const ny = (e.clientY / window.innerHeight) * 2 - 1;
+          state.pointerX = nx;
+          state.pointerY = ny;
+          if (dragging) {
+            const dx = e.clientX - lastPointer.x;
+            const dy = e.clientY - lastPointer.y;
+            root.rotation.y += dx * 0.006;
+            root.rotation.x += dy * 0.006;
+            lastPointer.x = e.clientX;
+            lastPointer.y = e.clientY;
+          }
+        });
+
+        renderer.domElement.addEventListener('pointerup', (e) => {
+          dragging = false;
+          try { renderer.domElement.releasePointerCapture(e.pointerId); } catch (_) {}
+        });
+
+        renderer.domElement.addEventListener('wheel', (e) => {
+          e.preventDefault();
+          state.zoom = Math.max(3.0, Math.min(18, state.zoom + e.deltaY * 0.006));
+        }, { passive: false });
+
+        window.addEventListener('keydown', (e) => {
+          if (e.target && ['INPUT', 'SELECT', 'TEXTAREA'].includes(e.target.tagName)) return;
+          const key = e.key.toLowerCase();
+          if (key === 't') trainGAN(60, 48, true);
+          if (key === 's') applyStyleTransfer();
+          if (key === 'a') toggleAudio();
+          if (key === 'r') resetMesh();
+          if (e.code === 'Space') {
+            e.preventDefault();
+            $('pauseButton').click();
+          }
+        });
+      }
+
+      function boot() {
+        simplex = window.SimplexNoise ? new SimplexNoise('neural-shape-lab') : null;
+        initThree();
+        bindUI();
+        syncUIFromState();
+        loadPreset();
+        setPalette(state.styleIndex, false);
+        updateFeaturePills();
+        log('Scene initialized with stable reversible geometry deformation.', 'good');
+        log('Original features preserved: Train Network, Style Transfer, Toggle Audio, rotating torus-knot neural rendering.', 'good');
+        initTensorFlow();
+        requestAnimationFrame(animate);
+      }
+
+      boot();
+    })();
+  </script>
 </body>
 </html>
