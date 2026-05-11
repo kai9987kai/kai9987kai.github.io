@@ -1,0 +1,1512 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Neural Texture Lab — Advanced AI Texture Generator</title>
+
+  <style>
+    :root {
+      --bg: #050812;
+      --panel: rgba(8, 13, 27, 0.82);
+      --panel-strong: rgba(11, 18, 38, 0.94);
+      --border: rgba(123, 220, 255, 0.22);
+      --text: #e8f7ff;
+      --muted: #91a7bd;
+      --accent: #42e8ff;
+      --accent-2: #b86cff;
+      --good: #71ffa8;
+      --warn: #ffd166;
+      --danger: #ff6384;
+      --shadow: 0 20px 60px rgba(0, 0, 0, 0.45);
+    }
+
+    * { box-sizing: border-box; }
+
+    html, body {
+      margin: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: radial-gradient(circle at top, #0d1632 0%, #050812 42%, #02040a 100%);
+      color: var(--text);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    canvas { display: block; }
+
+    button, input, select {
+      font: inherit;
+    }
+
+    button {
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      color: var(--text);
+      background: linear-gradient(135deg, rgba(66, 232, 255, 0.16), rgba(184, 108, 255, 0.14));
+      border-radius: 12px;
+      padding: 9px 11px;
+      cursor: pointer;
+      transition: transform 0.18s ease, border-color 0.18s ease, background 0.18s ease;
+      user-select: none;
+    }
+
+    button:hover {
+      transform: translateY(-1px);
+      border-color: rgba(66, 232, 255, 0.55);
+      background: linear-gradient(135deg, rgba(66, 232, 255, 0.26), rgba(184, 108, 255, 0.22));
+    }
+
+    button:active { transform: translateY(0); }
+
+    button.primary {
+      background: linear-gradient(135deg, rgba(66, 232, 255, 0.38), rgba(184, 108, 255, 0.34));
+      box-shadow: 0 0 26px rgba(66, 232, 255, 0.13);
+    }
+
+    button.danger {
+      background: rgba(255, 99, 132, 0.15);
+      border-color: rgba(255, 99, 132, 0.35);
+    }
+
+    select, input[type="number"], input[type="text"] {
+      width: 100%;
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 10px;
+      color: var(--text);
+      background: rgba(255, 255, 255, 0.07);
+      padding: 8px 9px;
+      outline: none;
+    }
+
+    input[type="range"] {
+      width: 100%;
+      accent-color: var(--accent);
+    }
+
+    label {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      color: var(--muted);
+      font-size: 12px;
+      letter-spacing: 0.02em;
+    }
+
+    .loading {
+      position: fixed;
+      inset: 0;
+      z-index: 30;
+      display: grid;
+      place-items: center;
+      background: radial-gradient(circle at center, rgba(66, 232, 255, 0.12), rgba(4, 7, 15, 0.96));
+      backdrop-filter: blur(10px);
+    }
+
+    .loading-card {
+      width: min(430px, calc(100vw - 32px));
+      padding: 28px;
+      border: 1px solid var(--border);
+      border-radius: 24px;
+      background: var(--panel-strong);
+      box-shadow: var(--shadow);
+      text-align: center;
+    }
+
+    .spinner {
+      width: 58px;
+      height: 58px;
+      margin: 0 auto 16px;
+      border-radius: 50%;
+      border: 3px solid rgba(255, 255, 255, 0.12);
+      border-top-color: var(--accent);
+      animation: spin 1s linear infinite;
+    }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .hud {
+      position: fixed;
+      inset: 16px auto 16px 16px;
+      z-index: 10;
+      width: 360px;
+      max-width: calc(100vw - 32px);
+      display: grid;
+      grid-template-rows: auto minmax(0, 1fr);
+      gap: 12px;
+      pointer-events: none;
+    }
+
+    .top-card, .panel {
+      pointer-events: auto;
+      border: 1px solid var(--border);
+      background: var(--panel);
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(16px);
+      border-radius: 22px;
+    }
+
+    .top-card {
+      padding: 16px;
+      overflow: hidden;
+      position: relative;
+    }
+
+    .top-card::after {
+      content: "";
+      position: absolute;
+      inset: -70px -40px auto auto;
+      width: 150px;
+      height: 150px;
+      border-radius: 50%;
+      background: radial-gradient(circle, rgba(66, 232, 255, 0.2), transparent 62%);
+      pointer-events: none;
+    }
+
+    .title-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 18px;
+      line-height: 1.15;
+      letter-spacing: -0.03em;
+    }
+
+    .subtitle {
+      margin: 8px 0 0;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.5;
+    }
+
+    .badge {
+      white-space: nowrap;
+      border: 1px solid rgba(66, 232, 255, 0.35);
+      color: var(--accent);
+      border-radius: 999px;
+      padding: 5px 9px;
+      background: rgba(66, 232, 255, 0.08);
+      font-size: 11px;
+    }
+
+    .panel {
+      overflow: hidden;
+      min-height: 0;
+      display: grid;
+      grid-template-rows: auto minmax(0, 1fr) auto;
+    }
+
+    .tabs {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 6px;
+      padding: 10px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    }
+
+    .tab {
+      padding: 8px 6px;
+      border-radius: 12px;
+      font-size: 12px;
+      background: rgba(255, 255, 255, 0.05);
+    }
+
+    .tab.active {
+      color: #041018;
+      border-color: rgba(66, 232, 255, 0.9);
+      background: linear-gradient(135deg, var(--accent), #9effff);
+    }
+
+    .scroll {
+      overflow: auto;
+      padding: 12px;
+      scrollbar-color: rgba(66, 232, 255, 0.45) rgba(255, 255, 255, 0.04);
+    }
+
+    .section {
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 18px;
+      padding: 12px;
+      background: rgba(255, 255, 255, 0.045);
+      margin-bottom: 12px;
+    }
+
+    .section h2 {
+      margin: 0 0 10px;
+      font-size: 13px;
+      letter-spacing: 0.02em;
+      text-transform: uppercase;
+      color: #c7f7ff;
+    }
+
+    .grid-2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+
+    .control {
+      display: grid;
+      gap: 6px;
+      margin-bottom: 10px;
+    }
+
+    .value {
+      color: var(--text);
+      font-variant-numeric: tabular-nums;
+      font-size: 12px;
+    }
+
+    .button-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+
+    .texture-preview-wrap {
+      display: grid;
+      grid-template-columns: 96px 1fr;
+      gap: 10px;
+      align-items: center;
+    }
+
+    #texturePreview {
+      width: 96px;
+      height: 96px;
+      image-rendering: pixelated;
+      border-radius: 16px;
+      border: 1px solid rgba(66, 232, 255, 0.35);
+      background: #000;
+      box-shadow: inset 0 0 16px rgba(255, 255, 255, 0.08);
+    }
+
+    .stats {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+
+    .stat {
+      border: 1px solid rgba(255, 255, 255, 0.07);
+      border-radius: 14px;
+      padding: 9px;
+      background: rgba(0, 0, 0, 0.16);
+    }
+
+    .stat b {
+      display: block;
+      font-size: 15px;
+      color: var(--text);
+      font-variant-numeric: tabular-nums;
+    }
+
+    .stat span {
+      display: block;
+      margin-top: 2px;
+      font-size: 10px;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+
+    .footer-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      padding: 10px 12px;
+      border-top: 1px solid rgba(255, 255, 255, 0.08);
+      color: var(--muted);
+      font-size: 11px;
+    }
+
+    .right-hud {
+      position: fixed;
+      top: 16px;
+      right: 16px;
+      z-index: 10;
+      width: 250px;
+      max-width: calc(100vw - 32px);
+      pointer-events: none;
+    }
+
+    .mini-card {
+      pointer-events: auto;
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 12px;
+      background: var(--panel);
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(16px);
+    }
+
+    .log {
+      max-height: 146px;
+      overflow: auto;
+      display: grid;
+      gap: 6px;
+      font-size: 11px;
+      color: var(--muted);
+    }
+
+    .log-entry {
+      padding: 7px 8px;
+      border-radius: 10px;
+      background: rgba(255, 255, 255, 0.045);
+      border: 1px solid rgba(255, 255, 255, 0.06);
+    }
+
+    .legend {
+      position: fixed;
+      left: 50%;
+      bottom: 16px;
+      transform: translateX(-50%);
+      z-index: 8;
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      justify-content: center;
+      max-width: calc(100vw - 32px);
+      pointer-events: none;
+    }
+
+    .key {
+      pointer-events: none;
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 999px;
+      padding: 7px 10px;
+      background: rgba(4, 8, 18, 0.72);
+      color: var(--muted);
+      backdrop-filter: blur(12px);
+      font-size: 11px;
+      white-space: nowrap;
+    }
+
+    .hidden { display: none !important; }
+
+    .toggle-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 8px 0;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .toggle-row input { width: auto; }
+
+    @media (max-width: 840px) {
+      .hud {
+        width: calc(100vw - 32px);
+        max-height: 52vh;
+      }
+      .right-hud {
+        top: auto;
+        bottom: 66px;
+        right: 16px;
+        width: min(250px, calc(100vw - 32px));
+      }
+      .legend { display: none; }
+    }
+  </style>
+</head>
+<body>
+  <div class="loading" id="loading">
+    <div class="loading-card">
+      <div class="spinner"></div>
+      <h1>Booting Neural Texture Lab</h1>
+      <p class="subtitle" id="loadingText">Loading Three.js, TensorFlow.js, environment reflections, and neural texture model...</p>
+    </div>
+  </div>
+
+  <aside class="hud" id="hud">
+    <div class="top-card">
+      <div class="title-row">
+        <h1>Neural Texture Lab</h1>
+        <span class="badge" id="backendBadge">TF: loading</span>
+      </div>
+      <p class="subtitle">AI-generated material maps on reflective 3D geometry. Generate, mutate, animate, inspect, export, and save neural texture presets.</p>
+    </div>
+
+    <div class="panel">
+      <div class="tabs">
+        <button class="tab active" data-tab="create">Create</button>
+        <button class="tab" data-tab="material">Material</button>
+        <button class="tab" data-tab="scene">Scene</button>
+      </div>
+
+      <div class="scroll">
+        <div class="tab-page" id="tab-create">
+          <div class="section">
+            <h2>Neural Texture</h2>
+            <div class="texture-preview-wrap">
+              <canvas id="texturePreview" width="128" height="128"></canvas>
+              <div class="stats">
+                <div class="stat"><b id="statSeed">0</b><span>Seed</span></div>
+                <div class="stat"><b id="statEntropy">0.00</b><span>Entropy</span></div>
+                <div class="stat"><b id="statGen">0</b><span>Generation</span></div>
+                <div class="stat"><b id="statRes">128</b><span>Resolution</span></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="section">
+            <h2>Generator Controls</h2>
+            <div class="control">
+              <label>Seed <span class="value" id="seedValue">random</span></label>
+              <input id="seedInput" type="text" placeholder="Type seed or leave random" />
+            </div>
+            <div class="grid-2">
+              <div class="control">
+                <label>Resolution <span class="value" id="resolutionValue">128</span></label>
+                <select id="resolutionSelect">
+                  <option value="64">64 x 64</option>
+                  <option value="128" selected>128 x 128</option>
+                  <option value="256">256 x 256</option>
+                </select>
+              </div>
+              <div class="control">
+                <label>Style Mode <span class="value" id="styleValue">Nebula</span></label>
+                <select id="styleSelect">
+                  <option value="nebula" selected>Nebula</option>
+                  <option value="biomorph">Biomorph</option>
+                  <option value="crystal">Crystal</option>
+                  <option value="circuit">Circuit</option>
+                  <option value="lava">Lava</option>
+                  <option value="oceanic">Oceanic</option>
+                  <option value="monochrome">Monochrome</option>
+                </select>
+              </div>
+            </div>
+            <div class="control">
+              <label>Pattern Complexity <span class="value" id="complexityValue">0.70</span></label>
+              <input id="complexityRange" type="range" min="0" max="1" value="0.70" step="0.01" />
+            </div>
+            <div class="control">
+              <label>Mutation Strength <span class="value" id="mutationValue">0.22</span></label>
+              <input id="mutationRange" type="range" min="0" max="1" value="0.22" step="0.01" />
+            </div>
+            <div class="button-grid">
+              <button class="primary" id="generateBtn">Generate</button>
+              <button id="mutateBtn">Mutate</button>
+              <button id="evolveBtn">Auto Evolve: Off</button>
+              <button id="exportBtn">Export PNG</button>
+            </div>
+          </div>
+
+          <div class="section">
+            <h2>Memory</h2>
+            <div class="button-grid">
+              <button id="savePresetBtn">Save Preset</button>
+              <button id="loadPresetBtn">Load Preset</button>
+              <button id="randomizeAllBtn">Randomize All</button>
+              <button class="danger" id="resetBtn">Reset</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="tab-page hidden" id="tab-material">
+          <div class="section">
+            <h2>Geometry</h2>
+            <div class="control">
+              <label>Shape <span class="value" id="geometryValue">Random</span></label>
+              <select id="geometrySelect">
+                <option value="random" selected>Random</option>
+                <option value="box">Box</option>
+                <option value="sphere">Sphere</option>
+                <option value="cone">Cone</option>
+                <option value="cylinder">Cylinder</option>
+                <option value="torus">Torus</option>
+                <option value="torusKnot">Torus Knot</option>
+                <option value="dodecahedron">Dodecahedron</option>
+                <option value="icosahedron">Icosahedron</option>
+              </select>
+            </div>
+            <div class="button-grid">
+              <button id="newGeometryBtn">New Shape</button>
+              <button id="wireframeBtn">Wireframe: Off</button>
+            </div>
+          </div>
+
+          <div class="section">
+            <h2>PBR Material</h2>
+            <div class="control">
+              <label>Metalness <span class="value" id="metalnessValue">0.70</span></label>
+              <input id="metalnessRange" type="range" min="0" max="1" value="0.70" step="0.01" />
+            </div>
+            <div class="control">
+              <label>Roughness <span class="value" id="roughnessValue">0.22</span></label>
+              <input id="roughnessRange" type="range" min="0.02" max="1" value="0.22" step="0.01" />
+            </div>
+            <div class="control">
+              <label>Normal Strength <span class="value" id="normalValue">0.55</span></label>
+              <input id="normalRange" type="range" min="0" max="2" value="0.55" step="0.01" />
+            </div>
+            <div class="control">
+              <label>Displacement <span class="value" id="displaceValue">0.08</span></label>
+              <input id="displaceRange" type="range" min="0" max="0.35" value="0.08" step="0.01" />
+            </div>
+            <div class="control">
+              <label>Emissive Glow <span class="value" id="emissiveValue">0.08</span></label>
+              <input id="emissiveRange" type="range" min="0" max="1" value="0.08" step="0.01" />
+            </div>
+          </div>
+        </div>
+
+        <div class="tab-page hidden" id="tab-scene">
+          <div class="section">
+            <h2>Animation</h2>
+            <div class="control">
+              <label>Rotation Speed <span class="value" id="speedValue">1.00</span></label>
+              <input id="speedRange" type="range" min="0" max="4" value="1" step="0.01" />
+            </div>
+            <div class="control">
+              <label>Pulse Amount <span class="value" id="pulseValue">0.16</span></label>
+              <input id="pulseRange" type="range" min="0" max="0.6" value="0.16" step="0.01" />
+            </div>
+            <div class="control">
+              <label>Camera Zoom <span class="value" id="zoomValue">5.00</span></label>
+              <input id="zoomRange" type="range" min="2.2" max="9" value="5" step="0.01" />
+            </div>
+            <div class="toggle-row"><span>Auto Rotate Camera</span><input id="autoCameraCheck" type="checkbox" checked /></div>
+            <div class="toggle-row"><span>Show Particle Field</span><input id="particlesCheck" type="checkbox" checked /></div>
+            <div class="toggle-row"><span>Show HUD</span><input id="hudCheck" type="checkbox" checked /></div>
+          </div>
+
+          <div class="section">
+            <h2>Lighting</h2>
+            <div class="control">
+              <label>Light Intensity <span class="value" id="lightValue">1.10</span></label>
+              <input id="lightRange" type="range" min="0" max="3" value="1.10" step="0.01" />
+            </div>
+            <div class="control">
+              <label>Ambient Lift <span class="value" id="ambientValue">1.60</span></label>
+              <input id="ambientRange" type="range" min="0" max="4" value="1.60" step="0.01" />
+            </div>
+            <div class="button-grid">
+              <button id="themeBtn">Theme Shift</button>
+              <button id="snapshotBtn">Render Snapshot</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="footer-row">
+        <span id="statusText">Ready</span>
+        <span id="fpsText">FPS --</span>
+      </div>
+    </div>
+  </aside>
+
+  <aside class="right-hud">
+    <div class="mini-card">
+      <div class="title-row" style="margin-bottom: 10px;">
+        <h1 style="font-size: 14px;">Research Log</h1>
+        <span class="badge" id="qualityBadge">Live</span>
+      </div>
+      <div class="log" id="log"></div>
+    </div>
+  </aside>
+
+  <div class="legend">
+    <span class="key">Drag: orbit</span>
+    <span class="key">Wheel: zoom</span>
+    <span class="key">G: generate</span>
+    <span class="key">M: mutate</span>
+    <span class="key">E: evolve</span>
+    <span class="key">H: HUD</span>
+  </div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@3.9.0/dist/tf.min.js"></script>
+
+  <script>
+    (function () {
+      'use strict';
+
+      const $ = (id) => document.getElementById(id);
+
+      const ui = {
+        loading: $('loading'),
+        loadingText: $('loadingText'),
+        backendBadge: $('backendBadge'),
+        statusText: $('statusText'),
+        fpsText: $('fpsText'),
+        qualityBadge: $('qualityBadge'),
+        log: $('log'),
+        hud: $('hud'),
+        texturePreview: $('texturePreview'),
+        seedInput: $('seedInput'),
+        resolutionSelect: $('resolutionSelect'),
+        styleSelect: $('styleSelect'),
+        complexityRange: $('complexityRange'),
+        mutationRange: $('mutationRange'),
+        metalnessRange: $('metalnessRange'),
+        roughnessRange: $('roughnessRange'),
+        normalRange: $('normalRange'),
+        displaceRange: $('displaceRange'),
+        emissiveRange: $('emissiveRange'),
+        speedRange: $('speedRange'),
+        pulseRange: $('pulseRange'),
+        zoomRange: $('zoomRange'),
+        lightRange: $('lightRange'),
+        ambientRange: $('ambientRange'),
+        geometrySelect: $('geometrySelect'),
+        autoCameraCheck: $('autoCameraCheck'),
+        particlesCheck: $('particlesCheck'),
+        hudCheck: $('hudCheck'),
+        statSeed: $('statSeed'),
+        statEntropy: $('statEntropy'),
+        statGen: $('statGen'),
+        statRes: $('statRes'),
+        seedValue: $('seedValue'),
+        resolutionValue: $('resolutionValue'),
+        styleValue: $('styleValue'),
+        complexityValue: $('complexityValue'),
+        mutationValue: $('mutationValue'),
+        geometryValue: $('geometryValue'),
+        metalnessValue: $('metalnessValue'),
+        roughnessValue: $('roughnessValue'),
+        normalValue: $('normalValue'),
+        displaceValue: $('displaceValue'),
+        emissiveValue: $('emissiveValue'),
+        speedValue: $('speedValue'),
+        pulseValue: $('pulseValue'),
+        zoomValue: $('zoomValue'),
+        lightValue: $('lightValue'),
+        ambientValue: $('ambientValue')
+      };
+
+      const state = {
+        scene: null,
+        camera: null,
+        renderer: null,
+        mesh: null,
+        material: null,
+        environmentMap: null,
+        textureModel: null,
+        baseLatent: null,
+        lastTexture: null,
+        lastHeightTexture: null,
+        lastNormalTexture: null,
+        particles: null,
+        rayLight: null,
+        ambientLight: null,
+        generation: 0,
+        seed: Math.floor(Math.random() * 999999),
+        entropy: 0,
+        autoEvolve: false,
+        wireframe: false,
+        themeIndex: 0,
+        pointer: {
+          down: false,
+          x: 0,
+          y: 0,
+          yaw: 0.15,
+          pitch: 0.2,
+          distance: 5
+        },
+        timing: {
+          last: performance.now(),
+          fpsLast: performance.now(),
+          frames: 0,
+          fps: 0,
+          evolveAccum: 0
+        }
+      };
+
+      const stylePalettes = {
+        nebula: [[12, 16, 42], [66, 232, 255], [184, 108, 255], [255, 112, 192]],
+        biomorph: [[7, 31, 20], [113, 255, 168], [39, 188, 124], [246, 255, 188]],
+        crystal: [[8, 12, 24], [140, 240, 255], [224, 246, 255], [102, 118, 255]],
+        circuit: [[3, 12, 9], [47, 255, 137], [23, 95, 67], [226, 255, 122]],
+        lava: [[28, 4, 2], [255, 80, 30], [255, 178, 61], [95, 0, 0]],
+        oceanic: [[0, 12, 28], [18, 172, 255], [91, 255, 239], [3, 56, 112]],
+        monochrome: [[7, 9, 14], [230, 238, 255], [112, 125, 151], [46, 54, 72]]
+      };
+
+      function log(message) {
+        const entry = document.createElement('div');
+        entry.className = 'log-entry';
+        const now = new Date();
+        entry.textContent = now.toLocaleTimeString() + ' — ' + message;
+        ui.log.prepend(entry);
+        while (ui.log.children.length > 10) ui.log.removeChild(ui.log.lastChild);
+      }
+
+      function setStatus(message) {
+        ui.statusText.textContent = message;
+      }
+
+      function clamp(v, min, max) {
+        return Math.max(min, Math.min(max, v));
+      }
+
+      function lerp(a, b, t) {
+        return a + (b - a) * t;
+      }
+
+      function seededRandom(seed) {
+        let x = Math.sin(seed) * 10000;
+        return x - Math.floor(x);
+      }
+
+      function hashStringToSeed(text) {
+        if (!text || !text.trim()) return Math.floor(Math.random() * 9999999);
+        let h = 2166136261;
+        for (let i = 0; i < text.length; i++) {
+          h ^= text.charCodeAt(i);
+          h += (h << 1) + (h << 4) + (h << 7) + (h << 8) + (h << 24);
+        }
+        return Math.abs(h >>> 0);
+      }
+
+      function createTextureModel() {
+        const model = tf.sequential();
+        model.add(tf.layers.dense({ inputShape: [100], units: 256, activation: 'relu' }));
+        model.add(tf.layers.dense({ units: 512, activation: 'relu' }));
+        model.add(tf.layers.dense({ units: 1024, activation: 'relu' }));
+        model.add(tf.layers.dense({ units: 64 * 64 * 3, activation: 'sigmoid' }));
+        model.add(tf.layers.reshape({ targetShape: [64, 64, 3] }));
+        return model;
+      }
+
+      function makeLatent(seed, mutationStrength) {
+        const values = [];
+        for (let i = 0; i < 100; i++) {
+          const a = seededRandom(seed + i * 13.13) * 2 - 1;
+          const b = seededRandom(seed * 0.37 + i * 91.7) * 2 - 1;
+          const wobble = Math.sin(seed * 0.001 + i * 0.33) * mutationStrength;
+          values.push((a * 0.72 + b * 0.28 + wobble) * 1.6);
+        }
+        return tf.tensor2d([values], [1, 100]);
+      }
+
+      async function neuralBasePixels(seed) {
+        const mutationStrength = Number(ui.mutationRange.value);
+        const latent = makeLatent(seed, mutationStrength);
+        const output = state.textureModel.predict(latent);
+        const data = await output.data();
+        latent.dispose();
+        output.dispose();
+        return data;
+      }
+
+      function paletteColor(style, t) {
+        const palette = stylePalettes[style] || stylePalettes.nebula;
+        const scaled = clamp(t, 0, 0.999) * (palette.length - 1);
+        const idx = Math.floor(scaled);
+        const local = scaled - idx;
+        const a = palette[idx];
+        const b = palette[Math.min(idx + 1, palette.length - 1)];
+        return [
+          lerp(a[0], b[0], local),
+          lerp(a[1], b[1], local),
+          lerp(a[2], b[2], local)
+        ];
+      }
+
+      function patternFunction(x, y, seed, complexity, style, neuralR, neuralG, neuralB) {
+        const sx = x - 0.5;
+        const sy = y - 0.5;
+        const r = Math.sqrt(sx * sx + sy * sy);
+        const angle = Math.atan2(sy, sx);
+        const seedA = seed * 0.00091;
+        const seedB = seed * 0.00037;
+        const freq = 4 + complexity * 22;
+
+        let v = 0;
+        v += Math.sin((sx * freq + Math.cos(angle * 3 + seedA) * 1.7 + seedA) * Math.PI);
+        v += Math.cos((sy * (freq * 0.76) + Math.sin(angle * 2 - seedB) * 1.4) * Math.PI);
+        v += Math.sin((r * (freq * 2.6) - seedB * 6 + neuralR * 4) * Math.PI);
+        v += Math.cos((angle * (2 + complexity * 8) + neuralG * 5 + seedA * 3));
+
+        if (style === 'crystal') {
+          v += Math.abs(Math.sin((sx + sy) * freq * 2.2 + seedA * 9)) * 2;
+          v += Math.abs(Math.cos((sx - sy) * freq * 1.7 - seedB * 5));
+        } else if (style === 'circuit') {
+          const gx = Math.abs((x * (8 + complexity * 28)) % 1 - 0.5);
+          const gy = Math.abs((y * (8 + complexity * 28)) % 1 - 0.5);
+          const line = gx < 0.035 || gy < 0.035 ? 2.2 : -0.4;
+          v += line + Math.sin((gx + gy) * 34 + seedA);
+        } else if (style === 'biomorph') {
+          v += Math.sin((r + Math.sin(angle * 5 + seedA) * 0.07) * freq * 4) * 1.7;
+          v += Math.cos(angle * 7 + r * 19 + neuralB * 8);
+        } else if (style === 'lava') {
+          v += Math.pow(Math.max(0, 1 - r * 1.6), 2) * 3;
+          v += Math.sin((sx * sy * 80) + seedA * 18) * 1.2;
+        } else if (style === 'oceanic') {
+          v += Math.sin((sy * freq * 3 + Math.sin(sx * 14 + seedA) * 1.7)) * 1.5;
+        } else if (style === 'monochrome') {
+          v += Math.sin((sx + sy + neuralR) * freq * 2) * 0.8;
+        }
+
+        return (Math.sin(v + neuralR * 3.1 + neuralG * 1.4) + 1) * 0.5;
+      }
+
+      async function generateTexture(options) {
+        options = options || {};
+        const resolution = Number(ui.resolutionSelect.value);
+        const style = ui.styleSelect.value;
+        const complexity = Number(ui.complexityRange.value);
+        const seed = options.seed != null ? options.seed : hashStringToSeed(ui.seedInput.value);
+        state.seed = seed;
+        state.generation += 1;
+
+        setStatus('Generating neural texture...');
+
+        const neuralPixels = await neuralBasePixels(seed);
+        const sourceSize = 64;
+        const canvas = document.createElement('canvas');
+        canvas.width = resolution;
+        canvas.height = resolution;
+        const ctx = canvas.getContext('2d', { willReadFrequently: true });
+        const imageData = ctx.createImageData(resolution, resolution);
+        const heightData = new Float32Array(resolution * resolution);
+
+        let entropySum = 0;
+        let entropySq = 0;
+
+        for (let y = 0; y < resolution; y++) {
+          for (let x = 0; x < resolution; x++) {
+            const u = x / (resolution - 1 || 1);
+            const v = y / (resolution - 1 || 1);
+            const sx = Math.floor(u * (sourceSize - 1));
+            const sy = Math.floor(v * (sourceSize - 1));
+            const si = (sy * sourceSize + sx) * 3;
+            const nr = neuralPixels[si];
+            const ng = neuralPixels[si + 1];
+            const nb = neuralPixels[si + 2];
+            const pattern = patternFunction(u, v, seed, complexity, style, nr, ng, nb);
+            const neuralMix = clamp((nr * 0.34 + ng * 0.33 + nb * 0.33), 0, 1);
+            const t = clamp(pattern * 0.68 + neuralMix * 0.32, 0, 1);
+            const color = paletteColor(style, t);
+            const detail = Math.sin((nr - nb) * 18 + pattern * 8) * 0.5 + 0.5;
+            const contrast = 0.78 + complexity * 0.42;
+            const idx = (y * resolution + x) * 4;
+            const shade = 0.72 + detail * 0.38;
+
+            imageData.data[idx] = clamp(((color[0] * shade) - 128) * contrast + 128, 0, 255);
+            imageData.data[idx + 1] = clamp(((color[1] * shade) - 128) * contrast + 128, 0, 255);
+            imageData.data[idx + 2] = clamp(((color[2] * shade) - 128) * contrast + 128, 0, 255);
+            imageData.data[idx + 3] = 255;
+
+            heightData[y * resolution + x] = t;
+            entropySum += t;
+            entropySq += t * t;
+          }
+        }
+
+        ctx.putImageData(imageData, 0, 0);
+
+        const mean = entropySum / (resolution * resolution);
+        const variance = entropySq / (resolution * resolution) - mean * mean;
+        state.entropy = Math.sqrt(Math.max(variance, 0));
+
+        const texture = new THREE.CanvasTexture(canvas);
+        texture.wrapS = THREE.RepeatWrapping;
+        texture.wrapT = THREE.RepeatWrapping;
+        texture.anisotropy = Math.min(8, state.renderer.capabilities.getMaxAnisotropy ? state.renderer.capabilities.getMaxAnisotropy() : 1);
+        texture.needsUpdate = true;
+
+        const normalCanvas = buildNormalMap(heightData, resolution);
+        const normalTexture = new THREE.CanvasTexture(normalCanvas);
+        normalTexture.wrapS = THREE.RepeatWrapping;
+        normalTexture.wrapT = THREE.RepeatWrapping;
+        normalTexture.needsUpdate = true;
+
+        applyTexture(texture, normalTexture, canvas);
+        updatePreview(canvas);
+        updateStats();
+        setStatus('Generated texture #' + state.generation);
+        log('Generated ' + resolution + 'px ' + style + ' neural texture, entropy ' + state.entropy.toFixed(3));
+      }
+
+      function buildNormalMap(heightData, size) {
+        const canvas = document.createElement('canvas');
+        canvas.width = size;
+        canvas.height = size;
+        const ctx = canvas.getContext('2d');
+        const imageData = ctx.createImageData(size, size);
+        const strength = 5;
+
+        function h(x, y) {
+          x = (x + size) % size;
+          y = (y + size) % size;
+          return heightData[y * size + x];
+        }
+
+        for (let y = 0; y < size; y++) {
+          for (let x = 0; x < size; x++) {
+            const dx = (h(x + 1, y) - h(x - 1, y)) * strength;
+            const dy = (h(x, y + 1) - h(x, y - 1)) * strength;
+            let nx = -dx;
+            let ny = -dy;
+            let nz = 1;
+            const len = Math.sqrt(nx * nx + ny * ny + nz * nz) || 1;
+            nx /= len; ny /= len; nz /= len;
+            const i = (y * size + x) * 4;
+            imageData.data[i] = (nx * 0.5 + 0.5) * 255;
+            imageData.data[i + 1] = (ny * 0.5 + 0.5) * 255;
+            imageData.data[i + 2] = (nz * 0.5 + 0.5) * 255;
+            imageData.data[i + 3] = 255;
+          }
+        }
+        ctx.putImageData(imageData, 0, 0);
+        return canvas;
+      }
+
+      function applyTexture(texture, normalTexture, sourceCanvas) {
+        if (state.lastTexture) state.lastTexture.dispose();
+        if (state.lastNormalTexture) state.lastNormalTexture.dispose();
+        state.lastTexture = texture;
+        state.lastNormalTexture = normalTexture;
+
+        state.material.map = texture;
+        state.material.normalMap = normalTexture;
+        state.material.displacementMap = texture;
+        state.material.emissiveMap = texture;
+        state.material.needsUpdate = true;
+        state.lastCanvas = sourceCanvas;
+      }
+
+      function updatePreview(canvas) {
+        const ctx = ui.texturePreview.getContext('2d');
+        ctx.clearRect(0, 0, ui.texturePreview.width, ui.texturePreview.height);
+        ctx.drawImage(canvas, 0, 0, ui.texturePreview.width, ui.texturePreview.height);
+      }
+
+      function updateStats() {
+        ui.statSeed.textContent = String(state.seed).slice(0, 8);
+        ui.statEntropy.textContent = state.entropy.toFixed(3);
+        ui.statGen.textContent = state.generation;
+        ui.statRes.textContent = ui.resolutionSelect.value;
+        ui.seedValue.textContent = ui.seedInput.value.trim() || 'random';
+        ui.resolutionValue.textContent = ui.resolutionSelect.value;
+        ui.styleValue.textContent = ui.styleSelect.options[ui.styleSelect.selectedIndex].text;
+        ui.complexityValue.textContent = Number(ui.complexityRange.value).toFixed(2);
+        ui.mutationValue.textContent = Number(ui.mutationRange.value).toFixed(2);
+        ui.geometryValue.textContent = ui.geometrySelect.options[ui.geometrySelect.selectedIndex].text;
+        ui.metalnessValue.textContent = Number(ui.metalnessRange.value).toFixed(2);
+        ui.roughnessValue.textContent = Number(ui.roughnessRange.value).toFixed(2);
+        ui.normalValue.textContent = Number(ui.normalRange.value).toFixed(2);
+        ui.displaceValue.textContent = Number(ui.displaceRange.value).toFixed(2);
+        ui.emissiveValue.textContent = Number(ui.emissiveRange.value).toFixed(2);
+        ui.speedValue.textContent = Number(ui.speedRange.value).toFixed(2);
+        ui.pulseValue.textContent = Number(ui.pulseRange.value).toFixed(2);
+        ui.zoomValue.textContent = Number(ui.zoomRange.value).toFixed(2);
+        ui.lightValue.textContent = Number(ui.lightRange.value).toFixed(2);
+        ui.ambientValue.textContent = Number(ui.ambientRange.value).toFixed(2);
+      }
+
+      function createGeometry(type) {
+        const selected = type === 'random' ? randomGeometryName() : type;
+        switch (selected) {
+          case 'box': return new THREE.BoxGeometry(2.05, 2.05, 2.05, 64, 64, 64);
+          case 'sphere': return new THREE.SphereGeometry(1.45, 96, 64);
+          case 'cone': return new THREE.ConeGeometry(1.35, 2.5, 96, 48);
+          case 'cylinder': return new THREE.CylinderGeometry(1.1, 1.1, 2.35, 96, 48);
+          case 'torus': return new THREE.TorusGeometry(1.05, 0.42, 64, 160);
+          case 'torusKnot': return new THREE.TorusKnotGeometry(0.92, 0.32, 220, 32);
+          case 'dodecahedron': return new THREE.DodecahedronGeometry(1.48, 4);
+          case 'icosahedron': return new THREE.IcosahedronGeometry(1.48, 5);
+          default: return new THREE.SphereGeometry(1.45, 96, 64);
+        }
+      }
+
+      function randomGeometryName() {
+        const names = ['box', 'sphere', 'cone', 'cylinder', 'torus', 'torusKnot', 'dodecahedron', 'icosahedron'];
+        return names[Math.floor(Math.random() * names.length)];
+      }
+
+      function changeGeometry(type) {
+        if (!state.mesh) return;
+        const old = state.mesh.geometry;
+        state.mesh.geometry = createGeometry(type || ui.geometrySelect.value);
+        old.dispose();
+        updateStats();
+        log('Geometry changed to ' + ui.geometrySelect.options[ui.geometrySelect.selectedIndex].text);
+      }
+
+      function updateMaterial() {
+        if (!state.material) return;
+        state.material.metalness = Number(ui.metalnessRange.value);
+        state.material.roughness = Number(ui.roughnessRange.value);
+        const normal = Number(ui.normalRange.value);
+        state.material.normalScale.set(normal, normal);
+        state.material.displacementScale = Number(ui.displaceRange.value);
+        const glow = Number(ui.emissiveRange.value);
+        state.material.emissive = new THREE.Color(glow * 0.35, glow * 0.55, glow * 0.75);
+        state.material.wireframe = state.wireframe;
+        updateStats();
+      }
+
+      function buildParticleField() {
+        const count = 900;
+        const geometry = new THREE.BufferGeometry();
+        const positions = new Float32Array(count * 3);
+        const colors = new Float32Array(count * 3);
+        for (let i = 0; i < count; i++) {
+          const radius = 7 + Math.random() * 9;
+          const theta = Math.random() * Math.PI * 2;
+          const phi = Math.acos(Math.random() * 2 - 1);
+          positions[i * 3] = Math.sin(phi) * Math.cos(theta) * radius;
+          positions[i * 3 + 1] = Math.cos(phi) * radius;
+          positions[i * 3 + 2] = Math.sin(phi) * Math.sin(theta) * radius;
+          colors[i * 3] = 0.25 + Math.random() * 0.45;
+          colors[i * 3 + 1] = 0.75 + Math.random() * 0.25;
+          colors[i * 3 + 2] = 0.9 + Math.random() * 0.1;
+        }
+        geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+        geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+        const material = new THREE.PointsMaterial({ size: 0.025, vertexColors: true, transparent: true, opacity: 0.66, depthWrite: false });
+        state.particles = new THREE.Points(geometry, material);
+        state.scene.add(state.particles);
+      }
+
+      function createEnvironmentFallback() {
+        const canvas = document.createElement('canvas');
+        canvas.width = 256;
+        canvas.height = 256;
+        const ctx = canvas.getContext('2d');
+        const g = ctx.createLinearGradient(0, 0, 256, 256);
+        g.addColorStop(0, '#0a1740');
+        g.addColorStop(0.5, '#1a2f64');
+        g.addColorStop(1, '#040812');
+        ctx.fillStyle = g;
+        ctx.fillRect(0, 0, 256, 256);
+        for (let i = 0; i < 120; i++) {
+          ctx.fillStyle = 'rgba(120, 230, 255, ' + (0.15 + Math.random() * 0.65) + ')';
+          ctx.beginPath();
+          ctx.arc(Math.random() * 256, Math.random() * 256, Math.random() * 1.7, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        const texture = new THREE.CanvasTexture(canvas);
+        texture.mapping = THREE.EquirectangularReflectionMapping || texture.mapping;
+        return texture;
+      }
+
+      function initScene() {
+        state.scene = new THREE.Scene();
+        state.camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        state.renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+        state.renderer.setSize(window.innerWidth, window.innerHeight);
+        state.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+        state.renderer.outputEncoding = THREE.sRGBEncoding;
+        state.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+        state.renderer.toneMappingExposure = 1.06;
+        document.body.appendChild(state.renderer.domElement);
+
+        state.environmentMap = createEnvironmentFallback();
+        state.scene.background = state.environmentMap;
+        state.scene.environment = state.environmentMap;
+
+        const cubeLoader = new THREE.CubeTextureLoader();
+        cubeLoader.load([
+          'https://threejs.org/examples/textures/cube/Bridge2/posx.jpg',
+          'https://threejs.org/examples/textures/cube/Bridge2/negx.jpg',
+          'https://threejs.org/examples/textures/cube/Bridge2/posy.jpg',
+          'https://threejs.org/examples/textures/cube/Bridge2/negy.jpg',
+          'https://threejs.org/examples/textures/cube/Bridge2/posz.jpg',
+          'https://threejs.org/examples/textures/cube/Bridge2/negz.jpg'
+        ], function (env) {
+          state.environmentMap = env;
+          state.scene.background = env;
+          state.scene.environment = env;
+          if (state.material) {
+            state.material.envMap = env;
+            state.material.needsUpdate = true;
+          }
+          log('Environment reflection map loaded');
+        }, undefined, function () {
+          log('Environment map failed; using generated fallback sky');
+        });
+
+        state.ambientLight = new THREE.AmbientLight(0x8fb8ff, Number(ui.ambientRange.value));
+        state.scene.add(state.ambientLight);
+
+        state.rayLight = new THREE.DirectionalLight(0xffffff, Number(ui.lightRange.value));
+        state.rayLight.position.set(5, 10, 7.5);
+        state.scene.add(state.rayLight);
+
+        const fill = new THREE.PointLight(0x42e8ff, 0.85, 10);
+        fill.position.set(-3, -2, 4);
+        state.scene.add(fill);
+
+        state.material = new THREE.MeshStandardMaterial({
+          color: new THREE.Color(Math.random(), Math.random(), Math.random()),
+          metalness: Number(ui.metalnessRange.value),
+          roughness: Number(ui.roughnessRange.value),
+          envMap: state.environmentMap,
+          normalScale: new THREE.Vector2(Number(ui.normalRange.value), Number(ui.normalRange.value)),
+          displacementScale: Number(ui.displaceRange.value),
+          emissive: new THREE.Color(0x06131a),
+          emissiveIntensity: 0.55
+        });
+
+        state.mesh = new THREE.Mesh(createGeometry(ui.geometrySelect.value), state.material);
+        state.mesh.castShadow = true;
+        state.mesh.receiveShadow = true;
+        state.scene.add(state.mesh);
+
+        buildParticleField();
+        updateCamera();
+      }
+
+      function updateCamera() {
+        const p = state.pointer;
+        p.distance = Number(ui.zoomRange.value);
+        const cp = Math.cos(p.pitch);
+        state.camera.position.x = Math.sin(p.yaw) * cp * p.distance;
+        state.camera.position.y = Math.sin(p.pitch) * p.distance;
+        state.camera.position.z = Math.cos(p.yaw) * cp * p.distance;
+        state.camera.lookAt(0, 0, 0);
+      }
+
+      function animate(now) {
+        requestAnimationFrame(animate);
+        const dt = Math.min(0.05, (now - state.timing.last) / 1000 || 0.016);
+        state.timing.last = now;
+        state.timing.frames += 1;
+
+        if (now - state.timing.fpsLast > 500) {
+          state.timing.fps = Math.round(state.timing.frames * 1000 / (now - state.timing.fpsLast));
+          state.timing.frames = 0;
+          state.timing.fpsLast = now;
+          ui.fpsText.textContent = 'FPS ' + state.timing.fps;
+        }
+
+        const speed = Number(ui.speedRange.value);
+        const pulse = Number(ui.pulseRange.value);
+        const t = now * 0.001;
+
+        if (state.mesh) {
+          state.mesh.rotation.x += dt * 0.38 * speed;
+          state.mesh.rotation.y += dt * 0.72 * speed;
+          const s = 1 + Math.sin(t * 2.4) * pulse * 0.08;
+          state.mesh.scale.setScalar(s);
+          state.material.displacementScale = Number(ui.displaceRange.value) * (1 + Math.sin(t * 1.7) * pulse);
+        }
+
+        if (ui.autoCameraCheck.checked && !state.pointer.down) {
+          state.pointer.yaw += dt * 0.16;
+        }
+
+        if (state.particles) {
+          state.particles.visible = ui.particlesCheck.checked;
+          state.particles.rotation.y -= dt * 0.025;
+          state.particles.rotation.x += dt * 0.008;
+        }
+
+        state.rayLight.intensity = Number(ui.lightRange.value);
+        state.ambientLight.intensity = Number(ui.ambientRange.value);
+        state.rayLight.position.x = Math.sin(t * 0.9) * 6;
+        state.rayLight.position.z = Math.cos(t * 0.9) * 6;
+
+        if (state.autoEvolve) {
+          state.timing.evolveAccum += dt;
+          if (state.timing.evolveAccum > 2.35) {
+            state.timing.evolveAccum = 0;
+            mutateTexture();
+          }
+        }
+
+        updateCamera();
+        state.renderer.render(state.scene, state.camera);
+      }
+
+      function mutateTexture() {
+        const strength = Number(ui.mutationRange.value);
+        const delta = Math.floor((Math.random() * 100000 + 777) * (0.1 + strength));
+        const nextSeed = (state.seed + delta) % 99999999;
+        ui.seedInput.value = String(nextSeed);
+        generateTexture({ seed: nextSeed });
+      }
+
+      function exportTexture() {
+        if (!state.lastCanvas) return;
+        const a = document.createElement('a');
+        a.href = state.lastCanvas.toDataURL('image/png');
+        a.download = 'neural-texture-' + state.seed + '-gen-' + state.generation + '.png';
+        a.click();
+        log('Exported neural texture PNG');
+      }
+
+      function snapshot() {
+        const a = document.createElement('a');
+        a.href = state.renderer.domElement.toDataURL('image/png');
+        a.download = 'neural-texture-render-' + state.seed + '.png';
+        a.click();
+        log('Exported render snapshot');
+      }
+
+      function savePreset() {
+        const preset = collectPreset();
+        localStorage.setItem('neuralTextureLabPreset', JSON.stringify(preset));
+        log('Saved preset to localStorage');
+        setStatus('Preset saved');
+      }
+
+      function loadPreset() {
+        const raw = localStorage.getItem('neuralTextureLabPreset');
+        if (!raw) {
+          log('No saved preset found');
+          setStatus('No saved preset');
+          return;
+        }
+        try {
+          const preset = JSON.parse(raw);
+          applyPreset(preset);
+          generateTexture({ seed: preset.seed || state.seed });
+          log('Loaded saved preset');
+        } catch (err) {
+          log('Preset load failed: ' + err.message);
+        }
+      }
+
+      function collectPreset() {
+        return {
+          seed: state.seed,
+          seedInput: ui.seedInput.value,
+          resolution: ui.resolutionSelect.value,
+          style: ui.styleSelect.value,
+          complexity: ui.complexityRange.value,
+          mutation: ui.mutationRange.value,
+          geometry: ui.geometrySelect.value,
+          metalness: ui.metalnessRange.value,
+          roughness: ui.roughnessRange.value,
+          normal: ui.normalRange.value,
+          displace: ui.displaceRange.value,
+          emissive: ui.emissiveRange.value,
+          speed: ui.speedRange.value,
+          pulse: ui.pulseRange.value,
+          zoom: ui.zoomRange.value,
+          light: ui.lightRange.value,
+          ambient: ui.ambientRange.value,
+          autoCamera: ui.autoCameraCheck.checked,
+          particles: ui.particlesCheck.checked,
+          wireframe: state.wireframe
+        };
+      }
+
+      function applyPreset(preset) {
+        ui.seedInput.value = preset.seedInput || String(preset.seed || '');
+        ui.resolutionSelect.value = preset.resolution || '128';
+        ui.styleSelect.value = preset.style || 'nebula';
+        ui.complexityRange.value = preset.complexity || '0.70';
+        ui.mutationRange.value = preset.mutation || '0.22';
+        ui.geometrySelect.value = preset.geometry || 'random';
+        ui.metalnessRange.value = preset.metalness || '0.70';
+        ui.roughnessRange.value = preset.roughness || '0.22';
+        ui.normalRange.value = preset.normal || '0.55';
+        ui.displaceRange.value = preset.displace || '0.08';
+        ui.emissiveRange.value = preset.emissive || '0.08';
+        ui.speedRange.value = preset.speed || '1';
+        ui.pulseRange.value = preset.pulse || '0.16';
+        ui.zoomRange.value = preset.zoom || '5';
+        ui.lightRange.value = preset.light || '1.10';
+        ui.ambientRange.value = preset.ambient || '1.60';
+        ui.autoCameraCheck.checked = preset.autoCamera !== false;
+        ui.particlesCheck.checked = preset.particles !== false;
+        state.wireframe = !!preset.wireframe;
+        updateMaterial();
+        changeGeometry(ui.geometrySelect.value);
+        updateStats();
+      }
+
+      function randomizeAll() {
+        ui.seedInput.value = String(Math.floor(Math.random() * 99999999));
+        ui.styleSelect.value = Object.keys(stylePalettes)[Math.floor(Math.random() * Object.keys(stylePalettes).length)];
+        ui.complexityRange.value = (0.2 + Math.random() * 0.8).toFixed(2);
+        ui.mutationRange.value = (0.08 + Math.random() * 0.72).toFixed(2);
+        ui.geometrySelect.value = 'random';
+        ui.metalnessRange.value = Math.random().toFixed(2);
+        ui.roughnessRange.value = (0.05 + Math.random() * 0.82).toFixed(2);
+        ui.normalRange.value = (0.2 + Math.random() * 1.4).toFixed(2);
+        ui.displaceRange.value = (Math.random() * 0.22).toFixed(2);
+        ui.emissiveRange.value = (Math.random() * 0.55).toFixed(2);
+        updateMaterial();
+        changeGeometry('random');
+        generateTexture();
+        log('Randomized full neural lab state');
+      }
+
+      function resetLab() {
+        ui.seedInput.value = '';
+        ui.resolutionSelect.value = '128';
+        ui.styleSelect.value = 'nebula';
+        ui.complexityRange.value = '0.70';
+        ui.mutationRange.value = '0.22';
+        ui.geometrySelect.value = 'random';
+        ui.metalnessRange.value = '0.70';
+        ui.roughnessRange.value = '0.22';
+        ui.normalRange.value = '0.55';
+        ui.displaceRange.value = '0.08';
+        ui.emissiveRange.value = '0.08';
+        ui.speedRange.value = '1';
+        ui.pulseRange.value = '0.16';
+        ui.zoomRange.value = '5';
+        ui.lightRange.value = '1.10';
+        ui.ambientRange.value = '1.60';
+        state.autoEvolve = false;
+        state.wireframe = false;
+        $('evolveBtn').textContent = 'Auto Evolve: Off';
+        $('wireframeBtn').textContent = 'Wireframe: Off';
+        updateMaterial();
+        changeGeometry('random');
+        generateTexture();
+        log('Reset lab to advanced defaults');
+      }
+
+      function themeShift() {
+        const themes = [
+          ['#050812', '#42e8ff', '#b86cff'],
+          ['#080b06', '#71ffa8', '#ffd166'],
+          ['#10040b', '#ff6384', '#ffb86c'],
+          ['#041018', '#5bffea', '#6897ff']
+        ];
+        state.themeIndex = (state.themeIndex + 1) % themes.length;
+        const t = themes[state.themeIndex];
+        document.documentElement.style.setProperty('--bg', t[0]);
+        document.documentElement.style.setProperty('--accent', t[1]);
+        document.documentElement.style.setProperty('--accent-2', t[2]);
+        log('Interface theme shifted');
+      }
+
+      function bindControls() {
+        document.querySelectorAll('.tab').forEach((btn) => {
+          btn.addEventListener('click', () => {
+            document.querySelectorAll('.tab').forEach((b) => b.classList.remove('active'));
+            btn.classList.add('active');
+            document.querySelectorAll('.tab-page').forEach((page) => page.classList.add('hidden'));
+            $('tab-' + btn.dataset.tab).classList.remove('hidden');
+          });
+        });
+
+        $('generateBtn').addEventListener('click', () => generateTexture());
+        $('mutateBtn').addEventListener('click', mutateTexture);
+        $('evolveBtn').addEventListener('click', () => {
+          state.autoEvolve = !state.autoEvolve;
+          $('evolveBtn').textContent = 'Auto Evolve: ' + (state.autoEvolve ? 'On' : 'Off');
+          log('Auto evolve ' + (state.autoEvolve ? 'enabled' : 'disabled'));
+        });
+        $('exportBtn').addEventListener('click', exportTexture);
+        $('savePresetBtn').addEventListener('click', savePreset);
+        $('loadPresetBtn').addEventListener('click', loadPreset);
+        $('randomizeAllBtn').addEventListener('click', randomizeAll);
+        $('resetBtn').addEventListener('click', resetLab);
+        $('newGeometryBtn').addEventListener('click', () => changeGeometry(ui.geometrySelect.value));
+        $('wireframeBtn').addEventListener('click', () => {
+          state.wireframe = !state.wireframe;
+          $('wireframeBtn').textContent = 'Wireframe: ' + (state.wireframe ? 'On' : 'Off');
+          updateMaterial();
+        });
+        $('themeBtn').addEventListener('click', themeShift);
+        $('snapshotBtn').addEventListener('click', snapshot);
+
+        [ui.complexityRange, ui.mutationRange, ui.resolutionSelect, ui.styleSelect, ui.seedInput].forEach((el) => {
+          el.addEventListener('input', updateStats);
+        });
+
+        [ui.metalnessRange, ui.roughnessRange, ui.normalRange, ui.displaceRange, ui.emissiveRange].forEach((el) => {
+          el.addEventListener('input', updateMaterial);
+        });
+
+        [ui.speedRange, ui.pulseRange, ui.zoomRange, ui.lightRange, ui.ambientRange].forEach((el) => {
+          el.addEventListener('input', updateStats);
+        });
+
+        ui.geometrySelect.addEventListener('change', () => changeGeometry(ui.geometrySelect.value));
+
+        ui.hudCheck.addEventListener('change', () => {
+          ui.hud.style.opacity = ui.hudCheck.checked ? '1' : '0.12';
+        });
+
+        window.addEventListener('resize', () => {
+          state.camera.aspect = window.innerWidth / window.innerHeight;
+          state.camera.updateProjectionMatrix();
+          state.renderer.setSize(window.innerWidth, window.innerHeight);
+          state.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+        });
+
+        state.renderer.domElement.addEventListener('pointerdown', (event) => {
+          state.pointer.down = true;
+          state.pointer.x = event.clientX;
+          state.pointer.y = event.clientY;
+          state.renderer.domElement.setPointerCapture(event.pointerId);
+        });
+
+        state.renderer.domElement.addEventListener('pointermove', (event) => {
+          if (!state.pointer.down) return;
+          const dx = event.clientX - state.pointer.x;
+          const dy = event.clientY - state.pointer.y;
+          state.pointer.x = event.clientX;
+          state.pointer.y = event.clientY;
+          state.pointer.yaw -= dx * 0.006;
+          state.pointer.pitch = clamp(state.pointer.pitch + dy * 0.005, -1.25, 1.25);
+        });
+
+        window.addEventListener('pointerup', () => {
+          state.pointer.down = false;
+        });
+
+        state.renderer.domElement.addEventListener('wheel', (event) => {
+          event.preventDefault();
+          const next = clamp(Number(ui.zoomRange.value) + event.deltaY * 0.004, Number(ui.zoomRange.min), Number(ui.zoomRange.max));
+          ui.zoomRange.value = next.toFixed(2);
+          updateStats();
+        }, { passive: false });
+
+        window.addEventListener('keydown', (event) => {
+          const key = event.key.toLowerCase();
+          if (key === 'g') generateTexture();
+          if (key === 'm') mutateTexture();
+          if (key === 'e') $('evolveBtn').click();
+          if (key === 'h') {
+            ui.hudCheck.checked = !ui.hudCheck.checked;
+            ui.hud.style.opacity = ui.hudCheck.checked ? '1' : '0.12';
+          }
+        });
+      }
+
+      async function boot() {
+        try {
+          ui.loadingText.textContent = 'Initialising renderer and procedural reflection field...';
+          initScene();
+          bindControls();
+
+          ui.loadingText.textContent = 'Preparing TensorFlow.js neural texture model...';
+          if (window.tf) {
+            await tf.ready();
+            state.textureModel = createTextureModel();
+            ui.backendBadge.textContent = 'TF: ' + tf.getBackend();
+            log('TensorFlow.js backend ready: ' + tf.getBackend());
+          } else {
+            throw new Error('TensorFlow.js did not load');
+          }
+
+          ui.loadingText.textContent = 'Generating first neural material...';
+          await generateTexture({ seed: state.seed });
+          updateMaterial();
+          updateStats();
+
+          ui.loading.classList.add('hidden');
+          log('Lab ready: original features preserved and advanced controls enabled');
+          requestAnimationFrame(animate);
+        } catch (err) {
+          ui.loadingText.textContent = 'Startup issue: ' + err.message;
+          console.error(err);
+        }
+      }
+
+      boot();
+    })();
+  </script>
+</body>
+</html>
