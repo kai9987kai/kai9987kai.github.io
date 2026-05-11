@@ -2,810 +2,1848 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>Hyper Ontoverse 2: Partial Observations, Multi-Skill Synergy, Basic Communication</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Evolutionary Agent Simulation — Research Lab X</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest"></script>
   <style>
-    body {
-      margin: 0; padding: 0;
-      background: #1a1a1a; color: #fff;
-      font-family: Arial, sans-serif;
+    :root {
+      --bg: #071018;
+      --panel: rgba(5, 10, 18, 0.78);
+      --panel-2: rgba(10, 19, 31, 0.88);
+      --text: #f4fbff;
+      --muted: #9eb7c7;
+      --line: rgba(120, 220, 255, 0.25);
+      --brand: #48d6ff;
+      --brand-2: #9dff89;
+      --warn: #ffd166;
+      --danger: #ff6b7a;
+      --shadow: 0 18px 50px rgba(0, 0, 0, 0.35);
+    }
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0;
+      padding: 0;
       overflow: hidden;
+      background: var(--bg);
+      color: var(--text);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
     }
-    #controls {
-      position: absolute; top: 10px; left: 10px;
-      background: rgba(0,0,0,0.7);
-      padding: 10px; border-radius: 6px; 
-      z-index: 10;
+    #canvas { display: block; width: 100vw; height: 100vh; cursor: crosshair; }
+    .panel {
+      position: absolute;
+      z-index: 1000;
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      background: var(--panel);
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(14px);
+      padding: 12px;
     }
-    #controls label, #controls button {
-      display: block; margin: 5px 0;
+    .panel h2, .panel h3 { margin: 0 0 8px; letter-spacing: 0.02em; }
+    .panel h2 { font-size: 15px; color: var(--brand); }
+    .panel h3 { font-size: 13px; color: var(--brand-2); }
+    .tiny { color: var(--muted); font-size: 11px; line-height: 1.45; }
+    #log {
+      top: 18px;
+      left: 14px;
+      width: 330px;
+      max-height: 220px;
+      overflow-y: auto;
+      font-size: 12px;
+      line-height: 1.35;
     }
-    #performance {
-      position: absolute; bottom:10px; right:10px;
-      background: rgba(0,0,0,0.7);
-      padding: 10px; border-radius:6px;
-      z-index: 10;
+    #log div { padding: 3px 0; border-bottom: 1px solid rgba(255,255,255,0.04); }
+    #synergyPanel {
+      top: 18px;
+      right: 14px;
+      width: 318px;
+      max-height: 330px;
+      overflow-y: auto;
+      font-size: 12px;
     }
-    #performance p { margin:5px 0; font-size:0.9em; }
-    #eventLog {
-      position: absolute; top:200px; left:10px;
-      background: rgba(0,0,0,0.7);
-      width:270px; max-height:280px; 
-      overflow-y:auto; border-radius:6px;
-      padding:10px; z-index:10;
+    #performancePanel {
+      top: 254px;
+      left: 14px;
+      width: 330px;
+      font-size: 12px;
     }
-    #eventLog h3 { margin:0 0 5px; font-size:1em; }
-    #eventLog ul { list-style-type:none; margin:0; padding:0; font-size:0.85em; }
-    #eventLog li { margin-bottom:4px; }
+    #labPanel {
+      top: 366px;
+      left: 14px;
+      width: 330px;
+      max-height: 280px;
+      overflow-y: auto;
+      font-size: 12px;
+    }
+    #lossChartContainer {
+      bottom: 112px;
+      right: 14px;
+      width: 335px;
+      height: 220px;
+      padding-bottom: 38px;
+    }
+    #agentControls {
+      left: 50%;
+      bottom: 12px;
+      transform: translateX(-50%);
+      width: min(1180px, calc(100vw - 28px));
+      display: grid;
+      grid-template-columns: repeat(12, minmax(0, 1fr));
+      gap: 8px;
+      align-items: center;
+      background: rgba(3, 8, 16, 0.86);
+    }
+    #agentControls .wide { grid-column: span 2; }
+    #agentControls .mini { grid-column: span 1; }
+    #agentControls label {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      color: var(--muted);
+      font-size: 11px;
+    }
+    input[type="range"], input[type="number"], select {
+      width: 100%;
+      accent-color: var(--brand);
+      background: rgba(255,255,255,0.08);
+      color: var(--text);
+      border: 1px solid rgba(255,255,255,0.16);
+      border-radius: 8px;
+      padding: 5px;
+    }
+    button {
+      border: 1px solid rgba(255,255,255,0.18);
+      border-radius: 12px;
+      padding: 8px 9px;
+      color: var(--text);
+      background: linear-gradient(135deg, rgba(72,214,255,0.20), rgba(157,255,137,0.12));
+      cursor: pointer;
+      transition: transform 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+      font-weight: 650;
+      font-size: 12px;
+    }
+    button:hover { transform: translateY(-1px); border-color: rgba(72,214,255,0.7); }
+    button.danger { background: linear-gradient(135deg, rgba(255,107,122,0.30), rgba(255,209,102,0.10)); }
+    #agentTooltip {
+      position: absolute;
+      z-index: 1500;
+      background: rgba(0,0,0,0.86);
+      border: 1px solid rgba(255,255,255,0.22);
+      padding: 8px 10px;
+      border-radius: 10px;
+      font-size: 12px;
+      pointer-events: none;
+      display: none;
+      box-shadow: var(--shadow);
+      max-width: 300px;
+    }
+    .metric-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 6px;
+    }
+    .metric {
+      background: rgba(255,255,255,0.06);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 12px;
+      padding: 8px;
+    }
+    .metric b { display: block; color: #fff; font-size: 14px; }
+    .bar {
+      height: 7px;
+      background: rgba(255,255,255,0.10);
+      border-radius: 20px;
+      overflow: hidden;
+      margin-top: 4px;
+    }
+    .fill {
+      height: 100%;
+      background: linear-gradient(90deg, var(--brand), var(--brand-2));
+      width: 0%;
+    }
+    .archive {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 3px;
+      margin-top: 8px;
+    }
+    .cell {
+      height: 18px;
+      border-radius: 5px;
+      background: rgba(255,255,255,0.06);
+      border: 1px solid rgba(255,255,255,0.07);
+    }
+    .cell.hot { background: linear-gradient(135deg, rgba(72,214,255,0.7), rgba(157,255,137,0.55)); }
+    .cell.mid { background: linear-gradient(135deg, rgba(72,214,255,0.35), rgba(255,209,102,0.35)); }
+    .chip-row { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 8px; }
+    .chip {
+      padding: 4px 6px;
+      border-radius: 999px;
+      background: rgba(255,255,255,0.08);
+      border: 1px solid rgba(255,255,255,0.10);
+      font-size: 11px;
+      color: var(--muted);
+    }
+    @media (max-width: 900px) {
+      #log, #performancePanel, #labPanel { width: 260px; }
+      #synergyPanel, #lossChartContainer { width: 270px; }
+      #agentControls { grid-template-columns: repeat(4, minmax(0, 1fr)); max-height: 46vh; overflow-y: auto; }
+      #agentControls .wide { grid-column: span 2; }
+    }
   </style>
 </head>
 <body>
-<div id="controls">
-  <label>Agent Speed:</label>
-  <input type="range" id="speedSlider" min="1" max="10" value="5">
-  
-  <label>Threat Aggressiveness:</label>
-  <input type="range" id="threatSlider" min="1" max="5" value="3">
+  <canvas id="canvas"></canvas>
 
-  <button onclick="resetSimulation()">Reset Simulation</button>
-  <button onclick="createSimpleTask()">Spawn Simple Task</button>
-</div>
+  <section id="log" class="panel"><h2>Event Log</h2></section>
+  <section id="synergyPanel" class="panel"><h2>Swarm Synergy</h2></section>
+  <section id="performancePanel" class="panel"><h2>Performance</h2></section>
+  <section id="labPanel" class="panel"><h2>Research Lab X</h2></section>
 
-<div id="performance">
-  <p>FPS: <span id="fps">0</span></p>
-  <p>Step Time: <span id="stepTime">0</span> ms</p>
-  <p>Commander Step: <span id="commanderStep">0</span></p>
-  <p>Time of Day: <span id="timeOfDay">0</span> hr</p>
-</div>
+  <section id="lossChartContainer" class="panel">
+    <h2>Commander Loss</h2>
+    <canvas id="lossChart"></canvas>
+  </section>
 
-<div id="eventLog">
-  <h3>Event Log</h3>
-  <ul id="eventList"></ul>
-</div>
+  <section id="agentControls" class="panel">
+    <button class="wide" onclick="commander.trainExtra()">Train Commander</button>
+    <button onclick="resetSimulation()">Reset</button>
+    <button onclick="toggleSimulation()" id="pauseBtn">Pause</button>
+    <button onclick="saveSimulation()">Save</button>
+    <button onclick="loadSimulation()">Load</button>
+    <button onclick="exportCSV()">CSV</button>
+    <button onclick="toggleLayer('pheromones')">Pheromones</button>
+    <button onclick="toggleLayer('heatmap')">Heatmap</button>
+    <button onclick="toggleLayer('labels')">Labels</button>
+    <button onclick="seedDisruption()" class="danger">Disrupt</button>
+    <label class="wide">Sim Speed <input type="range" id="speedInput" min="0.2" max="4" step="0.1" value="1" oninput="updateSimSpeed(this.value)"></label>
+    <label>LR <input type="number" id="lrInput" value="0.0005" step="0.0001" onchange="updateLR(this.value)"></label>
+    <label>MutRate <input type="number" id="mutRateInput" value="0.01" step="0.001" onchange="updateMutRate(this.value)"></label>
+    <label>Decay <input type="number" id="decayInput" value="0.999" step="0.001" onchange="updateDecay(this.value)"></label>
+    <label>Curiosity <input type="range" id="curiosityInput" min="0" max="2" step="0.05" value="0.6" oninput="updateCuriosity(this.value)"></label>
+    <label>Curriculum <input type="range" id="curriculumInput" min="0" max="2" step="0.05" value="0.8" oninput="updateCurriculum(this.value)"></label>
+    <span id="lossDisplay" class="chip">Loss: N/A</span>
+  </section>
 
-<canvas id="canvas"></canvas>
+  <div id="agentTooltip"></div>
 
-<!-- TensorFlow.js from CDN -->
-<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest"></script>
-<script>
-/*****************************************************************
-  Memory snippet for GitHub Title & Description
-*****************************************************************/
-const memory = [];
-const githubTitle = "Multi-Agent Ontoverse RL (Commander + Dueling DQN + Day/Night + Multi-Skill Synergy)";
-const githubDescription = `
-Extends the multi-agent environment with partial observations, multi-skill synergy tasks, 
-basic agent communication, advanced Commander logic, day/night cycles, knowledge graph placeholders, 
-and a memory snippet for GitHub details. Runs on TensorFlow.js with Dueling DQNs.
-`;
-memory.push({title: githubTitle, description: githubDescription});
-console.log("Memory snippet =>", memory[0]);
+  <script>
+    (function () {
+      "use strict";
 
-/*****************************************************************
-  Canvas Setup
-*****************************************************************/
-const canvas = document.getElementById("canvas");
-const ctx = canvas.getContext("2d");
-canvas.width = window.innerWidth;
-canvas.height= window.innerHeight;
-window.addEventListener("resize", ()=>{
-  canvas.width= window.innerWidth;
-  canvas.height= window.innerHeight;
-});
+      /**********************************************************************
+       * Evolutionary Agent Simulation — Research Lab X
+       *
+       * Preserves the original features:
+       * - 1620 agents, 135 threats, 225 food, 135 water, 45 tasks,
+       *   90 threat nests, 135 obstacles, 135 minerals.
+       * - Commander controls, TensorFlow.js model, target model, live loss chart.
+       * - Weather, wind, day/night, drifting clouds, dynamic sun, terrain zones.
+       * - Agent tooltip, synergy panel, performance panel, pause/reset/speed/LR/mutation/decay.
+       *
+       * Adds new systems:
+       * - Spatial hash acceleration for large swarms.
+       * - Prioritized replay + Double-DQN style target selection.
+       * - Curiosity/novelty reward using state visitation.
+       * - Pheromone fields, communication pulses, and signal-aware steering.
+       * - Seasons, pathogen clouds, sanctuaries, and adaptive curriculum pressure.
+       * - MAP-Elites-inspired quality-diversity archive for emergent tribes.
+       * - Population-based hyperparameter nudging for LR/mutation/decay schedules.
+       * - Save/load snapshots and CSV telemetry export.
+       **********************************************************************/
 
-/*****************************************************************
-  Global Settings
-*****************************************************************/
-const settings = {
-  agent: {
-    count: 10,
-    maxSpeed: 5,
-    maxHealth: 140,
-    memorySize: 300,
-    batchSize: 32,
-    gamma: 0.99,
-    epsilon: 1.0,
-    epsilonMin: 0.05,
-    epsilonDecay: 0.995,
-    lr: 0.001,
+      const canvas = document.getElementById("canvas");
+      const ctx = canvas.getContext("2d", { alpha: false });
+      const logDiv = document.getElementById("log");
+      const synergyPanel = document.getElementById("synergyPanel");
+      const performancePanel = document.getElementById("performancePanel");
+      const labPanel = document.getElementById("labPanel");
+      const agentTooltip = document.getElementById("agentTooltip");
 
-    skillCount: 3, // # of knowledge topics
-    partialObsRange: 200, // how far an agent can see
-  },
-  threat: {
-    count: 5,
-    baseSpeed: 2,
-    aggressiveness:3
-  },
-  food: {
-    count: 10
-  },
-  tasks: {
-    count: 4,
-    synergyRequired: 2,
-    synergyReward: 40,
-    normalReward: 20,
-    multiStep: true
-  },
-  dayNight: {
-    enabled: true,
-    timeRate: 0.02
-  },
-  knowledgeGraph: {
-    nodes: ["healingFood","dangerThreat","synergyTask"],
-    edges: [
-      {source:"healingFood", target:"dangerThreat"},
-      {source:"synergyTask", target:"healingFood"}
-    ]
-  },
-  eventLogSize: 140
-};
+      const TAU = Math.PI * 2;
+      const clamp = (n, lo, hi) => Math.max(lo, Math.min(hi, n));
+      const rand = (lo, hi) => lo + Math.random() * (hi - lo);
+      const choose = arr => arr[Math.floor(Math.random() * arr.length)];
+      const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+      const now = () => performance.now();
 
-/*****************************************************************
-  Entities
-*****************************************************************/
-class Entity {
-  constructor(x,y,size,color){
-    this.x=x; this.y=y;
-    this.size=size; this.color=color;
-    this.alive=true;
-  }
-  draw(){
-    ctx.fillStyle= this.color;
-    ctx.beginPath();
-    ctx.arc(this.x,this.y,this.size,0,2*Math.PI);
-    ctx.fill();
-  }
-}
+      const INITIAL_COUNTS = Object.freeze({
+        agents: 1620,
+        threats: 135,
+        foods: 225,
+        waters: 135,
+        tasks: 45,
+        threatNests: 90,
+        obstacles: 135,
+        minerals: 135
+      });
 
-class Agent extends Entity {
-  constructor(x,y){
-    super(x,y,6,"blue");
-    this.health= settings.agent.maxHealth;
-    this.speed= Math.random()* settings.agent.maxSpeed +1;
-    this.brain= buildDuelingDQN(getAgentInputSize(),4);
-    this.targetBrain= buildDuelingDQN(getAgentInputSize(),4);
-    this.targetBrain.setWeights(this.brain.getWeights());
-    this.experiences=[];
-    this.epsilon= settings.agent.epsilon;
+      const zoneCols = 10;
+      const zoneRows = 10;
+      const terrainTypes = [
+        { type: "forest", color: "rgba(34,139,34,0.20)", food: 1.20, water: 1.05, speed: 0.96 },
+        { type: "desert", color: "rgba(210,180,140,0.20)", food: 0.75, water: 0.72, speed: 0.92 },
+        { type: "urban", color: "rgba(128,128,128,0.20)", food: 0.95, water: 0.95, speed: 1.00 },
+        { type: "mountain", color: "rgba(139,137,137,0.22)", food: 0.85, water: 0.90, speed: 0.82 },
+        { type: "plains", color: "rgba(144,238,144,0.18)", food: 1.05, water: 1.00, speed: 1.08 }
+      ];
+      let zones = [];
 
-    // skill vector
-    this.topicSkills= [
-      Math.random(), 
-      Math.random(),
-      Math.random()
-    ];
+      const settings = {
+        threat: { baseSpeed: 0.5, aggressiveness: 1.0, spawnInterval: 20000 },
+        tasks: { synergyRequired: 3, megaTaskSynergyReq: 8 },
+        synergy: { distanceThreshold: 50, perNeighborGain: 0.01, maxSynergyPerAgent: 5, degradeFactor: 0.999 },
+        food: { decayTime: 30000 },
+        tribes: 2,
+        curiosityWeight: 0.6,
+        curriculumPressure: 0.8,
+        maxAgents: 2300,
+        pheromoneCell: 24,
+        spatialCell: 90
+      };
 
-    // for partial comm:
-    this.commBuffer= [];
-  }
+      const weatherSpeedFactors = { sunny: 1.0, rainy: 0.9, stormy: 0.7, foggy: 0.8 };
+      const seasons = [
+        { name: "Spring", resource: 1.18, disease: 0.85, threat: 0.92, tint: "rgba(140,255,170,0.05)" },
+        { name: "Summer", resource: 1.05, disease: 1.05, threat: 1.00, tint: "rgba(255,226,120,0.05)" },
+        { name: "Autumn", resource: 0.95, disease: 1.10, threat: 1.04, tint: "rgba(255,145,80,0.05)" },
+        { name: "Winter", resource: 0.72, disease: 0.70, threat: 1.20, tint: "rgba(170,220,255,0.06)" }
+      ];
 
-  step(agents, threats, foods, tasks, timeOfDay){
-    // partial observation => gather local state
-    let state= this.observeLocal(agents, threats, foods, tasks, timeOfDay);
+      let agents = [];
+      let threats = [];
+      let foods = [];
+      let waters = [];
+      let minerals = [];
+      let tasks = [];
+      let threatNests = [];
+      let obstacles = [];
+      let pathogenClouds = [];
+      let sanctuaries = [];
+      let signals = [];
+      let clouds = [];
+      let commander;
 
-    let action;
-    if(Math.random()< this.epsilon){
-      action= Math.floor(Math.random()*4);
-    } else {
-      let stT= tf.tensor2d([state]);
-      let qVals= this.brain.predict(stT);
-      let arr= qVals.dataSync();
-      qVals.dispose(); stT.dispose();
-      action= argmax(arr);
-    }
-    let dx=0, dy=0;
-    switch(action){
-      case 0: dy=-this.speed; break; // up
-      case 1: dy= this.speed; break; // down
-      case 2: dx=-this.speed; break; // left
-      case 3: dx= this.speed; break; // right
-      default: break;
-    }
-    this.x+= dx; this.y+= dy;
-    keepInBounds(this);
+      let lastTimestamp = now();
+      let fps = 0;
+      let stepTime = 0;
+      let timeOfDay = 8;
+      let generation = 0;
+      let frame = 0;
+      let simulationSpeed = 1;
+      let paused = false;
+      let lastWeatherUpdate = now();
+      let lastResourceSpawn = now();
+      let lastTelemetrySample = now();
+      let lastArchiveUpdate = now();
+      let selectedAgent = null;
 
-    let reward= this.interact(threats, foods, tasks, timeOfDay);
-    let nextState= this.observeLocal(agents, threats, foods, tasks, timeOfDay);
-    this.experiences.push({state, action, reward, nextState, done:!this.alive});
+      let weather = { condition: "sunny", temperature: 25, humidity: 50 };
+      let wind = { speed: 2, direction: Math.random() * TAU };
 
-    // share experiences with near agents
-    this.shareExperiences(agents);
+      const layers = { pheromones: true, heatmap: false, labels: false };
 
-    if(this.experiences.length> settings.agent.batchSize*2){
-      this.learn();
-    }
-    if(this.epsilon> settings.agent.epsilonMin){
-      this.epsilon*= settings.agent.epsilonDecay;
-    }
-  }
+      const metrics = {
+        births: 0,
+        deaths: 0,
+        tasksCompleted: 0,
+        megaTasksCompleted: 0,
+        resourcesConsumed: 0,
+        infections: 0,
+        commanderActions: new Array(8).fill(0),
+        samples: [],
+        qdArchive: new Map(),
+        qdBest: 0,
+        novelty: 0,
+        meanEnergy: 0,
+        meanHydration: 0,
+        meanSynergy: 0,
+        diversity: 0,
+        lastReward: 0
+      };
 
-  // partial obs => gather nearest threat,food,task within partialObsRange
-  observeLocal(agents, threats, foods, tasks, timeOfDay){
-    const range= settings.agent.partialObsRange;
-    let nearestThreat= findNearestInRange(this, threats, range);
-    let nearestFood  = findNearestInRange(this, foods, range);
-    let nearestTask  = findNearestInRange(this, tasks, range);
-
-    let tX=0, tY=0, fX=0, fY=0, taX=0, taY=0;
-    if(nearestThreat){ 
-      tX= (nearestThreat.x - this.x)/range;
-      tY= (nearestThreat.y - this.y)/range;
-    }
-    if(nearestFood){
-      fX= (nearestFood.x - this.x)/range;
-      fY= (nearestFood.y - this.y)/range;
-    }
-    if(nearestTask){
-      taX= (nearestTask.x - this.x)/range;
-      taY= (nearestTask.y - this.y)/range;
-    }
-    let night= (timeOfDay>18|| timeOfDay<6)?1:0;
-    let normHealth= this.health/ settings.agent.maxHealth;
-
-    return [
-      tX, tY, 
-      fX, fY,
-      taX, taY,
-      normHealth,
-      night,
-      this.topicSkills[0],
-      this.topicSkills[1],
-      this.topicSkills[2]
-    ];
-  }
-
-  interact(threats, foods, tasks, timeOfDay){
-    let r=-0.1;
-    for(let i= threats.length-1;i>=0;i--){
-      let t= threats[i];
-      if(dist(this,t)< this.size+ t.size){
-        this.health-=25; 
-        r-=10;
-        if(this.health<=0){
-          this.alive=false; 
-          logEvent("Agent died from threat!");
+      class SpatialHash {
+        constructor(cellSize) {
+          this.cellSize = cellSize;
+          this.map = new Map();
         }
-      }
-    }
-    for(let i= foods.length-1;i>=0;i--){
-      let f= foods[i];
-      if(dist(this,f)< this.size+f.size){
-        // skill synergy for "healingFood" => index=0
-        let skill= this.topicSkills[0];
-        let skillBonus= skill*5;
-        this.health= Math.min(settings.agent.maxHealth, this.health + 20 + skillBonus);
-        let rew= 5 + skillBonus;
-        r+= rew;
-        foods.splice(i,1);
-        logEvent(`Agent ate food +${rew.toFixed(1)}`);
-      }
-    }
-    // synergy tasks multi-step
-    for(let i= tasks.length-1;i>=0;i--){
-      let tk= tasks[i];
-      if(!tk.stepCount) tk.stepCount= tk.steps? tk.steps:1;
-      if(!tk.hasOwnProperty("steps") && settings.tasks.multiStep) {
-        tk.steps= 1+ Math.floor(Math.random()*3);
-        tk.stepCount= tk.steps;
-        tk.synergyNeeded= settings.tasks.synergyRequired;
-        // multi skill synergy -> random 1..2 topics required
-        tk.requiredTopics= [];
-        let howMany= 1+ Math.floor(Math.random()*2);
-        for(let x=0;x< howMany;x++){
-          let topID= Math.floor(Math.random()*3);
-          if(!tk.requiredTopics.includes(topID)) tk.requiredTopics.push(topID);
+        clear() { this.map.clear(); }
+        key(cx, cy) { return cx + "," + cy; }
+        cell(v) { return Math.floor(v / this.cellSize); }
+        insert(entity) {
+          const k = this.key(this.cell(entity.x), this.cell(entity.y));
+          let bucket = this.map.get(k);
+          if (!bucket) {
+            bucket = [];
+            this.map.set(k, bucket);
+          }
+          bucket.push(entity);
         }
-      }
-      if(dist(this, tk)< this.size+ tk.size) {
-        if(!tk.synergySet) tk.synergySet= new Set();
-        tk.synergySet.add(this);
-
-        if(tk.synergySet.size>= tk.synergyNeeded) {
-          // check if among these agents we have all requiredTopics
-          let hasAll= true;
-          for(const neededTop of tk.requiredTopics){
-            let foundAgent= false;
-            for(const ag of tk.synergySet){
-              if(ag.topicSkills[neededTop]> 0.5){ 
-                foundAgent= true; 
-                break;
+        build(items) {
+          this.clear();
+          for (const item of items) if (item.alive !== false) this.insert(item);
+        }
+        query(x, y, radius) {
+          const out = [];
+          const minX = this.cell(x - radius), maxX = this.cell(x + radius);
+          const minY = this.cell(y - radius), maxY = this.cell(y + radius);
+          const r2 = radius * radius;
+          for (let cx = minX; cx <= maxX; cx++) {
+            for (let cy = minY; cy <= maxY; cy++) {
+              const bucket = this.map.get(this.key(cx, cy));
+              if (!bucket) continue;
+              for (const item of bucket) {
+                const dx = item.x - x, dy = item.y - y;
+                if (dx * dx + dy * dy <= r2) out.push(item);
               }
             }
-            if(!foundAgent){
-              hasAll= false; 
+          }
+          return out;
+        }
+      }
+
+      const agentHash = new SpatialHash(settings.spatialCell);
+      const threatHash = new SpatialHash(settings.spatialCell);
+      const foodHash = new SpatialHash(settings.spatialCell);
+      const waterHash = new SpatialHash(settings.spatialCell);
+      const mineralHash = new SpatialHash(settings.spatialCell);
+      const obstacleHash = new SpatialHash(settings.spatialCell);
+      const taskHash = new SpatialHash(settings.spatialCell);
+
+      const pheromones = {
+        cols: 0,
+        rows: 0,
+        fields: [],
+        visits: []
+      };
+
+      function resizeCanvas() {
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+        generateZones();
+        initClouds();
+        initPheromones();
+      }
+      window.addEventListener("resize", resizeCanvas);
+
+      function generateZones() {
+        zones = [];
+        const cellWidth = canvas.width / zoneCols;
+        const cellHeight = canvas.height / zoneRows;
+        for (let i = 0; i < zoneCols; i++) {
+          for (let j = 0; j < zoneRows; j++) {
+            const terrain = choose(terrainTypes);
+            zones.push({
+              x: i * cellWidth,
+              y: j * cellHeight,
+              width: cellWidth,
+              height: cellHeight,
+              type: terrain.type,
+              color: terrain.color,
+              food: terrain.food,
+              water: terrain.water,
+              speed: terrain.speed
+            });
+          }
+        }
+      }
+
+      function zoneAt(x, y) {
+        if (!zones.length) return terrainTypes[0];
+        const col = clamp(Math.floor(x / (canvas.width / zoneCols)), 0, zoneCols - 1);
+        const row = clamp(Math.floor(y / (canvas.height / zoneRows)), 0, zoneRows - 1);
+        return zones[col * zoneRows + row] || zones[0];
+      }
+
+      function initClouds() {
+        clouds = [];
+        for (let i = 0; i < 14; i++) {
+          clouds.push({
+            x: Math.random() * canvas.width,
+            y: Math.random() * canvas.height * 0.28,
+            radius: rand(20, 55),
+            speed: rand(0.08, 0.35),
+            alpha: rand(0.18, 0.45)
+          });
+        }
+      }
+
+      function initPheromones() {
+        pheromones.cols = Math.max(1, Math.ceil(canvas.width / settings.pheromoneCell));
+        pheromones.rows = Math.max(1, Math.ceil(canvas.height / settings.pheromoneCell));
+        const n = pheromones.cols * pheromones.rows;
+        pheromones.fields = Array.from({ length: settings.tribes }, () => new Float32Array(n));
+        pheromones.visits = new Uint16Array(n);
+      }
+
+      function pIndex(x, y) {
+        const c = clamp(Math.floor(x / settings.pheromoneCell), 0, pheromones.cols - 1);
+        const r = clamp(Math.floor(y / settings.pheromoneCell), 0, pheromones.rows - 1);
+        return r * pheromones.cols + c;
+      }
+
+      function depositPheromone(agent, amount) {
+        const field = pheromones.fields[agent.tribe];
+        if (!field) return;
+        const idx = pIndex(agent.x, agent.y);
+        field[idx] = clamp(field[idx] + amount, 0, 12);
+        pheromones.visits[idx] = Math.min(65535, pheromones.visits[idx] + 1);
+      }
+
+      function pheromoneVector(agent) {
+        const field = pheromones.fields[agent.tribe];
+        if (!field) return { x: 0, y: 0, v: 0 };
+        const c = clamp(Math.floor(agent.x / settings.pheromoneCell), 0, pheromones.cols - 1);
+        const r = clamp(Math.floor(agent.y / settings.pheromoneCell), 0, pheromones.rows - 1);
+        let best = 0, bx = 0, by = 0;
+        for (let oy = -1; oy <= 1; oy++) {
+          for (let ox = -1; ox <= 1; ox++) {
+            const nc = c + ox, nr = r + oy;
+            if (nc < 0 || nr < 0 || nc >= pheromones.cols || nr >= pheromones.rows) continue;
+            const v = field[nr * pheromones.cols + nc];
+            if (v > best) { best = v; bx = ox; by = oy; }
+          }
+        }
+        return { x: bx * 0.18, y: by * 0.18, v: best };
+      }
+
+      function updatePheromones() {
+        for (const field of pheromones.fields) {
+          for (let i = 0; i < field.length; i++) field[i] *= 0.992;
+        }
+      }
+
+      function noveltyAt(x, y) {
+        const idx = pIndex(x, y);
+        return 1 / Math.sqrt(pheromones.visits[idx] + 1);
+      }
+
+      function getWeatherCode(condition) {
+        return condition === "sunny" ? 0 : condition === "rainy" ? 1 : condition === "stormy" ? 2 : 3;
+      }
+
+      function currentSeason() {
+        return seasons[Math.floor((generation / 150) % seasons.length)];
+      }
+
+      function logEvent(msg) {
+        const line = document.createElement("div");
+        const hh = Math.floor(timeOfDay).toString().padStart(2, "0");
+        const mm = Math.floor((timeOfDay % 1) * 60).toString().padStart(2, "0");
+        line.textContent = `[${generation} | ${hh}:${mm}] ${msg}`;
+        logDiv.appendChild(line);
+        while (logDiv.children.length > 140) logDiv.removeChild(logDiv.children[1]);
+        logDiv.scrollTop = logDiv.scrollHeight;
+      }
+
+      function argmax(arr) {
+        let maxIndex = 0;
+        let maxValue = arr[0];
+        for (let i = 1; i < arr.length; i++) {
+          if (arr[i] > maxValue) { maxValue = arr[i]; maxIndex = i; }
+        }
+        return maxIndex;
+      }
+
+      function keepInBounds(entity) {
+        if (entity.x < entity.size) entity.x = entity.size;
+        if (entity.y < entity.size) entity.y = entity.size;
+        if (entity.x > canvas.width - entity.size) entity.x = canvas.width - entity.size;
+        if (entity.y > canvas.height - entity.size) entity.y = canvas.height - entity.size;
+      }
+
+      function nearestFrom(hash, x, y, radius, predicate = null) {
+        let best = null;
+        let bestD = Infinity;
+        for (const item of hash.query(x, y, radius)) {
+          if (predicate && !predicate(item)) continue;
+          const d = Math.hypot(item.x - x, item.y - y);
+          if (d < bestD) { bestD = d; best = item; }
+        }
+        return best;
+      }
+
+      class Entity {
+        constructor(x, y, size, color) {
+          this.x = x;
+          this.y = y;
+          this.size = size;
+          this.color = color;
+          this.alive = true;
+        }
+        draw(ctx) {
+          ctx.fillStyle = this.color;
+          ctx.beginPath();
+          ctx.arc(this.x, this.y, this.size, 0, TAU);
+          ctx.fill();
+        }
+      }
+
+      class Threat extends Entity {
+        constructor(x, y) {
+          super(x, y, 8, "#ff3148");
+          this.lifetime = 30000 + Math.random() * 10000;
+          this.hunger = Math.random();
+        }
+        move(timeOfDay, dt) {
+          const season = currentSeason();
+          const nearestAgent = nearestFrom(agentHash, this.x, this.y, 130, a => a.alive);
+          let ax = 0, ay = 0;
+          if (nearestAgent) {
+            const dx = nearestAgent.x - this.x, dy = nearestAgent.y - this.y;
+            const d = Math.hypot(dx, dy) || 1;
+            ax += dx / d * 0.45;
+            ay += dy / d * 0.45;
+            if (d < this.size + nearestAgent.size + 2) {
+              nearestAgent.energy -= 0.75;
+              nearestAgent.hydration -= 0.25;
+              if (Math.random() < 0.006 * season.disease) infectAgent(nearestAgent);
+            }
+          }
+          const speed = settings.threat.baseSpeed * settings.threat.aggressiveness * season.threat * ((timeOfDay > 18 || timeOfDay < 6) ? 1.2 : 1);
+          this.x += (Math.random() - 0.5 + ax) * speed + wind.speed * Math.cos(wind.direction) * 0.02;
+          this.y += (Math.random() - 0.5 + ay) * speed + wind.speed * Math.sin(wind.direction) * 0.02;
+          keepInBounds(this);
+          this.lifetime -= dt;
+          if (this.lifetime <= 0) this.alive = false;
+        }
+        draw(ctx) {
+          ctx.save();
+          ctx.shadowColor = "rgba(255,49,72,0.8)";
+          ctx.shadowBlur = 10;
+          super.draw(ctx);
+          ctx.restore();
+        }
+      }
+
+      class ThreatNest extends Entity {
+        constructor(x, y) {
+          super(x, y, 11, "#5a0012");
+          this.lastSpawn = now();
+        }
+        spawnThreatIfNeeded(globalSynergy) {
+          const t = now();
+          if (t - this.lastSpawn > settings.threat.spawnInterval) {
+            if (globalSynergy > settings.tasks.synergyRequired * 1.5 && threats.length < 450) {
+              threats.push(new Threat(this.x + rand(-50, 50), this.y + rand(-50, 50)));
+              logEvent("Threat nest spawned a new adaptive threat.");
+            }
+            this.lastSpawn = t;
+          }
+        }
+        draw(ctx) {
+          ctx.save();
+          ctx.fillStyle = this.color;
+          ctx.beginPath();
+          for (let i = 0; i < 7; i++) {
+            const a = -Math.PI / 2 + i * TAU / 7;
+            const r = i % 2 ? this.size * 0.65 : this.size * 1.25;
+            ctx.lineTo(this.x + Math.cos(a) * r, this.y + Math.sin(a) * r);
+          }
+          ctx.closePath();
+          ctx.fill();
+          ctx.restore();
+        }
+      }
+
+      class Food extends Entity {
+        constructor(x, y) { super(x, y, 5, "#44e06f"); this.spawnTime = now(); }
+        updateDecay() { if (now() - this.spawnTime > settings.food.decayTime) this.alive = false; }
+      }
+
+      class Water extends Entity {
+        constructor(x, y) { super(x, y, 5, "#50e8ff"); this.spawnTime = now(); }
+        updateDecay() { if (now() - this.spawnTime > 40000) this.alive = false; }
+      }
+
+      class Mineral extends Entity {
+        constructor(x, y) { super(x, y, 5, "#ffd74a"); this.spawnTime = now(); this.decayTime = 60000; }
+        updateDecay() { if (now() - this.spawnTime > this.decayTime) this.alive = false; }
+      }
+
+      class Task extends Entity {
+        constructor(x, y, requiresSynergy = false, isMegaTask = false, tribeForMegaTask = null) {
+          super(x, y, isMegaTask ? 8 : 6, isMegaTask ? "#df70ff" : (requiresSynergy ? "#5ffbff" : "#fff36b"));
+          this.requiresSynergy = requiresSynergy;
+          this.isMegaTask = isMegaTask;
+          this.tribeForMegaTask = tribeForMegaTask;
+          this.spawnTime = now();
+        }
+        draw(ctx) {
+          ctx.save();
+          ctx.translate(this.x, this.y);
+          ctx.rotate((frame * 0.018) % TAU);
+          ctx.fillStyle = this.color;
+          ctx.beginPath();
+          ctx.rect(-this.size, -this.size, this.size * 2, this.size * 2);
+          ctx.fill();
+          ctx.restore();
+        }
+      }
+
+      class Obstacle extends Entity {
+        constructor(x, y, size) { super(x, y, size, "rgba(120,128,138,0.82)"); }
+        draw(ctx) {
+          ctx.save();
+          ctx.translate(this.x, this.y);
+          ctx.rotate(Math.sin((this.x + this.y) * 0.01) * 0.6);
+          ctx.fillStyle = this.color;
+          ctx.fillRect(-this.size, -this.size, this.size * 2, this.size * 2);
+          ctx.restore();
+        }
+      }
+
+      class PathogenCloud extends Entity {
+        constructor(x, y) {
+          super(x, y, rand(24, 60), "rgba(190,80,255,0.18)");
+          this.life = rand(22000, 46000);
+          this.phase = Math.random() * TAU;
+        }
+        update(dt) {
+          this.phase += 0.01;
+          this.life -= dt;
+          this.x += Math.cos(wind.direction) * wind.speed * 0.01;
+          this.y += Math.sin(wind.direction) * wind.speed * 0.01;
+          keepInBounds(this);
+          if (this.life <= 0) this.alive = false;
+        }
+        draw(ctx) {
+          const r = this.size * (1 + Math.sin(this.phase) * 0.08);
+          const g = ctx.createRadialGradient(this.x, this.y, 2, this.x, this.y, r);
+          g.addColorStop(0, "rgba(230,110,255,0.28)");
+          g.addColorStop(1, "rgba(120,40,180,0)");
+          ctx.fillStyle = g;
+          ctx.beginPath();
+          ctx.arc(this.x, this.y, r, 0, TAU);
+          ctx.fill();
+        }
+      }
+
+      class Sanctuary extends Entity {
+        constructor(x, y) {
+          super(x, y, rand(36, 72), "rgba(130,255,185,0.16)");
+          this.life = rand(18000, 38000);
+        }
+        update(dt) { this.life -= dt; if (this.life <= 0) this.alive = false; }
+        draw(ctx) {
+          ctx.save();
+          ctx.strokeStyle = "rgba(130,255,185,0.48)";
+          ctx.fillStyle = this.color;
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.arc(this.x, this.y, this.size, 0, TAU);
+          ctx.fill();
+          ctx.stroke();
+          ctx.restore();
+        }
+      }
+
+      class SignalPulse {
+        constructor(x, y, tribe, kind = "resource") {
+          this.x = x; this.y = y; this.tribe = tribe; this.kind = kind;
+          this.r = 3; this.life = 1; this.alive = true;
+        }
+        update(dt) {
+          this.r += dt * 0.055;
+          this.life -= dt / 1400;
+          if (this.life <= 0 || this.r > 180) this.alive = false;
+        }
+        draw(ctx) {
+          ctx.save();
+          ctx.globalAlpha = clamp(this.life, 0, 1);
+          ctx.strokeStyle = this.kind === "danger" ? "rgba(255,107,122,0.72)" : (this.tribe === 0 ? "rgba(88,160,255,0.72)" : "rgba(255,172,72,0.72)");
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.arc(this.x, this.y, this.r, 0, TAU);
+          ctx.stroke();
+          ctx.restore();
+        }
+      }
+
+      class Agent extends Entity {
+        constructor(x, y, tribe, parent = null) {
+          super(x, y, 7, tribe === 0 ? "#3288ff" : "#ff9b37");
+          this.energy = parent ? clamp(parent.energy * 0.55, 40, 110) : 100;
+          this.hydration = parent ? clamp(parent.hydration * 0.55, 40, 110) : 100;
+          this.synergy = parent ? parent.synergy * 0.25 : 0;
+          this.tribe = tribe;
+          this.synergyBuff = parent ? parent.synergyBuff * (1 + rand(-0.05, 0.05)) : 1.0;
+          this.age = 0;
+          this.lineage = parent ? parent.lineage : Math.floor(Math.random() * 999999).toString(36);
+          this.infected = false;
+          this.infection = 0;
+          this.signalCooldown = rand(0, 3000);
+          this.lastNovelty = 0;
+          this.genome = parent ? mutateGenome(parent.genome, 0.08) : randomGenome();
+          this.memory = { lastFood: null, lastWater: null, lastThreat: null, lastTask: null };
+        }
+        updateTarget() {
+          this.synergy += 0.01;
+        }
+        mutate() {
+          this.genome = mutateGenome(this.genome, 0.025);
+          this.synergyBuff *= (1 + rand(-0.025, 0.025));
+        }
+        updateSynergy(neighbors) {
+          let gain = 0;
+          for (const other of neighbors) {
+            if (other !== this && other.alive && other.tribe === this.tribe) {
+              const d = Math.hypot(other.x - this.x, other.y - this.y);
+              if (d < settings.synergy.distanceThreshold) {
+                gain += settings.synergy.perNeighborGain * this.synergyBuff * this.genome.cooperation;
+              }
+            }
+          }
+          this.synergy = clamp(this.synergy * settings.synergy.degradeFactor + gain, 0, settings.synergy.maxSynergyPerAgent);
+        }
+        computeSteering(neighbors) {
+          const steer = { x: 0, y: 0 };
+          let neighborCount = 0, avgX = 0, avgY = 0;
+          for (const other of neighbors) {
+            if (other !== this && other.alive && other.tribe === this.tribe) {
+              const d = Math.hypot(other.x - this.x, other.y - this.y) || 1;
+              if (d < 120) { avgX += other.x; avgY += other.y; neighborCount++; }
+              if (d < 30) {
+                steer.x -= (other.x - this.x) * 0.09;
+                steer.y -= (other.y - this.y) * 0.09;
+              }
+            }
+          }
+          if (neighborCount) {
+            avgX /= neighborCount; avgY /= neighborCount;
+            steer.x += (avgX - this.x) * 0.018 * this.genome.cooperation;
+            steer.y += (avgY - this.y) * 0.018 * this.genome.cooperation;
+          }
+
+          const sense = 80 + this.genome.sense * 80;
+          const nearThreats = threatHash.query(this.x, this.y, sense);
+          for (const threat of nearThreats) {
+            const d = Math.hypot(threat.x - this.x, threat.y - this.y) || 1;
+            const force = (sense - d) / sense;
+            steer.x -= (threat.x - this.x) / d * force * 4.8;
+            steer.y -= (threat.y - this.y) / d * force * 4.8;
+            this.memory.lastThreat = { x: threat.x, y: threat.y };
+          }
+
+          const closestFood = nearestFrom(foodHash, this.x, this.y, sense * 1.4);
+          const closestWater = nearestFrom(waterHash, this.x, this.y, sense * 1.4);
+          const closestMineral = nearestFrom(mineralHash, this.x, this.y, sense * 1.2);
+          const closestTask = nearestFrom(taskHash, this.x, this.y, sense * 1.7, t => !t.isMegaTask || t.tribeForMegaTask === this.tribe);
+
+          if (closestFood && (this.energy < 70 || this.genome.curiosity > 1.05)) {
+            steer.x += (closestFood.x - this.x) * 0.038; steer.y += (closestFood.y - this.y) * 0.038;
+            this.memory.lastFood = { x: closestFood.x, y: closestFood.y };
+          }
+          if (closestWater && this.hydration < 76) {
+            steer.x += (closestWater.x - this.x) * 0.044; steer.y += (closestWater.y - this.y) * 0.044;
+            this.memory.lastWater = { x: closestWater.x, y: closestWater.y };
+          }
+          if (closestMineral && this.synergy < 2.8) {
+            steer.x += (closestMineral.x - this.x) * 0.030; steer.y += (closestMineral.y - this.y) * 0.030;
+          }
+          if (closestTask && this.synergy > 0.35) {
+            steer.x += (closestTask.x - this.x) * 0.025; steer.y += (closestTask.y - this.y) * 0.025;
+            this.memory.lastTask = { x: closestTask.x, y: closestTask.y };
+          }
+
+          for (const obstacle of obstacleHash.query(this.x, this.y, 70)) {
+            const d = Math.hypot(obstacle.x - this.x, obstacle.y - this.y) || 1;
+            if (d < obstacle.size + this.size + 22) {
+              steer.x -= (obstacle.x - this.x) / d * 4.5;
+              steer.y -= (obstacle.y - this.y) / d * 4.5;
+            }
+          }
+
+          const pher = pheromoneVector(this);
+          steer.x += pher.x * this.genome.cooperation;
+          steer.y += pher.y * this.genome.cooperation;
+
+          const novelty = noveltyAt(this.x, this.y);
+          this.lastNovelty = novelty;
+          if (novelty > 0.28 && Math.random() < 0.35 * this.genome.curiosity) {
+            steer.x += rand(-1, 1) * this.genome.curiosity;
+            steer.y += rand(-1, 1) * this.genome.curiosity;
+          }
+
+          return steer;
+        }
+        move(dt, neighbors) {
+          const steer = this.computeSteering(neighbors);
+          const speedFactor = weatherSpeedFactors[weather.condition] || 1;
+          const terrain = zoneAt(this.x, this.y);
+          const season = currentSeason();
+          const infectedPenalty = this.infected ? 0.72 : 1;
+          const speed = this.genome.speed * speedFactor * terrain.speed * infectedPenalty;
+          this.x += (steer.x + rand(-1, 1) * 1.35) * speed + wind.speed * Math.cos(wind.direction) * 0.05;
+          this.y += (steer.y + rand(-1, 1) * 1.35) * speed + wind.speed * Math.sin(wind.direction) * 0.05;
+          keepInBounds(this);
+
+          this.age += dt / 1000;
+          const stress = weather.condition === "stormy" ? 1.35 : weather.condition === "foggy" ? 1.14 : 1;
+          this.energy -= 0.045 * stress * (1.05 + (this.genome.speed - 1) * 0.12);
+          this.hydration -= 0.048 * stress * (season.name === "Summer" ? 1.08 : 1);
+
+          if (this.infected) {
+            this.infection += 0.0025 * dt / 16.67;
+            this.energy -= 0.025;
+            this.hydration -= 0.015;
+            if (this.infection > 1.2 && Math.random() < 0.004 * (1 - this.genome.resilience)) this.alive = false;
+            if (Math.random() < 0.0007 * this.genome.resilience) { this.infected = false; this.infection = 0; }
+          }
+
+          for (const cloud of pathogenClouds) {
+            const d = Math.hypot(cloud.x - this.x, cloud.y - this.y);
+            if (d < cloud.size && Math.random() < 0.004 * season.disease * (1.2 - this.genome.resilience)) infectAgent(this);
+          }
+
+          for (const sanctuary of sanctuaries) {
+            const d = Math.hypot(sanctuary.x - this.x, sanctuary.y - this.y);
+            if (d < sanctuary.size) {
+              this.energy = Math.min(150, this.energy + 0.055);
+              this.hydration = Math.min(150, this.hydration + 0.055);
+              this.synergy = Math.min(settings.synergy.maxSynergyPerAgent, this.synergy + 0.002);
+              if (this.infected && Math.random() < 0.002) { this.infected = false; this.infection = 0; }
+            }
+          }
+
+          this.signalCooldown -= dt;
+          if (this.signalCooldown <= 0) {
+            if (this.memory.lastThreat && Math.random() < 0.65) signals.push(new SignalPulse(this.x, this.y, this.tribe, "danger"));
+            else if ((this.memory.lastFood || this.memory.lastWater) && Math.random() < 0.45) signals.push(new SignalPulse(this.x, this.y, this.tribe, "resource"));
+            this.signalCooldown = rand(1800, 5200);
+          }
+
+          depositPheromone(this, 0.011 + this.synergy * 0.003);
+          if (this.energy <= 0 || this.hydration <= 0 || this.age > 430 + this.genome.resilience * 220) this.alive = false;
+        }
+        draw(ctx) {
+          const pulse = 1 + Math.sin(frame * 0.06 + this.synergy) * 0.08;
+          ctx.save();
+          ctx.globalAlpha = this.alive ? 1 : 0.4;
+          ctx.fillStyle = this.infected ? "#b15cff" : this.color;
+          ctx.beginPath();
+          ctx.arc(this.x, this.y, this.size * pulse, 0, TAU);
+          ctx.fill();
+          if (this.synergy > 1.8) {
+            ctx.strokeStyle = this.tribe === 0 ? "rgba(90,170,255,0.45)" : "rgba(255,180,75,0.45)";
+            ctx.lineWidth = 1.4;
+            ctx.beginPath();
+            ctx.arc(this.x, this.y, this.size + Math.min(10, this.synergy * 2), 0, TAU);
+            ctx.stroke();
+          }
+          if (layers.labels && this.synergy > 3.2) {
+            ctx.fillStyle = "rgba(255,255,255,0.8)";
+            ctx.font = "10px sans-serif";
+            ctx.fillText(this.lineage, this.x + 8, this.y - 8);
+          }
+          ctx.restore();
+        }
+      }
+
+      class AdvancedAgent extends Agent {}
+
+      function randomGenome() {
+        return {
+          speed: rand(0.74, 1.42),
+          sense: rand(0.55, 1.35),
+          cooperation: rand(0.70, 1.45),
+          curiosity: rand(0.55, 1.45),
+          resilience: rand(0.45, 1.25)
+        };
+      }
+
+      function mutateGenome(g, rate) {
+        const mutate = v => clamp(v * (1 + rand(-rate, rate)), 0.25, 2.2);
+        return {
+          speed: mutate(g.speed),
+          sense: mutate(g.sense),
+          cooperation: mutate(g.cooperation),
+          curiosity: mutate(g.curiosity),
+          resilience: mutate(g.resilience)
+        };
+      }
+
+      function infectAgent(agent) {
+        if (!agent.infected) {
+          agent.infected = true;
+          agent.infection = 0.05;
+          metrics.infections++;
+        }
+      }
+
+      class CommanderAgent {
+        constructor() {
+          this.stepCount = 0;
+          this.epsilon = 1.0;
+          this.exp = [];
+          this.maxReplay = 1800;
+          this.batchSize = 64;
+          this.gamma = 0.985;
+          this.learningRate = parseFloat(document.getElementById("lrInput").value);
+          this.mutationRate = parseFloat(document.getElementById("mutRateInput").value);
+          this.epsilonDecay = parseFloat(document.getElementById("decayInput").value);
+          this.model = this.buildCommanderDQN();
+          this.targetModel = this.buildCommanderDQN();
+          this.targetModel.setWeights(this.model.getWeights());
+          this.lossData = [];
+          this.training = false;
+          this.lastState = null;
+          this.lastAction = null;
+          this.lastReward = 0;
+          this.hyperHistory = [];
+        }
+        buildCommanderDQN() {
+          const model = tf.sequential();
+          model.add(tf.layers.dense({ units: 384, inputShape: [14], kernelInitializer: "heNormal" }));
+          model.add(tf.layers.batchNormalization());
+          model.add(tf.layers.leakyReLU({ alpha: 0.08 }));
+          model.add(tf.layers.dropout({ rate: 0.12 }));
+          model.add(tf.layers.dense({ units: 256, kernelInitializer: "heNormal" }));
+          model.add(tf.layers.batchNormalization());
+          model.add(tf.layers.leakyReLU({ alpha: 0.08 }));
+          model.add(tf.layers.dropout({ rate: 0.10 }));
+          model.add(tf.layers.dense({ units: 128, kernelInitializer: "heNormal" }));
+          model.add(tf.layers.leakyReLU({ alpha: 0.08 }));
+          model.add(tf.layers.dense({ units: 64, kernelInitializer: "heNormal" }));
+          model.add(tf.layers.leakyReLU({ alpha: 0.08 }));
+          model.add(tf.layers.dense({ units: 8, activation: "linear" }));
+          model.compile({ optimizer: tf.train.adam(this.learningRate), loss: "meanSquaredError" });
+          return model;
+        }
+        stateVector() {
+          const liveAgents = agents.length || 1;
+          const avgHydration = metrics.meanHydration || agents.reduce((sum, ag) => sum + ag.hydration, 0) / liveAgents;
+          const avgEnergy = metrics.meanEnergy || agents.reduce((sum, ag) => sum + ag.energy, 0) / liveAgents;
+          const globalSynergy = agents.reduce((sum, ag) => sum + ag.synergy, 0);
+          const seasonIndex = seasons.indexOf(currentSeason());
+          const archiveCoverage = metrics.qdArchive.size / 25;
+          return [
+            agents.length / INITIAL_COUNTS.agents,
+            threats.length / Math.max(1, INITIAL_COUNTS.threats * 2),
+            foods.length / Math.max(1, INITIAL_COUNTS.foods * 2),
+            waters.length / Math.max(1, INITIAL_COUNTS.waters * 2),
+            minerals.length / Math.max(1, INITIAL_COUNTS.minerals * 2),
+            tasks.length / Math.max(1, INITIAL_COUNTS.tasks * 2),
+            clamp(globalSynergy / 2500, 0, 1),
+            clamp(avgEnergy / 150, 0, 1),
+            clamp(avgHydration / 150, 0, 1),
+            timeOfDay / 24,
+            getWeatherCode(weather.condition) / 3,
+            seasonIndex / 3,
+            wind.speed / 10,
+            archiveCoverage
+          ];
+        }
+        chooseAction(state) {
+          if (Math.random() < this.epsilon) return Math.floor(Math.random() * 8);
+          return tf.tidy(() => {
+            const stT = tf.tensor2d([state]);
+            const out = this.model.predict(stT);
+            return argmax(Array.from(out.dataSync()));
+          });
+        }
+        applyAction(action) {
+          metrics.commanderActions[action]++;
+          let reward = 0;
+          switch (action) {
+            case 0:
+              if (Math.random() < 0.55) { spawnMultiStepCommanderTask(); reward += 1.6; }
+              break;
+            case 1:
+              if (settings.tasks.synergyRequired > 1) {
+                settings.tasks.synergyRequired--;
+                reward += 1.4;
+                logEvent("Commander lowered synergy requirement.");
+              }
+              break;
+            case 2:
+              settings.threat.aggressiveness = clamp(settings.threat.aggressiveness + 0.035 * settings.curriculumPressure, 0.35, 4.5);
+              reward -= 0.25;
+              logEvent("Commander increased threat pressure for curriculum hardening.");
+              break;
+            case 3:
+              for (let i = 0; i < agents.length; i += 13) agents[i].updateTarget();
+              reward += 1.8;
+              logEvent("Commander broadcast a target-network refresh pulse.");
+              break;
+            case 4:
+              spawnMegaTask(Math.floor(Math.random() * settings.tribes));
+              reward += 2.2;
+              break;
+            case 5: {
+              const buffTribe = Math.floor(Math.random() * settings.tribes);
+              agents.forEach(a => { if (a.tribe === buffTribe) a.synergyBuff *= 1.08; });
+              signals.push(new SignalPulse(rand(0, canvas.width), rand(0, canvas.height), buffTribe, "resource"));
+              reward += 1.5;
+              logEvent(`Commander buffed Tribe ${buffTribe} cooperation.`);
               break;
             }
+            case 6:
+              seedResourceBloom();
+              reward += 1.1;
+              break;
+            case 7:
+              spawnSanctuary();
+              reward += 1.25;
+              break;
           }
-          if(hasAll){
-            // pass step
-            tk.stepCount--;
-            let skillBoost= tk.requiredTopics.length*3; 
-            let rew= 10+ skillBoost;
-            r+= rew;
-            logEvent(`Task step done (multi-skill). neededTopics=${tk.requiredTopics}, +${rew}`);
-
-            if(tk.stepCount<=0){
-              let dayBonus= (timeOfDay>=6&& timeOfDay<=18)? 5:0;
-              let finalRew= settings.tasks.synergyReward+ dayBonus;
-              r+= finalRew;
-              logEvent(`Agent synergy final step => +${finalRew}`);
-              tasks.splice(i,1);
-            } else {
-              // reset synergy set for next step
-              tk.synergySet= new Set();
+          return reward;
+        }
+        computeReward(actionReward) {
+          const survival = clamp(agents.length / INITIAL_COUNTS.agents, 0, 1.45);
+          const balance = 1 - Math.abs(foods.length - waters.length) / Math.max(1, foods.length + waters.length + 1);
+          const taskProgress = clamp((metrics.tasksCompleted + metrics.megaTasksCompleted * 2) / Math.max(1, generation + 1), 0, 3);
+          const diversity = metrics.diversity;
+          const health = clamp(((metrics.meanEnergy + metrics.meanHydration) / 2) / 120, 0, 1.4);
+          const curiosity = metrics.novelty * settings.curiosityWeight;
+          const infectionPenalty = clamp(metrics.infections / Math.max(1, generation + 1), 0, 2) * 0.08;
+          const reward = actionReward + survival * 0.8 + balance * 0.25 + taskProgress * 0.8 + diversity * 0.5 + health * 0.45 + curiosity - infectionPenalty;
+          metrics.lastReward = reward;
+          return reward;
+        }
+        remember(state, action, reward, nextState, done = false) {
+          const priority = Math.abs(reward) + 0.15 + Math.random() * 0.03;
+          this.exp.push({ state, action, reward, nextState, done, priority });
+          if (this.exp.length > this.maxReplay) this.exp.splice(0, this.exp.length - this.maxReplay);
+        }
+        sampleReplay() {
+          const total = this.exp.reduce((s, e) => s + Math.pow(e.priority, 0.62), 0) || 1;
+          const batch = [];
+          for (let i = 0; i < this.batchSize; i++) {
+            let r = Math.random() * total;
+            for (const e of this.exp) {
+              r -= Math.pow(e.priority, 0.62);
+              if (r <= 0) { batch.push(e); break; }
             }
+            if (batch.length <= i) batch.push(choose(this.exp));
+          }
+          return batch;
+        }
+        async learn() {
+          if (this.training || this.exp.length < this.batchSize || this.stepCount % 5 !== 0) return;
+          this.training = true;
+          const batch = this.sampleReplay();
+          const states = batch.map(e => e.state);
+          const nextStates = batch.map(e => e.nextState);
+          const sT = tf.tensor2d(states);
+          const nsT = tf.tensor2d(nextStates);
+          let currQ, nextOnline, nextTarget, target;
+          try {
+            currQ = this.model.predict(sT);
+            nextOnline = this.model.predict(nsT);
+            nextTarget = this.targetModel.predict(nsT);
+            const currData = await currQ.array();
+            const nextOnlineData = await nextOnline.array();
+            const nextTargetData = await nextTarget.array();
+            for (let i = 0; i < batch.length; i++) {
+              const e = batch[i];
+              const bestNextAction = argmax(nextOnlineData[i]);
+              const bootstrap = e.done ? 0 : this.gamma * nextTargetData[i][bestNextAction];
+              const tdTarget = e.reward + bootstrap;
+              const tdError = Math.abs(tdTarget - currData[i][e.action]);
+              currData[i][e.action] = tdTarget;
+              e.priority = 0.85 * e.priority + 0.15 * (tdError + 0.01);
+            }
+            target = tf.tensor2d(currData);
+            const info = await this.model.fit(sT, target, { epochs: 1, batchSize: 32, verbose: 0 });
+            const loss = info.history.loss[0];
+            this.lossData.push(loss);
+            if (this.lossData.length > 120) this.lossData.shift();
+            document.getElementById("lossDisplay").textContent = "Loss: " + loss.toFixed(4);
+            updateLossChart(this.lossData);
+            if (this.stepCount % 90 === 0) this.softUpdateTarget(0.08);
+            if (this.stepCount % 260 === 0) this.populationTune(loss);
+          } catch (err) {
+            console.error("Learning error:", err);
+            logEvent("Commander learning skipped after a TensorFlow error; simulation continues.");
+          } finally {
+            tf.dispose([sT, nsT, currQ, nextOnline, nextTarget, target]);
+            this.training = false;
+          }
+        }
+        softUpdateTarget(tau) {
+          const weights = this.model.getWeights();
+          const targetWeights = this.targetModel.getWeights();
+          const updated = weights.map((w, i) => tf.tidy(() => tf.add(tf.mul(w, tau), tf.mul(targetWeights[i], 1 - tau))));
+          this.targetModel.setWeights(updated);
+          weights.forEach(t => t.dispose());
+          targetWeights.forEach(t => t.dispose());
+          updated.forEach(t => t.dispose());
+        }
+        populationTune(loss) {
+          const recentReward = metrics.lastReward;
+          this.hyperHistory.push({ loss, reward: recentReward, lr: this.learningRate, mut: this.mutationRate, decay: this.epsilonDecay });
+          if (this.hyperHistory.length > 10) this.hyperHistory.shift();
+          const avgReward = this.hyperHistory.reduce((s, h) => s + h.reward, 0) / this.hyperHistory.length;
+          if (recentReward < avgReward || loss > 0.18) {
+            this.learningRate = clamp(this.learningRate * rand(0.88, 1.08), 0.00005, 0.004);
+            this.mutationRate = clamp(this.mutationRate * rand(1.02, 1.22), 0.001, 0.08);
           } else {
-            // partial synergy but missing a skill => no pass
+            this.learningRate = clamp(this.learningRate * rand(0.98, 1.12), 0.00005, 0.004);
+            this.mutationRate = clamp(this.mutationRate * rand(0.88, 1.02), 0.001, 0.08);
+          }
+          this.epsilonDecay = clamp(this.epsilonDecay * rand(0.998, 1.001), 0.985, 0.9999);
+          this.model.compile({ optimizer: tf.train.adam(this.learningRate), loss: "meanSquaredError" });
+          document.getElementById("lrInput").value = this.learningRate.toFixed(5);
+          document.getElementById("mutRateInput").value = this.mutationRate.toFixed(4);
+          document.getElementById("decayInput").value = this.epsilonDecay.toFixed(4);
+          logEvent("Population tuner adjusted commander hyperparameters.");
+        }
+        step() {
+          this.stepCount++;
+          const state = this.stateVector();
+          const action = this.chooseAction(state);
+          const actionReward = this.applyAction(action);
+          const reward = this.computeReward(actionReward);
+          const nextState = this.stateVector();
+          this.remember(state, action, reward, nextState, false);
+          if (this.epsilon > 0.04) this.epsilon *= this.epsilonDecay;
+          if (Math.random() < this.mutationRate) {
+            for (let i = 0; i < agents.length; i += 9) agents[i].mutate();
+          }
+          this.learn();
+          return state;
+        }
+        trainExtra() {
+          for (let i = 0; i < 120; i++) this.step();
+          logEvent("Commander trained extra for 120 prioritized-replay steps.");
+        }
+      }
+
+      function spawnMultiStepCommanderTask() {
+        tasks.push(new Task(Math.random() * canvas.width, Math.random() * canvas.height, true, false, null));
+        logEvent("Multi-step commander task spawned.");
+      }
+      function spawnMegaTask(tribe) {
+        tasks.push(new Task(Math.random() * canvas.width, Math.random() * canvas.height, true, true, tribe));
+        logEvent(`MegaTask spawned for Tribe ${tribe}.`);
+      }
+      function spawnFood(x = Math.random() * canvas.width, y = Math.random() * canvas.height) { foods.push(new Food(x, y)); }
+      function spawnWater(x = Math.random() * canvas.width, y = Math.random() * canvas.height) { waters.push(new Water(x, y)); }
+      function spawnMineral(x = Math.random() * canvas.width, y = Math.random() * canvas.height) { minerals.push(new Mineral(x, y)); }
+      function spawnSanctuary() {
+        sanctuaries.push(new Sanctuary(rand(60, canvas.width - 60), rand(60, canvas.height - 60)));
+        logEvent("Commander opened a temporary sanctuary field.");
+      }
+      function seedResourceBloom() {
+        const cx = rand(80, canvas.width - 80), cy = rand(80, canvas.height - 80);
+        for (let i = 0; i < 16; i++) {
+          const a = Math.random() * TAU, r = rand(8, 85);
+          if (i % 3 === 0) spawnWater(cx + Math.cos(a) * r, cy + Math.sin(a) * r);
+          else if (i % 3 === 1) spawnMineral(cx + Math.cos(a) * r, cy + Math.sin(a) * r);
+          else spawnFood(cx + Math.cos(a) * r, cy + Math.sin(a) * r);
+        }
+        signals.push(new SignalPulse(cx, cy, Math.floor(Math.random() * settings.tribes), "resource"));
+        logEvent("Resource bloom seeded.");
+      }
+      function seedDisruption() {
+        pathogenClouds.push(new PathogenCloud(rand(50, canvas.width - 50), rand(50, canvas.height - 50)));
+        settings.threat.aggressiveness = clamp(settings.threat.aggressiveness + 0.12, 0.4, 4.8);
+        logEvent("Manual disruption injected: pathogen cloud + threat pressure.");
+      }
+
+      function initializeSimulation() {
+        agents = []; threats = []; foods = []; waters = []; minerals = []; tasks = []; threatNests = []; obstacles = [];
+        pathogenClouds = []; sanctuaries = []; signals = [];
+        generation = 0; frame = 0; timeOfDay = 8; stepTime = 0;
+        metrics.births = 0; metrics.deaths = 0; metrics.tasksCompleted = 0; metrics.megaTasksCompleted = 0;
+        metrics.resourcesConsumed = 0; metrics.infections = 0; metrics.commanderActions = new Array(8).fill(0);
+        metrics.samples = []; metrics.qdArchive = new Map(); metrics.qdBest = 0; metrics.lastReward = 0;
+
+        commander = new CommanderAgent();
+        window.commander = commander;
+
+        for (let i = 0; i < INITIAL_COUNTS.agents; i++) {
+          const tribe = i % settings.tribes;
+          agents.push(new AdvancedAgent(Math.random() * canvas.width, Math.random() * canvas.height, tribe));
+        }
+        for (let i = 0; i < INITIAL_COUNTS.threats; i++) threats.push(new Threat(Math.random() * canvas.width, Math.random() * canvas.height));
+        for (let i = 0; i < INITIAL_COUNTS.foods; i++) spawnFood();
+        for (let i = 0; i < INITIAL_COUNTS.waters; i++) spawnWater();
+        for (let i = 0; i < INITIAL_COUNTS.tasks; i++) tasks.push(new Task(Math.random() * canvas.width, Math.random() * canvas.height, true, false, null));
+        for (let i = 0; i < INITIAL_COUNTS.threatNests; i++) threatNests.push(new ThreatNest(Math.random() * canvas.width, Math.random() * canvas.height));
+        for (let i = 0; i < INITIAL_COUNTS.obstacles; i++) obstacles.push(new Obstacle(Math.random() * canvas.width, Math.random() * canvas.height, rand(30, 50)));
+        for (let i = 0; i < INITIAL_COUNTS.minerals; i++) spawnMineral();
+        generateZones();
+        initPheromones();
+        buildHashes();
+        logDiv.innerHTML = "<h2>Event Log</h2>";
+        logEvent("Simulation initialized with Research Lab X systems.");
+      }
+
+      function buildHashes() {
+        agentHash.build(agents);
+        threatHash.build(threats);
+        foodHash.build(foods);
+        waterHash.build(waters);
+        mineralHash.build(minerals);
+        obstacleHash.build(obstacles);
+        taskHash.build(tasks);
+      }
+
+      function shareCooperationSpatial() {
+        for (const a of agents) {
+          const neighbors = agentHash.query(a.x, a.y, settings.synergy.distanceThreshold * 0.5);
+          for (const b of neighbors) {
+            if (a === b || b.tribe !== a.tribe) continue;
+            const avg = ((a.synergy + b.synergy) / 2) + 0.003 * a.genome.cooperation;
+            a.synergy = clamp(avg, 0, settings.synergy.maxSynergyPerAgent);
+            b.synergy = clamp(avg, 0, settings.synergy.maxSynergyPerAgent);
           }
         }
       }
-    }
-    // small drain
-    this.health-= 0.05;
-    if(this.health<=0){
-      this.alive=false; 
-      logEvent("Agent died from health depletion.");
-      r-=5;
-    }
-    return r;
-  }
 
-  shareExperiences(agents) {
-    // find agents within 50 px
-    for(const other of agents){
-      if(other===this) continue;
-      if(dist(this, other)<50) {
-        // share a small random sample
-        let count= Math.min(3, this.experiences.length);
-        for(let i=0;i< count; i++){
-          let idx= Math.floor(Math.random()* this.experiences.length);
-          other.experiences.push(this.experiences[idx]);
+      function consumeResources() {
+        for (const agent of agents) {
+          const food = nearestFrom(foodHash, agent.x, agent.y, agent.size + 7, f => f.alive);
+          if (food) {
+            const terrain = zoneAt(food.x, food.y);
+            agent.energy = Math.min(agent.energy + 20 * terrain.food, 150);
+            food.alive = false;
+            metrics.resourcesConsumed++;
+            if (Math.random() < 0.3) signals.push(new SignalPulse(agent.x, agent.y, agent.tribe, "resource"));
+          }
+          const water = nearestFrom(waterHash, agent.x, agent.y, agent.size + 7, w => w.alive);
+          if (water) {
+            const terrain = zoneAt(water.x, water.y);
+            agent.hydration = Math.min(agent.hydration + 20 * terrain.water, 150);
+            water.alive = false;
+            metrics.resourcesConsumed++;
+          }
+          const mineral = nearestFrom(mineralHash, agent.x, agent.y, agent.size + 7, m => m.alive);
+          if (mineral) {
+            agent.synergy = Math.min(agent.synergy + 0.22, settings.synergy.maxSynergyPerAgent);
+            mineral.alive = false;
+            metrics.resourcesConsumed++;
+          }
         }
       }
-    }
-  }
 
-  learn(){
-    if(this.experiences.length< settings.agent.batchSize) return;
-    let batch= [];
-    for(let i=0;i< settings.agent.batchSize;i++){
-      let idx= Math.floor(Math.random()* this.experiences.length);
-      batch.push(this.experiences[idx]);
-    }
-    const states=[], nextStates=[], actions=[], rewards=[], dones=[];
-    for(const ex of batch){
-      states.push(ex.state);
-      nextStates.push(ex.nextState);
-      actions.push(ex.action);
-      rewards.push(ex.reward);
-      dones.push(ex.done?1:0);
-    }
-    let sT= tf.tensor2d(states);
-    let nsT= tf.tensor2d(nextStates);
-
-    let qNextLocal= this.brain.predict(nsT);
-    let qNextTarget= this.targetBrain.predict(nsT);
-    let localArr= qNextLocal.arraySync();
-    let targArr= qNextTarget.arraySync();
-
-    let currPred= this.brain.predict(sT);
-    let currArr= currPred.arraySync();
-
-    for(let i=0;i< batch.length;i++){
-      let bestA= argmax(localArr[i]);
-      let target= dones[i]? rewards[i] : (rewards[i] + settings.agent.gamma* targArr[i][bestA]);
-      currArr[i][ actions[i]] = target;
-    }
-    let updated= tf.tensor2d(currArr,[batch.length,4]);
-    this.brain.fit(sT, updated, {epochs:1, verbose:0}).then(()=>{
-      sT.dispose(); nsT.dispose();
-      qNextLocal.dispose(); qNextTarget.dispose();
-      currPred.dispose(); updated.dispose();
-    });
-  }
-
-  updateTarget(){
-    this.targetBrain.setWeights(this.brain.getWeights());
-  }
-}
-
-class Threat extends Entity {
-  constructor(x,y){
-    super(x,y,8,"red");
-  }
-  move(timeOfDay){
-    let sp= settings.threat.baseSpeed* settings.threat.aggressiveness;
-    if(timeOfDay>18|| timeOfDay<6) sp*=1.2;
-    this.x+= (Math.random()-0.5)* sp;
-    this.y+= (Math.random()-0.5)* sp;
-    keepInBounds(this);
-  }
-}
-class Food extends Entity {
-  constructor(x,y){ super(x,y,5,"green"); }
-}
-class Task extends Entity {
-  constructor(x,y){ super(x,y,6,"yellow"); }
-}
-
-/*****************************************************************
-  Commander Agent
-*****************************************************************/
-class CommanderAgent {
-  constructor(){
-    this.stepCount=0;
-    this.epsilon=1.0;
-    this.exp=[];
-    this.model= buildCommanderDQN();
-    this.targetModel= buildCommanderDQN();
-    this.targetModel.setWeights( this.model.getWeights() );
-  }
-
-  step(agents, threats, foods, tasks, timeOfDay){
-    this.stepCount++;
-    // #agents, #tasks, synergy, timeOfDay, threatAggro => 5 input
-    let st= [
-      agents.length/30,
-      tasks.length/10,
-      settings.tasks.synergyRequired/5,
-      timeOfDay/24,
-      settings.threat.aggressiveness/5
-    ];
-    let action;
-    if(Math.random()< this.epsilon){
-      action= Math.floor(Math.random()*5); // 5 actions
-    } else {
-      let stT= tf.tensor2d([st]);
-      let out= this.model.predict(stT);
-      let arr= out.dataSync();
-      out.dispose(); stT.dispose();
-      action= argmax(arr);
-    }
-    let reward=0;
-    switch(action){
-      case 0:
-        // spawn multi-step synergy tasks
-        if(Math.random()<0.3){
-          spawnMultiStepCommanderTask();
-          reward+=2;
+      function checkReproduction() {
+        if (agents.length >= settings.maxAgents) return;
+        const newAgents = [];
+        const cap = settings.maxAgents - agents.length;
+        for (const agent of agents) {
+          if (newAgents.length >= cap) break;
+          const readiness = (agent.energy + agent.hydration) / 300 + agent.synergy / 10;
+          if (agent.energy > 118 && agent.hydration > 75 && Math.random() < 0.026 * readiness) {
+            const child = new AdvancedAgent(agent.x + rand(-18, 18), agent.y + rand(-18, 18), agent.tribe, agent);
+            child.synergyBuff = agent.synergyBuff * (1 + rand(-0.08, 0.08));
+            child.lineage = agent.lineage;
+            agent.energy -= 46;
+            agent.hydration -= 18;
+            newAgents.push(child);
+          }
         }
-        break;
-      case 1:
-        // lower synergy
-        if(settings.tasks.synergyRequired>1){
-          settings.tasks.synergyRequired--;
-          logEvent("Commander lowered synergy requirement!");
-          reward+=2;
+        if (newAgents.length) {
+          metrics.births += newAgents.length;
+          agents = agents.concat(newAgents);
+          if (newAgents.length > 3) logEvent(`${newAgents.length} agents reproduced through inherited genomes.`);
         }
-        break;
-      case 2:
-        // raise synergy
-        if(settings.tasks.synergyRequired<5){
-          settings.tasks.synergyRequired++;
-          logEvent("Commander raised synergy requirement!");
-          reward-=1;
+      }
+
+      function completeSynergyTasksIfReady(agentArray) {
+        const globalSynergy = agentArray.reduce((sum, ag) => sum + ag.synergy, 0);
+        const synergyByTribe = new Array(settings.tribes).fill(0);
+        agentArray.forEach(ag => { synergyByTribe[ag.tribe] += ag.synergy; });
+        tasks = tasks.filter(task => {
+          if (!task.requiresSynergy) return true;
+          if (!task.isMegaTask) {
+            if (globalSynergy >= settings.tasks.synergyRequired) {
+              metrics.tasksCompleted++;
+              logEvent("Synergy task completed.");
+              return false;
+            }
+            return true;
+          }
+          const req = settings.tasks.megaTaskSynergyReq;
+          const tribe = task.tribeForMegaTask;
+          if (tribe !== null) {
+            if (synergyByTribe[tribe] >= req) {
+              metrics.megaTasksCompleted++;
+              logEvent(`MegaTask for Tribe ${tribe} completed.`);
+              agentArray.forEach(a => { if (a.tribe === tribe) a.synergy = Math.min(a.synergy + 1, settings.synergy.maxSynergyPerAgent); });
+              return false;
+            }
+            return true;
+          }
+          if (globalSynergy >= req) {
+            metrics.megaTasksCompleted++;
+            logEvent("Global MegaTask completed.");
+            return false;
+          }
+          return true;
+        });
+      }
+
+      function updateWeather() {
+        const conditions = ["sunny", "rainy", "stormy", "foggy"];
+        const season = currentSeason();
+        let weights = (timeOfDay < 6 || timeOfDay > 18) ? [0.38, 0.20, 0.20, 0.22] : [0.58, 0.21, 0.10, 0.11];
+        if (season.name === "Winter") weights = [0.34, 0.22, 0.18, 0.26];
+        if (season.name === "Summer") weights = [0.70, 0.16, 0.08, 0.06];
+        let r = Math.random(), cumulative = 0, condition = "sunny";
+        for (let i = 0; i < conditions.length; i++) {
+          cumulative += weights[i];
+          if (r < cumulative) { condition = conditions[i]; break; }
         }
-        break;
-      case 3:
-        // update agent target
-        for(const ag of agents) { ag.updateTarget(); }
-        reward+=3;
-        logEvent("Commander forced target update on agents!");
-        break;
-      case 4:
-        // random environment changes
-        // spawn or remove a threat
-        if(Math.random()<0.4 && threats.length>2){
-          threats.pop();
-          logEvent("Commander removed a threat!");
-          reward+=2;
+        const seasonalTemp = season.name === "Winter" ? -5 : season.name === "Summer" ? 6 : season.name === "Autumn" ? 1 : 3;
+        const temperature = 20 + seasonalTemp + 10 * Math.sin((timeOfDay / 24) * TAU);
+        const humidity = condition === "rainy" ? 80 : condition === "stormy" ? 70 : condition === "foggy" ? 90 : 50;
+        weather = { condition, temperature, humidity };
+        wind.speed = Math.random() * (condition === "stormy" ? 13 : 8);
+        wind.direction = Math.random() * TAU;
+        if (condition === "stormy" && Math.random() < 0.25 * settings.curriculumPressure) {
+          pathogenClouds.push(new PathogenCloud(rand(20, canvas.width - 20), rand(20, canvas.height - 20)));
+        }
+        logEvent(`Weather: ${condition}, ${temperature.toFixed(1)}°C, humidity ${humidity}%, wind ${wind.speed.toFixed(1)} m/s.`);
+      }
+
+      function updateMetrics() {
+        const n = agents.length || 1;
+        let sumE = 0, sumH = 0, sumS = 0, novelty = 0;
+        const tribeCounts = new Array(settings.tribes).fill(0);
+        for (const a of agents) {
+          sumE += a.energy; sumH += a.hydration; sumS += a.synergy; novelty += a.lastNovelty || 0; tribeCounts[a.tribe]++;
+        }
+        metrics.meanEnergy = sumE / n;
+        metrics.meanHydration = sumH / n;
+        metrics.meanSynergy = sumS / n;
+        metrics.novelty = novelty / n;
+        let entropy = 0;
+        for (const c of tribeCounts) {
+          const p = c / n;
+          if (p > 0) entropy -= p * Math.log2(p);
+        }
+        metrics.diversity = entropy / Math.log2(settings.tribes || 2);
+      }
+
+      function updateArchive() {
+        if (!agents.length) return;
+        for (const tribe of [...Array(settings.tribes).keys()]) {
+          const tribeAgents = agents.filter(a => a.tribe === tribe);
+          if (!tribeAgents.length) continue;
+          const avgCoop = tribeAgents.reduce((s, a) => s + a.genome.cooperation, 0) / tribeAgents.length;
+          const avgCurio = tribeAgents.reduce((s, a) => s + a.genome.curiosity, 0) / tribeAgents.length;
+          const avgHealth = tribeAgents.reduce((s, a) => s + a.energy + a.hydration, 0) / (tribeAgents.length * 300);
+          const avgSyn = tribeAgents.reduce((s, a) => s + a.synergy, 0) / tribeAgents.length;
+          const bx = clamp(Math.floor(avgCoop / 1.7 * 5), 0, 4);
+          const by = clamp(Math.floor(avgCurio / 1.7 * 5), 0, 4);
+          const key = `${bx},${by}`;
+          const score = avgHealth + avgSyn * 0.18 + tribeAgents.length / INITIAL_COUNTS.agents;
+          const existing = metrics.qdArchive.get(key);
+          if (!existing || score > existing.score) {
+            metrics.qdArchive.set(key, { score, tribe, avgCoop, avgCurio, count: tribeAgents.length, generation });
+            metrics.qdBest = Math.max(metrics.qdBest, score);
+          }
+        }
+      }
+
+      function sampleTelemetry() {
+        metrics.samples.push({
+          generation,
+          agents: agents.length,
+          threats: threats.length,
+          foods: foods.length,
+          waters: waters.length,
+          minerals: minerals.length,
+          tasks: tasks.length,
+          meanEnergy: metrics.meanEnergy,
+          meanHydration: metrics.meanHydration,
+          meanSynergy: metrics.meanSynergy,
+          diversity: metrics.diversity,
+          novelty: metrics.novelty,
+          reward: metrics.lastReward,
+          epsilon: commander ? commander.epsilon : 0,
+          lr: commander ? commander.learningRate : 0,
+          mutationRate: commander ? commander.mutationRate : 0,
+          weather: weather.condition,
+          season: currentSeason().name
+        });
+        if (metrics.samples.length > 1800) metrics.samples.shift();
+      }
+
+      function updateSimulation(timestamp) {
+        if (paused) { lastTimestamp = timestamp; requestAnimationFrame(updateSimulation); return; }
+        frame++;
+        let dt = (timestamp - lastTimestamp) * simulationSpeed;
+        if (!Number.isFinite(dt) || dt <= 0) dt = 16.67;
+        dt = Math.min(dt, 90);
+        lastTimestamp = timestamp;
+        fps = (1000 / Math.max(1, dt / simulationSpeed)).toFixed(1);
+        stepTime += dt / 1000;
+        if (stepTime > 1) {
+          timeOfDay += 0.05;
+          if (timeOfDay >= 24) timeOfDay = 0;
+          stepTime = 0;
+          generation++;
+        }
+
+        if (timestamp - lastWeatherUpdate > 10000) { updateWeather(); lastWeatherUpdate = timestamp; }
+        if (timestamp - lastResourceSpawn > 5000) {
+          const season = currentSeason();
+          const blooms = Math.max(1, Math.round(season.resource * settings.curriculumPressure));
+          for (let i = 0; i < blooms; i++) { spawnFood(); spawnWater(); if (Math.random() < 0.55) spawnMineral(); }
+          if (Math.random() < 0.08 * season.disease) pathogenClouds.push(new PathogenCloud(rand(20, canvas.width - 20), rand(20, canvas.height - 20)));
+          lastResourceSpawn = timestamp;
+        }
+
+        buildHashes();
+        updatePheromones();
+        commander.step();
+
+        for (const agent of agents) {
+          if (agent.alive) {
+            const neighbors = agentHash.query(agent.x, agent.y, 130);
+            agent.updateSynergy(neighbors);
+            agent.move(dt, neighbors);
+          }
+        }
+        shareCooperationSpatial();
+
+        for (const t of threats) t.move(timeOfDay, dt);
+        for (const f of foods) f.updateDecay();
+        for (const w of waters) w.updateDecay();
+        for (const m of minerals) m.updateDecay();
+        for (const p of pathogenClouds) p.update(dt);
+        for (const s of sanctuaries) s.update(dt);
+        for (const sig of signals) sig.update(dt);
+
+        const before = agents.length;
+        agents = agents.filter(a => a.alive);
+        metrics.deaths += Math.max(0, before - agents.length);
+        foods = foods.filter(f => f.alive);
+        waters = waters.filter(w => w.alive);
+        threats = threats.filter(t => t.alive);
+        minerals = minerals.filter(m => m.alive);
+        pathogenClouds = pathogenClouds.filter(p => p.alive);
+        sanctuaries = sanctuaries.filter(s => s.alive);
+        signals = signals.filter(s => s.alive);
+
+        buildHashes();
+        consumeResources();
+        completeSynergyTasksIfReady(agents);
+        const globalSynergy = agents.reduce((sum, ag) => sum + ag.synergy, 0);
+        threatNests.forEach(nest => nest.spawnThreatIfNeeded(globalSynergy));
+        checkReproduction();
+        updateMetrics();
+
+        if (timestamp - lastArchiveUpdate > 3000) { updateArchive(); lastArchiveUpdate = timestamp; }
+        if (timestamp - lastTelemetrySample > 1000) { sampleTelemetry(); lastTelemetrySample = timestamp; }
+
+        drawScene();
+        updateSynergyPanel();
+        updatePerformancePanel();
+        updateLabPanel();
+        requestAnimationFrame(updateSimulation);
+      }
+
+      function drawScene() {
+        const dayColor = { r: 135, g: 206, b: 235 };
+        const nightColor = { r: 7, g: 12, b: 35 };
+        const tDay = (Math.sin(timeOfDay / 24 * TAU - Math.PI / 2) + 1) / 2;
+        const bgR = Math.round(nightColor.r * (1 - tDay) + dayColor.r * tDay);
+        const bgG = Math.round(nightColor.g * (1 - tDay) + dayColor.g * tDay);
+        const bgB = Math.round(nightColor.b * (1 - tDay) + dayColor.b * tDay);
+        ctx.fillStyle = `rgb(${bgR},${bgG},${bgB})`;
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        drawEnvironmentalZones();
+        drawSeasonTint();
+        if (layers.heatmap) drawVisitHeatmap();
+        drawSun();
+        if (layers.pheromones) drawPheromones();
+        drawClouds();
+        drawWeatherParticles();
+        pathogenClouds.forEach(p => p.draw(ctx));
+        sanctuaries.forEach(s => s.draw(ctx));
+        threatNests.forEach(nest => nest.draw(ctx));
+        threats.forEach(t => t.draw(ctx));
+        foods.forEach(f => f.draw(ctx));
+        waters.forEach(w => w.draw(ctx));
+        minerals.forEach(m => m.draw(ctx));
+        tasks.forEach(task => task.draw(ctx));
+        obstacles.forEach(obstacle => obstacle.draw(ctx));
+        signals.forEach(sig => sig.draw(ctx));
+        agents.forEach(a => a.draw(ctx));
+        if (selectedAgent && selectedAgent.alive) drawSelectedAgent(selectedAgent);
+      }
+
+      function drawEnvironmentalZones() {
+        for (const zone of zones) {
+          ctx.fillStyle = zone.color;
+          ctx.fillRect(zone.x, zone.y, zone.width, zone.height);
+        }
+      }
+      function drawSeasonTint() {
+        ctx.fillStyle = currentSeason().tint;
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+      }
+      function drawSun() {
+        const sunRadius = 42;
+        const sunX = canvas.width * 0.5;
+        const sunY = canvas.height * 0.82 - Math.sin((timeOfDay / 24) * Math.PI) * canvas.height * 0.62;
+        const sunGradient = ctx.createRadialGradient(sunX, sunY, sunRadius * 0.15, sunX, sunY, sunRadius * 1.6);
+        sunGradient.addColorStop(0, "rgba(255,255,150,0.95)");
+        sunGradient.addColorStop(0.4, "rgba(255,190,60,0.32)");
+        sunGradient.addColorStop(1, "rgba(255,150,0,0)");
+        ctx.fillStyle = sunGradient;
+        ctx.beginPath();
+        ctx.arc(sunX, sunY, sunRadius * 1.6, 0, TAU);
+        ctx.fill();
+      }
+      function drawClouds() {
+        const alphaBoost = weather.condition === "foggy" ? 0.22 : weather.condition === "stormy" ? 0.18 : 0;
+        for (const cloud of clouds) {
+          ctx.fillStyle = `rgba(255,255,255,${cloud.alpha + alphaBoost})`;
+          ctx.beginPath();
+          ctx.arc(cloud.x, cloud.y, cloud.radius, 0, TAU);
+          ctx.arc(cloud.x + cloud.radius * 0.55, cloud.y + 5, cloud.radius * 0.72, 0, TAU);
+          ctx.arc(cloud.x - cloud.radius * 0.55, cloud.y + 8, cloud.radius * 0.62, 0, TAU);
+          ctx.fill();
+          cloud.x += cloud.speed + wind.speed * 0.008;
+          if (cloud.x - cloud.radius > canvas.width) {
+            cloud.x = -cloud.radius * 2;
+            cloud.y = Math.random() * canvas.height * 0.3;
+          }
+        }
+      }
+      function drawWeatherParticles() {
+        if (weather.condition === "sunny") return;
+        ctx.save();
+        if (weather.condition === "rainy" || weather.condition === "stormy") {
+          ctx.strokeStyle = weather.condition === "stormy" ? "rgba(190,230,255,0.42)" : "rgba(190,230,255,0.28)";
+          ctx.lineWidth = 1;
+          const n = weather.condition === "stormy" ? 85 : 45;
+          for (let i = 0; i < n; i++) {
+            const x = (i * 97 + frame * (weather.condition === "stormy" ? 10 : 6)) % canvas.width;
+            const y = (i * 53 + frame * 14) % canvas.height;
+            ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x - 10, y + 26); ctx.stroke();
+          }
+        }
+        if (weather.condition === "foggy") {
+          ctx.fillStyle = "rgba(220,230,240,0.14)";
+          for (let i = 0; i < 8; i++) ctx.fillRect(0, (i * 90 + frame * 0.4) % canvas.height, canvas.width, 28);
+        }
+        ctx.restore();
+      }
+      function drawPheromones() {
+        for (let tribe = 0; tribe < pheromones.fields.length; tribe++) {
+          const field = pheromones.fields[tribe];
+          const color = tribe === 0 ? [80, 160, 255] : [255, 165, 70];
+          for (let r = 0; r < pheromones.rows; r++) {
+            for (let c = 0; c < pheromones.cols; c++) {
+              const v = field[r * pheromones.cols + c];
+              if (v < 0.035) continue;
+              ctx.fillStyle = `rgba(${color[0]},${color[1]},${color[2]},${clamp(v / 15, 0, 0.18)})`;
+              ctx.fillRect(c * settings.pheromoneCell, r * settings.pheromoneCell, settings.pheromoneCell, settings.pheromoneCell);
+            }
+          }
+        }
+      }
+      function drawVisitHeatmap() {
+        for (let r = 0; r < pheromones.rows; r++) {
+          for (let c = 0; c < pheromones.cols; c++) {
+            const v = pheromones.visits[r * pheromones.cols + c];
+            if (!v) continue;
+            ctx.fillStyle = `rgba(255,80,180,${clamp(Math.log(v + 1) / 18, 0.02, 0.22)})`;
+            ctx.fillRect(c * settings.pheromoneCell, r * settings.pheromoneCell, settings.pheromoneCell, settings.pheromoneCell);
+          }
+        }
+      }
+      function drawSelectedAgent(agent) {
+        ctx.save();
+        ctx.strokeStyle = "rgba(255,255,255,0.85)";
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(agent.x, agent.y, 22, 0, TAU);
+        ctx.stroke();
+        ctx.restore();
+      }
+
+      function updateSynergyPanel() {
+        const synergyByTribe = new Array(settings.tribes).fill(0);
+        const counts = new Array(settings.tribes).fill(0);
+        agents.forEach(a => { synergyByTribe[a.tribe] += a.synergy; counts[a.tribe]++; });
+        const globalSynergy = synergyByTribe.reduce((sum, val) => sum + val, 0);
+        let html = `<h2>Swarm Synergy</h2>`;
+        html += `<div class="metric-grid"><div class="metric"><span class="tiny">Global Synergy</span><b>${globalSynergy.toFixed(2)}</b></div><div class="metric"><span class="tiny">Diversity</span><b>${(metrics.diversity * 100).toFixed(0)}%</b></div></div>`;
+        synergyByTribe.forEach((val, tribe) => {
+          const pct = clamp((val / Math.max(1, globalSynergy)) * 100, 0, 100);
+          html += `<div class="tiny" style="margin-top:8px;">Tribe ${tribe}: ${val.toFixed(2)} synergy · ${counts[tribe]} agents</div><div class="bar"><div class="fill" style="width:${pct}%"></div></div>`;
+        });
+        html += `<div class="chip-row"><span class="chip">Tasks ${tasks.length}</span><span class="chip">Completed ${metrics.tasksCompleted}</span><span class="chip">Mega ${metrics.megaTasksCompleted}</span><span class="chip">Req ${settings.tasks.synergyRequired}</span></div>`;
+        synergyPanel.innerHTML = html;
+      }
+
+      function updatePerformancePanel() {
+        const mem = tf && tf.memory ? tf.memory() : { numTensors: 0 };
+        performancePanel.innerHTML = `<h2>Performance</h2>
+          <div class="metric-grid">
+            <div class="metric"><span class="tiny">Generation</span><b>${generation}</b></div>
+            <div class="metric"><span class="tiny">FPS</span><b>${fps}</b></div>
+            <div class="metric"><span class="tiny">Agents</span><b>${agents.length}</b></div>
+            <div class="metric"><span class="tiny">Threats</span><b>${threats.length}</b></div>
+          </div>
+          <div class="tiny" style="margin-top:8px;">Time ${timeOfDay.toFixed(2)}h · ${currentSeason().name} · ${weather.condition} · ${weather.temperature.toFixed(1)}°C · Humidity ${weather.humidity}%</div>
+          <div class="tiny">Wind ${wind.speed.toFixed(1)} m/s @ ${(wind.direction * 180 / Math.PI).toFixed(0)}° · TF tensors ${mem.numTensors}</div>`;
+      }
+
+      function updateLabPanel() {
+        const actions = ["Task", "LowerReq", "Threat+", "Refresh", "Mega", "Buff", "Bloom", "Sanctuary"];
+        const totalActions = Math.max(1, metrics.commanderActions.reduce((s, v) => s + v, 0));
+        let archive = `<div class="archive">`;
+        for (let y = 0; y < 5; y++) {
+          for (let x = 0; x < 5; x++) {
+            const cell = metrics.qdArchive.get(`${x},${y}`);
+            const level = cell ? (cell.score > metrics.qdBest * 0.72 ? "hot" : "mid") : "";
+            archive += `<div class="cell ${level}" title="${cell ? `score ${cell.score.toFixed(2)} tribe ${cell.tribe}` : "empty"}"></div>`;
+          }
+        }
+        archive += `</div>`;
+        const actionChips = actions.map((a, i) => `<span class="chip">${a}: ${((metrics.commanderActions[i] / totalActions) * 100).toFixed(0)}%</span>`).join("");
+        labPanel.innerHTML = `<h2>Research Lab X</h2>
+          <div class="metric-grid">
+            <div class="metric"><span class="tiny">Reward</span><b>${metrics.lastReward.toFixed(2)}</b></div>
+            <div class="metric"><span class="tiny">Epsilon</span><b>${commander.epsilon.toFixed(3)}</b></div>
+            <div class="metric"><span class="tiny">Novelty</span><b>${metrics.novelty.toFixed(3)}</b></div>
+            <div class="metric"><span class="tiny">Archive</span><b>${metrics.qdArchive.size}/25</b></div>
+          </div>
+          <h3 style="margin-top:10px;">MAP-Elites Archive</h3>${archive}
+          <div class="chip-row">${actionChips}</div>
+          <div class="tiny" style="margin-top:8px;">Births ${metrics.births} · Deaths ${metrics.deaths} · Infections ${metrics.infections} · Resources ${metrics.resourcesConsumed}</div>`;
+      }
+
+      const lossChartCtx = document.getElementById("lossChart").getContext("2d");
+      const lossChart = new Chart(lossChartCtx, {
+        type: "line",
+        data: { labels: [], datasets: [{ label: "Training Loss", data: [], borderColor: "rgba(72,214,255,1)", backgroundColor: "rgba(72,214,255,0.18)", fill: true, tension: 0.18, pointRadius: 0 }] },
+        options: { responsive: true, maintainAspectRatio: false, animation: false, scales: { x: { display: false }, y: { beginAtZero: true } }, plugins: { legend: { labels: { color: "#dff7ff" } } } }
+      });
+      function updateLossChart(lossData) {
+        lossChart.data.labels = lossData.map((_, i) => i);
+        lossChart.data.datasets[0].data = lossData;
+        lossChart.update("none");
+      }
+
+      canvas.addEventListener("mousemove", updateAgentTooltip);
+      canvas.addEventListener("click", e => {
+        selectedAgent = nearestFrom(agentHash, e.clientX, e.clientY, 22, a => a.alive);
+      });
+
+      function updateAgentTooltip(e) {
+        const agent = nearestFrom(agentHash, e.clientX, e.clientY, 14, a => a.alive);
+        if (agent) {
+          agentTooltip.style.display = "block";
+          agentTooltip.style.left = (e.clientX + 12) + "px";
+          agentTooltip.style.top = (e.clientY + 12) + "px";
+          agentTooltip.innerHTML = `Tribe ${agent.tribe} · lineage ${agent.lineage}<br>
+            Energy ${agent.energy.toFixed(1)} · Hydration ${agent.hydration.toFixed(1)}<br>
+            Synergy ${agent.synergy.toFixed(2)} · Age ${agent.age.toFixed(0)}s · ${agent.infected ? "Infected" : "Healthy"}<br>
+            Genome speed ${agent.genome.speed.toFixed(2)}, sense ${agent.genome.sense.toFixed(2)}, coop ${agent.genome.cooperation.toFixed(2)}, curiosity ${agent.genome.curiosity.toFixed(2)}`;
         } else {
-          let x= Math.random()* canvas.width; 
-          let y= Math.random()* canvas.height;
-          threats.push(new Threat(x,y));
-          logEvent("Commander spawned an extra threat!");
-          reward-=2;
+          agentTooltip.style.display = "none";
         }
-        break;
-      default: break;
-    }
+      }
 
-    let nextSt= [
-      agents.length/30,
-      tasks.length/10,
-      settings.tasks.synergyRequired/5,
-      timeOfDay/24,
-      settings.threat.aggressiveness/5
-    ];
-    let done=false;
-    this.exp.push({st, action, reward, nextSt, done});
-    if(this.exp.length>200) this.learn();
-    if(this.epsilon> 0.05) this.epsilon*= 0.999;
-  }
+      function saveSimulation() {
+        const snapshot = {
+          generation, timeOfDay, settings, weather, wind, metrics: {
+            births: metrics.births,
+            deaths: metrics.deaths,
+            tasksCompleted: metrics.tasksCompleted,
+            megaTasksCompleted: metrics.megaTasksCompleted,
+            resourcesConsumed: metrics.resourcesConsumed,
+            infections: metrics.infections,
+            samples: metrics.samples.slice(-400)
+          },
+          agents: agents.slice(0, 2200).map(a => ({ x: a.x, y: a.y, tribe: a.tribe, energy: a.energy, hydration: a.hydration, synergy: a.synergy, synergyBuff: a.synergyBuff, age: a.age, infected: a.infected, infection: a.infection, lineage: a.lineage, genome: a.genome })),
+          threats: threats.map(t => ({ x: t.x, y: t.y, lifetime: t.lifetime })),
+          foods: foods.map(f => ({ x: f.x, y: f.y })), waters: waters.map(w => ({ x: w.x, y: w.y })), minerals: minerals.map(m => ({ x: m.x, y: m.y })),
+          tasks: tasks.map(t => ({ x: t.x, y: t.y, requiresSynergy: t.requiresSynergy, isMegaTask: t.isMegaTask, tribeForMegaTask: t.tribeForMegaTask })),
+          pathogenClouds: pathogenClouds.map(p => ({ x: p.x, y: p.y, size: p.size, life: p.life })),
+          sanctuaries: sanctuaries.map(s => ({ x: s.x, y: s.y, size: s.size, life: s.life }))
+        };
+        localStorage.setItem("evoResearchLabXSnapshot", JSON.stringify(snapshot));
+        logEvent("Snapshot saved to localStorage.");
+      }
 
-  learn(){
-    if(this.exp.length<64)return;
-    let batch=[];
-    for(let i=0;i<64;i++){
-      let idx= Math.floor(Math.random()* this.exp.length);
-      batch.push(this.exp[idx]);
-    }
-    const states=[], actions=[], rewards=[], nextStates=[], dones=[];
-    for(const ex of batch){
-      states.push(ex.st);
-      actions.push(ex.action);
-      rewards.push(ex.reward);
-      nextStates.push(ex.nextSt);
-      dones.push(ex.done?1:0);
-    }
-    let sT= tf.tensor2d(states);
-    let nsT= tf.tensor2d(nextStates);
+      function loadSimulation() {
+        const raw = localStorage.getItem("evoResearchLabXSnapshot");
+        if (!raw) { logEvent("No saved snapshot found."); return; }
+        try {
+          const s = JSON.parse(raw);
+          generation = s.generation || 0; timeOfDay = s.timeOfDay || 8; weather = s.weather || weather; wind = s.wind || wind;
+          Object.assign(settings.threat, s.settings?.threat || {});
+          Object.assign(settings.tasks, s.settings?.tasks || {});
+          Object.assign(settings.synergy, s.settings?.synergy || {});
+          agents = (s.agents || []).map(a => { const ag = new AdvancedAgent(a.x, a.y, a.tribe); Object.assign(ag, a); return ag; });
+          threats = (s.threats || []).map(t => { const th = new Threat(t.x, t.y); th.lifetime = t.lifetime || th.lifetime; return th; });
+          foods = (s.foods || []).map(f => new Food(f.x, f.y));
+          waters = (s.waters || []).map(w => new Water(w.x, w.y));
+          minerals = (s.minerals || []).map(m => new Mineral(m.x, m.y));
+          tasks = (s.tasks || []).map(t => new Task(t.x, t.y, t.requiresSynergy, t.isMegaTask, t.tribeForMegaTask));
+          pathogenClouds = (s.pathogenClouds || []).map(p => { const pc = new PathogenCloud(p.x, p.y); pc.size = p.size; pc.life = p.life; return pc; });
+          sanctuaries = (s.sanctuaries || []).map(sn => { const sa = new Sanctuary(sn.x, sn.y); sa.size = sn.size; sa.life = sn.life; return sa; });
+          metrics.samples = s.metrics?.samples || [];
+          buildHashes();
+          logEvent("Snapshot loaded.");
+        } catch (err) {
+          console.error(err);
+          logEvent("Snapshot load failed; saved data may be incompatible.");
+        }
+      }
 
-    let qLocal= this.model.predict(nsT);
-    let qTarg= this.targetModel.predict(nsT);
-    let locArr= qLocal.arraySync();
-    let tarArr= qTarg.arraySync();
+      function exportCSV() {
+        const header = ["generation", "agents", "threats", "foods", "waters", "minerals", "tasks", "meanEnergy", "meanHydration", "meanSynergy", "diversity", "novelty", "reward", "epsilon", "lr", "mutationRate", "weather", "season"];
+        const rows = metrics.samples.map(s => header.map(h => JSON.stringify(s[h] ?? "")).join(","));
+        const csv = [header.join(","), ...rows].join("\n");
+        const blob = new Blob([csv], { type: "text/csv" });
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(blob);
+        a.download = `evo-research-lab-x-${Date.now()}.csv`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+        logEvent("Telemetry CSV exported.");
+      }
 
-    let currPred= this.model.predict(sT);
-    let currArr= currPred.arraySync();
+      function resetSimulation() { initializeSimulation(); logEvent("Simulation reset."); }
+      function toggleSimulation() {
+        paused = !paused;
+        document.getElementById("pauseBtn").textContent = paused ? "Resume" : "Pause";
+        logEvent(paused ? "Simulation paused." : "Simulation resumed.");
+      }
+      function updateLR(val) {
+        commander.learningRate = clamp(parseFloat(val) || 0.0005, 0.00001, 0.01);
+        commander.model.compile({ optimizer: tf.train.adam(commander.learningRate), loss: "meanSquaredError" });
+      }
+      function updateMutRate(val) { commander.mutationRate = clamp(parseFloat(val) || 0.01, 0, 0.2); }
+      function updateDecay(val) { commander.epsilonDecay = clamp(parseFloat(val) || 0.999, 0.95, 0.99999); }
+      function updateSimSpeed(val) { simulationSpeed = clamp(parseFloat(val) || 1, 0.1, 5); }
+      function updateCuriosity(val) { settings.curiosityWeight = clamp(parseFloat(val) || 0, 0, 3); }
+      function updateCurriculum(val) { settings.curriculumPressure = clamp(parseFloat(val) || 0, 0, 3); }
+      function toggleLayer(name) { layers[name] = !layers[name]; logEvent(`${name} layer ${layers[name] ? "enabled" : "disabled"}.`); }
 
-    for(let i=0;i< batch.length;i++){
-      let bestA= argmax(locArr[i]);
-      let target= dones[i]? rewards[i] : (rewards[i]+ 0.98* tarArr[i][bestA]);
-      currArr[i][actions[i]]= target;
-    }
-    let upd= tf.tensor2d(currArr,[batch.length,5]);
-    this.model.fit(sT, upd, {epochs:1, verbose:0}).then(()=>{
-      sT.dispose(); nsT.dispose();
-      qLocal.dispose(); qTarg.dispose();
-      currPred.dispose(); upd.dispose();
-    });
-    if(Math.random()<0.03){
-      this.targetModel.setWeights(this.model.getWeights());
-    }
-  }
-}
+      window.resetSimulation = resetSimulation;
+      window.toggleSimulation = toggleSimulation;
+      window.updateLR = updateLR;
+      window.updateMutRate = updateMutRate;
+      window.updateDecay = updateDecay;
+      window.updateSimSpeed = updateSimSpeed;
+      window.updateCuriosity = updateCuriosity;
+      window.updateCurriculum = updateCurriculum;
+      window.toggleLayer = toggleLayer;
+      window.saveSimulation = saveSimulation;
+      window.loadSimulation = loadSimulation;
+      window.exportCSV = exportCSV;
+      window.seedDisruption = seedDisruption;
 
-/*****************************************************************
-  Build Commander Net
-*****************************************************************/
-function buildCommanderDQN(){
-  // input shape =5, output=5
-  const inp= tf.input({shape:[5]});
-  let x= tf.layers.dense({units:32, activation:'relu'}).apply(inp);
-  x= tf.layers.dense({units:16, activation:'relu'}).apply(x);
-  let out= tf.layers.dense({units:5, activation:'linear'}).apply(x);
-  let model= tf.model({inputs:inp, outputs:out});
-  model.compile({optimizer: tf.train.adam(0.0005), loss:'meanSquaredError'});
-  return model;
-}
-
-/*****************************************************************
-  Additional Utility
-*****************************************************************/
-function logEvent(msg){
-  const ul= document.getElementById("eventList");
-  const li= document.createElement("li");
-  li.textContent= `${new Date().toLocaleTimeString()}: ${msg}`;
-  ul.appendChild(li);
-  if(ul.children.length> settings.eventLogSize){
-    ul.removeChild(ul.firstChild);
-  }
-  ul.scrollTop= ul.scrollHeight;
-}
-function argmax(arr){
-  let max=-Infinity, idx=0;
-  for(let i=0;i<arr.length;i++){
-    if(arr[i]>max){
-      max=arr[i]; idx=i;
-    }
-  }
-  return idx;
-}
-function dist(a,b){
-  let dx=a.x-b.x; let dy=a.y-b.y;
-  return Math.hypot(dx,dy);
-}
-function keepInBounds(e){
-  if(e.x< e.size) e.x=e.size;
-  if(e.x> canvas.width- e.size)e.x= canvas.width- e.size;
-  if(e.y< e.size) e.y=e.size;
-  if(e.y> canvas.height- e.size)e.y=canvas.height- e.size;
-}
-function findNearest(ref, arr){
-  if(arr.length<1)return null;
-  let minD= Infinity, near=null;
-  for(const x of arr){
-    let dd= dist(ref,x);
-    if(dd<minD){minD=dd; near=x;}
-  }
-  return near;
-}
-// partial observation version
-function findNearestInRange(ref, arr, range){
-  let candidates= arr.filter(a=> dist(ref,a)<= range);
-  if(candidates.length<1) return null;
-  let minD=Infinity; let near=null;
-  for(const c of candidates){
-    let dd= dist(ref,c);
-    if(dd< minD){minD= dd; near=c;}
-  }
-  return near;
-}
-function getAgentInputSize(){
-  // partial obs => we do 11 => threatX,threatY,foodX,foodY,taskX,taskY,health,night + 3 skill
-  return 8 + settings.agent.skillCount;
-}
-
-// Basic Dueling DQN for agent
-function buildDuelingDQN(inputSize, outputSize){
-  const inp= tf.input({shape:[inputSize]});
-  let x= tf.layers.dense({units:64, activation:'relu'}).apply(inp);
-  x= tf.layers.dense({units:32, activation:'relu'}).apply(x);
-
-  let value= tf.layers.dense({units:1, activation:'linear'}).apply(x);
-  let advantage= tf.layers.dense({units:outputSize, activation:'linear'}).apply(x);
-
-  let qVals= tf.layers.add().apply([value, advantage]);
-
-  let model= tf.model({inputs:inp, outputs:qVals});
-  model.compile({optimizer: tf.train.adam(settings.agent.lr), loss:'meanSquaredError'});
-  return model;
-}
-
-/*****************************************************************
-  Main
-*****************************************************************/
-let agents=[], threats=[], foods=[], tasks=[];
-let commander;
-let lastTimestamp= performance.now();
-let fps=0, stepTime=0;
-let timeOfDay=8;
-const dayLength=24;
-
-function initializeSimulation(){
-  agents=[]; threats=[]; foods=[]; tasks=[];
-  commander= new CommanderAgent();
-
-  for(let i=0; i< settings.agent.count; i++){
-    let x= Math.random()* canvas.width;
-    let y= Math.random()* canvas.height;
-    agents.push(new Agent(x,y));
-  }
-  for(let i=0; i< settings.threat.count; i++){
-    let x= Math.random()* canvas.width;
-    let y= Math.random()* canvas.height;
-    threats.push(new Threat(x,y));
-  }
-  for(let i=0; i< settings.food.count; i++){
-    let x= Math.random()*canvas.width;
-    let y= Math.random()*canvas.height;
-    foods.push(new Food(x,y));
-  }
-  for(let i=0; i< settings.tasks.count; i++){
-    spawnMultiStepCommanderTask();
-  }
-  logEvent("Ultra environment with partial obs, multi-skill synergy, basic comm. Initialized!");
-}
-
-function createSimpleTask(){
-  let x= Math.random()* canvas.width;
-  let y= Math.random()* canvas.height;
-  tasks.push(new Task(x,y));
-  logEvent("Spawned simple single-step task by user.");
-}
-
-function spawnMultiStepCommanderTask(){
-  let x= Math.random()* canvas.width;
-  let y= Math.random()* canvas.height;
-  let tk= new Task(x,y);
-  tk.steps= 1+ Math.floor(Math.random()*3);
-  tk.stepCount= tk.steps;
-  tk.synergyNeeded= settings.tasks.synergyRequired;
-  // multi skill synergy -> random 1..2 topics
-  tk.requiredTopics= [];
-  let howMany= 1+ Math.floor(Math.random()*2);
-  for(let i=0;i< howMany;i++){
-    let topID= Math.floor(Math.random()*3);
-    if(!tk.requiredTopics.includes(topID)) tk.requiredTopics.push(topID);
-  }
-  tasks.push(tk);
-  logEvent(`Commander synergyTask => steps=${tk.steps}, synergyNeeded=${tk.synergyNeeded}, requiredTopics=${tk.requiredTopics}`);
-}
-
-function resetSimulation(){
-  initializeSimulation();
-  logEvent("Simulation reset!");
-}
-
-function updateSimulation(timestamp){
-  let delta= timestamp- lastTimestamp;
-  lastTimestamp= timestamp;
-  fps= (1000/delta).toFixed(1);
-  stepTime= delta.toFixed(1);
-
-  timeOfDay+= settings.dayNight.timeRate;
-  if(timeOfDay>dayLength) timeOfDay-= dayLength;
-
-  ctx.clearRect(0,0,canvas.width,canvas.height);
-  // day/night shading
-  ctx.save();
-  let nightFactor=0;
-  if(timeOfDay>18){
-    nightFactor= (timeOfDay-18)/6;
-  } else if(timeOfDay<6){
-    nightFactor= (6-timeOfDay)/6;
-  }
-  let alpha= 0.6* nightFactor;
-  ctx.fillStyle= `rgba(0,0,0,${alpha})`;
-  ctx.fillRect(0,0,canvas.width,canvas.height);
-  ctx.restore();
-
-  // threats
-  for(const t of threats){
-    t.move(timeOfDay);
-    t.draw();
-  }
-  // agents
-  for(let i= agents.length-1; i>=0;i--){
-    let ag= agents[i];
-    if(!ag.alive){
-      agents.splice(i,1);
-      continue;
-    }
-    ag.step(agents, threats, foods, tasks, timeOfDay);
-    ag.draw();
-  }
-  // foods
-  for(const f of foods){
-    f.draw();
-  }
-  // tasks
-  for(const tk of tasks){
-    tk.draw();
-  }
-  // commander
-  commander.step(agents, threats, foods, tasks, timeOfDay);
-
-  // UI
-  document.getElementById("fps").innerText= fps;
-  document.getElementById("stepTime").innerText= stepTime;
-  document.getElementById("commanderStep").innerText= commander.stepCount;
-  document.getElementById("timeOfDay").innerText= timeOfDay.toFixed(1);
-
-  requestAnimationFrame(updateSimulation);
-}
-
-/***********************************************************
-   UI hooking
-***********************************************************/
-document.getElementById("speedSlider").addEventListener("input", e=>{
-  let val= parseFloat(e.target.value);
-  settings.agent.maxSpeed= val;
-  logEvent("Updated agent maxSpeed => "+val);
-});
-document.getElementById("threatSlider").addEventListener("input", e=>{
-  let val= parseFloat(e.target.value);
-  settings.threat.aggressiveness= val;
-  logEvent("Updated threat aggressiveness => "+val);
-});
-
-/***********************************************************
-   Start
-***********************************************************/
-initializeSimulation();
-requestAnimationFrame(updateSimulation);
-
-/***********************************************************
-   Additional Next Steps:
-
-   1) Expand agent communication to pass partial neural weights
-   2) Use knowledgeGraph adjacency in synergy logic (some tasks 
-      require certain edges)
-   3) Agents could gather "items" or "tools"
-   4) Expand partial obs -> ephemeral memory
-   5) Possibly use GNN-based policies or hierarchical RL
-***********************************************************/
-</script>
+      resizeCanvas();
+      initializeSimulation();
+      requestAnimationFrame(updateSimulation);
+    })();
+  </script>
 </body>
 </html>
