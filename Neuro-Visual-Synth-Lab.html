@@ -3,17 +3,19 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
-<title>Neuro-Visual Synth Lab (Single File)</title>
+<title>Neuro-Visual Synth Lab — Research-Informed v3</title>
 <style>
   :root{
     --bg:#07090f;
-    --panel:rgba(20,24,36,.78);
+    --panel:rgba(20,24,36,.80);
     --panel2:rgba(20,24,36,.55);
     --text:#eaf0ff;
     --muted:#aab3cf;
     --accent:#8cf5ff;
     --accent2:#b6ff6a;
+    --accent3:#ffd36a;
     --danger:#ff6a8c;
+    --ok:#7dff9a;
     --border:rgba(140,245,255,.22);
     --shadow: 0 18px 50px rgba(0,0,0,.55);
     --radius:18px;
@@ -23,14 +25,16 @@
   html,body{
     height:100%;
     margin:0;
-    background: radial-gradient(1200px 700px at 20% 10%, rgba(140,245,255,.10), transparent 60%),
-                radial-gradient(900px 600px at 75% 15%, rgba(182,255,106,.08), transparent 60%),
-                radial-gradient(1000px 700px at 55% 85%, rgba(255,106,140,.06), transparent 60%),
-                var(--bg);
+    background:
+      radial-gradient(1200px 700px at 20% 10%, rgba(140,245,255,.10), transparent 60%),
+      radial-gradient(900px 600px at 75% 15%, rgba(182,255,106,.08), transparent 60%),
+      radial-gradient(1000px 700px at 55% 85%, rgba(255,106,140,.06), transparent 60%),
+      var(--bg);
     overflow:hidden;
     color:var(--text);
     font-family:var(--sans);
   }
+  *{ box-sizing:border-box; }
   #c{
     position:fixed;
     inset:0;
@@ -38,13 +42,15 @@
     height:100vh;
     display:block;
     image-rendering: pixelated;
+    background:#05070d;
   }
   .hud{
     position:fixed;
     left:18px;
     top:18px;
-    width:min(520px, calc(100vw - 36px));
-    background: linear-gradient(180deg, rgba(20,24,36,.86), rgba(20,24,36,.62));
+    width:min(600px, calc(100vw - 36px));
+    max-height:calc(100vh - 36px);
+    background: linear-gradient(180deg, rgba(20,24,36,.88), rgba(20,24,36,.66));
     border:1px solid var(--border);
     border-radius: var(--radius);
     box-shadow: var(--shadow);
@@ -52,6 +58,9 @@
     -webkit-backdrop-filter: blur(12px);
     overflow:hidden;
   }
+  .hud.collapsed .tabs,
+  .hud.collapsed .panel,
+  .hud.collapsed .statusStrip{ display:none; }
   .hud header{
     padding:14px 14px 10px;
     border-bottom:1px solid rgba(255,255,255,.06);
@@ -60,23 +69,16 @@
     align-items:flex-start;
     justify-content:space-between;
   }
-  .title{
-    display:flex;
-    flex-direction:column;
-    gap:4px;
-  }
+  .title{ display:flex; flex-direction:column; gap:4px; min-width:0; }
   .title h1{
     margin:0;
     font-size:14px;
     letter-spacing:.12em;
     text-transform:uppercase;
-    color:rgba(234,240,255,.92);
+    color:rgba(234,240,255,.94);
   }
-  .title .sub{
-    font-size:12px;
-    color:var(--muted);
-    line-height:1.35;
-  }
+  .title .sub{ font-size:12px; color:var(--muted); line-height:1.35; }
+  .rightHead{ display:flex; flex-direction:column; gap:8px; align-items:flex-end; }
   .pill{
     font-family:var(--mono);
     font-size:11px;
@@ -91,16 +93,30 @@
     user-select:none;
     white-space:nowrap;
   }
-  .dot{
-    width:8px;height:8px;border-radius:50%;
-    background:var(--danger);
-    box-shadow:0 0 18px rgba(255,106,140,.55);
+  .dot{ width:8px;height:8px;border-radius:50%; background:var(--danger); box-shadow:0 0 18px rgba(255,106,140,.55); }
+  .dot.on{ background:var(--accent2); box-shadow:0 0 18px rgba(182,255,106,.55); }
+  .dot.safe{ background:var(--accent); box-shadow:0 0 18px rgba(140,245,255,.55); }
+  .iconBtn{
+    width:auto;
+    min-width:34px;
+    padding:7px 10px;
+    border-radius:999px;
   }
-  .dot.on{
-    background:var(--accent2);
-    box-shadow:0 0 18px rgba(182,255,106,.55);
+  .statusStrip{
+    display:grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap:8px;
+    padding:10px 14px 0;
   }
-
+  .metric{
+    border:1px solid rgba(255,255,255,.08);
+    background:rgba(0,0,0,.16);
+    border-radius:14px;
+    padding:8px 9px;
+    min-width:0;
+  }
+  .metric b{ display:block; font-family:var(--mono); font-size:12px; color:rgba(234,240,255,.92); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .metric span{ display:block; font-size:10px; color:var(--muted); margin-top:3px; text-transform:uppercase; letter-spacing:.08em; }
   .tabs{
     display:flex;
     gap:8px;
@@ -120,29 +136,23 @@
     transition: transform .08s ease, border-color .15s ease, background .15s ease;
   }
   .tab:hover{ transform: translateY(-1px); border-color: rgba(140,245,255,.30); }
-  .tab.active{
-    background:rgba(140,245,255,.12);
-    border-color: rgba(140,245,255,.38);
-    color:rgba(234,240,255,.95);
-  }
-
+  .tab.active{ background:rgba(140,245,255,.12); border-color: rgba(140,245,255,.38); color:rgba(234,240,255,.95); }
   .panel{
     padding:12px 14px 14px;
     display:none;
+    overflow:auto;
+    max-height:calc(100vh - 205px);
   }
   .panel.active{ display:block; }
-  .grid{
-    display:grid;
-    grid-template-columns: 1fr 1fr;
-    gap:10px;
-  }
+  .grid{ display:grid; grid-template-columns: 1fr 1fr; gap:10px; }
+  .tri{ display:grid; grid-template-columns: repeat(3, 1fr); gap:10px; }
   .full{ grid-column: 1 / -1; }
-
   .row{
     padding:10px 10px 9px;
     border-radius:14px;
     border:1px solid rgba(255,255,255,.08);
     background:rgba(0,0,0,.12);
+    min-width:0;
   }
   .row label{
     display:flex;
@@ -153,16 +163,10 @@
     color:rgba(234,240,255,.88);
     margin-bottom:8px;
   }
-  .row label span{
-    font-family:var(--mono);
-    font-size:11px;
-    color:rgba(234,240,255,.70);
-  }
-  input[type="range"]{
-    width:100%;
-    accent-color: var(--accent);
-  }
-  select, button{
+  .row label span{ font-family:var(--mono); font-size:11px; color:rgba(234,240,255,.70); }
+  input[type="range"]{ width:100%; accent-color: var(--accent); }
+  input[type="checkbox"]{ accent-color: var(--accent); transform: translateY(1px); }
+  select, button, input[type="text"], textarea{
     width:100%;
     border-radius:14px;
     border:1px solid rgba(255,255,255,.12);
@@ -171,19 +175,20 @@
     padding:10px 10px;
     font-size:12px;
     outline:none;
+    font-family:var(--sans);
   }
-  button{
-    cursor:pointer;
-    transition: transform .08s ease, border-color .15s ease, background .15s ease;
+  textarea{
+    min-height:86px;
+    resize:vertical;
+    font-family:var(--mono);
+    line-height:1.45;
   }
+  button{ cursor:pointer; transition: transform .08s ease, border-color .15s ease, background .15s ease; }
   button:hover{ transform: translateY(-1px); border-color: rgba(140,245,255,.35); background:rgba(140,245,255,.10); }
   button.danger:hover{ border-color: rgba(255,106,140,.45); background:rgba(255,106,140,.10); }
-  .mini{
-    font-size:11px;
-    color:var(--muted);
-    line-height:1.45;
-    margin-top:8px;
-  }
+  button.good:hover{ border-color: rgba(182,255,106,.45); background:rgba(182,255,106,.10); }
+  button.warn:hover{ border-color: rgba(255,211,106,.45); background:rgba(255,211,106,.10); }
+  .mini{ font-size:11px; color:var(--muted); line-height:1.45; margin-top:8px; }
   .challenge{
     font-family:var(--mono);
     font-size:11px;
@@ -191,19 +196,14 @@
     line-height:1.55;
     color:rgba(234,240,255,.86);
   }
-  .kbd{
-    font-family:var(--mono);
-    padding:2px 6px;
-    border-radius:8px;
-    border:1px solid rgba(255,255,255,.12);
-    background:rgba(0,0,0,.22);
-  }
-
+  .kbd{ font-family:var(--mono); padding:2px 6px; border-radius:8px; border:1px solid rgba(255,255,255,.12); background:rgba(0,0,0,.22); }
+  .toggleLine{ display:flex; align-items:center; justify-content:space-between; gap:10px; font-size:12px; color:rgba(234,240,255,.88); margin:6px 0; }
+  .toggleLine small{ display:block; color:var(--muted); margin-top:2px; line-height:1.35; }
   .footerHint{
     position:fixed;
     right:18px;
     bottom:18px;
-    background:rgba(20,24,36,.50);
+    background:rgba(20,24,36,.54);
     border:1px solid rgba(255,255,255,.08);
     border-radius:999px;
     padding:9px 12px;
@@ -213,10 +213,67 @@
     -webkit-backdrop-filter: blur(10px);
     user-select:none;
   }
-
-  @media (max-width: 560px){
-    .grid{ grid-template-columns: 1fr; }
+  .toast{
+    position:fixed;
+    left:50%; bottom:18px;
+    transform:translateX(-50%) translateY(20px);
+    opacity:0;
+    pointer-events:none;
+    transition: all .18s ease;
+    background:rgba(20,24,36,.86);
+    border:1px solid rgba(140,245,255,.25);
+    border-radius:999px;
+    padding:9px 13px;
+    font-size:12px;
+    color:rgba(234,240,255,.9);
+    box-shadow:var(--shadow);
   }
+  .toast.show{ opacity:1; transform:translateX(-50%) translateY(0); }
+  .hidden{ display:none !important; }
+  @media (max-width: 640px){
+    .grid,.tri{ grid-template-columns: 1fr; }
+    .statusStrip{ grid-template-columns: repeat(2, 1fr); }
+    .panel{ max-height:calc(100vh - 245px); }
+    .footerHint{ left:18px; right:auto; border-radius:14px; }
+  }
+
+
+  /* ===== v3 research/lab additions ===== */
+  .noteCard{
+    border:1px solid rgba(255,255,255,.08);
+    background:rgba(0,0,0,.16);
+    border-radius:14px;
+    padding:10px;
+    font-size:11px;
+    color:rgba(234,240,255,.84);
+    line-height:1.45;
+  }
+  .noteCard b{ color:rgba(234,240,255,.96); }
+  .microGrid{ display:grid; grid-template-columns:repeat(3,1fr); gap:8px; margin-top:8px; }
+  .micro{
+    border:1px solid rgba(255,255,255,.08);
+    background:rgba(255,255,255,.04);
+    border-radius:12px;
+    padding:8px;
+    font-family:var(--mono);
+    font-size:10px;
+    color:rgba(234,240,255,.75);
+  }
+  .micro strong{ display:block; color:rgba(234,240,255,.95); font-size:12px; margin-bottom:3px; }
+  input[type="text"], textarea{
+    width:100%;
+    border-radius:14px;
+    border:1px solid rgba(255,255,255,.12);
+    background:rgba(0,0,0,.18);
+    color:rgba(234,240,255,.90);
+    padding:10px;
+    font-size:12px;
+    outline:none;
+  }
+  textarea{ min-height:82px; resize:vertical; font-family:var(--mono); line-height:1.45; }
+  .good{ border-color:rgba(182,255,106,.30); }
+  .warn{ border-color:rgba(255,211,106,.32); }
+
 </style>
 </head>
 <body>
@@ -225,31 +282,44 @@
 <div class="hud" id="hud">
   <header>
     <div class="title">
-      <h1>Neuro-Visual Synth Lab</h1>
+      <h1>Neuro-Visual Synth Lab v3</h1>
       <div class="sub">
-        Audio + visuals + random challenges. Press <span class="kbd">Space</span> to toggle audio,
-        <span class="kbd">V</span> to cycle visuals.
+        Single-file audio + visuals + random challenges. Keys:
+        <span class="kbd">Space</span> audio,
+        <span class="kbd">V</span> visual,
+        <span class="kbd">P</span> pause,
+        <span class="kbd">H</span> hide HUD.
       </div>
     </div>
-    <div class="pill">
-      <div class="dot" id="audDot"></div>
-      <div id="audState">AUDIO: OFF</div>
+    <div class="rightHead">
+      <div class="pill"><div class="dot" id="audDot"></div><div id="audState">AUDIO: OFF</div></div>
+      <button class="iconBtn" id="btnCollapse" title="Collapse HUD">HUD</button>
     </div>
   </header>
+
+  <div class="statusStrip">
+    <div class="metric"><b id="mFps">--</b><span>fps</span></div>
+    <div class="metric"><b id="mMode">Plasma</b><span>visual</span></div>
+    <div class="metric"><b id="mAudio">idle</b><span>audio</span></div>
+    <div class="metric"><b id="mSafe">safe on</b><span>guard</span></div>
+  </div>
 
   <div class="tabs">
     <div class="tab active" data-tab="audio">Audio</div>
     <div class="tab" data-tab="visual">Visual</div>
+    <div class="tab" data-tab="safety">Safety</div>
+    <div class="tab" data-tab="lab">Lab</div>
+    <div class="tab" data-tab="journal">Journal</div>
     <div class="tab" data-tab="challenge">Challenge</div>
+    <div class="tab" data-tab="presets">Presets</div>
+    <div class="tab" data-tab="notes">Notes</div>
   </div>
 
   <div class="panel active" id="panel-audio">
     <div class="grid">
       <div class="row full">
         <button id="btnToggleAudio">Start Audio Engine (requires click)</button>
-        <div class="mini">
-          Keep volume low. If you feel discomfort, stop immediately.
-        </div>
+        <div class="mini">Keep volume low. This is a creative audio-visual tool, not a medical device. Stop if you feel discomfort.</div>
       </div>
 
       <div class="row">
@@ -265,33 +335,85 @@
       <div class="row">
         <label>Binaural Beat Δ (Hz) <span id="vBeat">8.0</span></label>
         <input id="beat" type="range" min="0" max="40" step="0.1" value="8.0"/>
-        <div class="mini">Left = carrier − Δ/2, Right = carrier + Δ/2</div>
-      </div>
-
-      <div class="row">
-        <label>Noise Mix <span id="vNoise">0.20</span></label>
-        <input id="noise" type="range" min="0" max="1" step="0.01" value="0.20"/>
-        <div class="mini">Adds shaped wideband noise for texture.</div>
+        <div class="mini">Left = carrier − Δ/2, Right = carrier + Δ/2.</div>
       </div>
 
       <div class="row">
         <label>Isochronic Pulse (Hz) <span id="vPulse">10.0</span></label>
         <input id="pulse" type="range" min="0" max="40" step="0.1" value="10.0"/>
-        <div class="mini">0 = off. Uses AM gating (square-ish) over the master.</div>
+        <div class="mini">0 = off. Safety guard can clamp high pulse rates.</div>
+      </div>
+
+      <div class="row">
+        <label>Noise Mix <span id="vNoise">0.20</span></label>
+        <input id="noise" type="range" min="0" max="1" step="0.01" value="0.20"/>
       </div>
 
       <div class="row">
         <label>Stereo Width <span id="vWidth">1.00</span></label>
         <input id="width" type="range" min="0" max="1" step="0.01" value="1.00"/>
-        <div class="mini">0 collapses toward mono; 1 is full L/R split.</div>
+      </div>
+
+      <div class="row">
+        <label>Oscillator Wave <span id="vWave">sine</span></label>
+        <select id="wave">
+          <option value="sine">sine</option>
+          <option value="triangle">triangle</option>
+          <option value="sawtooth">sawtooth</option>
+          <option value="square">square</option>
+        </select>
+      </div>
+
+      <div class="row">
+        <label>Noise Colour <span id="vNoiseColor">pink</span></label>
+        <select id="noiseColor">
+          <option value="pink">pink / soft</option>
+          <option value="white">white / bright</option>
+          <option value="brown">brown / deep</option>
+        </select>
+      </div>
+
+      <div class="row">
+        <label>Auto Sweep Depth <span id="vSweepDepth">0.0</span></label>
+        <input id="sweepDepth" type="range" min="0" max="12" step="0.1" value="0"/>
+        <div class="mini">Slowly modulates beat Δ for evolving sound.</div>
+      </div>
+
+      <div class="row">
+        <label>Auto Sweep Rate <span id="vSweepRate">0.05</span></label>
+        <input id="sweepRate" type="range" min="0.005" max="0.5" step="0.005" value="0.05"/>
+      </div>
+
+      <div class="row">
+        <label>Breath Envelope Rate <span id="vBreathRate">0.10</span></label>
+        <input id="breathRate" type="range" min="0" max="0.35" step="0.005" value="0.10"/>
+      </div>
+
+      <div class="row">
+        <label>Breath Envelope Depth <span id="vBreathDepth">0.20</span></label>
+        <input id="breathDepth" type="range" min="0" max="0.8" step="0.01" value="0.20"/>
+      </div>
+
+      <div class="row">
+        <label>Micro Drift (Hz) <span id="vMicroDrift">0.00</span></label>
+        <input id="microDrift" type="range" min="0" max="7" step="0.05" value="0"/>
+        <div class="mini">Tiny slow carrier movement; keeps tones evolving without sudden jumps.</div>
+      </div>
+
+      <div class="row">
+        <label>Beat Smoothing <span id="vBeatSmooth">0.02</span></label>
+        <input id="beatSmooth" type="range" min="0.005" max="0.15" step="0.005" value="0.02"/>
+        <div class="mini">Higher values glide frequency changes more gently.</div>
       </div>
 
       <div class="row full">
-        <label style="margin-bottom:8px;">Quick Presets <span style="font-family:var(--mono); font-size:11px; opacity:.85;">(safe-ish starting points)</span></label>
-        <div class="grid">
-          <button id="pFocus">Focus-ish (Δ=12, pulse=0)</button>
-          <button id="pChill">Chill (Δ=6, pulse=8)</button>
-          <button id="pDeep">Deep (Δ=2, pulse=4)</button>
+        <label>Quick Presets <span>research-cautious starts</span></label>
+        <div class="tri">
+          <button id="pFocus">Focus-ish</button>
+          <button id="pChill">Chill</button>
+          <button id="pDeep">Deep</button>
+          <button id="pBright">Bright Texture</button>
+          <button id="pDrone">Low Drone</button>
           <button class="danger" id="pStop">Stop Audio</button>
         </div>
       </div>
@@ -306,8 +428,12 @@
           <option value="plasma">Plasma (fast)</option>
           <option value="boids">Boids (emergent)</option>
           <option value="rd">Reaction-Diffusion (organic)</option>
+          <option value="flow">Neural Flow Field (new)</option>
+          <option value="scope">Audio Scope Ring (new)</option>
+          <option value="attractors">Chaotic Attractors (v3)</option>
+          <option value="synapses">Synaptic Map (v3)</option>
         </select>
-        <div class="mini">Tip: cycle with <span class="kbd">V</span>.</div>
+        <div class="mini">Click canvas to inject/attract. Cycle with <span class="kbd">V</span>. Screenshot with <span class="kbd">S</span>.</div>
       </div>
 
       <div class="row">
@@ -321,15 +447,46 @@
       </div>
 
       <div class="row">
+        <label>Render Quality <span id="vQuality">1.00</span></label>
+        <input id="quality" type="range" min="0.5" max="1.5" step="0.05" value="1.00"/>
+        <div class="mini">Lower = faster; higher = sharper/more particles.</div>
+      </div>
+
+      <div class="row">
+        <label>Palette <span id="vPalette">Cyber</span></label>
+        <select id="palette">
+          <option value="cyber">Cyber</option>
+          <option value="aurora">Aurora</option>
+          <option value="ember">Ember</option>
+          <option value="mono">Mono</option>
+        </select>
+      </div>
+
+      <div class="row">
         <label>Boids Count <span id="vBoids">240</span></label>
-        <input id="boidsCount" type="range" min="40" max="800" step="10" value="240"/>
-        <div class="mini">Only affects Boids mode.</div>
+        <input id="boidsCount" type="range" min="40" max="900" step="10" value="240"/>
+      </div>
+
+      <div class="row">
+        <label>Flow Particles <span id="vFlowParticles">900</span></label>
+        <input id="flowParticles" type="range" min="150" max="2400" step="50" value="900"/>
+      </div>
+
+      <div class="row">
+        <label>Synapse Nodes <span id="vSynNodes">72</span></label>
+        <input id="synNodes" type="range" min="24" max="180" step="4" value="72"/>
+        <div class="mini">Used by Synaptic Map mode.</div>
+      </div>
+
+      <div class="row">
+        <label>Attractor Gravity <span id="vAttractorGravity">0.75</span></label>
+        <input id="attractorGravity" type="range" min="0.1" max="1.8" step="0.01" value="0.75"/>
+        <div class="mini">Used by Chaotic Attractors mode.</div>
       </div>
 
       <div class="row">
         <label>RD Iter/Frame <span id="vRDIters">10</span></label>
         <input id="rdIters" type="range" min="1" max="35" step="1" value="10"/>
-        <div class="mini">Only affects Reaction-Diffusion.</div>
       </div>
 
       <div class="row">
@@ -343,39 +500,249 @@
       </div>
 
       <div class="row full">
-        <button id="btnPulseInk">“Ink Drop” (inject disturbance)</button>
-        <div class="mini">Click canvas to inject too. Try different feed/kill ranges for wildly different patterns.</div>
+        <div class="tri">
+          <button id="btnPulseInk">Ink Drop</button>
+          <button id="btnRandomizeVisual">Randomize Visual</button>
+          <button id="btnScreenshot">Export PNG</button>
+        </div>
+        <div class="mini">Reaction-diffusion now uses a fixed ping-pong buffer so multi-iteration updates work correctly.</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel" id="panel-safety">
+    <div class="grid">
+      <div class="row full">
+        <div class="toggleLine">
+          <div><b>Flash-Safe Visual Guard</b><small>Caps visual intensity/speed and avoids abrupt full-screen flash effects.</small></div>
+          <input id="safeVisual" type="checkbox" checked />
+        </div>
+        <div class="toggleLine">
+          <div><b>Reduced Motion Mode</b><small>Slower visuals, fewer particles, less glow. Also respects OS reduced-motion preference on load.</small></div>
+          <input id="reducedMotion" type="checkbox" />
+        </div>
+        <div class="toggleLine">
+          <div><b>Audio Session Timer</b><small>Automatically stops audio after the selected limit.</small></div>
+          <input id="sessionTimer" type="checkbox" checked />
+        </div>
+      </div>
+
+      <div class="row">
+        <label>Brightness Cap <span id="vBrightCap">0.85</span></label>
+        <input id="brightCap" type="range" min="0.35" max="1" step="0.01" value="0.85"/>
+      </div>
+
+      <div class="row">
+        <label>Max Pulse When Guarded <span id="vMaxPulse">12.0</span></label>
+        <input id="maxPulse" type="range" min="2" max="20" step="0.1" value="12.0"/>
+      </div>
+
+      <div class="row">
+        <label>Audio Limit (minutes) <span id="vSessionMins">20</span></label>
+        <input id="sessionMins" type="range" min="1" max="60" step="1" value="20"/>
+      </div>
+
+      <div class="row">
+        <label>Ramp Time (seconds) <span id="vRampTime">2.0</span></label>
+        <input id="rampTime","adaptiveMorph","audioReactive","researchOverlay","morphStrength","morphTheme" type="range" min="0.05" max="6" step="0.05" value="2"/>
+      </div>
+
+      <div class="row full">
+        <button class="danger" id="btnPanic">Panic Stop: Audio Off + Calm Visual</button>
+        <div class="mini">Use headphones only at low volume for binaural separation. Avoid using while driving, operating tools, or if intense visual/audio stimuli make you unwell.</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel" id="panel-lab">
+    <div class="grid">
+      <div class="row full">
+        <div class="toggleLine">
+          <div><b>Adaptive Research Morph</b><small>Slowly explores parameter space; keeps changes gradual and reversible.</small></div>
+          <input id="adaptiveMorph" type="checkbox" />
+        </div>
+        <div class="toggleLine">
+          <div><b>Audio-Reactive Coupling</b><small>Lets RMS/beat values influence plasma, boids, flow, scope, attractors and synapses.</small></div>
+          <input id="audioReactive" type="checkbox" checked />
+        </div>
+        <div class="toggleLine">
+          <div><b>Research Overlay</b><small>Shows cautious evidence hints and current experimental protocol.</small></div>
+          <input id="researchOverlay" type="checkbox" checked />
+        </div>
+      </div>
+
+      <div class="row">
+        <label>Morph Strength <span id="vMorphStrength">0.35</span></label>
+        <input id="morphStrength" type="range" min="0" max="1" step="0.01" value="0.35"/>
+      </div>
+
+      <div class="row">
+        <label>Morph Theme <span id="vMorphTheme">Balanced</span></label>
+        <select id="morphTheme">
+          <option value="balanced">Balanced</option>
+          <option value="calm">Calm / reduced motion</option>
+          <option value="explore">Explore / generative</option>
+          <option value="study">Study / focus-ish</option>
+        </select>
+      </div>
+
+      <div class="row full">
+        <div class="tri">
+          <button id="btnProtocol">Generate Mini Protocol</button>
+          <button id="btnCopyProtocol">Copy Protocol</button>
+          <button id="btnResetExplore" class="warn">Reset Exploration</button>
+        </div>
+        <div class="mini">Protocol mode encourages hypothesis → short session → observation instead of assuming the tones/visuals have guaranteed effects.</div>
+      </div>
+
+      <div class="row full">
+        <label>Mini Research Protocol <span id="vProtocolSeed">seed: —</span></label>
+        <div class="challenge" id="protocolOut">Generate a protocol to test one small change safely.</div>
+      </div>
+
+      <div class="row full">
+        <label>Live Coupling Readout <span>derived</span></label>
+        <div class="microGrid">
+          <div class="micro"><strong id="mRms">0.00</strong>audio rms</div>
+          <div class="micro"><strong id="mBeatNow">8.0Hz</strong>effective Δ</div>
+          <div class="micro"><strong id="mFlashGuard">guard</strong>flash status</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel" id="panel-journal">
+    <div class="grid">
+      <div class="row">
+        <label>Before Rating <span id="vBeforeRating">3</span></label>
+        <input id="beforeRating" type="range" min="1" max="5" step="1" value="3"/>
+      </div>
+      <div class="row">
+        <label>After Rating <span id="vAfterRating">3</span></label>
+        <input id="afterRating" type="range" min="1" max="5" step="1" value="3"/>
+      </div>
+      <div class="row full">
+        <label>Session Notes <span>private localStorage only</span></label>
+        <textarea id="sessionNotes" placeholder="What did you try? How did it feel? Any discomfort? What changed visually/audio-wise?"></textarea>
+      </div>
+      <div class="row full">
+        <div class="tri">
+          <button id="btnLogSession" class="good">Log Session</button>
+          <button id="btnExportJournal">Export CSV</button>
+          <button id="btnClearJournal" class="danger">Clear Journal</button>
+        </div>
+      </div>
+      <div class="row full">
+        <label>Journal Timeline <span id="vJournalCount">0 entries</span></label>
+        <div class="challenge" id="journalOut">No logged sessions yet.</div>
       </div>
     </div>
   </div>
 
   <div class="panel" id="panel-challenge">
     <div class="grid">
+      <div class="row">
+        <label>Domain <span id="vDomain">Mixed</span></label>
+        <select id="challengeDomain">
+          <option value="mixed">Mixed</option>
+          <option value="web">Web Lab</option>
+          <option value="3d">3D / Blender / Maya</option>
+          <option value="unity">Unity Audio</option>
+          <option value="sim">Procedural Sim</option>
+          <option value="ml">AI / ML Thinking</option>
+          <option value="print">3D Printing</option>
+        </select>
+      </div>
+      <div class="row">
+        <label>Difficulty <span id="vDifficulty">Prototype</span></label>
+        <select id="challengeDifficulty">
+          <option value="warmup">Warmup</option>
+          <option value="prototype" selected>Prototype</option>
+          <option value="hard">Hard</option>
+          <option value="research">Research-mode</option>
+        </select>
+      </div>
       <div class="row full">
-        <button id="btnNewChallenge">Generate Random Challenge</button>
-        <div class="mini">These are tuned to your usual vibe: 3D, Unity, web labs, procedural sims.</div>
+        <div class="tri">
+          <button id="btnNewChallenge">Generate Challenge</button>
+          <button id="btnCopyChallenge">Copy</button>
+          <button class="danger" id="btnClearHistory">Clear History</button>
+        </div>
+        <div class="mini">Generator now composes domains + constraints + measurable deliverables instead of only selecting fixed text.</div>
       </div>
       <div class="row full">
         <label>Challenge Output <span id="vSeed">seed: —</span></label>
-        <div class="challenge" id="challengeOut">Hit “Generate Random Challenge”.</div>
+        <div class="challenge" id="challengeOut">Hit “Generate Challenge”.</div>
+      </div>
+      <div class="row full">
+        <label>Recent Challenge History <span id="vHistoryCount">0 saved</span></label>
+        <div class="challenge" id="challengeHistory">No history yet.</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel" id="panel-presets">
+    <div class="grid">
+      <div class="row full">
+        <label>Preset Name <span>audio + visual + safety</span></label>
+        <input id="presetName" type="text" value="my-neuro-visual-preset" />
+        <div class="tri" style="margin-top:10px;">
+          <button id="btnSavePreset" class="good">Save Current</button>
+          <button id="btnLoadPreset">Load Selected</button>
+          <button id="btnDeletePreset" class="danger">Delete Selected</button>
+        </div>
+      </div>
+      <div class="row full">
+        <label>Saved Presets <span id="vPresetCount">0</span></label>
+        <select id="presetList"></select>
+      </div>
+      <div class="row full">
+        <label>Import / Export JSON <span>portable</span></label>
+        <textarea id="presetJson" placeholder="Exported preset JSON appears here. Paste JSON here to import."></textarea>
+        <div class="tri" style="margin-top:10px;">
+          <button id="btnExportPreset">Export Selected</button>
+          <button id="btnImportPreset" class="good">Import JSON</button>
+          <button id="btnDefaults" class="warn">Factory Defaults</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel" id="panel-notes">
+    <div class="grid">
+      <div class="row full">
+        <label>Research-Informed Design Notes <span>practical, cautious</span></label>
+        <div class="challenge">• Binaural/isochronic controls remain exploratory: recent reviews are promising in places but heterogeneous, so v3 avoids medical claims and encourages short, observable sessions.
+• Audio uses user gesture start, gain ramping, limiter/compressor, optional session timer, smoothing, micro-drift, low default volume, and clear panic stop controls.
+• Visual safety follows the conservative web principle: avoid intentional full-screen flashes; keep motion smooth; expose reduced-motion and brightness caps.
+• Reaction-diffusion exposes feed/kill because those two parameters produce the Gray-Scott pattern “zoo”: spots, stripes, mitosis-like blobs, labyrinths, and decay.
+• v3 adds adaptive morphing, session journaling, mini-protocol generation, two new visual systems, and explicit audio-reactive coupling so experiments are reproducible rather than just random.
+• For personal experiments, change one variable at a time, log before/after observations, stop on discomfort, and do not treat subjective effects as clinical evidence.</div>
+      </div>
+      <div class="row full">
+        <button id="btnCopyNotes">Copy Design Notes</button>
       </div>
     </div>
   </div>
 </div>
 
-<div class="footerHint">Canvas: click to inject • Keys: Space=Audio • V=Visual</div>
+<div class="footerHint">Canvas: click/drag to inject/fire • Space=Audio • V=Visual • S=PNG • H=HUD • P=Pause</div>
+<div class="toast" id="toast">Saved</div>
 
 <script>
 (() => {
   "use strict";
 
   // ---------- Utilities ----------
+  const $ = (id) => document.getElementById(id);
   const clamp = (x, a, b) => Math.min(b, Math.max(a, x));
   const lerp  = (a, b, t) => a + (b - a) * t;
   const rand  = (a=0, b=1) => a + Math.random() * (b - a);
   const TAU = Math.PI * 2;
+  const STORE_PRESETS = "nvsl.v3.presets";
+  const STORE_HISTORY = "nvsl.v3.challengeHistory";
+  const STORE_JOURNAL = "nvsl.v3.sessionJournal";
 
-  // Deterministic-ish seed for challenges
   function makeSeed(){
     const t = performance.now() | 0;
     const r = (Math.random() * 1e9) | 0;
@@ -389,54 +756,41 @@
       return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
     };
   }
+  function toast(msg){
+    const el = $("toast");
+    el.textContent = msg;
+    el.classList.add("show");
+    clearTimeout(toast._t);
+    toast._t = setTimeout(() => el.classList.remove("show"), 1500);
+  }
+  async function copyText(txt){
+    try{
+      await navigator.clipboard.writeText(txt);
+      toast("Copied to clipboard");
+    }catch(err){
+      toast("Copy failed; select manually");
+    }
+  }
 
   // ---------- DOM ----------
-  const c = document.getElementById("c");
+  const c = $("c");
   const ctx2d = c.getContext("2d", { alpha:false, desynchronized:true });
+  const hud = $("hud");
 
-  const audDot = document.getElementById("audDot");
-  const audState = document.getElementById("audState");
-  const btnToggleAudio = document.getElementById("btnToggleAudio");
-
-  const vol = document.getElementById("vol");
-  const carrier = document.getElementById("carrier");
-  const beat = document.getElementById("beat");
-  const noise = document.getElementById("noise");
-  const pulse = document.getElementById("pulse");
-  const width = document.getElementById("width");
-
-  const vVol = document.getElementById("vVol");
-  const vCarrier = document.getElementById("vCarrier");
-  const vBeat = document.getElementById("vBeat");
-  const vNoise = document.getElementById("vNoise");
-  const vPulse = document.getElementById("vPulse");
-  const vWidth = document.getElementById("vWidth");
-
-  const pFocus = document.getElementById("pFocus");
-  const pChill = document.getElementById("pChill");
-  const pDeep = document.getElementById("pDeep");
-  const pStop = document.getElementById("pStop");
-
-  const modeSel = document.getElementById("mode");
-  const vModeName = document.getElementById("vModeName");
-  const speed = document.getElementById("speed");
-  const intensity = document.getElementById("intensity");
-  const boidsCount = document.getElementById("boidsCount");
-  const rdIters = document.getElementById("rdIters");
-  const feed = document.getElementById("feed");
-  const kill = document.getElementById("kill");
-  const btnPulseInk = document.getElementById("btnPulseInk");
-
-  const vSpeed = document.getElementById("vSpeed");
-  const vIntensity = document.getElementById("vIntensity");
-  const vBoids = document.getElementById("vBoids");
-  const vRDIters = document.getElementById("vRDIters");
-  const vFeed = document.getElementById("vFeed");
-  const vKill = document.getElementById("vKill");
-
-  const btnNewChallenge = document.getElementById("btnNewChallenge");
-  const challengeOut = document.getElementById("challengeOut");
-  const vSeed = document.getElementById("vSeed");
+  const ids = [
+    "audDot","audState","btnToggleAudio","vol","carrier","beat","noise","pulse","width","wave","noiseColor",
+    "sweepDepth","sweepRate","breathRate","breathDepth","microDrift","beatSmooth","vVol","vCarrier","vBeat","vNoise","vPulse","vWidth",
+    "vWave","vNoiseColor","vSweepDepth","vSweepRate","vBreathRate","vBreathDepth","vMicroDrift","vBeatSmooth","pFocus","pChill","pDeep",
+    "pBright","pDrone","pStop","mode","vModeName","speed","intensity","quality","palette","boidsCount",
+    "flowParticles","synNodes","attractorGravity","rdIters","feed","kill","vSpeed","vIntensity","vQuality","vPalette","vBoids","vFlowParticles","vSynNodes","vAttractorGravity",
+    "vRDIters","vFeed","vKill","btnPulseInk","btnRandomizeVisual","btnScreenshot","safeVisual","reducedMotion",
+    "sessionTimer","brightCap","maxPulse","sessionMins","rampTime","adaptiveMorph","audioReactive","researchOverlay","morphStrength","morphTheme","vBrightCap","vMaxPulse","vSessionMins",
+    "vRampTime","btnPanic","adaptiveMorph","audioReactive","researchOverlay","morphStrength","morphTheme","vMorphStrength","vMorphTheme","btnProtocol","btnCopyProtocol","btnResetExplore","protocolOut","vProtocolSeed","mRms","mBeatNow","mFlashGuard","beforeRating","afterRating","vBeforeRating","vAfterRating","sessionNotes","btnLogSession","btnExportJournal","btnClearJournal","journalOut","vJournalCount","challengeDomain","challengeDifficulty","vDomain","vDifficulty","btnNewChallenge",
+    "btnCopyChallenge","btnClearHistory","challengeOut","vSeed","challengeHistory","vHistoryCount","presetName",
+    "presetList","presetJson","btnSavePreset","btnLoadPreset","btnDeletePreset","btnExportPreset","btnImportPreset",
+    "btnDefaults","vPresetCount","mFps","mMode","mAudio","mSafe","btnCollapse","btnCopyNotes"
+  ];
+  const dom = Object.fromEntries(ids.map(id => [id, $(id)]));
 
   // Tabs
   document.querySelectorAll(".tab").forEach(tab => {
@@ -444,12 +798,31 @@
       document.querySelectorAll(".tab").forEach(t => t.classList.remove("active"));
       document.querySelectorAll(".panel").forEach(p => p.classList.remove("active"));
       tab.classList.add("active");
-      document.getElementById("panel-" + tab.dataset.tab).classList.add("active");
+      $("panel-" + tab.dataset.tab).classList.add("active");
     });
   });
 
-  // ---------- Canvas Resize ----------
-  let W=0,H=0, DPR=1;
+  // ---------- Global state ----------
+  let W=0,H=0,DPR=1;
+  let visualMode = "plasma";
+  let tPrev = performance.now();
+  let paused = false;
+  let fpsSmooth = 60;
+  let mouse = { x:0, y:0, down:false };
+  let plasmaRipple = { x:.5, y:.5, t:0, amp:0 };
+  const reducePref = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  dom.reducedMotion.checked = !!reducePref;
+
+  const palettes = {
+    cyber:  [[140,245,255], [182,255,106], [255,106,140], [234,240,255]],
+    aurora: [[120,255,214], [121,145,255], [235,132,255], [245,255,255]],
+    ember:  [[255,98,77], [255,194,89], [255,72,133], [255,242,220]],
+    mono:   [[230,238,255], [160,180,210], [100,130,170], [255,255,255]]
+  };
+  function pal(i){ return palettes[dom.palette.value][i] || palettes.cyber[i]; }
+  function rgba(arr, a){ return `rgba(${arr[0]},${arr[1]},${arr[2]},${a})`; }
+
+  // ---------- Resize ----------
   function resize(){
     DPR = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
     W = Math.floor(window.innerWidth * DPR);
@@ -459,371 +832,364 @@
     c.style.width = window.innerWidth + "px";
     c.style.height = window.innerHeight + "px";
     ctx2d.imageSmoothingEnabled = false;
-    boidsRebuild(); // ensure boids wrap correctly
-    rdInit();       // restart RD grid for new scale
+    boidsRebuild();
+    flowRebuild();
+    attractorRebuild();
+    synapseRebuild();
+    rdInit();
   }
   window.addEventListener("resize", resize);
 
+  // ---------- Safety helpers ----------
+  function safeIntensity(){
+    let val = Number(dom.intensity.value);
+    if(dom.safeVisual.checked) val = Math.min(val, Number(dom.brightCap.value) * 1.45);
+    if(dom.reducedMotion.checked) val = Math.min(val, 0.95);
+    return val;
+  }
+  function safeSpeed(){
+    let val = Number(dom.speed.value);
+    if(dom.safeVisual.checked) val = Math.min(val, 1.8);
+    if(dom.reducedMotion.checked) val = Math.min(val, 0.75);
+    return val;
+  }
+  function currentPulse(){
+    let p = Number(dom.pulse.value);
+    if(dom.safeVisual.checked) p = Math.min(p, Number(dom.maxPulse.value));
+    return p;
+  }
+  function updateSafetyUI(){
+    dom.vBrightCap.textContent = Number(dom.brightCap.value).toFixed(2);
+    dom.vMaxPulse.textContent = Number(dom.maxPulse.value).toFixed(1);
+    dom.vSessionMins.textContent = String(dom.sessionMins.value|0);
+    dom.vRampTime.textContent = Number(dom.rampTime.value).toFixed(1);
+    dom.mSafe.textContent = dom.safeVisual.checked ? "safe on" : "guard off";
+  }
+  [dom.safeVisual, dom.reducedMotion, dom.sessionTimer, dom.brightCap, dom.maxPulse, dom.sessionMins, dom.rampTime]
+    .forEach(el => el.addEventListener("input", () => { updateSafetyUI(); applyAudioParams(true); }));
+
   // ---------- Audio Engine ----------
-  let audio = {
-    ctx: null,
-    running: false,
-    master: null,
-    limiter: null,
-    merger: null,
-    leftGain: null,
-    rightGain: null,
-    oscL: null,
-    oscR: null,
-    noiseSrc: null,
-    noiseGain: null,
-    noiseFilter: null,
-    pulseOsc: null,
-    pulseGain: null,
-    pulseDepth: null,
+  const audio = {
+    ctx:null, running:false, startedAt:0,
+    amp:null, limiter:null, analyser:null,
+    merger:null, leftGain:null, rightGain:null, oscL:null, oscR:null,
+    noiseSrc:null, noiseGain:null, noiseFilter:null,
+    pulseOsc:null, pulseGain:null, baseConst:null,
+    breathOsc:null, breathGain:null,
+    data:null, rms:0, lastFreqUpdate:0
   };
 
   function setAudioUI(on){
-    audDot.classList.toggle("on", on);
-    audState.textContent = "AUDIO: " + (on ? "ON" : "OFF");
-    btnToggleAudio.textContent = on ? "Stop Audio Engine" : "Start Audio Engine (requires click)";
+    dom.audDot.classList.toggle("on", on);
+    dom.audState.textContent = "AUDIO: " + (on ? "ON" : "OFF");
+    dom.btnToggleAudio.textContent = on ? "Stop Audio Engine" : "Start Audio Engine (requires click)";
   }
 
-  function buildNoiseBuffer(actx){
-    // 2 seconds of noise looping
+  function buildNoiseBuffer(actx, color){
     const len = actx.sampleRate * 2;
     const buf = actx.createBuffer(1, len, actx.sampleRate);
     const data = buf.getChannelData(0);
-    // Simple Voss-ish colored noise approximation: cumulative + highpass (cheap)
     let b0=0,b1=0,b2=0,b3=0,b4=0,b5=0,b6=0;
+    let brown = 0;
     for(let i=0;i<len;i++){
       const white = Math.random()*2-1;
-      b0 = 0.99886*b0 + white*0.0555179;
-      b1 = 0.99332*b1 + white*0.0750759;
-      b2 = 0.96900*b2 + white*0.1538520;
-      b3 = 0.86650*b3 + white*0.3104856;
-      b4 = 0.55000*b4 + white*0.5329522;
-      b5 = -0.7616*b5 - white*0.0168980;
-      const pink = b0+b1+b2+b3+b4+b5+b6 + white*0.5362;
-      b6 = white*0.115926;
-      data[i] = clamp(pink*0.12, -1, 1);
+      if(color === "white"){
+        data[i] = white * 0.30;
+      } else if(color === "brown"){
+        brown = (brown + 0.02 * white) / 1.02;
+        data[i] = clamp(brown * 3.5, -1, 1) * 0.32;
+      } else {
+        b0 = 0.99886*b0 + white*0.0555179;
+        b1 = 0.99332*b1 + white*0.0750759;
+        b2 = 0.96900*b2 + white*0.1538520;
+        b3 = 0.86650*b3 + white*0.3104856;
+        b4 = 0.55000*b4 + white*0.5329522;
+        b5 = -0.7616*b5 - white*0.0168980;
+        const pink = b0+b1+b2+b3+b4+b5+b6 + white*0.5362;
+        b6 = white*0.115926;
+        data[i] = clamp(pink*0.12, -1, 1);
+      }
     }
     return buf;
   }
 
   function audioStart(){
     if(audio.running) return;
-
     const actx = audio.ctx || new (window.AudioContext || window.webkitAudioContext)();
     audio.ctx = actx;
 
-    // Graph:
-    // oscL -> leftGain -> merger(0)
-    // oscR -> rightGain -> merger(1)
-    // noise -> filter -> noiseGain -> master
-    // merger -> master -> limiter -> destination
-    //
-    // Pulse (isochronic): pulseOsc -> pulseGain -> (modulates master.gain)
+    const amp = actx.createGain();
+    amp.gain.value = 0.0001;
 
-    const master = actx.createGain();
     const limiter = actx.createDynamicsCompressor();
     limiter.threshold.value = -18;
     limiter.knee.value = 24;
     limiter.ratio.value = 12;
     limiter.attack.value = 0.003;
-    limiter.release.value = 0.12;
+    limiter.release.value = 0.16;
+
+    const analyser = actx.createAnalyser();
+    analyser.fftSize = 1024;
+    analyser.smoothingTimeConstant = 0.78;
+    audio.data = new Uint8Array(analyser.fftSize);
 
     const merger = actx.createChannelMerger(2);
-
     const leftGain = actx.createGain();
     const rightGain = actx.createGain();
-
     const oscL = actx.createOscillator();
     const oscR = actx.createOscillator();
-    oscL.type = "sine";
-    oscR.type = "sine";
+    oscL.type = dom.wave.value;
+    oscR.type = dom.wave.value;
 
-    // Noise chain
     const noiseSrc = actx.createBufferSource();
-    noiseSrc.buffer = buildNoiseBuffer(actx);
+    noiseSrc.buffer = buildNoiseBuffer(actx, dom.noiseColor.value);
     noiseSrc.loop = true;
-
     const noiseFilter = actx.createBiquadFilter();
     noiseFilter.type = "bandpass";
     noiseFilter.frequency.value = 900;
     noiseFilter.Q.value = 0.8;
-
     const noiseGain = actx.createGain();
-    noiseGain.gain.value = 0.0;
+    noiseGain.gain.value = 0;
 
-    // Pulse (AM gating)
+    const baseConst = actx.createConstantSource();
+    baseConst.offset.value = 0.0001;
     const pulseOsc = actx.createOscillator();
     pulseOsc.type = "square";
-    const pulseGain = actx.createGain(); // scales LFO to depth
-    const pulseDepth = actx.createConstantSource(); // base level
-    pulseDepth.offset.value = 1.0; // baseline multiplier
+    const pulseGain = actx.createGain();
+    pulseGain.gain.value = 0;
+    const breathOsc = actx.createOscillator();
+    breathOsc.type = "sine";
+    const breathGain = actx.createGain();
+    breathGain.gain.value = 0;
 
-    // Connect oscillators
     oscL.connect(leftGain);
     oscR.connect(rightGain);
-
     leftGain.connect(merger, 0, 0);
     rightGain.connect(merger, 0, 1);
-
-    merger.connect(master);
+    merger.connect(amp);
     noiseSrc.connect(noiseFilter);
     noiseFilter.connect(noiseGain);
-    noiseGain.connect(master);
+    noiseGain.connect(amp);
 
-    // Pulse: square wave (-1..1) -> gain(depth) -> add to base (constant) -> master.gain
+    baseConst.connect(amp.gain);
     pulseOsc.connect(pulseGain);
-    pulseGain.connect(master.gain);
-    pulseDepth.connect(master.gain);
+    pulseGain.connect(amp.gain);
+    breathOsc.connect(breathGain);
+    breathGain.connect(amp.gain);
 
-    master.connect(limiter);
+    amp.connect(analyser);
+    analyser.connect(limiter);
     limiter.connect(actx.destination);
 
-    // Start nodes
     const now = actx.currentTime;
-    oscL.start(now);
-    oscR.start(now);
-    noiseSrc.start(now);
-    pulseOsc.start(now);
-    pulseDepth.start(now);
+    [oscL, oscR, noiseSrc, pulseOsc, breathOsc, baseConst].forEach(n => n.start(now));
 
-    audio.master = master;
-    audio.limiter = limiter;
-    audio.merger = merger;
-    audio.leftGain = leftGain;
-    audio.rightGain = rightGain;
-    audio.oscL = oscL;
-    audio.oscR = oscR;
-    audio.noiseSrc = noiseSrc;
-    audio.noiseGain = noiseGain;
-    audio.noiseFilter = noiseFilter;
-    audio.pulseOsc = pulseOsc;
-    audio.pulseGain = pulseGain;
-    audio.pulseDepth = pulseDepth;
-
+    Object.assign(audio, { amp, limiter, analyser, merger, leftGain, rightGain, oscL, oscR, noiseSrc, noiseGain, noiseFilter, pulseOsc, pulseGain, breathOsc, breathGain, baseConst });
     audio.running = true;
+    audio.startedAt = performance.now();
     setAudioUI(true);
     applyAudioParams(true);
-
-    // Ensure resumed
-    if(actx.state !== "running"){
-      actx.resume().catch(()=>{});
-    }
+    updateAudioSweep(performance.now(), true);
+    if(actx.state !== "running") actx.resume().catch(()=>{});
   }
 
   function audioStop(){
     if(!audio.running) return;
     const actx = audio.ctx;
-    const safeStop = (node) => { try{ node && node.stop && node.stop(); }catch(e){} };
-
-    safeStop(audio.oscL);
-    safeStop(audio.oscR);
-    safeStop(audio.noiseSrc);
-    safeStop(audio.pulseOsc);
-    safeStop(audio.pulseDepth);
-
-    // Disconnect
-    [audio.oscL, audio.oscR, audio.noiseSrc, audio.pulseOsc, audio.pulseDepth,
-     audio.leftGain, audio.rightGain, audio.noiseGain, audio.noiseFilter,
-     audio.merger, audio.master, audio.limiter].forEach(n => { try{ n && n.disconnect(); }catch(e){} });
-
-    audio.running = false;
-    setAudioUI(false);
-
-    // Keep context for quick restart (optional), but suspend to save CPU
-    if(actx && actx.state === "running"){
-      actx.suspend().catch(()=>{});
-    }
+    const now = actx ? actx.currentTime : 0;
+    try{
+      if(audio.baseConst) audio.baseConst.offset.setTargetAtTime(0.0001, now, Math.max(0.03, Number(dom.rampTime.value) * 0.25));
+    }catch(e){}
+    const stopLater = () => {
+      const safeStop = (node) => { try{ node && node.stop && node.stop(); }catch(e){} };
+      [audio.oscL, audio.oscR, audio.noiseSrc, audio.pulseOsc, audio.breathOsc, audio.baseConst].forEach(safeStop);
+      [audio.oscL, audio.oscR, audio.noiseSrc, audio.pulseOsc, audio.breathOsc, audio.baseConst,
+       audio.leftGain, audio.rightGain, audio.noiseGain, audio.noiseFilter, audio.merger, audio.amp,
+       audio.analyser, audio.limiter, audio.pulseGain, audio.breathGain].forEach(n => { try{ n && n.disconnect(); }catch(e){} });
+      audio.running = false;
+      audio.rms = 0;
+      setAudioUI(false);
+      dom.mAudio.textContent = "idle";
+      if(actx && actx.state === "running") actx.suspend().catch(()=>{});
+    };
+    window.setTimeout(stopLater, Math.min(650, Number(dom.rampTime.value)*260));
   }
 
   function applyAudioParams(slew=false){
-    // Update UI readouts
-    vVol.textContent = Number(vol.value).toFixed(2);
-    vCarrier.textContent = String((carrier.value|0));
-    vBeat.textContent = Number(beat.value).toFixed(1);
-    vNoise.textContent = Number(noise.value).toFixed(2);
-    vPulse.textContent = Number(pulse.value).toFixed(1);
-    vWidth.textContent = Number(width.value).toFixed(2);
+    dom.vVol.textContent = Number(dom.vol.value).toFixed(2);
+    dom.vCarrier.textContent = String((dom.carrier.value|0));
+    dom.vBeat.textContent = Number(dom.beat.value).toFixed(1);
+    dom.vNoise.textContent = Number(dom.noise.value).toFixed(2);
+    dom.vPulse.textContent = currentPulse().toFixed(1);
+    dom.vWidth.textContent = Number(dom.width.value).toFixed(2);
+    dom.vWave.textContent = dom.wave.value;
+    dom.vNoiseColor.textContent = dom.noiseColor.value;
+    dom.vSweepDepth.textContent = Number(dom.sweepDepth.value).toFixed(1);
+    dom.vSweepRate.textContent = Number(dom.sweepRate.value).toFixed(3);
+    dom.vBreathRate.textContent = Number(dom.breathRate.value).toFixed(2);
+    dom.vBreathDepth.textContent = Number(dom.breathDepth.value).toFixed(2);
+    dom.vMicroDrift.textContent = Number(dom.microDrift.value).toFixed(2);
+    dom.vBeatSmooth.textContent = Number(dom.beatSmooth.value).toFixed(3);
 
     if(!audio.running) return;
     const actx = audio.ctx;
     const now = actx.currentTime;
-    const t = slew ? 0.03 : 0.0;
+    const tau = slew ? 0.025 : 0.005;
 
-    const car = Number(carrier.value);
-    const d = Number(beat.value);
-    const w = Number(width.value);
+    audio.oscL.type = dom.wave.value;
+    audio.oscR.type = dom.wave.value;
 
-    const fL = Math.max(1, car - d*0.5);
-    const fR = Math.max(1, car + d*0.5);
+    const baseVol = Number(dom.vol.value);
+    const ramp = Math.max(0.02, Number(dom.rampTime.value) * 0.25);
+    audio.baseConst.offset.setTargetAtTime(baseVol, now, ramp);
 
-    audio.oscL.frequency.setTargetAtTime(fL, now, t || 0.01);
-    audio.oscR.frequency.setTargetAtTime(fR, now, t || 0.01);
-
-    // Stereo width affects relative channel gains
-    // width=1 => L=1, R=1 ; width=0 => both at 0.707 to soften & collapse
+    const w = Number(dom.width.value);
     const g = lerp(0.707, 1.0, w);
-    audio.leftGain.gain.setTargetAtTime(g, now, 0.01);
-    audio.rightGain.gain.setTargetAtTime(g, now, 0.01);
+    audio.leftGain.gain.setTargetAtTime(g, now, tau);
+    audio.rightGain.gain.setTargetAtTime(g, now, tau);
 
-    // Master volume
-    // NOTE: master.gain is being modulated by pulseGain + pulseDepth.
-    // We'll set baseline via pulseDepth and mod depth via pulseGain.
-    const baseVol = Number(vol.value);
-    audio.pulseDepth.offset.setTargetAtTime(baseVol, now, 0.01);
-
-    // Noise shaping: bandpass tuned near carrier * 3-ish to add grit but keep it musical
+    const car = Number(dom.carrier.value);
+    const d = Number(dom.beat.value);
     const nf = clamp(car * 3.2, 200, 6000);
-    audio.noiseFilter.frequency.setTargetAtTime(nf, now, 0.02);
-    audio.noiseFilter.Q.setTargetAtTime(0.6 + (d/40)*1.8, now, 0.02);
-    audio.noiseGain.gain.setTargetAtTime(baseVol * Number(noise.value) * 0.8, now, 0.02);
+    audio.noiseFilter.frequency.setTargetAtTime(nf, now, 0.035);
+    audio.noiseFilter.Q.setTargetAtTime(0.6 + (d/40)*1.8, now, 0.035);
+    audio.noiseGain.gain.setTargetAtTime(baseVol * Number(dom.noise.value) * 0.78, now, 0.035);
 
-    // Pulse: if pulse=0 => depth 0
-    // For square wave: (-1..1). We want gating between ~0 and ~baseVol:
-    // master.gain = baseVol + square * depth
-    // Choose depth = baseVol * 0.45 so it never goes negative.
-    const p = Number(pulse.value);
-    audio.pulseOsc.frequency.setTargetAtTime(Math.max(0.001, p), now, 0.01);
-    const depth = (p <= 0.01) ? 0.0 : baseVol * 0.45;
-    audio.pulseGain.gain.setTargetAtTime(depth, now, 0.02);
+    const p = currentPulse();
+    audio.pulseOsc.frequency.setTargetAtTime(Math.max(0.001, p), now, tau);
+    const pDepth = (p <= 0.01) ? 0.0 : baseVol * 0.35;
+    audio.pulseGain.gain.setTargetAtTime(pDepth, now, 0.035);
+
+    const br = Number(dom.breathRate.value);
+    const bd = Number(dom.breathDepth.value);
+    audio.breathOsc.frequency.setTargetAtTime(Math.max(0.001, br), now, 0.08);
+    audio.breathGain.gain.setTargetAtTime(br <= 0.001 ? 0 : baseVol * bd * 0.22, now, 0.08);
   }
 
-  btnToggleAudio.addEventListener("click", () => {
-    if(!audio.running) audioStart(); else audioStop();
-  });
+  function updateAudioSweep(time, force=false){
+    if(!audio.running) return;
+    if(!force && time - audio.lastFreqUpdate < 35) return;
+    audio.lastFreqUpdate = time;
+    const actx = audio.ctx;
+    const now = actx.currentTime;
+    const car = Number(dom.carrier.value);
+    const beatBase = Number(dom.beat.value);
+    const sweepDepth = Number(dom.sweepDepth.value);
+    const sweepRate = Number(dom.sweepRate.value);
+    const sweep = sweepDepth * Math.sin(time * 0.001 * sweepRate * TAU);
+    const drift = Number(dom.microDrift.value) * (Math.sin(time*.00073) * .65 + Math.sin(time*.00021 + 1.7) * .35);
+    const d = clamp(beatBase + sweep, 0, 40);
+    audio.effectiveBeat = d;
+    const smooth = Number(dom.beatSmooth.value);
+    const fL = Math.max(1, car + drift - d*0.5);
+    const fR = Math.max(1, car + drift + d*0.5);
+    audio.oscL.frequency.setTargetAtTime(fL, now, smooth);
+    audio.oscR.frequency.setTargetAtTime(fR, now, smooth);
 
-  [vol, carrier, beat, noise, pulse, width].forEach(el => {
-    el.addEventListener("input", () => applyAudioParams(true));
-  });
-
-  pFocus.addEventListener("click", () => {
-    beat.value = "12.0";
-    pulse.value = "0.0";
-    noise.value = "0.18";
-    carrier.value = "240";
-    vol.value = "0.10";
-    width.value = "1.00";
-    applyAudioParams(true);
-  });
-  pChill.addEventListener("click", () => {
-    beat.value = "6.0";
-    pulse.value = "8.0";
-    noise.value = "0.25";
-    carrier.value = "180";
-    vol.value = "0.09";
-    width.value = "0.90";
-    applyAudioParams(true);
-  });
-  pDeep.addEventListener("click", () => {
-    beat.value = "2.0";
-    pulse.value = "4.0";
-    noise.value = "0.18";
-    carrier.value = "140";
-    vol.value = "0.08";
-    width.value = "0.85";
-    applyAudioParams(true);
-  });
-  pStop.addEventListener("click", () => audioStop());
-
-  // Keyboard shortcuts
-  window.addEventListener("keydown", (e) => {
-    if(e.code === "Space"){
-      e.preventDefault();
-      if(!audio.running) audioStart(); else audioStop();
+    if(audio.analyser && audio.data){
+      audio.analyser.getByteTimeDomainData(audio.data);
+      let sum = 0;
+      for(let i=0;i<audio.data.length;i++){
+        const v = (audio.data[i]-128)/128;
+        sum += v*v;
+      }
+      audio.rms = Math.sqrt(sum / audio.data.length);
     }
-    if(e.key.toLowerCase() === "v"){
-      e.preventDefault();
-      cycleVisualMode();
+
+    if(dom.sessionTimer.checked){
+      const elapsedMin = (performance.now() - audio.startedAt) / 60000;
+      if(elapsedMin >= Number(dom.sessionMins.value)){
+        audioStop();
+        toast("Audio stopped by session timer");
+      }
     }
-  }, { passive:false });
+  }
 
-  // ---------- Visual Engine ----------
-  let visualMode = "plasma";
-  let t0 = performance.now();
-  let mouse = { x:0, y:0, down:false };
+  dom.btnToggleAudio.addEventListener("click", () => audio.running ? audioStop() : audioStart());
+  [dom.vol, dom.carrier, dom.beat, dom.noise, dom.pulse, dom.width, dom.wave, dom.noiseColor, dom.sweepDepth, dom.sweepRate, dom.breathRate, dom.breathDepth, dom.microDrift, dom.beatSmooth]
+    .forEach(el => el.addEventListener("input", () => {
+      if(el === dom.noiseColor && audio.running){ audioStop(); setTimeout(audioStart, 120); return; }
+      applyAudioParams(true);
+    }));
 
-  // UI binds
+  function setAudioPreset(p){
+    Object.entries(p).forEach(([k,v]) => { if(dom[k]) dom[k].value = String(v); });
+    applyAudioParams(true);
+    toast("Preset applied");
+  }
+  dom.pFocus.addEventListener("click", () => setAudioPreset({ beat:12, pulse:0, noise:.16, carrier:240, vol:.09, width:1, wave:"sine", noiseColor:"pink", sweepDepth:1.5, sweepRate:.035, breathRate:.08, breathDepth:.16, microDrift:.35, beatSmooth:.025 }));
+  dom.pChill.addEventListener("click", () => setAudioPreset({ beat:6, pulse:8, noise:.23, carrier:180, vol:.085, width:.9, wave:"sine", noiseColor:"pink", sweepDepth:2.2, sweepRate:.025, breathRate:.1, breathDepth:.25, microDrift:.25, beatSmooth:.03 }));
+  dom.pDeep.addEventListener("click", () => setAudioPreset({ beat:2, pulse:4, noise:.18, carrier:140, vol:.075, width:.85, wave:"sine", noiseColor:"brown", sweepDepth:.8, sweepRate:.018, breathRate:.07, breathDepth:.30, microDrift:.18, beatSmooth:.04 }));
+  dom.pBright.addEventListener("click", () => setAudioPreset({ beat:18, pulse:0, noise:.12, carrier:320, vol:.07, width:1, wave:"triangle", noiseColor:"white", sweepDepth:3.5, sweepRate:.055, breathRate:.05, breathDepth:.10, microDrift:.55, beatSmooth:.02 }));
+  dom.pDrone.addEventListener("click", () => setAudioPreset({ beat:3, pulse:0, noise:.30, carrier:90, vol:.08, width:.72, wave:"sine", noiseColor:"brown", sweepDepth:.6, sweepRate:.01, breathRate:.06, breathDepth:.35, microDrift:.12, beatSmooth:.05 }));
+  dom.pStop.addEventListener("click", audioStop);
+
+  // ---------- Visual UI ----------
   function applyVisualUI(){
-    vSpeed.textContent = Number(speed.value).toFixed(2);
-    vIntensity.textContent = Number(intensity.value).toFixed(2);
-    vBoids.textContent = String(boidsCount.value|0);
-    vRDIters.textContent = String(rdIters.value|0);
-    vFeed.textContent = Number(feed.value).toFixed(4);
-    vKill.textContent = Number(kill.value).toFixed(4);
-
-    const name = visualMode === "plasma" ? "Plasma" :
-                 visualMode === "boids"  ? "Boids" :
-                 "Reaction-Diffusion";
-    vModeName.textContent = name;
+    dom.vSpeed.textContent = Number(dom.speed.value).toFixed(2);
+    dom.vIntensity.textContent = Number(dom.intensity.value).toFixed(2);
+    dom.vQuality.textContent = Number(dom.quality.value).toFixed(2);
+    dom.vPalette.textContent = dom.palette.options[dom.palette.selectedIndex].text;
+    dom.vBoids.textContent = String(dom.boidsCount.value|0);
+    dom.vFlowParticles.textContent = String(dom.flowParticles.value|0);
+    dom.vSynNodes.textContent = String(dom.synNodes.value|0);
+    dom.vAttractorGravity.textContent = Number(dom.attractorGravity.value).toFixed(2);
+    dom.vRDIters.textContent = String(dom.rdIters.value|0);
+    dom.vFeed.textContent = Number(dom.feed.value).toFixed(4);
+    dom.vKill.textContent = Number(dom.kill.value).toFixed(4);
+    const name = visualMode === "plasma" ? "Plasma" : visualMode === "boids" ? "Boids" : visualMode === "rd" ? "Reaction-Diffusion" : visualMode === "flow" ? "Neural Flow" : visualMode === "scope" ? "Scope Ring" : visualMode === "attractors" ? "Chaotic Attractors" : "Synaptic Map";
+    dom.vModeName.textContent = name;
+    dom.mMode.textContent = name;
   }
-
-  modeSel.addEventListener("change", () => {
-    visualMode = modeSel.value;
-    applyVisualUI();
-  });
-
-  [speed, intensity, boidsCount, rdIters, feed, kill].forEach(el => {
-    el.addEventListener("input", () => {
-      if(el === boidsCount) boidsRebuild();
-      applyVisualUI();
-    });
-  });
+  dom.mode.addEventListener("change", () => { visualMode = dom.mode.value; applyVisualUI(); });
+  [dom.speed, dom.intensity, dom.quality, dom.palette, dom.rdIters, dom.feed, dom.kill, dom.attractorGravity].forEach(el => el.addEventListener("input", applyVisualUI));
+  dom.boidsCount.addEventListener("input", () => { boidsRebuild(); applyVisualUI(); });
+  dom.flowParticles.addEventListener("input", () => { flowRebuild(); attractorRebuild(); applyVisualUI(); });
+  dom.synNodes.addEventListener("input", () => { synapseRebuild(); applyVisualUI(); });
 
   function cycleVisualMode(){
-    const order = ["plasma","boids","rd"];
+    const order = ["plasma","boids","rd","flow","scope","attractors","synapses"];
     const i = order.indexOf(visualMode);
     visualMode = order[(i+1)%order.length];
-    modeSel.value = visualMode;
+    dom.mode.value = visualMode;
     applyVisualUI();
   }
 
   // ---------- Plasma ----------
   function plasmaRender(time){
-    const sp = Number(speed.value);
-    const inten = Number(intensity.value);
+    const sp = safeSpeed();
+    const inten = safeIntensity();
+    const q = Number(dom.quality.value);
     const tt = time * 0.001 * sp;
-
-    // Render at reduced resolution for speed
-    const scale = 2; // bigger => faster; smaller => sharper
-    const rw = Math.max(240, Math.floor(W / (scale*2)));
-    const rh = Math.max(180, Math.floor(H / (scale*2)));
-
+    const scale = clamp(3.2 - q, 1.6, 3.2);
+    const rw = Math.max(220, Math.floor(W / (scale*2)));
+    const rh = Math.max(160, Math.floor(H / (scale*2)));
     const img = ctx2d.createImageData(rw, rh);
     const data = img.data;
-
     const mx = (mouse.x / Math.max(1, window.innerWidth)) * 2 - 1;
     const my = (mouse.y / Math.max(1, window.innerHeight)) * 2 - 1;
-
+    const prx = plasmaRipple.x*2-1, pry = plasmaRipple.y*2-1;
+    plasmaRipple.amp *= 0.965;
     let idx = 0;
     for(let y=0;y<rh;y++){
       const v = (y / rh) * 2 - 1;
       for(let x=0;x<rw;x++){
         const u = (x / rw) * 2 - 1;
-
         const a = Math.sin((u*3.2 + tt*1.2) + Math.cos(v*2.8 - tt*1.1));
         const b = Math.sin((v*3.0 - tt*0.9) + Math.cos(u*2.6 + tt*1.4));
-        const d = Math.hypot(u-mx*0.5, v-my*0.5);
-
-        const n = 0.55*a + 0.45*b + 0.6*Math.sin(tt + d*6.0);
-        const k = (n*0.5 + 0.5) * inten;
-
-        // Pseudo “spectral” mapping
-        const r = clamp(255*(0.20 + 0.80*Math.sin((k*2.0 + 0.0)*TAU*0.16)), 0, 255);
-        const g = clamp(255*(0.20 + 0.80*Math.sin((k*2.0 + 0.33)*TAU*0.16)), 0, 255);
-        const bl= clamp(255*(0.20 + 0.80*Math.sin((k*2.0 + 0.66)*TAU*0.16)), 0, 255);
-
-        data[idx++] = r|0;
-        data[idx++] = g|0;
-        data[idx++] = bl|0;
-        data[idx++] = 255;
+        const dMouse = Math.hypot(u-mx*.5, v-my*.5);
+        const dRip = Math.hypot(u-prx, v-pry);
+        const ripple = plasmaRipple.amp * Math.sin(dRip*28 - tt*8) / (1 + dRip*14);
+        const audioPush = clamp(audio.rms * 2.2, 0, .45);
+        const n = 0.52*a + 0.42*b + 0.52*Math.sin(tt + dMouse*6.0) + ripple + audioPush;
+        const k = clamp((n*0.5 + 0.5) * inten, 0, 1.35);
+        const p0 = pal(0), p1 = pal(1), p2 = pal(2);
+        const r = clamp((p0[0]*(1-k) + p1[0]*k + p2[0]*Math.max(0,k-.55))*Number(dom.brightCap.value),0,255);
+        const g = clamp((p0[1]*(1-k) + p1[1]*k + p2[1]*Math.max(0,k-.55))*Number(dom.brightCap.value),0,255);
+        const bl= clamp((p0[2]*(1-k) + p1[2]*k + p2[2]*Math.max(0,k-.55))*Number(dom.brightCap.value),0,255);
+        data[idx++] = r|0; data[idx++] = g|0; data[idx++] = bl|0; data[idx++] = 255;
       }
     }
-
-    // Draw scaled up with pixelation
     ctx2d.putImageData(img, 0, 0);
     ctx2d.drawImage(c, 0, 0, rw, rh, 0, 0, W, H);
   }
@@ -831,416 +1197,681 @@
   // ---------- Boids ----------
   let boids = [];
   function boidsRebuild(){
-    const count = boidsCount.value|0;
+    const count = Math.max(10, Math.floor((dom.boidsCount ? Number(dom.boidsCount.value) : 240) * (dom.reducedMotion && dom.reducedMotion.checked ? .55 : 1)));
     boids = new Array(count);
     for(let i=0;i<count;i++){
-      boids[i] = {
-        x: rand(0, W), y: rand(0, H),
-        vx: rand(-1,1)*120, vy: rand(-1,1)*120,
-      };
+      boids[i] = { x: rand(0, W||1000), y: rand(0, H||700), vx: rand(-1,1)*120, vy: rand(-1,1)*120, hue: rand(0,1) };
     }
   }
-
   function boidsStep(dt){
-    const sp = Number(speed.value);
-    const inten = Number(intensity.value);
-
-    // Parameters
+    const sp = safeSpeed();
+    const inten = safeIntensity();
     const maxSpeed = 320 * sp;
     const maxForce = 420 * sp;
     const neighR = 72 * DPR;
-    const sepR   = 32 * DPR;
-
-    const cohW = 0.55 * inten;
-    const aliW = 0.65 * inten;
-    const sepW = 0.95 * inten;
-    const mouseW= 0.40 * inten;
-
-    // Cheap spatial hash (grid)
+    const sepR = 32 * DPR;
+    const cohW = 0.55 * inten, aliW = 0.65 * inten, sepW = 0.95 * inten, mouseW = 0.40 * inten;
     const cell = neighR;
     const cols = Math.max(1, Math.floor(W / cell));
     const rows = Math.max(1, Math.floor(H / cell));
-    const grid = new Array(cols*rows);
-    for(let i=0;i<grid.length;i++) grid[i] = [];
+    const grid = Array.from({length:cols*rows}, () => []);
     for(let i=0;i<boids.length;i++){
       const b = boids[i];
       const cx = clamp((b.x / cell) | 0, 0, cols-1);
       const cy = clamp((b.y / cell) | 0, 0, rows-1);
       grid[cx + cy*cols].push(i);
     }
-
-    // Update each boid
     for(let i=0;i<boids.length;i++){
       const b = boids[i];
       const cx = clamp((b.x / cell) | 0, 0, cols-1);
       const cy = clamp((b.y / cell) | 0, 0, rows-1);
-
-      let count=0;
-      let sx=0, sy=0;
-      let ax=0, ay=0;
-      let cxm=0, cym=0;
-
-      for(let oy=-1; oy<=1; oy++){
-        for(let ox=-1; ox<=1; ox++){
-          const nx = cx + ox, ny = cy + oy;
-          if(nx<0 || ny<0 || nx>=cols || ny>=rows) continue;
-          const bucket = grid[nx + ny*cols];
-          for(let k=0;k<bucket.length;k++){
-            const j = bucket[k];
-            if(j===i) continue;
-            const o = boids[j];
-            const dx = o.x - b.x;
-            const dy = o.y - b.y;
-            const d2 = dx*dx + dy*dy;
-            if(d2 < neighR*neighR){
-              const d = Math.sqrt(d2) + 1e-6;
-              count++;
-              // alignment
-              ax += o.vx; ay += o.vy;
-              // cohesion
-              cxm += o.x; cym += o.y;
-              // separation
-              if(d < sepR){
-                sx -= dx / d;
-                sy -= dy / d;
-              }
-            }
+      let count=0, sx=0, sy=0, ax=0, ay=0, cxm=0, cym=0;
+      for(let oy=-1; oy<=1; oy++) for(let ox=-1; ox<=1; ox++){
+        const nx = cx + ox, ny = cy + oy;
+        if(nx<0 || ny<0 || nx>=cols || ny>=rows) continue;
+        const bucket = grid[nx + ny*cols];
+        for(let k=0;k<bucket.length;k++){
+          const j = bucket[k]; if(j===i) continue;
+          const o = boids[j];
+          const dx = o.x - b.x, dy = o.y - b.y;
+          const d2 = dx*dx + dy*dy;
+          if(d2 < neighR*neighR){
+            const d = Math.sqrt(d2) + 1e-6;
+            count++; ax += o.vx; ay += o.vy; cxm += o.x; cym += o.y;
+            if(d < sepR){ sx -= dx/d; sy -= dy/d; }
           }
         }
       }
-
       let fx=0, fy=0;
-
       if(count>0){
-        // Alignment steer toward avg velocity
-        ax /= count; ay /= count;
-        const al = Math.hypot(ax,ay) + 1e-6;
-        ax = (ax / al) * maxSpeed - b.vx;
-        ay = (ay / al) * maxSpeed - b.vy;
-
-        // Cohesion steer toward center
-        cxm /= count; cym /= count;
-        let cdx = cxm - b.x, cdy = cym - b.y;
-        const cd = Math.hypot(cdx,cdy) + 1e-6;
-        cdx = (cdx / cd) * maxSpeed - b.vx;
-        cdy = (cdy / cd) * maxSpeed - b.vy;
-
-        // Separation
-        const sd = Math.hypot(sx,sy) + 1e-6;
-        sx = (sx / sd) * maxSpeed - b.vx;
-        sy = (sy / sd) * maxSpeed - b.vy;
-
-        fx += ax * aliW + cdx * cohW + sx * sepW;
-        fy += ay * aliW + cdy * cohW + sy * sepW;
+        ax/=count; ay/=count;
+        let al=Math.hypot(ax,ay)+1e-6; ax=(ax/al)*maxSpeed-b.vx; ay=(ay/al)*maxSpeed-b.vy;
+        cxm/=count; cym/=count;
+        let cdx=cxm-b.x, cdy=cym-b.y, cd=Math.hypot(cdx,cdy)+1e-6;
+        cdx=(cdx/cd)*maxSpeed-b.vx; cdy=(cdy/cd)*maxSpeed-b.vy;
+        let sd=Math.hypot(sx,sy)+1e-6; sx=(sx/sd)*maxSpeed-b.vx; sy=(sy/sd)*maxSpeed-b.vy;
+        fx += ax*aliW + cdx*cohW + sx*sepW;
+        fy += ay*aliW + cdy*cohW + sy*sepW;
       }
-
-      // Mouse attract/repel
-      const mx = mouse.x * DPR, my = mouse.y * DPR;
-      const mdx = mx - b.x, mdy = my - b.y;
-      const md = Math.hypot(mdx,mdy) + 1e-6;
-      const sign = mouse.down ? -1 : 1; // hold mouse to repel
-      fx += sign * (mdx / md) * maxForce * mouseW * 0.35;
-      fy += sign * (mdy / md) * maxForce * mouseW * 0.35;
-
-      // Limit force
-      const fl = Math.hypot(fx,fy) + 1e-6;
-      const ff = Math.min(fl, maxForce);
-      fx = fx / fl * ff;
-      fy = fy / fl * ff;
-
-      // Integrate
-      b.vx += fx * dt;
-      b.vy += fy * dt;
-
-      // Limit speed
-      const vl = Math.hypot(b.vx,b.vy) + 1e-6;
-      const vv = Math.min(vl, maxSpeed);
-      b.vx = b.vx / vl * vv;
-      b.vy = b.vy / vl * vv;
-
-      b.x += b.vx * dt;
-      b.y += b.vy * dt;
-
-      // Wrap
-      if(b.x < 0) b.x += W;
-      if(b.y < 0) b.y += H;
-      if(b.x >= W) b.x -= W;
-      if(b.y >= H) b.y -= H;
+      const mx=mouse.x*DPR, my=mouse.y*DPR;
+      const mdx=mx-b.x, mdy=my-b.y, md=Math.hypot(mdx,mdy)+1e-6;
+      const sign = mouse.down ? -1 : 1;
+      fx += sign * (mdx/md) * maxForce * mouseW * 0.35;
+      fy += sign * (mdy/md) * maxForce * mouseW * 0.35;
+      const fl=Math.hypot(fx,fy)+1e-6, ff=Math.min(fl,maxForce); fx=fx/fl*ff; fy=fy/fl*ff;
+      b.vx += fx*dt; b.vy += fy*dt;
+      const vl=Math.hypot(b.vx,b.vy)+1e-6, vv=Math.min(vl,maxSpeed); b.vx=b.vx/vl*vv; b.vy=b.vy/vl*vv;
+      b.x += b.vx*dt; b.y += b.vy*dt;
+      if(b.x<0) b.x+=W; if(b.y<0) b.y+=H; if(b.x>=W) b.x-=W; if(b.y>=H) b.y-=H;
     }
   }
-
-  function boidsRender(time){
-    const dt = Math.min(0.033, (time - t0) / 1000);
+  function boidsRender(time, dt){
     boidsStep(dt);
-
-    // Trails
-    ctx2d.fillStyle = "rgba(6,8,15,0.18)";
+    ctx2d.fillStyle = `rgba(6,8,15,${dom.reducedMotion.checked ? .30 : .18})`;
     ctx2d.fillRect(0,0,W,H);
-
-    // Draw boids
-    const inten = Number(intensity.value);
+    const inten = safeIntensity();
     const glow = 0.35 + 0.55*clamp(inten/2.5, 0, 1);
-
     ctx2d.save();
-    ctx2d.globalCompositeOperation = "lighter";
+    ctx2d.globalCompositeOperation = dom.safeVisual.checked ? "source-over" : "lighter";
+    const p0=pal(0), p1=pal(1), p2=pal(2), p3=pal(3);
     for(const b of boids){
-      const spd = Math.hypot(b.vx,b.vy);
-      const s = clamp(1.5 + spd/220, 1.5, 5.5) * DPR;
-
-      // Gradient-ish dot
-      const g = ctx2d.createRadialGradient(b.x,b.y,0,b.x,b.y,12*DPR);
-      g.addColorStop(0, `rgba(140,245,255,${0.22*glow})`);
-      g.addColorStop(0.5, `rgba(182,255,106,${0.12*glow})`);
-      g.addColorStop(1, `rgba(255,106,140,0)`);
+      const spd=Math.hypot(b.vx,b.vy);
+      const s=clamp(1.5+spd/220,1.5,5.5)*DPR;
+      const r=10*DPR*(dom.reducedMotion.checked?.7:1);
+      const g=ctx2d.createRadialGradient(b.x,b.y,0,b.x,b.y,r*1.35);
+      g.addColorStop(0, rgba(p0, 0.18*glow));
+      g.addColorStop(0.5, rgba(p1, 0.10*glow));
+      g.addColorStop(1, rgba(p2, 0));
       ctx2d.fillStyle = g;
-      ctx2d.beginPath();
-      ctx2d.arc(b.x,b.y, 10*DPR, 0, TAU);
-      ctx2d.fill();
-
-      // Core
-      ctx2d.fillStyle = `rgba(234,240,255,${0.50*glow})`;
-      ctx2d.beginPath();
-      ctx2d.arc(b.x,b.y, s, 0, TAU);
-      ctx2d.fill();
+      ctx2d.beginPath(); ctx2d.arc(b.x,b.y,r,0,TAU); ctx2d.fill();
+      ctx2d.fillStyle = rgba(p3, .50*glow);
+      ctx2d.beginPath(); ctx2d.arc(b.x,b.y,s,0,TAU); ctx2d.fill();
     }
     ctx2d.restore();
   }
 
-  // ---------- Reaction-Diffusion (Gray-Scott) ----------
-  // Grid is fixed resolution for performance; displayed scaled.
-  let rd = {
-    w: 0, h: 0,
-    A: null, B: null,
-    A2: null, B2: null,
-    img: null,
-    imgData: null,
-    lastInject: 0
-  };
-
+  // ---------- Reaction Diffusion ----------
+  let rd = { w:0, h:0, A:null, B:null, A2:null, B2:null, img:null, imgData:null };
   function rdInit(){
-    // Choose grid size based on screen, capped
-    const base = Math.min(360, Math.floor(Math.min(window.innerWidth, window.innerHeight) * 0.60));
-    const rw = Math.max(180, (base|0));
-    const rh = Math.max(180, (base|0));
-    rd.w = rw;
-    rd.h = rh;
-
-    const n = rw * rh;
-    rd.A = new Float32Array(n);
-    rd.B = new Float32Array(n);
-    rd.A2= new Float32Array(n);
-    rd.B2= new Float32Array(n);
-
-    // Initial conditions: A=1 everywhere, B=0, then seed a blob of B
-    for(let i=0;i<n;i++){ rd.A[i]=1.0; rd.B[i]=0.0; }
-    rdInject(rw*0.5, rh*0.5, 18);
-
+    const q = dom.quality ? Number(dom.quality.value) : 1;
+    const base = Math.min(390, Math.floor(Math.min(window.innerWidth||900, window.innerHeight||700) * (0.52 + q*.14)));
+    const rw = Math.max(160, base|0);
+    const rh = Math.max(160, base|0);
+    rd.w=rw; rd.h=rh;
+    const n=rw*rh;
+    rd.A=new Float32Array(n); rd.B=new Float32Array(n); rd.A2=new Float32Array(n); rd.B2=new Float32Array(n);
+    for(let i=0;i<n;i++){ rd.A[i]=1; rd.B[i]=0; }
     rd.img = ctx2d.createImageData(rw, rh);
     rd.imgData = rd.img.data;
+    rdInject(rw*.5, rh*.5, 18);
+    rdInject(rw*.35, rh*.62, 12);
   }
-
   function rdIdx(x,y){ return x + y*rd.w; }
-
   function rdInject(x,y,r){
-    const rw=rd.w, rh=rd.h;
-    const rr = r*r;
+    if(!rd.A) return;
+    const rw=rd.w, rh=rd.h, rr=r*r;
     for(let j=Math.max(0,(y-r)|0); j<Math.min(rh,(y+r)|0); j++){
       for(let i=Math.max(0,(x-r)|0); i<Math.min(rw,(x+r)|0); i++){
         const dx=i-x, dy=j-y;
-        if(dx*dx+dy*dy <= rr){
-          const k = rdIdx(i,j);
-          rd.B[k] = 1.0;
-          rd.A[k] = 0.0;
-        }
+        if(dx*dx+dy*dy<=rr){ const k=rdIdx(i,j); rd.B[k]=1; rd.A[k]=0; }
       }
     }
   }
-
   function rdStep(iters){
     const rw=rd.w, rh=rd.h;
-    const A=rd.A, B=rd.B, A2=rd.A2, B2=rd.B2;
-
-    const F = Number(feed.value);
-    const K = Number(kill.value);
-    const sp = Number(speed.value);
-
-    // Diffusion rates (scaled by speed)
-    const Da = 1.00 * sp;
-    const Db = 0.50 * sp;
-    const dt = 1.0;
-
+    const F=Number(dom.feed.value), K=Number(dom.kill.value);
+    const sp=safeSpeed();
+    const Da=1.00*sp, Db=0.50*sp, dt=1.0;
     for(let step=0; step<iters; step++){
+      const A=rd.A, B=rd.B, A2=rd.A2, B2=rd.B2;
       for(let y=0; y<rh; y++){
-        const ym1 = (y-1+rh)%rh, yp1=(y+1)%rh;
+        const ym1=(y-1+rh)%rh, yp1=(y+1)%rh;
         for(let x=0; x<rw; x++){
-          const xm1=(x-1+rw)%rw, xp1=(x+1)%rw;
-
-          const i = rdIdx(x,y);
-
-          // 5-point Laplacian-ish with diagonals for smoother patterns
-          const lapA =
-            -1.0*A[i]
-            + 0.20*(A[rdIdx(xm1,y)] + A[rdIdx(xp1,y)] + A[rdIdx(x,ym1)] + A[rdIdx(x,yp1)])
-            + 0.05*(A[rdIdx(xm1,ym1)] + A[rdIdx(xp1,ym1)] + A[rdIdx(xm1,yp1)] + A[rdIdx(xp1,yp1)]);
-
-          const lapB =
-            -1.0*B[i]
-            + 0.20*(B[rdIdx(xm1,y)] + B[rdIdx(xp1,y)] + B[rdIdx(x,ym1)] + B[rdIdx(x,yp1)])
-            + 0.05*(B[rdIdx(xm1,ym1)] + B[rdIdx(xp1,ym1)] + B[rdIdx(xm1,yp1)] + B[rdIdx(xp1,yp1)]);
-
-          const a = A[i], b = B[i];
-          const reaction = a * b * b;
-
-          // Gray-Scott equations
-          let aN = a + (Da*lapA - reaction + F*(1-a)) * dt;
-          let bN = b + (Db*lapB + reaction - (K+F)*b) * dt;
-
-          A2[i] = clamp(aN, 0, 1);
-          B2[i] = clamp(bN, 0, 1);
+          const xm1=(x-1+rw)%rw, xp1=(x+1)%rw, i=rdIdx(x,y);
+          const lapA = -A[i]
+            + .20*(A[rdIdx(xm1,y)] + A[rdIdx(xp1,y)] + A[rdIdx(x,ym1)] + A[rdIdx(x,yp1)])
+            + .05*(A[rdIdx(xm1,ym1)] + A[rdIdx(xp1,ym1)] + A[rdIdx(xm1,yp1)] + A[rdIdx(xp1,yp1)]);
+          const lapB = -B[i]
+            + .20*(B[rdIdx(xm1,y)] + B[rdIdx(xp1,y)] + B[rdIdx(x,ym1)] + B[rdIdx(x,yp1)])
+            + .05*(B[rdIdx(xm1,ym1)] + B[rdIdx(xp1,ym1)] + B[rdIdx(xm1,yp1)] + B[rdIdx(xp1,yp1)]);
+          const a=A[i], b=B[i], reaction=a*b*b;
+          A2[i]=clamp(a + (Da*lapA - reaction + F*(1-a))*dt, 0, 1);
+          B2[i]=clamp(b + (Db*lapB + reaction - (K+F)*b)*dt, 0, 1);
         }
       }
-      // Swap
-      rd.A = rd.A2; rd.B = rd.B2;
-      rd.A2 = A;    rd.B2 = B;
+      const oldA=rd.A, oldB=rd.B;
+      rd.A=rd.A2; rd.B=rd.B2; rd.A2=oldA; rd.B2=oldB;
     }
   }
-
   function rdRender(time){
-    const iters = rdIters.value|0;
+    const iters = dom.reducedMotion.checked ? Math.min(6, dom.rdIters.value|0) : (dom.rdIters.value|0);
     rdStep(iters);
-
-    const rw=rd.w, rh=rd.h;
-    const data = rd.imgData;
-    const B = rd.B;
-    const inten = Number(intensity.value);
-
-    // Map B concentration to color
+    const rw=rd.w, rh=rd.h, data=rd.imgData, B=rd.B, inten=safeIntensity();
+    const p0=pal(0), p1=pal(1), p2=pal(2);
     let p=0;
     for(let i=0;i<rw*rh;i++){
-      const b = B[i];
-      // contrast curve
-      const v = clamp(Math.pow(b * 1.35, 0.65) * inten, 0, 1);
-
-      // spectral-ish palette
-      const r = clamp(255*(0.08 + 0.92*v), 0, 255);
-      const g = clamp(255*(0.12 + 0.75*(1-Math.abs(v-0.5)*1.8)), 0, 255);
-      const bl= clamp(255*(0.18 + 0.90*(1-v)), 0, 255);
-
-      data[p++] = r|0;
-      data[p++] = g|0;
-      data[p++] = bl|0;
+      const b=B[i];
+      const v=clamp(Math.pow(b*1.35, .65)*inten, 0, 1);
+      data[p++] = clamp((p2[0]*(1-v)+p0[0]*v)*Number(dom.brightCap.value),0,255)|0;
+      data[p++] = clamp((p2[1]*(1-v)+p1[1]*(1-Math.abs(v-.5)*1.8))*Number(dom.brightCap.value),0,255)|0;
+      data[p++] = clamp((p2[2]*(1-v)+p0[2]*(1-v*.25))*Number(dom.brightCap.value),0,255)|0;
       data[p++] = 255;
     }
-
-    // Draw scaled
-    ctx2d.putImageData(rd.img, 0, 0);
-    ctx2d.drawImage(c, 0, 0, rw, rh, 0, 0, W, H);
+    ctx2d.putImageData(rd.img,0,0);
+    ctx2d.drawImage(c,0,0,rw,rh,0,0,W,H);
   }
-
-  function injectAtCanvas(px, py){
+  function injectAtCanvas(px, py, radius=14){
     if(!rd.w) return;
-    const rw=rd.w, rh=rd.h;
-    const x = clamp((px / window.innerWidth) * rw, 0, rw-1);
-    const y = clamp((py / window.innerHeight) * rh, 0, rh-1);
-    rdInject(x, y, 14);
+    const x=clamp((px/window.innerWidth)*rd.w,0,rd.w-1);
+    const y=clamp((py/window.innerHeight)*rd.h,0,rd.h-1);
+    rdInject(x,y,radius);
   }
 
-  btnPulseInk.addEventListener("click", () => {
-    injectAtCanvas(window.innerWidth*0.5, window.innerHeight*0.5);
-  });
+  // ---------- Neural Flow Field ----------
+  let flow = [];
+  function flowRebuild(){
+    const count = Math.max(30, Math.floor((dom.flowParticles ? Number(dom.flowParticles.value) : 900) * (dom.quality ? Number(dom.quality.value) : 1) * (dom.reducedMotion && dom.reducedMotion.checked ? .45 : 1)));
+    flow = new Array(count);
+    for(let i=0;i<count;i++){
+      flow[i] = { x:rand(0,W||1000), y:rand(0,H||700), px:0, py:0, age:rand(0,120), life:rand(80,260), s:rand(.4,1.6) };
+      flow[i].px = flow[i].x; flow[i].py = flow[i].y;
+    }
+  }
+  function flowField(x,y,t){
+    const nx=x/W-.5, ny=y/H-.5;
+    const a = Math.sin(nx*6 + t*.7) + Math.cos(ny*5 - t*.6) + Math.sin((nx+ny)*4 + t*.33);
+    const b = Math.cos(nx*4 - t*.5) - Math.sin(ny*7 + t*.42);
+    return (a+b) * .95;
+  }
+  function flowRender(time, dt){
+    const sp=safeSpeed(), inten=safeIntensity();
+    ctx2d.fillStyle = `rgba(6,8,15,${dom.reducedMotion.checked?.22:.10})`;
+    ctx2d.fillRect(0,0,W,H);
+    ctx2d.save();
+    ctx2d.globalCompositeOperation = dom.safeVisual.checked ? "source-over" : "lighter";
+    const p0=pal(0), p1=pal(1), p2=pal(2);
+    const t=time*.001*sp;
+    const mx=mouse.x*DPR, my=mouse.y*DPR;
+    for(const p of flow){
+      p.px=p.x; p.py=p.y;
+      const a=flowField(p.x,p.y,t) + audio.rms*3;
+      const pullx=mx-p.x, pully=my-p.y, md=Math.hypot(pullx,pully)+1e-6;
+      const mouseForce=(mouse.down?-1:1) * clamp(1-md/(360*DPR),0,1) * 90 * inten;
+      const speedBase=(70 + 70*p.s + audio.rms*220)*sp;
+      p.x += (Math.cos(a)*speedBase + (pullx/md)*mouseForce) * dt;
+      p.y += (Math.sin(a)*speedBase + (pully/md)*mouseForce) * dt;
+      p.age++;
+      if(p.x<0||p.y<0||p.x>=W||p.y>=H||p.age>p.life){
+        p.x=rand(0,W); p.y=rand(0,H); p.px=p.x; p.py=p.y; p.age=0; p.life=rand(80,260);
+      }
+      const huePick = p.age/p.life;
+      const col = huePick < .45 ? p0 : huePick < .75 ? p1 : p2;
+      ctx2d.strokeStyle = rgba(col, clamp(.05 + inten*.18, .05, .32));
+      ctx2d.lineWidth = clamp(p.s*DPR, .4, 2.2);
+      ctx2d.beginPath(); ctx2d.moveTo(p.px,p.py); ctx2d.lineTo(p.x,p.y); ctx2d.stroke();
+    }
+    ctx2d.restore();
+  }
 
-  // Mouse
-  window.addEventListener("pointerdown", (e) => {
-    mouse.down = true;
-    mouse.x = e.clientX;
-    mouse.y = e.clientY;
-    if(visualMode === "rd") injectAtCanvas(e.clientX, e.clientY);
+  // ---------- Scope Ring ----------
+  function scopeRender(time){
+    ctx2d.fillStyle = "rgba(6,8,15,1)";
+    ctx2d.fillRect(0,0,W,H);
+    const cx=W/2, cy=H/2;
+    const baseR=Math.min(W,H)*0.22;
+    const p0=pal(0), p1=pal(1), p2=pal(2), p3=pal(3);
+    const inten=safeIntensity();
+    const data = audio.data;
+    ctx2d.save();
+    ctx2d.globalCompositeOperation = dom.safeVisual.checked ? "source-over" : "lighter";
+    for(let ring=0; ring<3; ring++){
+      ctx2d.beginPath();
+      const n=256;
+      for(let i=0;i<=n;i++){
+        const k=i%n;
+        const a=k/n*TAU + time*.00012*(ring+1)*safeSpeed();
+        const sample = data && audio.running ? ((data[(k*4)%data.length]-128)/128) : Math.sin(time*.002 + k*.09)*.22;
+        const rr=baseR + ring*36*DPR + sample*90*DPR*inten + Math.sin(k*.07 + time*.001)*10*DPR;
+        const x=cx+Math.cos(a)*rr, y=cy+Math.sin(a)*rr;
+        if(i===0) ctx2d.moveTo(x,y); else ctx2d.lineTo(x,y);
+      }
+      ctx2d.closePath();
+      ctx2d.strokeStyle = rgba(ring===0?p0:ring===1?p1:p2, .28);
+      ctx2d.lineWidth = (1.4+ring*.6)*DPR;
+      ctx2d.stroke();
+    }
+    const grd=ctx2d.createRadialGradient(cx,cy,0,cx,cy,baseR*2.4);
+    grd.addColorStop(0, rgba(p3,.08));
+    grd.addColorStop(1, rgba(p2,0));
+    ctx2d.fillStyle=grd;
+    ctx2d.beginPath(); ctx2d.arc(cx,cy,baseR*2.4,0,TAU); ctx2d.fill();
+    ctx2d.restore();
+  }
+
+
+
+  // ---------- Chaotic Attractors / Synaptic Map (v3) ----------
+  let attractor = [];
+  function attractorRebuild(){
+    const count = Math.max(80, Math.floor(Number(dom.flowParticles ? dom.flowParticles.value : 900) * 0.75));
+    attractor = new Array(count);
+    for(let i=0;i<count;i++){
+      const a = rand(0, TAU), r = rand(0.02, 0.92);
+      attractor[i] = { x: Math.cos(a)*r, y: Math.sin(a)*r, px:0, py:0, z:rand(-1,1), age:rand(0,200) };
+    }
+  }
+  function attractorRender(time, dt){
+    ctx2d.fillStyle = `rgba(6,8,15,${dom.reducedMotion.checked ? .22 : .12})`;
+    ctx2d.fillRect(0,0,W,H);
+    const p0=pal(0), p1=pal(1), p2=pal(2);
+    const sp=safeSpeed(), inten=safeIntensity();
+    const grav=Number(dom.attractorGravity.value);
+    const reactive = dom.audioReactive.checked ? clamp(audio.rms*2.8, 0, .9) : 0;
+    const a = 1.38 + .20*Math.sin(time*.00013);
+    const b = -2.16 + .12*Math.cos(time*.00017);
+    const c0 = 1.24 + .28*Math.sin(time*.00011 + 2);
+    const d = -1.86 + .10*Math.cos(time*.00019 + 1);
+    ctx2d.save();
+    ctx2d.globalCompositeOperation = dom.safeVisual.checked ? "source-over" : "lighter";
+    for(const p of attractor){
+      p.px = p.x; p.py = p.y;
+      // Clifford-style attractor plus audio/mouse perturbation.
+      const nx = Math.sin(a*p.y) + c0*Math.cos(a*p.x) + reactive*Math.sin(p.z + time*.001);
+      const ny = Math.sin(b*p.x) + d*Math.cos(b*p.y) + reactive*Math.cos(p.z*1.7 + time*.0012);
+      p.x = lerp(p.x, nx*.42, dt*sp*grav*3.4);
+      p.y = lerp(p.y, ny*.42, dt*sp*grav*3.4);
+      p.z += dt*(.25 + reactive);
+      const x0 = W*(.5 + p.px*.43), y0 = H*(.5 + p.py*.43);
+      const x1 = W*(.5 + p.x*.43),  y1 = H*(.5 + p.y*.43);
+      const col = p.z%3 < 1 ? p0 : p.z%3 < 2 ? p1 : p2;
+      ctx2d.strokeStyle = rgba(col, clamp(.05 + inten*.13 + reactive*.08, .05, .28));
+      ctx2d.lineWidth = clamp((.65 + reactive)*DPR, .55, 2.2);
+      ctx2d.beginPath(); ctx2d.moveTo(x0,y0); ctx2d.lineTo(x1,y1); ctx2d.stroke();
+    }
+    ctx2d.restore();
+  }
+
+  let syn = [];
+  function synapseRebuild(){
+    const count = Math.max(8, Number(dom.synNodes ? dom.synNodes.value : 72)|0);
+    syn = new Array(count);
+    for(let i=0;i<count;i++){
+      syn[i] = { x:rand(0,W||1000), y:rand(0,H||700), vx:rand(-1,1)*40, vy:rand(-1,1)*40, phase:rand(0,TAU), fire:0 };
+    }
+  }
+  function synapseRender(time, dt){
+    ctx2d.fillStyle = `rgba(6,8,15,${dom.reducedMotion.checked ? .30 : .18})`;
+    ctx2d.fillRect(0,0,W,H);
+    const p0=pal(0), p1=pal(1), p2=pal(2), p3=pal(3);
+    const sp=safeSpeed(), inten=safeIntensity();
+    const reactive = dom.audioReactive.checked ? clamp(audio.rms*3, 0, 1) : 0;
+    const beatPush = (audio.effectiveBeat || Number(dom.beat.value)) / 40;
+    const linkR = (120 + 90*inten + 80*reactive) * DPR;
+    ctx2d.save();
+    ctx2d.globalCompositeOperation = dom.safeVisual.checked ? "source-over" : "lighter";
+    for(let i=0;i<syn.length;i++){
+      const n=syn[i];
+      const ax = Math.sin(n.phase + time*.0003)*18 + (mouse.x*DPR - n.x)*0.0008*(mouse.down?-1:1);
+      const ay = Math.cos(n.phase*.7 + time*.00025)*18 + (mouse.y*DPR - n.y)*0.0008*(mouse.down?-1:1);
+      n.vx += ax*dt*sp; n.vy += ay*dt*sp;
+      n.vx *= Math.pow(.985, dt*60); n.vy *= Math.pow(.985, dt*60);
+      n.x += n.vx*dt; n.y += n.vy*dt;
+      if(n.x<0||n.x>W) n.vx*=-1;
+      if(n.y<0||n.y>H) n.vy*=-1;
+      n.x=clamp(n.x,0,W); n.y=clamp(n.y,0,H);
+      n.fire = Math.max(0, n.fire - dt*1.8);
+      if(Math.sin(time*.001*(.25+beatPush) + n.phase) > .985 - reactive*.18) n.fire = 1;
+    }
+    for(let i=0;i<syn.length;i++){
+      for(let j=i+1;j<syn.length;j++){
+        const a=syn[i], b=syn[j], dx=b.x-a.x, dy=b.y-a.y, d2=dx*dx+dy*dy;
+        if(d2<linkR*linkR){
+          const d=Math.sqrt(d2), k=1-d/linkR, fire=Math.max(a.fire,b.fire);
+          ctx2d.strokeStyle = rgba(fire>.6?p2:p0, clamp(k*.16*inten + fire*.12, .015, .34));
+          ctx2d.lineWidth = clamp((k*1.2 + fire*.8)*DPR, .35, 2.0);
+          ctx2d.beginPath(); ctx2d.moveTo(a.x,a.y); ctx2d.lineTo(b.x,b.y); ctx2d.stroke();
+        }
+      }
+    }
+    for(const n of syn){
+      const r=(3 + n.fire*7 + reactive*3)*DPR;
+      const g=ctx2d.createRadialGradient(n.x,n.y,0,n.x,n.y,r*3.2);
+      g.addColorStop(0, rgba(n.fire>.5?p2:p3, .55));
+      g.addColorStop(1, rgba(p1, 0));
+      ctx2d.fillStyle=g; ctx2d.beginPath(); ctx2d.arc(n.x,n.y,r*3.2,0,TAU); ctx2d.fill();
+      ctx2d.fillStyle=rgba(n.fire>.5?p2:p3,.75); ctx2d.beginPath(); ctx2d.arc(n.x,n.y,r,0,TAU); ctx2d.fill();
+    }
+    ctx2d.restore();
+  }
+
+  // ---------- Visual actions ----------
+  dom.btnPulseInk.addEventListener("click", () => {
+    if(visualMode === "rd") injectAtCanvas(window.innerWidth*.5, window.innerHeight*.5, 18);
+    else {
+      plasmaRipple = { x:.5, y:.5, t:performance.now(), amp:1.2 };
+      for(let i=0;i<Math.min(120, flow.length);i++){ flow[i].x = W*.5 + rand(-20,20)*DPR; flow[i].y = H*.5 + rand(-20,20)*DPR; }
+      for(let i=0;i<Math.min(140, attractor.length);i++){ attractor[i].x = rand(-.08,.08); attractor[i].y = rand(-.08,.08); }
+      for(const n of syn){ n.fire = Math.max(n.fire, rand(.2,1)); }
+    }
   });
-  window.addEventListener("pointerup", () => { mouse.down = false; });
+  dom.btnRandomizeVisual.addEventListener("click", () => {
+    const modes=["plasma","boids","rd","flow","scope","attractors","synapses"];
+    visualMode=modes[Math.floor(Math.random()*modes.length)]; dom.mode.value=visualMode;
+    dom.speed.value=rand(.45, dom.safeVisual.checked ? 1.8 : 2.6).toFixed(2);
+    dom.intensity.value=rand(.6, dom.safeVisual.checked ? 1.25 : 2.2).toFixed(2);
+    dom.palette.value=["cyber","aurora","ember","mono"][Math.floor(Math.random()*4)];
+    dom.feed.value=rand(.018,.062).toFixed(4); dom.kill.value=rand(.045,.071).toFixed(4);
+    boidsRebuild(); flowRebuild(); attractorRebuild(); synapseRebuild(); rdInit(); applyVisualUI(); toast("Visual randomized");
+  });
+  dom.btnScreenshot.addEventListener("click", exportPNG);
+  function exportPNG(){
+    const a=document.createElement("a");
+    a.download=`neuro-visual-synth-${Date.now()}.png`;
+    a.href=c.toDataURL("image/png");
+    a.click();
+    toast("PNG exported");
+  }
+
+  // Mouse / pointer
+  window.addEventListener("pointerdown", (e) => {
+    mouse.down=true; mouse.x=e.clientX; mouse.y=e.clientY;
+    if(visualMode === "rd") injectAtCanvas(e.clientX,e.clientY);
+    if(visualMode === "plasma") plasmaRipple={ x:e.clientX/window.innerWidth, y:e.clientY/window.innerHeight, t:performance.now(), amp:1.35 };
+    if(visualMode === "synapses") for(const n of syn){ const dx=n.x-e.clientX*DPR, dy=n.y-e.clientY*DPR; if(dx*dx+dy*dy<90000*DPR){ n.fire=1; } }
+  });
+  window.addEventListener("pointerup", () => { mouse.down=false; });
   window.addEventListener("pointermove", (e) => {
-    mouse.x = e.clientX;
-    mouse.y = e.clientY;
-    if(mouse.down && visualMode === "rd") injectAtCanvas(e.clientX, e.clientY);
+    mouse.x=e.clientX; mouse.y=e.clientY;
+    if(mouse.down && visualMode === "rd") injectAtCanvas(e.clientX,e.clientY,10);
   });
 
   // ---------- Challenge Generator ----------
-  const challengePool = [
-`3D (Maya/Blender) micro-challenge:
-- Model a “student room prop” in 20 minutes: desk lamp / mug / power strip.
-- Enforce: ≤2k tris lowpoly + separate highpoly with 1 subdivision.
-- Bake: normal + AO. Deliver 3 renders: clay, wireframe, textured.`,
-
-`Unity audio micro-challenge:
-- Record 30 seconds of “real” ambience (room tone, street, kettle, keyboard).
-- Chop into 6 one-shots + 2 loops.
-- Add reverb zones + distance rolloff curves.
-- A/B test: dry vs wet mix (write down what changes in perception).`,
-
-`Web dev micro-challenge (single file):
-- Build a typography control panel:
-  variable font axes + tracking + line height + optical size.
-- Add preset save/load to localStorage.
-- Add export to PNG using canvas.`,
-
-`Procedural sim micro-challenge:
-- Implement 2D boids with:
-  separation/alignment/cohesion + spatial hash.
-- Add one predator + one food attractor.
-- Add a graph overlay of avg speed + agent count.`,
-
-`AI/ML thinking micro-challenge:
-- Write down 3 heuristics you’d use to “predict” good mesh reduction params
-  from: face count, edge/face ratio, UV seams count, hard edges.
-- Turn it into a simple scoring function (no ML libs).`,
-
-`3D printing micro-challenge:
-- Design a 30–60 min print: cable clip, desk hook, SD card holder.
-- Constraints: no supports, 0.2mm layer, 0.4 nozzle.
-- Add fillets/chamfers where stress concentrates (justify).`,
-
-`Creative prompt micro-challenge:
-- Concept art: “nature reclaiming a server farm under Bournemouth skies”.
-- Deliver 3 thumbnails: calm / ominous / utopian.
-- Pick one and push values + focal depth.`,
-
-`Systems micro-challenge:
-- Write a tiny benchmark in Python: numpy vs pure Python for a particle update.
-- Measure: ms/frame for N = 1e3, 1e4, 1e5.
-- Decide where you’d use Numba or multiprocessing (and why).`
+  const challengeData = {
+    web: {
+      name:"Web Lab",
+      tasks:["build a single-file shader playground", "create a draggable visual timeline", "make a localStorage preset manager", "prototype a Web Audio analyser dashboard", "build an accessibility-first generative art control panel"],
+      constraints:["no external libraries", "works offline after first load", "includes keyboard shortcuts", "exports PNG or JSON", "has reduced-motion mode"],
+      deliver:["1 HTML file", "3 presets", "a 6-bullet README section", "before/after performance numbers"]
+    },
+    "3d": {
+      name:"3D / Blender / Maya",
+      tasks:["model a sci-fi desktop prop", "create a low/high-poly bake pair", "design a modular kitbash tile", "make a stylized material study", "block out a micro environment"],
+      constraints:["≤2k tris for the lowpoly", "normal + AO bake", "one bevel/chamfer stress pass", "3 camera angles", "clean origin/pivot naming"],
+      deliver:["clay render", "wireframe render", "textured render", "asset notes"]
+    },
+    unity: {
+      name:"Unity Audio",
+      tasks:["build an adaptive ambience mixer", "record and slice a found-sound kit", "create distance rolloff tests", "prototype a reverb-zone scene", "make UI-controlled audio snapshots"],
+      constraints:["A/B dry vs wet", "uses at least 6 one-shots", "has one loop with crossfade", "documents perceived change", "uses no copyrighted audio"],
+      deliver:["30-second capture", "Unity scene", "mixer screenshot", "short test notes"]
+    },
+    sim: {
+      name:"Procedural Sim",
+      tasks:["implement predator-prey boids", "make a Gray-Scott parameter explorer", "add pheromone trails to agents", "build a heatmap/minimap layer", "create a spatial-hash benchmark"],
+      constraints:["shows FPS", "has pause/step/reset", "exports CSV or JSON", "uses deterministic seed", "documents O(n²) vs grid performance"],
+      deliver:["interactive demo", "1 graph", "3 emergent behaviours", "known limitations"]
+    },
+    ml: {
+      name:"AI / ML Thinking",
+      tasks:["write a heuristic model selector", "build a tiny feature-scoring function", "create a prompt-evaluation rubric", "prototype embedding-free semantic tags", "compare 3 baseline policies"],
+      constraints:["no black-box claims", "show confidence as uncertainty", "include failure cases", "measure against a simple baseline", "log decisions"],
+      deliver:["scoring function", "toy dataset", "confusion examples", "improvement ideas"]
+    },
+    print: {
+      name:"3D Printing",
+      tasks:["design a no-support cable clip", "make a calibration-friendly desk hook", "create an SD-card holder", "design a snap-fit test coupon", "make a filament sample tag system"],
+      constraints:["0.2mm layers", "0.4mm nozzle", "no supports", "fillets at stress points", "print time under 60 minutes"],
+      deliver:["STL", "slicer settings", "failure prediction", "iteration notes"]
+    }
+  };
+  const twists = [
+    "25-minute timer: ship the minimal version first.",
+    "No tutorial mode: only your notes and experiments.",
+    "Add one accessibility improvement and explain it.",
+    "Add one performance optimization and measure it.",
+    "Make a baseline, then one advanced variant.",
+    "Write down 3 failure modes before building.",
+    "Export something: PNG, JSON, STL, CSV, or WAV.",
+    "Add a deterministic seed so you can reproduce it."
   ];
-
+  const difficultyMods = {
+    warmup:"Keep scope tiny. 15–20 minutes. One polished result beats five unfinished ideas.",
+    prototype:"Build a working prototype plus one visible enhancement.",
+    hard:"Add measurement, error handling, and a before/after comparison.",
+    research:"State a hypothesis, run a small test, record evidence, then write what changed your mind."
+  };
+  function pick(rng, arr){ return arr[Math.floor(rng()*arr.length)]; }
   function newChallenge(){
-    const seed = makeSeed();
-    const rng = mulberry32(seed);
-    const i = Math.floor(rng() * challengePool.length);
-    const twist = [
-      "Hard constraint: do it with a 25-minute timer.",
-      "Hard constraint: no tutorials, only your own notes.",
-      "Hard constraint: make a minimal version first, then one enhancement.",
-      "Hard constraint: document decisions in 6 bullet points.",
-      "Hard constraint: add one accessibility improvement (UI/UX).",
-      "Hard constraint: add one performance optimization and measure it."
-    ][Math.floor(rng()*6)];
-
-    vSeed.textContent = "seed: " + seed;
-    challengeOut.textContent = challengePool[i] + "\n\nTwist:\n- " + twist;
+    const seed=makeSeed();
+    const rng=mulberry32(seed);
+    const domainKey = dom.challengeDomain.value === "mixed" ? pick(rng, Object.keys(challengeData)) : dom.challengeDomain.value;
+    const d=challengeData[domainKey];
+    const diff=dom.challengeDifficulty.value;
+    const selectedConstraints = [pick(rng,d.constraints), pick(rng,d.constraints), pick(rng,twists)].filter((v,i,a)=>a.indexOf(v)===i);
+    const selectedDeliver = [pick(rng,d.deliver), pick(rng,d.deliver), pick(rng,d.deliver)].filter((v,i,a)=>a.indexOf(v)===i);
+    const txt = `${d.name} challenge — ${diff.toUpperCase()}\nseed: ${seed}\n\nBuild:\n- ${pick(rng,d.tasks)}\n\nConstraints:\n- ${selectedConstraints.join("\n- ")}\n\nDeliverables:\n- ${selectedDeliver.join("\n- ")}\n\nMode rule:\n- ${difficultyMods[diff]}\n\nReflection:\n- What surprised you?\n- What would you automate next?`;
+    dom.vSeed.textContent = "seed: " + seed;
+    dom.challengeOut.textContent = txt;
+    saveChallengeHistory(txt);
+    updateChallengeUI();
   }
-  btnNewChallenge.addEventListener("click", newChallenge);
+  function loadChallengeHistory(){
+    try{ return JSON.parse(localStorage.getItem(STORE_HISTORY) || "[]"); }catch(e){ return []; }
+  }
+  function saveChallengeHistory(txt){
+    const hist=loadChallengeHistory();
+    hist.unshift({ at:new Date().toISOString(), text:txt });
+    localStorage.setItem(STORE_HISTORY, JSON.stringify(hist.slice(0,8)));
+  }
+  function updateChallengeUI(){
+    dom.vDomain.textContent = dom.challengeDomain.options[dom.challengeDomain.selectedIndex].text;
+    dom.vDifficulty.textContent = dom.challengeDifficulty.options[dom.challengeDifficulty.selectedIndex].text;
+    const hist=loadChallengeHistory();
+    dom.vHistoryCount.textContent = `${hist.length} saved`;
+    dom.challengeHistory.textContent = hist.length ? hist.map((h,i)=>`#${i+1} ${new Date(h.at).toLocaleString()}\n${h.text.split("\n").slice(0,6).join("\n")}`).join("\n\n---\n\n") : "No history yet.";
+  }
+  dom.btnNewChallenge.addEventListener("click", newChallenge);
+  dom.btnCopyChallenge.addEventListener("click", () => copyText(dom.challengeOut.textContent));
+  dom.btnClearHistory.addEventListener("click", () => { localStorage.removeItem(STORE_HISTORY); updateChallengeUI(); toast("Challenge history cleared"); });
+  [dom.challengeDomain, dom.challengeDifficulty].forEach(el => el.addEventListener("change", updateChallengeUI));
 
-  // ---------- Main Loop ----------
+  // ---------- Presets ----------
+  const presetKeys = ["vol","carrier","beat","noise","pulse","width","wave","noiseColor","sweepDepth","sweepRate","breathRate","breathDepth","microDrift","beatSmooth","mode","speed","intensity","quality","palette","boidsCount","flowParticles","synNodes","attractorGravity","rdIters","feed","kill","safeVisual","reducedMotion","sessionTimer","brightCap","maxPulse","sessionMins","rampTime","adaptiveMorph","audioReactive","researchOverlay","morphStrength","morphTheme"];
+  function getPresets(){ try{ return JSON.parse(localStorage.getItem(STORE_PRESETS) || "{}"); }catch(e){ return {}; } }
+  function setPresets(p){ localStorage.setItem(STORE_PRESETS, JSON.stringify(p)); }
+  function currentPreset(){
+    const out={ name:dom.presetName.value.trim() || "unnamed", version:3, savedAt:new Date().toISOString(), values:{} };
+    for(const k of presetKeys){
+      const el=dom[k]; if(!el) continue;
+      out.values[k] = el.type === "checkbox" ? el.checked : el.value;
+    }
+    return out;
+  }
+  function applyPreset(p){
+    if(!p || !p.values) return toast("Invalid preset");
+    for(const [k,v] of Object.entries(p.values)){
+      const el=dom[k]; if(!el) continue;
+      if(el.type === "checkbox") el.checked = !!v; else el.value = String(v);
+    }
+    visualMode = dom.mode.value;
+    applyAudioParams(true); applyVisualUI(); updateSafetyUI(); updateLabUI(); boidsRebuild(); flowRebuild(); attractorRebuild(); synapseRebuild(); rdInit(); updatePresetList();
+    toast("Preset loaded");
+  }
+  function updatePresetList(){
+    const presets=getPresets();
+    const names=Object.keys(presets).sort();
+    dom.presetList.innerHTML = "";
+    if(!names.length){
+      const opt=document.createElement("option"); opt.textContent="No saved presets"; opt.value=""; dom.presetList.appendChild(opt);
+    } else {
+      for(const n of names){ const opt=document.createElement("option"); opt.value=n; opt.textContent=n; dom.presetList.appendChild(opt); }
+    }
+    dom.vPresetCount.textContent = String(names.length);
+  }
+  dom.btnSavePreset.addEventListener("click", () => {
+    const p=currentPreset(); const all=getPresets(); all[p.name]=p; setPresets(all); updatePresetList(); dom.presetList.value=p.name; toast("Preset saved");
+  });
+  dom.btnLoadPreset.addEventListener("click", () => { const all=getPresets(); applyPreset(all[dom.presetList.value]); });
+  dom.btnDeletePreset.addEventListener("click", () => { const all=getPresets(); delete all[dom.presetList.value]; setPresets(all); updatePresetList(); toast("Preset deleted"); });
+  dom.btnExportPreset.addEventListener("click", () => { const all=getPresets(); const p=all[dom.presetList.value] || currentPreset(); dom.presetJson.value=JSON.stringify(p,null,2); toast("Preset exported"); });
+  dom.btnImportPreset.addEventListener("click", () => {
+    try{
+      const p=JSON.parse(dom.presetJson.value);
+      if(!p.name || !p.values) throw new Error("Missing name/values");
+      const all=getPresets(); all[p.name]=p; setPresets(all); updatePresetList(); dom.presetList.value=p.name; toast("Preset imported");
+    }catch(e){ toast("Invalid JSON preset"); }
+  });
+  dom.btnDefaults.addEventListener("click", () => {
+    audioStop();
+    setAudioPreset({ vol:.10, carrier:220, beat:8, noise:.20, pulse:10, width:1, wave:"sine", noiseColor:"pink", sweepDepth:0, sweepRate:.05, breathRate:.10, breathDepth:.20, microDrift:0, beatSmooth:.02 });
+    Object.assign(dom.speed,{value:1}); Object.assign(dom.intensity,{value:1}); Object.assign(dom.quality,{value:1});
+    dom.palette.value="cyber"; visualMode="plasma"; dom.mode.value="plasma";
+    dom.safeVisual.checked=true; dom.reducedMotion.checked=!!reducePref; dom.sessionTimer.checked=true; dom.brightCap.value=.85; dom.maxPulse.value=12; dom.sessionMins.value=20; dom.rampTime.value=2; dom.adaptiveMorph.checked=false; dom.audioReactive.checked=true; dom.researchOverlay.checked=true; dom.morphStrength.value=.35; dom.morphTheme.value="balanced";
+    applyVisualUI(); updateSafetyUI(); updateLabUI(); boidsRebuild(); flowRebuild(); attractorRebuild(); synapseRebuild(); rdInit(); toast("Defaults restored");
+  });
+
+
+
+  // ---------- v3 adaptive lab + journal ----------
+  let morphPhase = 0;
+  function updateLabUI(){
+    dom.vMorphStrength.textContent = Number(dom.morphStrength.value).toFixed(2);
+    dom.vMorphTheme.textContent = dom.morphTheme.options[dom.morphTheme.selectedIndex].text;
+    dom.mRms.textContent = audio.rms.toFixed(2);
+    dom.mBeatNow.textContent = ((audio.effectiveBeat || Number(dom.beat.value))).toFixed(1) + "Hz";
+    dom.mFlashGuard.textContent = dom.safeVisual.checked ? "guarded" : "manual";
+  }
+  [dom.adaptiveMorph, dom.audioReactive, dom.researchOverlay, dom.morphStrength, dom.morphTheme].forEach(el => el.addEventListener("input", updateLabUI));
+
+  function updateAdaptiveMorph(time, dt){
+    if(!dom.adaptiveMorph.checked || paused) return;
+    const s = Number(dom.morphStrength.value);
+    morphPhase += dt * (.035 + .06*s);
+    const theme = dom.morphTheme.value;
+    const sin1 = Math.sin(morphPhase*TAU);
+    const sin2 = Math.sin(morphPhase*TAU*.37 + 1.2);
+    const set = (el, val) => { el.value = String(val); };
+    if(theme === "calm"){
+      set(dom.speed, clamp(.55 + sin1*.12*s, .25, .85).toFixed(2));
+      set(dom.intensity, clamp(.70 + sin2*.10*s, .45, 1.0).toFixed(2));
+      set(dom.breathDepth, clamp(.25 + .18*s*(sin2*.5+.5), 0, .65).toFixed(2));
+    } else if(theme === "study"){
+      set(dom.beat, clamp(10 + sin1*2.0*s, 6, 14).toFixed(1));
+      set(dom.pulse, clamp(0 + Math.max(0,sin2)*4*s, 0, 8).toFixed(1));
+      set(dom.noise, clamp(.13 + .08*(sin2*.5+.5), 0, .28).toFixed(2));
+    } else if(theme === "explore"){
+      set(dom.feed, clamp(.034 + sin1*.018*s, .012, .078).toFixed(4));
+      set(dom.kill, clamp(.060 + sin2*.010*s, .033, .074).toFixed(4));
+      set(dom.attractorGravity, clamp(.75 + sin2*.45*s, .15, 1.8).toFixed(2));
+    } else {
+      set(dom.speed, clamp(1 + sin1*.35*s, .35, dom.safeVisual.checked ? 1.75 : 2.6).toFixed(2));
+      set(dom.sweepDepth, clamp(1.5 + (sin2*.5+.5)*4*s, 0, 12).toFixed(1));
+      set(dom.microDrift, clamp((sin1*.5+.5)*2.2*s, 0, 7).toFixed(2));
+    }
+    applyAudioParams(true); applyVisualUI(); updateLabUI();
+  }
+
+  const protocolBits = {
+    variable:["beat Δ", "pulse rate", "noise colour", "brightness cap", "reaction-diffusion feed/kill", "visual mode", "breath envelope", "micro drift"],
+    measure:["comfort rating", "focus rating", "visual preference", "perceived intensity", "distraction level", "fatigue", "creative output count"],
+    duration:["2 minutes", "5 minutes", "8 minutes", "10 minutes"],
+    compare:["baseline vs one changed parameter", "safe mode on vs reduced-motion mode", "plasma vs scope ring", "pink noise vs brown noise", "manual settings vs adaptive morph"]
+  };
+  function generateProtocol(){
+    const seed = makeSeed(); const rng=mulberry32(seed);
+    const txt = `Mini protocol — seed ${seed}\n\nHypothesis:\n- Changing ${pick(rng, protocolBits.variable)} will alter ${pick(rng, protocolBits.measure)} during a short creative session.\n\nMethod:\n- Run ${pick(rng, protocolBits.compare)}.\n- Keep volume low and visual guard ${dom.safeVisual.checked ? "ON" : "ON if any discomfort appears"}.\n- Duration per condition: ${pick(rng, protocolBits.duration)}.\n- Change only one thing.\n\nRecord:\n- Before rating 1–5.\n- After rating 1–5.\n- Any discomfort: yes/no.\n- One sentence about what visually/audio-wise changed.\n\nDecision:\n- Keep, modify, or discard this setting.`;
+    dom.vProtocolSeed.textContent = "seed: " + seed;
+    dom.protocolOut.textContent = txt;
+  }
+  dom.btnProtocol.addEventListener("click", generateProtocol);
+  dom.btnCopyProtocol.addEventListener("click", () => copyText(dom.protocolOut.textContent));
+  dom.btnResetExplore.addEventListener("click", () => { morphPhase=0; dom.adaptiveMorph.checked=false; updateLabUI(); toast("Exploration reset"); });
+
+  function journal(){ try{ return JSON.parse(localStorage.getItem(STORE_JOURNAL) || "[]"); }catch(e){ return []; } }
+  function saveJournal(items){ localStorage.setItem(STORE_JOURNAL, JSON.stringify(items.slice(0,30))); }
+  function updateJournalUI(){
+    dom.vBeforeRating.textContent = String(dom.beforeRating.value|0);
+    dom.vAfterRating.textContent = String(dom.afterRating.value|0);
+    const items = journal();
+    dom.vJournalCount.textContent = `${items.length} entries`;
+    dom.journalOut.textContent = items.length ? items.map((x,i)=>`#${i+1} ${new Date(x.at).toLocaleString()} | before ${x.before}/5 → after ${x.after}/5 | ${x.mode}\nΔ ${x.beat}Hz • carrier ${x.carrier}Hz • vol ${x.vol} • notes: ${x.notes || "—"}`).join("\n\n") : "No logged sessions yet.";
+  }
+  [dom.beforeRating, dom.afterRating].forEach(el => el.addEventListener("input", updateJournalUI));
+  dom.btnLogSession.addEventListener("click", () => {
+    const item = { at:new Date().toISOString(), before:dom.beforeRating.value, after:dom.afterRating.value, notes:dom.sessionNotes.value.trim(), mode:visualMode, beat:(audio.effectiveBeat || Number(dom.beat.value)).toFixed(1), carrier:dom.carrier.value, vol:Number(dom.vol.value).toFixed(2), pulse:currentPulse().toFixed(1), safe:dom.safeVisual.checked };
+    const items = journal(); items.unshift(item); saveJournal(items); dom.sessionNotes.value=""; updateJournalUI(); toast("Session logged");
+  });
+  dom.btnClearJournal.addEventListener("click", () => { localStorage.removeItem(STORE_JOURNAL); updateJournalUI(); toast("Journal cleared"); });
+  dom.btnExportJournal.addEventListener("click", () => {
+    const rows = journal();
+    const csv = ["at,before,after,mode,beat,carrier,vol,pulse,safe,notes"].concat(rows.map(r => [r.at,r.before,r.after,r.mode,r.beat,r.carrier,r.vol,r.pulse,r.safe,`"${String(r.notes||"").replace(/"/g,'""')}"`].join(","))).join("\n");
+    const blob = new Blob([csv], {type:"text/csv"});
+    const a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download=`neuro-visual-journal-${Date.now()}.csv`; a.click(); URL.revokeObjectURL(a.href); toast("Journal CSV exported");
+  });
+
+  // ---------- Buttons / keyboard ----------
+  dom.btnCollapse.addEventListener("click", () => hud.classList.toggle("collapsed"));
+  dom.btnPanic.addEventListener("click", () => {
+    audioStop();
+    dom.safeVisual.checked=true; dom.reducedMotion.checked=true; dom.speed.value=.45; dom.intensity.value=.55; visualMode="plasma"; dom.mode.value="plasma";
+    applyVisualUI(); updateSafetyUI(); toast("Calm mode enabled");
+  });
+  dom.btnCopyNotes.addEventListener("click", () => copyText($("panel-notes").innerText.trim()));
+
+  window.addEventListener("keydown", (e) => {
+    const tag = (document.activeElement && document.activeElement.tagName || "").toLowerCase();
+    if(tag === "input" || tag === "textarea" || tag === "select") return;
+    if(e.code === "Space"){
+      e.preventDefault(); audio.running ? audioStop() : audioStart();
+    } else if(e.key.toLowerCase() === "v"){
+      e.preventDefault(); cycleVisualMode();
+    } else if(e.key.toLowerCase() === "p"){
+      paused = !paused; toast(paused ? "Visual paused" : "Visual resumed");
+    } else if(e.key.toLowerCase() === "s"){
+      e.preventDefault(); exportPNG();
+    } else if(e.key.toLowerCase() === "h"){
+      hud.classList.toggle("collapsed");
+    }
+  }, { passive:false });
+
+  // ---------- Main loop ----------
   function frame(time){
-    const dt = (time - t0);
-    t0 = time;
+    const rawDt = Math.min(0.05, (time - tPrev) / 1000);
+    tPrev = time;
+    const dt = paused ? 0 : rawDt;
+    if(rawDt > 0) fpsSmooth = lerp(fpsSmooth, 1/rawDt, .08);
+    updateAudioSweep(time);
+    updateAdaptiveMorph(time, rawDt);
+    updateLabUI();
 
-    // Subtle background clear for non-trail modes
-    if(visualMode !== "boids"){
-      ctx2d.fillStyle = "rgba(6,8,15,1)";
-      ctx2d.fillRect(0,0,W,H);
+    if(!paused){
+      if(visualMode !== "boids" && visualMode !== "flow"){
+        ctx2d.fillStyle = "rgba(6,8,15,1)";
+        ctx2d.fillRect(0,0,W,H);
+      }
+      if(visualMode === "plasma") plasmaRender(time);
+      else if(visualMode === "boids") boidsRender(time, dt);
+      else if(visualMode === "rd") rdRender(time);
+      else if(visualMode === "flow") flowRender(time, dt);
+      else if(visualMode === "scope") scopeRender(time);
+      else if(visualMode === "attractors") attractorRender(time, dt);
+      else synapseRender(time, dt);
     }
 
-    if(visualMode === "plasma") plasmaRender(time);
-    else if(visualMode === "boids") boidsRender(time);
-    else rdRender(time);
+    dom.mFps.textContent = `${Math.round(fpsSmooth)}`;
+    if(audio.running){
+      const elapsed = Math.floor((performance.now() - audio.startedAt)/1000);
+      dom.mAudio.textContent = `${elapsed}s rms ${audio.rms.toFixed(2)}`;
+    } else dom.mAudio.textContent = "idle";
+
+    if(dom.researchOverlay.checked && !hud.classList.contains("collapsed")){
+      ctx2d.save();
+      ctx2d.font = `${11*DPR}px ui-monospace, monospace`;
+      ctx2d.fillStyle = "rgba(234,240,255,.60)";
+      const txt = `v3 protocol: one-variable experiments • guard ${dom.safeVisual.checked?"on":"off"} • Δ ${(audio.effectiveBeat||Number(dom.beat.value)).toFixed(1)}Hz • rms ${audio.rms.toFixed(2)}`;
+      ctx2d.fillText(txt, 18*DPR, H - 22*DPR);
+      ctx2d.restore();
+    }
 
     requestAnimationFrame(frame);
   }
@@ -1250,13 +1881,13 @@
     resize();
     applyAudioParams(false);
     applyVisualUI();
-    boidsRebuild();
-    rdInit();
+    updateSafetyUI();
+    boidsRebuild(); flowRebuild(); rdInit();
     setAudioUI(false);
+    updateChallengeUI(); updatePresetList(); updateLabUI(); updateJournalUI();
     requestAnimationFrame(frame);
   }
   init();
-
 })();
 </script>
 </body>
