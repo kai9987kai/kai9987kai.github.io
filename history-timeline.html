@@ -1,983 +1,1305 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="light" data-density="comfortable">
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>Advanced Historical Timeline Tool</title>
+<title>Advanced Historical Timeline Tool — Research Edition</title>
+<meta name="description" content="Single-file historical timeline builder with BCE/CE dates, tags, categories, source links, confidence, import/export, undo/redo, local autosave, stats and multiple views." />
 <style>
+  *,*::before,*::after{box-sizing:border-box}
+  html,body{height:100%;margin:0}
+  body{font-family:Inter,"Segoe UI",Roboto,Arial,sans-serif;background:var(--bg);color:var(--text);line-height:1.5}
+  button,input,select,textarea{font:inherit}
+  button{border:0;cursor:pointer}
+  img,svg{display:block;max-width:100%}
+
   :root{
-    --bg:#f4f6f8;
+    --bg:#eef3f8;
     --panel:#ffffff;
+    --panel-2:#f8fafc;
+    --text:#111827;
+    --muted:#6b7280;
+    --border:rgba(15,23,42,.12);
+    --soft:rgba(15,23,42,.055);
     --accent:#2276d2;
     --accent-2:#2ecc71;
     --danger:#e74c3c;
-    --muted:#6c7a89;
-    --glass: rgba(255,255,255,0.85);
-    --radius:10px;
-    --shadow: 0 6px 20px rgba(16,24,40,0.08);
+    --warning:#f59e0b;
+    --purple:#8b5cf6;
+    --shadow:0 12px 32px rgba(16,24,40,.09);
+    --shadow-soft:0 6px 18px rgba(16,24,40,.07);
+    --radius:16px;
+    --radius-sm:10px;
+    --track-height:270px;
+    color-scheme:light;
   }
-  html,body{height:100%;margin:0;font-family:Inter, "Segoe UI", Roboto, Arial, sans-serif;background:var(--bg);color:#111;}
-  .app {
-    max-width:1200px;
-    margin:24px auto;
-    padding:20px;
-    border-radius:var(--radius);
-    background: linear-gradient(180deg, rgba(255,255,255,0.9), rgba(255,255,255,0.75));
-    box-shadow:var(--shadow);
+  html[data-theme="dark"]{
+    --bg:#0d1117;
+    --panel:#151b23;
+    --panel-2:#0f1620;
+    --text:#e6edf3;
+    --muted:#9aa8b7;
+    --border:rgba(230,237,243,.14);
+    --soft:rgba(230,237,243,.07);
+    --accent:#58a6ff;
+    --accent-2:#3fb950;
+    --danger:#ff6b6b;
+    --warning:#f2cc60;
+    --purple:#a78bfa;
+    --shadow:0 18px 44px rgba(0,0,0,.28);
+    --shadow-soft:0 8px 20px rgba(0,0,0,.18);
+    color-scheme:dark;
   }
+  html[data-density="compact"]{--track-height:215px}
 
-  header {
-    display:flex;
-    gap:16px;
-    align-items:center;
-    justify-content:space-between;
-    margin-bottom:16px;
-  }
-  header h1 {margin:0;font-size:1.25rem;}
-  .controls {
-    display:flex;
-    gap:8px;
-    align-items:center;
-    flex-wrap:wrap;
-  }
-  button, .btn {
-    background:var(--accent);
-    color:#fff;
-    border:0;
-    padding:8px 12px;
-    border-radius:8px;
-    cursor:pointer;
-    font-weight:600;
-    box-shadow: 0 3px 8px rgba(34,118,210,0.18);
-  }
-  button.secondary {
-    background:#ffffff;
-    color:var(--accent);
-    border:1px solid rgba(34,118,210,0.12);
-    box-shadow:none;
-    font-weight:600;
-  }
-  .small {padding:6px 8px;font-size:0.9rem;border-radius:6px;}
-  .danger {background:var(--danger);box-shadow:none;}
-  .row {display:flex;gap:12px;align-items:center;}
-  label.small {font-size:0.86rem;color:var(--muted);margin-right:6px;}
+  .app{max-width:1320px;margin:20px auto;padding:18px;border-radius:var(--radius);background:linear-gradient(180deg,color-mix(in srgb,var(--panel) 94%,transparent),color-mix(in srgb,var(--panel) 76%,transparent));box-shadow:var(--shadow);border:1px solid var(--border)}
+  header{display:grid;grid-template-columns:1fr auto;gap:16px;align-items:start;margin-bottom:14px}
+  h1{margin:0;font-size:clamp(1.25rem,3vw,2rem);letter-spacing:-.03em;display:flex;align-items:center;gap:10px}
+  .subtitle{color:var(--muted);font-size:.94rem;margin-top:4px}
+  .top-actions,.controls,.row,.toolbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .top-actions{justify-content:flex-end}
+  .btn,button,.file-like{background:var(--accent);color:#fff;border-radius:10px;padding:8px 12px;font-weight:750;box-shadow:0 5px 14px color-mix(in srgb,var(--accent) 24%,transparent);border:1px solid color-mix(in srgb,var(--accent) 38%,transparent);transition:transform .12s ease,opacity .12s ease,background .12s ease}
+  .btn:hover,button:hover,.file-like:hover{transform:translateY(-1px)}
+  .btn:active,button:active,.file-like:active{transform:translateY(0)}
+  .secondary{background:var(--panel);color:var(--accent);box-shadow:none;border:1px solid var(--border)}
+  .ghost{background:transparent;color:var(--text);box-shadow:none;border:1px solid var(--border)}
+  .danger{background:var(--danger);border-color:color-mix(in srgb,var(--danger) 70%,#000 0%);box-shadow:none;color:#fff}
+  .warning{background:var(--warning);color:#111827;border-color:transparent;box-shadow:none}
+  .small{padding:6px 9px;font-size:.9rem;border-radius:9px}
+  label.small{background:transparent;border:0;box-shadow:none;color:var(--muted);font-weight:700;padding:0}
+  .chip{display:inline-flex;align-items:center;gap:6px;padding:5px 8px;border-radius:999px;background:var(--soft);border:1px solid var(--border);font-weight:700;font-size:.82rem;color:var(--text)}
+  .pill{border-radius:999px}
+  .muted{color:var(--muted)}
+  .kbd{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:.8rem;background:var(--soft);border:1px solid var(--border);border-bottom-width:2px;border-radius:6px;padding:1px 6px;color:var(--text)}
+  input,select,textarea{background:var(--panel);color:var(--text);border:1px solid var(--border);border-radius:10px;padding:8px 10px;outline:none;min-height:36px}
+  input:focus,select:focus,textarea:focus{border-color:color-mix(in srgb,var(--accent) 68%,var(--border));box-shadow:0 0 0 4px color-mix(in srgb,var(--accent) 14%,transparent)}
+  textarea{resize:vertical;min-height:86px}
+  .hidden{display:none!important}
 
-  /* Timeline container */
-  .timeline-wrap {
-    border-radius:8px;
-    padding:16px;
-    background: linear-gradient(180deg, rgba(250,250,250,1), rgba(245,248,251,1));
-    border:1px solid rgba(16,24,40,0.04);
-  }
-  .timeline-controls {
-    display:flex;
-    gap:12px;
-    align-items:center;
-    justify-content:space-between;
-    margin-bottom:12px;
-    flex-wrap:wrap;
-  }
+  .grid{display:grid;grid-template-columns:280px 1fr;gap:14px;align-items:start}
+  .panel{background:var(--panel);border:1px solid var(--border);box-shadow:var(--shadow-soft);border-radius:var(--radius-sm);padding:12px}
+  .panel h2{margin:0 0 10px;font-size:1rem;letter-spacing:-.01em}
+  .filter-grid{display:grid;gap:10px}
+  .field{display:grid;gap:5px}
+  .field label{font-size:.82rem;color:var(--muted);font-weight:800;text-transform:uppercase;letter-spacing:.04em}
+  .inline-fields{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  .stats{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:10px}
+  .stat{background:var(--panel-2);border:1px solid var(--border);border-radius:12px;padding:9px}
+  .stat b{display:block;font-size:1.15rem;letter-spacing:-.02em}
+  .stat span{display:block;color:var(--muted);font-size:.8rem;font-weight:700}
+  .category-list,.snapshot-list{display:grid;gap:6px;margin-top:8px;max-height:180px;overflow:auto;padding-right:2px}
+  .category-btn,.snapshot-btn{display:flex;align-items:center;justify-content:space-between;gap:8px;background:var(--panel-2);color:var(--text);border:1px solid var(--border);box-shadow:none;border-radius:10px;padding:7px 9px;text-align:left}
+  .category-btn.active{outline:2px solid color-mix(in srgb,var(--accent) 48%,transparent);background:color-mix(in srgb,var(--accent) 10%,var(--panel))}
+  .dot{width:12px;height:12px;border-radius:999px;display:inline-block;border:1px solid var(--border);flex:0 0 auto}
 
-  .timeline {
-    display:flex;
-    gap:12px;
-    align-items:flex-end;
-    padding:12px;
-    overflow-x:auto;
-    scroll-behavior:smooth;
-    border-radius:8px;
-    background:linear-gradient(90deg, rgba(255,255,255,0.6), rgba(255,255,255,0.6));
-    border:1px solid rgba(16,24,40,0.03);
-    min-height:160px;
-    position:relative;
-    user-select:none;
-  }
-  .timeline:active {cursor:grabbing;}
-  .time-axis {
-    position:absolute;
-    left:12px;
-    right:12px;
-    top:0;
-    bottom:0;
-    pointer-events:none;
-  }
-  .time-line {
-    position:absolute;
-    left:0;
-    right:0;
-    top:50%;
-    height:4px;
-    transform:translateY(-50%);
-    background:linear-gradient(90deg, rgba(34,118,210,0.08), rgba(46,204,113,0.04));
-    border-radius:4px;
-  }
+  .timeline-wrap{background:linear-gradient(180deg,var(--panel),var(--panel-2));border:1px solid var(--border);border-radius:var(--radius-sm);padding:12px;box-shadow:var(--shadow-soft);overflow:hidden}
+  .timeline-controls{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:10px}
+  .view-tabs{display:flex;gap:6px;background:var(--soft);border:1px solid var(--border);padding:4px;border-radius:12px}
+  .view-tabs button{background:transparent;color:var(--muted);box-shadow:none;border:0;border-radius:9px;padding:6px 9px}
+  .view-tabs button.active{background:var(--panel);color:var(--accent);box-shadow:var(--shadow-soft)}
 
-  .event {
-    position:relative;
-    display:flex;
-    flex-direction:column;
-    gap:6px;
-    min-width:200px;
-    max-width:320px;
-    padding:10px;
-    background:var(--panel);
-    border-radius:8px;
-    box-shadow: 0 6px 18px rgba(10, 20, 30, 0.06);
-    cursor:pointer;
-    border:2px solid transparent;
-    transition:transform .12s ease, box-shadow .12s ease, border-color .12s linear;
-  }
-  .event.selected {
-    transform:translateY(-6px) scale(1.02);
-    border-color: rgba(34,118,210,0.18);
-    box-shadow: 0 14px 26px rgba(34,118,210,0.08);
-  }
-  .event .icon {
-    font-size:28px;
-    line-height:1;
-    width:40px;height:40px;border-radius:8px;
-    display:flex;align-items:center;justify-content:center;
-    background:linear-gradient(135deg, rgba(34,118,210,0.06), rgba(46,204,113,0.04));
-  }
-  .event .meta {
-    font-size:13px;color:var(--muted);
-  }
-  .event-heading {display:flex;gap:8px;align-items:center;}
-  .event-title{font-weight:700;font-size:1rem;margin:0;}
-  .event-desc {font-size:0.95rem;color:#222;white-space:pre-wrap;}
-  .delete-button {
-    position:absolute; top:8px; right:8px;
-    background:var(--danger); color:#fff; border:0; padding:6px 8px; border-radius:6px; cursor:pointer;
-    font-size:0.85rem;
-  }
-  .edit-button {
-    position:absolute; bottom:8px; right:8px; background:rgba(16,24,40,0.06); color:var(--muted); border:0; padding:6px 8px; border-radius:6px; cursor:pointer;font-size:0.85rem;
-  }
+  .timeline{position:relative;min-height:var(--track-height);overflow:auto;border-radius:12px;border:1px solid var(--border);background:
+    radial-gradient(circle at top left,color-mix(in srgb,var(--accent) 12%,transparent),transparent 34%),
+    linear-gradient(180deg,color-mix(in srgb,var(--panel) 94%,transparent),color-mix(in srgb,var(--panel-2) 98%,transparent));
+    scroll-behavior:smooth;user-select:none;padding:64px 14px 28px;cursor:grab}
+  .timeline:active{cursor:grabbing}
+  .axis{position:absolute;left:16px;right:16px;top:48%;height:4px;transform:translateY(-50%);border-radius:999px;background:linear-gradient(90deg,color-mix(in srgb,var(--accent) 22%,transparent),color-mix(in srgb,var(--accent-2) 22%,transparent));pointer-events:none;min-width:max(100%,900px)}
+  .tick{position:absolute;top:-24px;transform:translateX(-50%);font-size:.75rem;color:var(--muted);font-weight:800;white-space:nowrap}
+  .tick::after{content:"";position:absolute;left:50%;top:22px;width:1px;height:35px;background:var(--border)}
+  .event-track{position:relative;display:flex;align-items:flex-start;gap:12px;min-width:max-content;z-index:2}
+  .event-card{position:relative;display:flex;flex-direction:column;gap:8px;min-width:220px;max-width:340px;background:var(--panel);border:1px solid var(--border);border-left:7px solid var(--accent);border-radius:14px;padding:11px 11px 47px;box-shadow:var(--shadow-soft);cursor:pointer;transition:transform .14s ease,box-shadow .14s ease,border-color .14s ease;overflow:hidden}
+  html[data-density="compact"] .event-card{padding:8px 8px 40px;gap:5px;min-width:185px}
+  .event-card:hover{transform:translateY(-4px);box-shadow:0 16px 30px rgba(16,24,40,.12)}
+  .event-card.selected{transform:translateY(-8px) scale(1.015);box-shadow:0 18px 38px color-mix(in srgb,var(--accent) 18%,transparent);outline:3px solid color-mix(in srgb,var(--accent) 22%,transparent)}
+  .event-card.pinned::before{content:"★";position:absolute;right:10px;top:8px;color:var(--warning);font-size:1rem}
+  .event-head{display:flex;gap:9px;align-items:flex-start;padding-right:24px}
+  .event-icon{font-size:1.55rem;line-height:1;width:42px;height:42px;border-radius:12px;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,color-mix(in srgb,var(--accent) 12%,transparent),color-mix(in srgb,var(--accent-2) 9%,transparent));border:1px solid var(--border);flex:0 0 auto;overflow:hidden}
+  .event-icon img{width:100%;height:100%;object-fit:cover}
+  .event-title{font-weight:850;font-size:1rem;letter-spacing:-.02em;margin:0;line-height:1.2}
+  .event-date{font-size:.82rem;color:var(--muted);font-weight:800;margin-top:2px}
+  .event-desc{font-size:.92rem;color:var(--text);display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden;white-space:pre-wrap}
+  .event-meta{display:flex;flex-wrap:wrap;gap:5px;margin-top:auto}
+  .tag{display:inline-flex;align-items:center;padding:3px 7px;border-radius:999px;background:var(--soft);border:1px solid var(--border);font-size:.76rem;color:var(--muted);font-weight:750;max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .confidence{height:7px;background:var(--soft);border-radius:999px;overflow:hidden;border:1px solid var(--border)}
+  .confidence span{display:block;height:100%;background:linear-gradient(90deg,var(--danger),var(--warning),var(--accent-2));width:50%}
+  .card-actions{position:absolute;right:8px;bottom:8px;display:flex;gap:5px}
+  .icon-btn{width:31px;height:31px;display:grid;place-items:center;border-radius:9px;background:var(--panel-2);color:var(--muted);box-shadow:none;border:1px solid var(--border);padding:0;font-weight:900}
+  .icon-btn:hover{color:var(--accent)}
 
-  /* Details panel */
-  .details {
-    margin-top:12px;
-    padding:12px;
-    border-radius:8px;
-    background:var(--panel);
-    border:1px solid rgba(16,24,40,0.04);
-    display:flex;
-    gap:12px;
-    align-items:flex-start;
-  }
-  .details .col {flex:1;}
-  .meta-row {font-size:0.92rem;color:var(--muted);}
+  .details{margin-top:12px;display:none;grid-template-columns:1fr 280px;gap:12px;background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:12px;box-shadow:var(--shadow-soft)}
+  .details.show{display:grid}
+  .detail-title{font-size:1.25rem;font-weight:900;letter-spacing:-.025em}
+  .detail-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:10px}
+  .detail-box{background:var(--panel-2);border:1px solid var(--border);border-radius:10px;padding:8px}
+  .detail-box span{display:block;color:var(--muted);font-size:.78rem;font-weight:800;text-transform:uppercase;letter-spacing:.04em}
+  .source-link{color:var(--accent);font-weight:800;word-break:break-word}
 
-  /* Modal */
-  .modal-backdrop {
-    position:fixed;inset:0;display:none;align-items:center;justify-content:center;padding:24px;background:rgba(8,12,20,0.36);z-index:60;
-  }
-  .modal {
-    width:100%;max-width:720px;background:var(--panel);border-radius:12px;padding:18px;box-shadow:0 20px 40px rgba(16,24,40,0.4);
-  }
-  .form-row {display:flex;gap:8px;align-items:center;margin-bottom:10px;}
-  .form-row input[type="text"], .form-row input[type="date"], .form-row textarea, .form-row input[type="url"], .form-row select {
-    flex:1;padding:8px;border-radius:8px;border:1px solid rgba(10,20,30,0.06);font-size:0.95rem;background:#fff;
-  }
-  .form-actions {display:flex;gap:8px;justify-content:flex-end;margin-top:12px;}
+  .list-view,.story-view{display:none;background:var(--panel);border:1px solid var(--border);border-radius:12px;overflow:hidden;box-shadow:var(--shadow-soft)}
+  .list-view.show,.story-view.show{display:block}
+  .list-table{width:100%;border-collapse:collapse;font-size:.92rem}
+  .list-table th,.list-table td{padding:10px;border-bottom:1px solid var(--border);text-align:left;vertical-align:top}
+  .list-table th{font-size:.78rem;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);background:var(--panel-2)}
+  .list-table tr:hover{background:var(--soft)}
+  .story-item{padding:14px 16px;border-bottom:1px solid var(--border);display:grid;grid-template-columns:110px 1fr;gap:14px}
+  .story-date{font-weight:900;color:var(--accent)}
+  .story-item h3{margin:0 0 4px;font-size:1.05rem}
+  .story-item p{margin:0;white-space:pre-wrap}
+  .empty{padding:36px;text-align:center;color:var(--muted);border:1px dashed var(--border);border-radius:12px;background:var(--panel-2)}
 
-  .import-file {display:none;}
-  .toolbar {display:flex;gap:8px;align-items:center;}
+  .modal-backdrop{position:fixed;inset:0;display:none;align-items:center;justify-content:center;background:rgba(4,8,14,.52);padding:20px;z-index:50;backdrop-filter:blur(8px)}
+  .modal-backdrop.show{display:flex}
+  .modal{width:min(920px,100%);max-height:92vh;overflow:auto;background:var(--panel);border:1px solid var(--border);border-radius:18px;padding:16px;box-shadow:0 24px 60px rgba(0,0,0,.35)}
+  .modal h2{margin:0 0 10px;font-size:1.3rem;letter-spacing:-.02em}
+  .form-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .form-grid .wide{grid-column:1/-1}
+  .modal-actions{display:flex;justify-content:space-between;gap:8px;margin-top:14px;flex-wrap:wrap}
+  .right-actions{display:flex;gap:8px;flex-wrap:wrap}
+  .hint{font-size:.82rem;color:var(--muted);margin-top:4px}
 
-  /* Responsive */
+  .toast-wrap{position:fixed;right:18px;bottom:18px;display:grid;gap:8px;z-index:80}
+  .toast{background:var(--panel);color:var(--text);border:1px solid var(--border);box-shadow:var(--shadow);border-radius:12px;padding:10px 12px;min-width:220px;animation:pop .18s ease-out}
+  @keyframes pop{from{transform:translateY(8px);opacity:0}to{transform:translateY(0);opacity:1}}
+
+  .print-title{display:none}
+  @media (max-width:980px){
+    header{grid-template-columns:1fr}
+    .top-actions{justify-content:flex-start}
+    .grid{grid-template-columns:1fr}
+    .details{grid-template-columns:1fr}
+  }
   @media (max-width:720px){
-    .event {min-width:160px}
-    .details {flex-direction:column;}
-    header {flex-direction:column;align-items:flex-start;gap:12px;}
+    .app{margin:0;border-radius:0;min-height:100%;padding:12px}
+    .form-grid{grid-template-columns:1fr}
+    .story-item{grid-template-columns:1fr;gap:4px}
+    .detail-grid{grid-template-columns:1fr}
   }
-
-  /* small helpers */
-  .muted {color:var(--muted);font-size:0.9rem;}
-  .chip {padding:6px 8px;border-radius:999px;background:rgba(16,24,40,0.04);font-weight:600;}
-  input[type="range"]{cursor:pointer;}
-  .file-buttons {display:flex;gap:8px;align-items:center;}
+  @media print{
+    body{background:#fff;color:#000}
+    .app{box-shadow:none;border:0;margin:0;max-width:none}
+    .top-actions,.sidebar,.timeline-controls,.card-actions,.details .detail-actions,.modal-backdrop,.toast-wrap{display:none!important}
+    .grid{display:block}
+    .timeline-wrap{box-shadow:none;border:0;padding:0}
+    .timeline{overflow:visible;min-height:auto;border:0;background:#fff;padding:0}
+    .axis{display:none}
+    .event-track{display:block;min-width:0}
+    .event-card{break-inside:avoid;max-width:none;width:100%;margin:0 0 10px;box-shadow:none;border:1px solid #bbb;border-left:6px solid #333}
+    .print-title{display:block;margin-bottom:10px}
+  }
 </style>
 </head>
 <body>
 <div class="app" id="app">
   <header>
     <div>
-      <h1>Historical Timeline Tool — Advanced</h1>
-      <div class="muted">Add events, reorder, edit, export/import, search & zoom. Keyboard: N = new, Del = delete selected, Ctrl+Z = undo</div>
+      <h1><span aria-hidden="true">🕰️</span> Historical Timeline Tool <span class="chip">Research Edition</span></h1>
+      <div class="subtitle">BCE/CE timelines, event evidence, categories, tags, confidence, local autosave, undo/redo, import/export and multiple views. Shortcuts: <span class="kbd">N</span> new, <span class="kbd">Del</span> delete, <span class="kbd">Ctrl/⌘ Z</span> undo, <span class="kbd">/</span> search.</div>
     </div>
-
-    <div class="controls">
-      <div class="row">
-        <button id="btnAdd" class="small">Add Event</button>
-        <button id="btnExportJSON" class="small secondary">Export JSON</button>
-        <button id="btnExportCSV" class="small secondary">Export CSV</button>
-        <label class="small secondary file-buttons">
-          <input id="fileImport" type="file" class="import-file" accept="application/json,text/csv" />
-          Import
-        </label>
-      </div>
-
-      <div class="row">
-        <label class="small">Search:</label>
-        <input id="searchInput" type="text" placeholder="Title, description or date" style="padding:8px;border-radius:8px;border:1px solid rgba(16,24,40,0.06)" />
-      </div>
+    <div class="top-actions">
+      <button id="btnAdd">Add Event</button>
+      <button id="btnUndo" class="secondary small" title="Undo">↶ Undo</button>
+      <button id="btnRedo" class="secondary small" title="Redo">↷ Redo</button>
+      <button id="btnTheme" class="secondary small" title="Toggle theme">🌙 Theme</button>
+      <button id="btnPrint" class="secondary small">Print</button>
     </div>
   </header>
 
-  <section class="timeline-wrap" aria-label="timeline">
-    <div class="timeline-controls">
-      <div style="display:flex;gap:12px;align-items:center;">
-        <label class="small">Zoom</label>
-        <input id="zoomRange" type="range" min="0.5" max="2.5" step="0.05" value="1" />
-        <label class="small">Sort</label>
-        <select id="sortSelect" class="small">
-          <option value="asc">Date ascending</option>
-          <option value="desc">Date descending</option>
-        </select>
-      </div>
-
-      <div style="display:flex;gap:8px;align-items:center;">
-        <label class="small">From</label>
-        <input id="filterFrom" type="date" />
-        <label class="small">To</label>
-        <input id="filterTo" type="date" />
-        <button id="clearFilters" class="small secondary">Clear</button>
-      </div>
-    </div>
-
-    <div id="timeline" class="timeline" tabindex="0" aria-live="polite" aria-label="Event timeline">
-      <div class="time-axis" aria-hidden="true">
-        <div class="time-line"></div>
-      </div>
-    </div>
-
-    <div id="details" class="details" aria-hidden="true" style="display:none;">
-      <div class="col">
-        <div id="detailTitle" style="font-weight:800;font-size:1.05rem;"></div>
-        <div id="detailDate" class="meta-row"></div>
-        <div id="detailDesc" style="margin-top:8px;white-space:pre-wrap;"></div>
-      </div>
-      <div class="col" style="max-width:220px;">
-        <div class="meta-row">Icon</div>
-        <div id="detailIcon" style="font-size:34px;margin:8px 0;"></div>
-        <div class="meta-row" style="margin-top:8px;">Actions</div>
-        <div style="display:flex;gap:8px;margin-top:8px;">
-          <button id="btnEditSelected" class="small secondary">Edit</button>
-          <button id="btnDeleteSelected" class="small danger">Delete</button>
-          <button id="btnCenterSelected" class="small">Center</button>
+  <div class="grid">
+    <aside class="sidebar">
+      <section class="panel">
+        <h2>Filters & Search</h2>
+        <div class="filter-grid">
+          <div class="field">
+            <label for="searchInput">Search</label>
+            <input id="searchInput" type="search" placeholder="Title, description, tag, date, source..." autocomplete="off" />
+          </div>
+          <div class="inline-fields">
+            <div class="field">
+              <label for="filterFromYear">From year</label>
+              <input id="filterFromYear" type="number" placeholder="-500" />
+            </div>
+            <div class="field">
+              <label for="filterToYear">To year</label>
+              <input id="filterToYear" type="number" placeholder="2026" />
+            </div>
+          </div>
+          <div class="inline-fields">
+            <div class="field">
+              <label for="categoryFilter">Category</label>
+              <select id="categoryFilter"><option value="">All categories</option></select>
+            </div>
+            <div class="field">
+              <label for="tagFilter">Tag</label>
+              <input id="tagFilter" type="text" placeholder="empire, science..." />
+            </div>
+          </div>
+          <div class="inline-fields">
+            <div class="field">
+              <label for="minConfidence">Min confidence</label>
+              <input id="minConfidence" type="range" min="0" max="100" value="0" />
+            </div>
+            <div class="field">
+              <label for="minImportance">Min importance</label>
+              <input id="minImportance" type="range" min="1" max="5" value="1" />
+            </div>
+          </div>
+          <div class="toolbar">
+            <button id="clearFilters" class="secondary small">Clear Filters</button>
+            <button id="btnShowPinned" class="secondary small">Pinned Only</button>
+          </div>
         </div>
-      </div>
-    </div>
-  </section>
+      </section>
 
-  <!-- Modal for add/edit -->
+      <section class="panel" style="margin-top:12px;">
+        <h2>Timeline Stats</h2>
+        <div class="stats">
+          <div class="stat"><b id="statVisible">0</b><span>visible</span></div>
+          <div class="stat"><b id="statTotal">0</b><span>total</span></div>
+          <div class="stat"><b id="statSpan">—</b><span>year span</span></div>
+          <div class="stat"><b id="statAvgConfidence">—</b><span>avg confidence</span></div>
+        </div>
+        <div class="category-list" id="categoryList" aria-label="Category summary"></div>
+      </section>
+
+      <section class="panel" style="margin-top:12px;">
+        <h2>Backup Snapshots</h2>
+        <div class="toolbar">
+          <button id="btnSnapshot" class="secondary small">Save Snapshot</button>
+          <button id="btnClearSnapshots" class="ghost small">Clear</button>
+        </div>
+        <div class="snapshot-list" id="snapshotList"></div>
+      </section>
+    </aside>
+
+    <main>
+      <section class="timeline-wrap" aria-label="timeline workspace">
+        <div class="timeline-controls">
+          <div class="toolbar">
+            <label class="small" for="zoomRange">Zoom</label>
+            <input id="zoomRange" type="range" min="0.65" max="2.4" step="0.05" value="1" />
+            <label class="small" for="sortSelect">Sort</label>
+            <select id="sortSelect" class="small">
+              <option value="asc">Date ascending</option>
+              <option value="desc">Date descending</option>
+              <option value="importance">Importance</option>
+              <option value="manual">Manual order</option>
+            </select>
+            <button id="btnDensity" class="secondary small">Compact</button>
+          </div>
+
+          <div class="toolbar">
+            <div class="view-tabs" role="tablist" aria-label="View mode">
+              <button id="tabTimeline" class="active" role="tab" aria-selected="true">Timeline</button>
+              <button id="tabList" role="tab" aria-selected="false">List</button>
+              <button id="tabStory" role="tab" aria-selected="false">Story</button>
+            </div>
+            <button id="btnExportJSON" class="secondary small">Export JSON</button>
+            <button id="btnExportCSV" class="secondary small">Export CSV</button>
+            <button id="btnExportMarkdown" class="secondary small">Markdown</button>
+            <label class="file-like secondary small" for="fileImport">Import<input id="fileImport" type="file" class="hidden" accept="application/json,text/csv,text/markdown,.json,.csv,.md" /></label>
+          </div>
+        </div>
+
+        <h2 class="print-title">Historical Timeline</h2>
+        <div id="timelineView" class="timeline" tabindex="0" aria-live="polite" aria-label="Event timeline: drag empty space to scroll; drag cards to reorder in manual sort.">
+          <div id="axis" class="axis" aria-hidden="true"></div>
+          <div id="eventTrack" class="event-track"></div>
+        </div>
+        <div id="listView" class="list-view" aria-label="Event list"></div>
+        <div id="storyView" class="story-view" aria-label="Narrative story view"></div>
+        <div id="emptyState" class="empty hidden">No events match your current filters. Clear filters or add a new event.</div>
+
+        <div id="details" class="details" aria-hidden="true">
+          <div>
+            <div class="detail-title" id="detailTitle"></div>
+            <div class="muted" id="detailDate"></div>
+            <p id="detailDesc" style="white-space:pre-wrap;margin:10px 0 0;"></p>
+            <div class="detail-grid">
+              <div class="detail-box"><span>Category</span><b id="detailCategory">—</b></div>
+              <div class="detail-box"><span>Location</span><b id="detailLocation">—</b></div>
+              <div class="detail-box"><span>Tags</span><b id="detailTags">—</b></div>
+              <div class="detail-box"><span>Evidence confidence</span><b id="detailConfidence">—</b></div>
+            </div>
+          </div>
+          <div>
+            <div class="detail-box" style="min-height:92px;display:grid;place-items:center;">
+              <div id="detailIcon" style="font-size:3rem;"></div>
+            </div>
+            <div class="detail-box" style="margin-top:8px;">
+              <span>Source / citation</span>
+              <div id="detailSource">—</div>
+            </div>
+            <div class="toolbar detail-actions" style="margin-top:10px;">
+              <button id="btnEditSelected" class="secondary small">Edit</button>
+              <button id="btnPinSelected" class="secondary small">Pin</button>
+              <button id="btnCenterSelected" class="small">Center</button>
+              <button id="btnDuplicateSelected" class="secondary small">Duplicate</button>
+              <button id="btnDeleteSelected" class="danger small">Delete</button>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
   <div id="modalBackdrop" class="modal-backdrop" role="dialog" aria-modal="true" aria-hidden="true">
     <div class="modal" role="document" aria-labelledby="modalTitle">
       <h2 id="modalTitle">Add Event</h2>
-
-      <div style="margin-top:10px;">
-        <div class="form-row">
-          <label class="small" style="min-width:80px;">Name</label>
-          <input id="evtName" type="text" placeholder="Event name" />
+      <div class="form-grid">
+        <div class="field">
+          <label for="evtTitle">Title</label>
+          <input id="evtTitle" type="text" placeholder="e.g. Battle of Hastings" />
         </div>
-        <div class="form-row">
-          <label class="small" style="min-width:80px;">Date</label>
-          <input id="evtDate" type="date" />
+        <div class="field">
+          <label for="evtCategory">Category</label>
+          <input id="evtCategory" type="text" list="categoryOptions" placeholder="Politics, Science, Culture..." />
+          <datalist id="categoryOptions"></datalist>
         </div>
-        <div class="form-row">
-          <label class="small" style="min-width:80px;">Icon</label>
-          <input id="evtIcon" type="text" placeholder="Emoji or image URL (optional)" />
+        <div class="field">
+          <label for="evtYear">Start year</label>
+          <input id="evtYear" type="number" placeholder="1066 or -44 for BCE" />
+          <div class="hint">Use negative years for BCE, for example <b>-44</b> = 44 BCE.</div>
         </div>
-        <div class="form-row">
-          <label class="small" style="min-width:80px;">Color</label>
+        <div class="inline-fields">
+          <div class="field">
+            <label for="evtMonth">Month</label>
+            <input id="evtMonth" type="number" min="1" max="12" placeholder="10" />
+          </div>
+          <div class="field">
+            <label for="evtDay">Day</label>
+            <input id="evtDay" type="number" min="1" max="31" placeholder="14" />
+          </div>
+        </div>
+        <div class="field">
+          <label for="evtEndYear">End year / range</label>
+          <input id="evtEndYear" type="number" placeholder="optional" />
+        </div>
+        <div class="field">
+          <label for="evtPrecision">Precision</label>
+          <select id="evtPrecision">
+            <option value="day">Exact day</option>
+            <option value="month">Month known</option>
+            <option value="year">Year known</option>
+            <option value="approx">Approximate</option>
+            <option value="range">Date range</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="evtDateLabel">Custom date label</label>
+          <input id="evtDateLabel" type="text" placeholder="auto-generated if blank" />
+        </div>
+        <div class="field">
+          <label for="evtIcon">Icon or image URL</label>
+          <input id="evtIcon" type="text" placeholder="🏛️ or https://..." />
+        </div>
+        <div class="field">
+          <label for="evtColor">Color</label>
           <input id="evtColor" type="color" value="#3498db" />
         </div>
-        <div class="form-row" style="align-items:flex-start;">
-          <label class="small" style="min-width:80px;">Description</label>
-          <textarea id="evtDesc" rows="4" placeholder="Longer event description"></textarea>
+        <div class="field">
+          <label for="evtLocation">Location</label>
+          <input id="evtLocation" type="text" placeholder="Rome, London, Egypt..." />
+        </div>
+        <div class="field">
+          <label for="evtTags">Tags</label>
+          <input id="evtTags" type="text" placeholder="comma separated: empire, war, law" />
+        </div>
+        <div class="field">
+          <label for="evtImportance">Importance</label>
+          <input id="evtImportance" type="range" min="1" max="5" value="3" />
+        </div>
+        <div class="field">
+          <label for="evtConfidence">Evidence confidence</label>
+          <input id="evtConfidence" type="range" min="0" max="100" value="75" />
+        </div>
+        <div class="field wide">
+          <label for="evtSource">Source / citation link</label>
+          <input id="evtSource" type="url" placeholder="https://..." />
+        </div>
+        <div class="field wide">
+          <label for="evtDesc">Description / notes</label>
+          <textarea id="evtDesc" rows="5" placeholder="What happened, why it matters, uncertainty, context..."></textarea>
         </div>
       </div>
-
-      <div class="form-actions">
-        <button id="modalCancel" class="small secondary">Cancel</button>
-        <button id="modalSave" class="small">Save Event</button>
+      <div class="modal-actions">
+        <button id="modalDelete" class="danger small hidden">Delete Event</button>
+        <div class="right-actions">
+          <button id="modalCancel" class="secondary small">Cancel</button>
+          <button id="modalSave" class="small">Save Event</button>
+        </div>
       </div>
     </div>
   </div>
 
-  <footer style="margin-top:12px;color:var(--muted);font-size:0.9rem;">
-    Tip: You can drag timeline horizontally, reorder events, use search and filter, and export your timeline to share or back up.
-  </footer>
+  <footer class="subtitle" style="margin-top:14px;">Data is stored locally in your browser. Export JSON for full backups, CSV for spreadsheets, or Markdown for documentation.</footer>
 </div>
+<div id="toastWrap" class="toast-wrap" aria-live="polite"></div>
 
 <script>
-/*
-  Advanced Timeline Tool
-  - Single-file
-  - No external libraries
-  - Persistent with localStorage
-  - Undo stack
-  - Drag-to-scroll + drag-and-drop reorder
-  - Modal add/edit form
-  - Export/Import JSON & CSV
-  - Filters, search, zoom, keyboard shortcuts
-*/
-
 (() => {
-  // DOM references
-  const timelineEl = document.getElementById('timeline');
-  const btnAdd = document.getElementById('btnAdd');
-  const btnExportJSON = document.getElementById('btnExportJSON');
-  const btnExportCSV = document.getElementById('btnExportCSV');
-  const fileImport = document.getElementById('fileImport');
-  const modalBackdrop = document.getElementById('modalBackdrop');
-  const modalTitle = document.getElementById('modalTitle');
-  const evtName = document.getElementById('evtName');
-  const evtDate = document.getElementById('evtDate');
-  const evtIcon = document.getElementById('evtIcon');
-  const evtColor = document.getElementById('evtColor');
-  const evtDesc = document.getElementById('evtDesc');
-  const modalCancel = document.getElementById('modalCancel');
-  const modalSave = document.getElementById('modalSave');
-  const searchInput = document.getElementById('searchInput');
-  const filterFrom = document.getElementById('filterFrom');
-  const filterTo = document.getElementById('filterTo');
-  const clearFilters = document.getElementById('clearFilters');
-  const zoomRange = document.getElementById('zoomRange');
-  const sortSelect = document.getElementById('sortSelect');
-  const details = document.getElementById('details');
-  const detailTitle = document.getElementById('detailTitle');
-  const detailDate = document.getElementById('detailDate');
-  const detailDesc = document.getElementById('detailDesc');
-  const detailIcon = document.getElementById('detailIcon');
-  const btnEditSelected = document.getElementById('btnEditSelected');
-  const btnDeleteSelected = document.getElementById('btnDeleteSelected');
-  const btnCenterSelected = document.getElementById('btnCenterSelected');
+  'use strict';
 
-  // State
-  const STORAGE_KEY = 'advanced_timeline_v1';
-  let events = []; // {id,name,date(ISO),icon,color,desc,order}
-  let selectedId = null;
-  let editingId = null;
-  let undoStack = [];
-  let dragState = {isDown:false,startX:0,scrollLeft:0};
-  let ddDragSrc = null; // drag-and-drop reorder source element
+  const STORAGE_KEY = 'advanced_historical_timeline_v2';
+  const SNAPSHOT_KEY = 'advanced_historical_timeline_v2_snapshots';
+  const SETTINGS_KEY = 'advanced_historical_timeline_v2_settings';
 
-  // Helpers
-  const uid = () => 'e_' + Math.random().toString(36).slice(2,9);
-  const nowISODate = (d=new Date()) => d.toISOString().slice(0,10);
+  const $ = (id) => document.getElementById(id);
+  const els = {
+    app: $('app'),
+    btnAdd: $('btnAdd'), btnUndo: $('btnUndo'), btnRedo: $('btnRedo'), btnTheme: $('btnTheme'), btnPrint: $('btnPrint'), btnDensity: $('btnDensity'),
+    btnExportJSON: $('btnExportJSON'), btnExportCSV: $('btnExportCSV'), btnExportMarkdown: $('btnExportMarkdown'), fileImport: $('fileImport'),
+    searchInput: $('searchInput'), filterFromYear: $('filterFromYear'), filterToYear: $('filterToYear'), categoryFilter: $('categoryFilter'), tagFilter: $('tagFilter'), minConfidence: $('minConfidence'), minImportance: $('minImportance'), clearFilters: $('clearFilters'), btnShowPinned: $('btnShowPinned'),
+    zoomRange: $('zoomRange'), sortSelect: $('sortSelect'),
+    timelineView: $('timelineView'), axis: $('axis'), eventTrack: $('eventTrack'), listView: $('listView'), storyView: $('storyView'), emptyState: $('emptyState'),
+    tabTimeline: $('tabTimeline'), tabList: $('tabList'), tabStory: $('tabStory'),
+    details: $('details'), detailTitle: $('detailTitle'), detailDate: $('detailDate'), detailDesc: $('detailDesc'), detailCategory: $('detailCategory'), detailLocation: $('detailLocation'), detailTags: $('detailTags'), detailConfidence: $('detailConfidence'), detailIcon: $('detailIcon'), detailSource: $('detailSource'),
+    btnEditSelected: $('btnEditSelected'), btnPinSelected: $('btnPinSelected'), btnCenterSelected: $('btnCenterSelected'), btnDuplicateSelected: $('btnDuplicateSelected'), btnDeleteSelected: $('btnDeleteSelected'),
+    modalBackdrop: $('modalBackdrop'), modalTitle: $('modalTitle'), modalDelete: $('modalDelete'), modalCancel: $('modalCancel'), modalSave: $('modalSave'),
+    evtTitle: $('evtTitle'), evtCategory: $('evtCategory'), evtYear: $('evtYear'), evtMonth: $('evtMonth'), evtDay: $('evtDay'), evtEndYear: $('evtEndYear'), evtPrecision: $('evtPrecision'), evtDateLabel: $('evtDateLabel'), evtIcon: $('evtIcon'), evtColor: $('evtColor'), evtLocation: $('evtLocation'), evtTags: $('evtTags'), evtImportance: $('evtImportance'), evtConfidence: $('evtConfidence'), evtSource: $('evtSource'), evtDesc: $('evtDesc'), categoryOptions: $('categoryOptions'),
+    statVisible: $('statVisible'), statTotal: $('statTotal'), statSpan: $('statSpan'), statAvgConfidence: $('statAvgConfidence'), categoryList: $('categoryList'),
+    btnSnapshot: $('btnSnapshot'), btnClearSnapshots: $('btnClearSnapshots'), snapshotList: $('snapshotList'), toastWrap: $('toastWrap')
+  };
 
-  // Load initial or sample data
+  const state = {
+    events: [],
+    selectedId: null,
+    editingId: null,
+    undo: [],
+    redo: [],
+    view: 'timeline',
+    pinnedOnly: false,
+    zoom: 1,
+    settings: { theme: 'light', density: 'comfortable' },
+    dragScroll: { active:false, startX:0, scrollLeft:0, pointerId:null },
+    dndId: null
+  };
+
+  const uid = () => 'e_' + Math.random().toString(36).slice(2,10) + Date.now().toString(36).slice(-4);
+  const clamp = (n,min,max) => Math.max(min, Math.min(max, Number(n)||0));
+  const isUrl = (s) => typeof s === 'string' && /^(https?:|data:image\/)/i.test(s.trim());
+  const escapeHTML = (s='') => String(s).replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[ch]));
+  const debounce = (fn, wait=160) => { let t; return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), wait); }; };
+
+  function parseLegacyDate(value) {
+    if (!value) return { year:new Date().getFullYear(), month:null, day:null, precision:'year' };
+    const s = String(value).trim();
+    const iso = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (iso) return { year:Number(iso[1]), month:Number(iso[2]), day:Number(iso[3]), precision:'day' };
+    const bce = s.match(/(\d+)\s*(BCE|BC)/i);
+    if (bce) return { year:-Number(bce[1]), month:null, day:null, precision:'year' };
+    const ce = s.match(/(-?\d{1,6})/);
+    if (ce) return { year:Number(ce[1]), month:null, day:null, precision:'year' };
+    return { year:new Date().getFullYear(), month:null, day:null, precision:'approx' };
+  }
+
+  function normalizeEvent(raw={}, idx=0) {
+    const legacy = parseLegacyDate(raw.date || raw.startDate || raw.year || raw.dateLabel);
+    const year = Number.isFinite(Number(raw.year)) ? Number(raw.year) : legacy.year;
+    const month = raw.month === '' || raw.month == null ? legacy.month : Number(raw.month);
+    const day = raw.day === '' || raw.day == null ? legacy.day : Number(raw.day);
+    const precision = raw.precision || legacy.precision || 'year';
+    const endYear = raw.endYear === '' || raw.endYear == null ? null : Number(raw.endYear);
+    const title = String(raw.title || raw.name || raw.event || `Event ${idx+1}`).trim() || `Event ${idx+1}`;
+    const tags = Array.isArray(raw.tags) ? raw.tags : String(raw.tags || raw.tag || '').split(',').map(t => t.trim()).filter(Boolean);
+    const ev = {
+      id: raw.id || uid(),
+      title,
+      year,
+      month: Number.isFinite(month) ? clamp(month,1,12) : null,
+      day: Number.isFinite(day) ? clamp(day,1,31) : null,
+      endYear: Number.isFinite(endYear) ? endYear : null,
+      precision,
+      dateLabel: String(raw.dateLabel || raw.label || '').trim(),
+      icon: String(raw.icon || '📌').trim(),
+      color: raw.color || colorForCategory(raw.category || 'General'),
+      category: String(raw.category || raw.type || 'General').trim() || 'General',
+      location: String(raw.location || raw.place || '').trim(),
+      tags,
+      importance: clamp(raw.importance ?? 3,1,5),
+      confidence: clamp(raw.confidence ?? 75,0,100),
+      source: String(raw.source || raw.url || raw.citation || '').trim(),
+      desc: String(raw.desc || raw.description || raw.notes || '').trim(),
+      order: Number.isFinite(Number(raw.order)) ? Number(raw.order) : idx,
+      pinned: Boolean(raw.pinned),
+      createdAt: raw.createdAt || new Date().toISOString(),
+      updatedAt: raw.updatedAt || new Date().toISOString()
+    };
+    return ev;
+  }
+
+  function colorForCategory(category='General') {
+    let hash = 0;
+    for (const ch of String(category)) hash = ((hash << 5) - hash) + ch.charCodeAt(0);
+    const hues = [207,145,6,265,340,185,26,112,230,300];
+    const hue = hues[Math.abs(hash) % hues.length];
+    return `hsl(${hue} 72% 52%)`;
+  }
+
+  function dateKey(ev) {
+    const m = ev.month ? (ev.month - 1) / 12 : 0;
+    const d = ev.day ? ev.day / 366 : 0;
+    return Number(ev.year || 0) + m + d;
+  }
+
+  function formatYear(y) {
+    const n = Number(y);
+    if (!Number.isFinite(n)) return 'Unknown';
+    if (n < 0) return `${Math.abs(n)} BCE`;
+    if (n === 0) return '0 / 1 BCE-CE';
+    return `${n} CE`;
+  }
+
+  function monthName(m) {
+    return ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][Number(m)-1] || '';
+  }
+
+  function formatDate(ev) {
+    if (ev.dateLabel) return ev.dateLabel;
+    const start = (() => {
+      if (ev.precision === 'day' && ev.month && ev.day) return `${ev.day} ${monthName(ev.month)} ${formatYear(ev.year)}`;
+      if ((ev.precision === 'month' || ev.precision === 'day') && ev.month) return `${monthName(ev.month)} ${formatYear(ev.year)}`;
+      if (ev.precision === 'approx') return `c. ${formatYear(ev.year)}`;
+      return formatYear(ev.year);
+    })();
+    if (ev.endYear !== null && ev.endYear !== undefined && ev.precision === 'range') return `${start} – ${formatYear(ev.endYear)}`;
+    return start;
+  }
+
   function load() {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) {
-      try { events = JSON.parse(raw) || []; }
-      catch(e){ console.warn('Failed parse storage',e); events = []; }
-    } else {
-      // sample data to demonstrate features (keeps original functionality)
-      events = [
-        { id: uid(), name: 'Sample: Founding', date: '1900-01-01', icon: '🏛️', color:'#3498db', desc:'A sample founding event.' , order:0 },
-        { id: uid(), name: 'Sample: Innovation', date: '1950-06-14', icon: '🔬', color:'#2ecc71', desc:'An innovation event with detail.' , order:1 }
-      ];
-      saveState('initial-load');
-    }
+    state.settings = {...state.settings, ...safeJSON(localStorage.getItem(SETTINGS_KEY), {})};
+    applySettings();
+    const raw = safeJSON(localStorage.getItem(STORAGE_KEY), null);
+    if (Array.isArray(raw) && raw.length) state.events = raw.map(normalizeEvent);
+    else state.events = sampleEvents();
+    reindex();
+    persist();
   }
 
-  function saveState(action = 'save') {
-    // Keep undo stack (shallow copy)
-    undoStack.push(JSON.stringify(events));
-    // Cap stack
-    if (undoStack.length > 40) undoStack.shift();
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(events));
+  function sampleEvents() {
+    return [
+      normalizeEvent({title:'Sample: Foundation of Rome', year:-753, precision:'approx', icon:'🏛️', category:'Ancient history', location:'Rome', tags:['myth','city-state'], importance:4, confidence:35, color:'#8b5cf6', desc:'Traditional foundation date. Useful demo event showing approximate BCE support.'}, 0),
+      normalizeEvent({title:'Sample: Assassination of Julius Caesar', year:-44, month:3, day:15, precision:'day', icon:'🗡️', category:'Politics', location:'Rome', tags:['republic','rome'], importance:5, confidence:88, color:'#ef4444', desc:'A major turning point in the late Roman Republic.'}, 1),
+      normalizeEvent({title:'Sample: Printing press spreads in Europe', year:1450, precision:'approx', icon:'📜', category:'Technology', location:'Mainz', tags:['printing','knowledge'], importance:5, confidence:80, color:'#2ecc71', desc:'Demo event for technology and knowledge transmission timelines.'}, 2),
+      normalizeEvent({title:'Sample: Apollo 11 Moon landing', year:1969, month:7, day:20, precision:'day', icon:'🚀', category:'Science', location:'Moon', tags:['space','nasa'], importance:5, confidence:99, color:'#2276d2', source:'https://www.nasa.gov/', desc:'Demo event with a source link and high confidence.'}, 3)
+    ];
   }
+
+  function safeJSON(text, fallback) {
+    try { return JSON.parse(text); } catch { return fallback; }
+  }
+
+  function persist() {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state.events));
+    localStorage.setItem(SETTINGS_KEY, JSON.stringify(state.settings));
+  }
+
+  function snapshotBeforeChange() {
+    state.undo.push(JSON.stringify(state.events));
+    if (state.undo.length > 80) state.undo.shift();
+    state.redo = [];
+  }
+
+  function commit(mutator, message='Saved') {
+    snapshotBeforeChange();
+    mutator();
+    reindex();
+    persist();
+    render();
+    toast(message);
+  }
+
+  function reindex() { state.events.forEach((ev, i) => ev.order = i); }
 
   function undo() {
-    if (!undoStack.length) return;
-    const last = undoStack.pop();
-    if (last) {
-      try {
-        events = JSON.parse(last);
-        render();
-        persistNoUndo();
-      } catch(e){console.error('undo failed',e);}
-    }
+    if (!state.undo.length) return toast('Nothing to undo');
+    state.redo.push(JSON.stringify(state.events));
+    state.events = JSON.parse(state.undo.pop()).map(normalizeEvent);
+    persist(); render(); toast('Undo complete');
   }
 
-  function persistNoUndo() {
-    // Save without pushing into undo
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(events));
+  function redo() {
+    if (!state.redo.length) return toast('Nothing to redo');
+    state.undo.push(JSON.stringify(state.events));
+    state.events = JSON.parse(state.redo.pop()).map(normalizeEvent);
+    persist(); render(); toast('Redo complete');
   }
 
-  // Event rendering
-  function createEventElement(ev) {
-    const div = document.createElement('div');
-    div.className = 'event';
-    div.dataset.id = ev.id;
-    div.draggable = true;
-    // width scale by zoom + small random flex basis to allow wrapping nicely
-    div.style.borderLeft = `6px solid ${ev.color || '#3478db'}`;
-    div.style.minWidth = `${160 * currentZoom}px`;
-
-    // heading
-    const heading = document.createElement('div');
-    heading.className = 'event-heading';
-    const icon = document.createElement('div');
-    icon.className = 'icon';
-    // try to show image if icon looks like URL
-    if (isLikelyUrl(ev.icon)) {
-      const img = document.createElement('img');
-      img.src = ev.icon;
-      img.alt = ev.name || 'icon';
-      img.style.width = '36px';
-      img.style.height = '36px';
-      img.style.borderRadius = '6px';
-      img.onerror = () => { img.style.display = 'none'; icon.textContent = '🖼️'; };
-      icon.appendChild(img);
-    } else {
-      icon.textContent = ev.icon || '📌';
-    }
-    heading.appendChild(icon);
-
-    const title = document.createElement('div');
-    const titleEl = document.createElement('div');
-    titleEl.className = 'event-title';
-    titleEl.textContent = ev.name;
-    const meta = document.createElement('div');
-    meta.className = 'meta';
-    meta.textContent = formatNiceDate(ev.date);
-    title.appendChild(titleEl);
-    title.appendChild(meta);
-    heading.appendChild(title);
-
-    const desc = document.createElement('div');
-    desc.className = 'event-desc';
-    desc.textContent = ev.desc || '';
-
-    // delete button (keeps original)
-    const delBtn = document.createElement('button');
-    delBtn.className = 'delete-button';
-    delBtn.textContent = 'Delete';
-    delBtn.addEventListener('click', (evClick) => {
-      evClick.stopPropagation();
-      confirmDelete(ev.id);
-    });
-
-    const editBtn = document.createElement('button');
-    editBtn.className = 'edit-button';
-    editBtn.textContent = 'Edit';
-    editBtn.addEventListener('click', (evClick) => {
-      evClick.stopPropagation();
-      openEditModal(ev.id);
-    });
-
-    div.appendChild(heading);
-    div.appendChild(desc);
-    div.appendChild(delBtn);
-    div.appendChild(editBtn);
-
-    // selection
-    div.addEventListener('click', () => {
-      selectEvent(ev.id);
-    });
-
-    // double click centers
-    div.addEventListener('dblclick', () => {
-      centerEventInView(div);
-    });
-
-    // Drag and drop reorder handlers
-    div.addEventListener('dragstart', (e) => {
-      ddDragSrc = div;
-      div.style.opacity = '0.5';
-      e.dataTransfer.effectAllowed = 'move';
-      try { e.dataTransfer.setData('text/plain', ev.id); } catch(_) {}
-    });
-
-    div.addEventListener('dragend', () => {
-      ddDragSrc = null;
-      div.style.opacity = '';
-    });
-
-    div.addEventListener('dragover', (e) => {
-      e.preventDefault();
-      e.dataTransfer.dropEffect = 'move';
-      div.style.transform = 'translateY(-4px)';
-    });
-    div.addEventListener('dragleave', () => {
-      div.style.transform = '';
-    });
-
-    div.addEventListener('drop', (e) => {
-      e.preventDefault();
-      div.style.transform = '';
-      const src = ddDragSrc;
-      if (!src || src === div) return;
-      const srcId = src.dataset.id;
-      const dstId = div.dataset.id;
-      // reorder events array
-      const srcIndex = events.findIndex(x => x.id === srcId);
-      const dstIndex = events.findIndex(x => x.id === dstId);
-      if (srcIndex === -1 || dstIndex === -1) return;
-      const [item] = events.splice(srcIndex, 1);
-      events.splice(dstIndex, 0, item);
-      // update order numbers
-      events.forEach((ev, idx) => ev.order = idx);
-      saveState('reorder');
-      render();
-    });
-
-    return div;
+  function getFilters() {
+    return {
+      q: els.searchInput.value.trim().toLowerCase(),
+      from: els.filterFromYear.value === '' ? null : Number(els.filterFromYear.value),
+      to: els.filterToYear.value === '' ? null : Number(els.filterToYear.value),
+      category: els.categoryFilter.value,
+      tag: els.tagFilter.value.trim().toLowerCase(),
+      minConfidence: Number(els.minConfidence.value || 0),
+      minImportance: Number(els.minImportance.value || 1),
+      pinnedOnly: state.pinnedOnly
+    };
   }
 
-  function formatNiceDate(iso) {
-    try {
-      const d = new Date(iso);
-      if (isNaN(d)) return iso || '';
-      return d.toLocaleDateString(undefined, {year:'numeric', month:'short', day:'numeric'});
-    } catch(e){ return iso; }
+  function visibleEvents() {
+    const f = getFilters();
+    let arr = state.events.filter(ev => {
+      const hay = [ev.title, ev.desc, ev.category, ev.location, ev.source, formatDate(ev), ev.tags.join(' ')].join(' ').toLowerCase();
+      if (f.q && !hay.includes(f.q)) return false;
+      if (f.from !== null && dateKey(ev) < f.from) return false;
+      if (f.to !== null && dateKey(ev) > f.to) return false;
+      if (f.category && ev.category !== f.category) return false;
+      if (f.tag && !ev.tags.some(t => t.toLowerCase().includes(f.tag))) return false;
+      if (ev.confidence < f.minConfidence) return false;
+      if (ev.importance < f.minImportance) return false;
+      if (f.pinnedOnly && !ev.pinned) return false;
+      return true;
+    });
+    const sort = els.sortSelect.value;
+    arr.sort((a,b) => {
+      if (sort === 'manual') return a.order - b.order;
+      if (sort === 'importance') return (b.importance - a.importance) || (dateKey(a) - dateKey(b));
+      const comp = dateKey(a) - dateKey(b) || (a.order - b.order);
+      return sort === 'desc' ? -comp : comp;
+    });
+    return arr;
   }
 
-  function isLikelyUrl(s) {
-    return typeof s === 'string' && (s.startsWith('http://') || s.startsWith('https://') || s.startsWith('data:'));
-  }
-
-  // Rendering pipeline with filters and search + zoom
-  let currentZoom = parseFloat(zoomRange.value || '1');
   function render() {
-    timelineEl.innerHTML = ''; // remove all existing nodes
-    // optional filters
-    const q = (searchInput.value || '').trim().toLowerCase();
-    const from = filterFrom.value ? new Date(filterFrom.value) : null;
-    const to = filterTo.value ? new Date(filterTo.value) : null;
+    state.zoom = Number(els.zoomRange.value || 1);
+    updateSelectOptions();
+    const arr = visibleEvents();
+    renderStats(arr);
+    renderAxis(arr);
+    renderTimelineCards(arr);
+    renderList(arr);
+    renderStory(arr);
+    renderDetails();
+    renderSnapshots();
+    setView(state.view);
+    els.emptyState.classList.toggle('hidden', arr.length !== 0);
+  }
 
-    // sort
-    const sorted = [...events].sort((a,b) => {
-      const da = new Date(a.date);
-      const db = new Date(b.date);
-      const comp = (da - db) || (a.order - b.order || 0);
-      return sortSelect.value === 'asc' ? comp : -comp;
-    });
-
-    // create elements for visible events
-    sorted.forEach(ev => {
-      // filter by search
-      const hay = `${ev.name} ${ev.desc} ${ev.date}`.toLowerCase();
-      if (q && !hay.includes(q)) return;
-      // date range filter
-      if (from && new Date(ev.date) < from) return;
-      if (to && new Date(ev.date) > new Date(to.getTime() + (24*60*60*1000 - 1))) return; // inclusive
-      const el = createEventElement(ev);
-      // size based on zoom
-      el.style.flex = `0 0 ${240 * currentZoom}px`;
-      timelineEl.appendChild(el);
-    });
-
-    // update details if selection exists
-    if (selectedId) {
-      const ev = events.find(x => x.id === selectedId);
-      if (ev) showDetails(ev);
-      else hideDetails();
-    } else {
-      hideDetails();
+  function renderAxis(arr) {
+    els.axis.innerHTML = '';
+    if (!arr.length) return;
+    const keys = arr.map(dateKey);
+    const min = Math.floor(Math.min(...keys));
+    const max = Math.ceil(Math.max(...keys));
+    const span = Math.max(1, max - min);
+    const tickCount = Math.min(8, Math.max(3, Math.ceil(span / 100) + 2));
+    for (let i = 0; i < tickCount; i++) {
+      const ratio = tickCount === 1 ? 0 : i / (tickCount - 1);
+      const year = Math.round(min + ratio * span);
+      const tick = document.createElement('div');
+      tick.className = 'tick';
+      tick.style.left = `${ratio * 100}%`;
+      tick.textContent = formatYear(year).replace(' CE','');
+      els.axis.appendChild(tick);
     }
   }
 
-  // Selection, details, edit
+  function renderTimelineCards(arr) {
+    els.eventTrack.innerHTML = '';
+    if (!arr.length) return;
+    const keys = arr.map(dateKey);
+    const min = Math.min(...keys);
+    const max = Math.max(...keys);
+    const span = Math.max(1, max - min);
+    const useDateSpacing = els.sortSelect.value !== 'manual' && arr.length > 2;
+    els.eventTrack.style.gap = useDateSpacing ? `${Math.max(12, 18 * state.zoom)}px` : `${12 * state.zoom}px`;
+
+    arr.forEach((ev, idx) => {
+      const card = document.createElement('article');
+      card.className = 'event-card';
+      card.dataset.id = ev.id;
+      card.draggable = true;
+      card.style.borderLeftColor = ev.color;
+      card.style.minWidth = `${220 * state.zoom}px`;
+      card.style.maxWidth = `${340 * state.zoom}px`;
+      if (ev.id === state.selectedId) card.classList.add('selected');
+      if (ev.pinned) card.classList.add('pinned');
+      if (useDateSpacing && idx > 0) {
+        const prev = arr[idx-1];
+        const relativeGap = ((dateKey(ev) - dateKey(prev)) / span) * 420 * state.zoom;
+        card.style.marginLeft = `${Math.min(220 * state.zoom, Math.max(0, relativeGap))}px`;
+      }
+      card.innerHTML = `
+        <div class="event-head">
+          <div class="event-icon">${iconHTML(ev)}</div>
+          <div>
+            <h3 class="event-title">${escapeHTML(ev.title)}</h3>
+            <div class="event-date">${escapeHTML(formatDate(ev))}</div>
+          </div>
+        </div>
+        <div class="event-desc">${escapeHTML(ev.desc || 'No description yet.')}</div>
+        <div class="event-meta">
+          <span class="tag">${escapeHTML(ev.category)}</span>
+          ${ev.tags.slice(0,3).map(t => `<span class="tag">#${escapeHTML(t)}</span>`).join('')}
+          <span class="tag">★ ${ev.importance}/5</span>
+        </div>
+        <div class="confidence" title="Evidence confidence ${ev.confidence}%"><span style="width:${ev.confidence}%"></span></div>
+        <div class="card-actions">
+          <button class="icon-btn" data-act="pin" title="Pin">${ev.pinned ? '★' : '☆'}</button>
+          <button class="icon-btn" data-act="edit" title="Edit">✎</button>
+          <button class="icon-btn" data-act="delete" title="Delete">×</button>
+        </div>`;
+      card.addEventListener('click', (e) => {
+        const action = e.target.closest('[data-act]')?.dataset.act;
+        if (action) return handleCardAction(action, ev.id);
+        selectEvent(ev.id);
+      });
+      card.addEventListener('dblclick', () => centerCard(card));
+      card.addEventListener('dragstart', (e) => {
+        state.dndId = ev.id;
+        e.dataTransfer.effectAllowed = 'move';
+        try { e.dataTransfer.setData('text/plain', ev.id); } catch {}
+        card.style.opacity = '.45';
+      });
+      card.addEventListener('dragend', () => { state.dndId = null; card.style.opacity = ''; });
+      card.addEventListener('dragover', (e) => { e.preventDefault(); card.style.outline = '2px dashed var(--accent)'; });
+      card.addEventListener('dragleave', () => { card.style.outline = ''; });
+      card.addEventListener('drop', (e) => {
+        e.preventDefault(); card.style.outline = '';
+        reorderByDrop(state.dndId, ev.id);
+      });
+      els.eventTrack.appendChild(card);
+    });
+  }
+
+  function iconHTML(ev) {
+    if (isUrl(ev.icon)) return `<img src="${escapeHTML(ev.icon)}" alt="${escapeHTML(ev.title)} icon" onerror="this.replaceWith(document.createTextNode('🖼️'))">`;
+    return escapeHTML(ev.icon || '📌');
+  }
+
+  function renderList(arr) {
+    if (!arr.length) { els.listView.innerHTML = '<div class="empty">No events to list.</div>'; return; }
+    els.listView.innerHTML = `<table class="list-table">
+      <thead><tr><th>Date</th><th>Title</th><th>Category</th><th>Tags</th><th>Confidence</th><th>Source</th></tr></thead>
+      <tbody>${arr.map(ev => `<tr data-id="${escapeHTML(ev.id)}">
+        <td><b>${escapeHTML(formatDate(ev))}</b></td>
+        <td>${ev.pinned ? '★ ' : ''}<b>${escapeHTML(ev.title)}</b><br><span class="muted">${escapeHTML(ev.desc.slice(0,140))}${ev.desc.length > 140 ? '…' : ''}</span></td>
+        <td>${escapeHTML(ev.category)}</td>
+        <td>${ev.tags.map(t => `<span class="tag">#${escapeHTML(t)}</span>`).join(' ') || '—'}</td>
+        <td>${ev.confidence}%</td>
+        <td>${ev.source ? `<a class="source-link" href="${escapeHTML(ev.source)}" target="_blank" rel="noopener noreferrer">open</a>` : '—'}</td>
+      </tr>`).join('')}</tbody></table>`;
+    els.listView.querySelectorAll('tr[data-id]').forEach(row => row.addEventListener('click', () => selectEvent(row.dataset.id)));
+  }
+
+  function renderStory(arr) {
+    if (!arr.length) { els.storyView.innerHTML = '<div class="empty">No story events to show.</div>'; return; }
+    els.storyView.innerHTML = arr.map(ev => `<article class="story-item" data-id="${escapeHTML(ev.id)}">
+      <div class="story-date">${escapeHTML(formatDate(ev))}</div>
+      <div>
+        <h3>${escapeHTML(ev.icon || '📌')} ${escapeHTML(ev.title)}</h3>
+        <p>${escapeHTML(ev.desc || 'No notes yet.')}</p>
+        <div class="event-meta" style="margin-top:8px;"><span class="tag">${escapeHTML(ev.category)}</span>${ev.tags.map(t=>`<span class="tag">#${escapeHTML(t)}</span>`).join('')}</div>
+      </div>
+    </article>`).join('');
+    els.storyView.querySelectorAll('[data-id]').forEach(row => row.addEventListener('click', () => selectEvent(row.dataset.id)));
+  }
+
+  function renderDetails() {
+    const ev = state.events.find(x => x.id === state.selectedId);
+    if (!ev) {
+      els.details.classList.remove('show');
+      els.details.setAttribute('aria-hidden', 'true');
+      return;
+    }
+    els.details.classList.add('show');
+    els.details.setAttribute('aria-hidden', 'false');
+    els.detailTitle.textContent = ev.title;
+    els.detailDate.textContent = formatDate(ev);
+    els.detailDesc.textContent = ev.desc || 'No description yet.';
+    els.detailCategory.textContent = ev.category || 'General';
+    els.detailLocation.textContent = ev.location || '—';
+    els.detailTags.textContent = ev.tags.length ? ev.tags.map(t => `#${t}`).join(' ') : '—';
+    els.detailConfidence.textContent = `${ev.confidence}% · importance ${ev.importance}/5`;
+    els.detailIcon.innerHTML = iconHTML(ev);
+    if (ev.source) els.detailSource.innerHTML = `<a class="source-link" href="${escapeHTML(ev.source)}" target="_blank" rel="noopener noreferrer">${escapeHTML(ev.source)}</a>`;
+    else els.detailSource.textContent = '—';
+    els.btnPinSelected.textContent = ev.pinned ? 'Unpin' : 'Pin';
+  }
+
+  function renderStats(arr) {
+    els.statVisible.textContent = arr.length;
+    els.statTotal.textContent = state.events.length;
+    if (arr.length) {
+      const keys = arr.map(dateKey);
+      els.statSpan.textContent = `${Math.round(Math.max(...keys) - Math.min(...keys))}`;
+      els.statAvgConfidence.textContent = `${Math.round(arr.reduce((s,e)=>s+e.confidence,0)/arr.length)}%`;
+    } else {
+      els.statSpan.textContent = '—';
+      els.statAvgConfidence.textContent = '—';
+    }
+    const counts = new Map();
+    state.events.forEach(ev => counts.set(ev.category, (counts.get(ev.category)||0)+1));
+    els.categoryList.innerHTML = [...counts.entries()].sort((a,b)=>b[1]-a[1]).map(([cat,count]) => `<button class="category-btn ${els.categoryFilter.value === cat ? 'active' : ''}" data-cat="${escapeHTML(cat)}"><span><span class="dot" style="background:${escapeHTML(colorForCategory(cat))}"></span> ${escapeHTML(cat)}</span><b>${count}</b></button>`).join('') || '<div class="muted">No categories yet.</div>';
+    els.categoryList.querySelectorAll('[data-cat]').forEach(btn => btn.addEventListener('click', () => {
+      els.categoryFilter.value = els.categoryFilter.value === btn.dataset.cat ? '' : btn.dataset.cat;
+      render();
+    }));
+  }
+
+  function updateSelectOptions() {
+    const cats = [...new Set(state.events.map(e => e.category || 'General'))].sort((a,b)=>a.localeCompare(b));
+    const current = els.categoryFilter.value;
+    els.categoryFilter.innerHTML = '<option value="">All categories</option>' + cats.map(c => `<option value="${escapeHTML(c)}">${escapeHTML(c)}</option>`).join('');
+    if (cats.includes(current)) els.categoryFilter.value = current;
+    els.categoryOptions.innerHTML = cats.map(c => `<option value="${escapeHTML(c)}"></option>`).join('');
+  }
+
+  function handleCardAction(action, id) {
+    if (action === 'edit') openEditModal(id);
+    if (action === 'delete') deleteEvent(id);
+    if (action === 'pin') togglePin(id);
+  }
+
   function selectEvent(id) {
-    selectedId = id;
-    Array.from(timelineEl.querySelectorAll('.event')).forEach(el => {
-      el.classList.toggle('selected', el.dataset.id === id);
-    });
-    const ev = events.find(x => x.id === id);
-    if (ev) showDetails(ev);
-    else hideDetails();
-  }
-
-  function showDetails(ev) {
-    details.style.display = 'flex';
-    detailTitle.textContent = ev.name;
-    detailDate.textContent = formatNiceDate(ev.date);
-    detailDesc.textContent = ev.desc || '';
-    if (isLikelyUrl(ev.icon)) {
-      const img = document.createElement('img');
-      img.src = ev.icon;
-      img.alt = ev.name;
-      img.style.width = '48px';
-      img.style.height = '48px';
-      img.style.borderRadius = '6px';
-      img.onerror = () => { detailIcon.textContent = '🖼️'; }
-      detailIcon.innerHTML = '';
-      detailIcon.appendChild(img);
-    } else {
-      detailIcon.innerHTML = '';
-      detailIcon.textContent = ev.icon || '📌';
-    }
-  }
-
-  function hideDetails() {
-    details.style.display = 'none';
-    detailTitle.textContent = '';
-    detailDate.textContent = '';
-    detailDesc.textContent = '';
-    detailIcon.textContent = '';
+    state.selectedId = id;
+    render();
+    const selected = els.eventTrack.querySelector(`[data-id="${CSS.escape(id)}"]`);
+    if (selected) selected.classList.add('selected');
   }
 
   function openAddModal() {
-    editingId = null;
-    modalTitle.textContent = 'Add Event';
-    evtName.value = '';
-    evtDate.value = nowISODate();
-    evtIcon.value = '';
-    evtColor.value = '#3498db';
-    evtDesc.value = '';
+    state.editingId = null;
+    els.modalTitle.textContent = 'Add Event';
+    els.modalDelete.classList.add('hidden');
+    fillModal(normalizeEvent({title:'', year:new Date().getFullYear(), icon:'📌', category:'General', confidence:75, importance:3}, 0));
     showModal();
   }
 
   function openEditModal(id) {
-    editingId = id;
-    const ev = events.find(x => x.id === id);
+    const ev = state.events.find(x => x.id === id);
     if (!ev) return;
-    modalTitle.textContent = 'Edit Event';
-    evtName.value = ev.name || '';
-    evtDate.value = ev.date || nowISODate();
-    evtIcon.value = ev.icon || '';
-    evtColor.value = ev.color || '#3498db';
-    evtDesc.value = ev.desc || '';
+    state.editingId = id;
+    els.modalTitle.textContent = 'Edit Event';
+    els.modalDelete.classList.remove('hidden');
+    fillModal(ev);
     showModal();
   }
 
-  function showModal() {
-    modalBackdrop.style.display = 'flex';
-    modalBackdrop.setAttribute('aria-hidden','false');
-    evtName.focus();
+  function fillModal(ev) {
+    els.evtTitle.value = ev.title === 'Event 1' ? '' : ev.title;
+    els.evtCategory.value = ev.category || 'General';
+    els.evtYear.value = ev.year ?? '';
+    els.evtMonth.value = ev.month ?? '';
+    els.evtDay.value = ev.day ?? '';
+    els.evtEndYear.value = ev.endYear ?? '';
+    els.evtPrecision.value = ev.precision || 'year';
+    els.evtDateLabel.value = ev.dateLabel || '';
+    els.evtIcon.value = ev.icon || '';
+    els.evtColor.value = toHexColor(ev.color || '#3498db');
+    els.evtLocation.value = ev.location || '';
+    els.evtTags.value = ev.tags.join(', ');
+    els.evtImportance.value = ev.importance || 3;
+    els.evtConfidence.value = ev.confidence ?? 75;
+    els.evtSource.value = ev.source || '';
+    els.evtDesc.value = ev.desc || '';
   }
-  function closeModal() {
-    modalBackdrop.style.display = 'none';
-    modalBackdrop.setAttribute('aria-hidden','true');
-    editingId = null;
+
+  function toHexColor(color) {
+    if (/^#[0-9a-f]{6}$/i.test(color)) return color;
+    return '#3498db';
+  }
+
+  function readModal() {
+    const title = els.evtTitle.value.trim();
+    const year = Number(els.evtYear.value);
+    if (!title) throw new Error('Please provide an event title.');
+    if (!Number.isFinite(year)) throw new Error('Please provide a valid start year. Use negative numbers for BCE.');
+    const ev = normalizeEvent({
+      title,
+      category: els.evtCategory.value.trim() || 'General',
+      year,
+      month: els.evtMonth.value === '' ? null : Number(els.evtMonth.value),
+      day: els.evtDay.value === '' ? null : Number(els.evtDay.value),
+      endYear: els.evtEndYear.value === '' ? null : Number(els.evtEndYear.value),
+      precision: els.evtPrecision.value,
+      dateLabel: els.evtDateLabel.value.trim(),
+      icon: els.evtIcon.value.trim() || '📌',
+      color: els.evtColor.value || '#3498db',
+      location: els.evtLocation.value.trim(),
+      tags: els.evtTags.value.split(',').map(t => t.trim()).filter(Boolean),
+      importance: Number(els.evtImportance.value),
+      confidence: Number(els.evtConfidence.value),
+      source: els.evtSource.value.trim(),
+      desc: els.evtDesc.value.trim()
+    });
+    if (ev.precision === 'range' && ev.endYear === null) throw new Error('Range precision needs an end year.');
+    return ev;
   }
 
   function saveModal() {
-    const name = evtName.value.trim();
-    let date = evtDate.value;
-    const icon = evtIcon.value.trim();
-    const color = evtColor.value || '#3498db';
-    const desc = evtDesc.value.trim();
-
-    // validation
-    if (!name) { alert('Please provide an event name'); evtName.focus(); return; }
-    if (!date) {
-      // try to parse free-form if user typed something
-      const parsed = Date.parse(evtDate.value);
-      if (!isNaN(parsed)) date = new Date(parsed).toISOString().slice(0,10);
-      else { alert('Please provide a valid date'); evtDate.focus(); return; }
-    }
-
-    if (editingId) {
-      const idx = events.findIndex(x => x.id === editingId);
-      if (idx !== -1) {
-        events[idx] = {...events[idx], name, date, icon, color, desc};
-        saveState('edit');
-      }
+    let data;
+    try { data = readModal(); } catch (err) { alert(err.message); return; }
+    const now = new Date().toISOString();
+    if (state.editingId) {
+      commit(() => {
+        const idx = state.events.findIndex(x => x.id === state.editingId);
+        if (idx !== -1) state.events[idx] = {...state.events[idx], ...data, id: state.editingId, updatedAt: now};
+        state.selectedId = state.editingId;
+      }, 'Event updated');
     } else {
-      const id = uid();
-      events.push({id, name, date, icon, color, desc, order: events.length});
-      saveState('add');
+      commit(() => {
+        const ev = {...data, id: uid(), order: state.events.length, createdAt: now, updatedAt: now};
+        state.events.push(ev);
+        state.selectedId = ev.id;
+      }, 'Event added');
     }
     closeModal();
-    render();
   }
 
-  function confirmDelete(id) {
-    if (!confirm('Delete this event? This action can be undone with Ctrl+Z.')) return;
-    const idx = events.findIndex(x => x.id === id);
-    if (idx === -1) return;
-    events.splice(idx,1);
-    saveState('delete');
-    selectedId = null;
-    render();
+  function showModal() {
+    els.modalBackdrop.classList.add('show');
+    els.modalBackdrop.setAttribute('aria-hidden','false');
+    setTimeout(() => els.evtTitle.focus(), 30);
+  }
+  function closeModal() {
+    els.modalBackdrop.classList.remove('show');
+    els.modalBackdrop.setAttribute('aria-hidden','true');
+    state.editingId = null;
   }
 
-  function deleteSelected() {
-    if (!selectedId) { alert('No event selected'); return; }
-    confirmDelete(selectedId);
+  function deleteEvent(id = state.selectedId) {
+    if (!id) return toast('No event selected');
+    const ev = state.events.find(x => x.id === id);
+    if (!ev) return;
+    if (!confirm(`Delete “${ev.title}”? You can undo this.`)) return;
+    commit(() => {
+      state.events = state.events.filter(x => x.id !== id);
+      if (state.selectedId === id) state.selectedId = null;
+    }, 'Event deleted');
+    closeModal();
   }
 
-  // Export / Import
-  function exportJSON() {
-    const dataStr = JSON.stringify(events, null, 2);
-    const blob = new Blob([dataStr], {type:'application/json'});
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url; a.download = 'timeline.json';
-    document.body.appendChild(a); a.click(); a.remove();
-    URL.revokeObjectURL(url);
+  function duplicateSelected() {
+    const ev = state.events.find(x => x.id === state.selectedId);
+    if (!ev) return toast('No event selected');
+    commit(() => {
+      const copy = {...ev, id: uid(), title: `${ev.title} copy`, order: state.events.length, pinned:false, createdAt:new Date().toISOString(), updatedAt:new Date().toISOString()};
+      state.events.push(copy);
+      state.selectedId = copy.id;
+    }, 'Event duplicated');
   }
 
-  function exportCSV() {
-    // Simple CSV export
-    const rows = [['id','name','date','icon','color','desc','order']];
-    events.forEach(ev => {
-      rows.push([ev.id, escapeCell(ev.name), ev.date, escapeCell(ev.icon), ev.color, escapeCell(ev.desc), ev.order]);
-    });
-    const csv = rows.map(r => r.map(c => `"${String(c||'').replace(/"/g,'""')}"`).join(',')).join('\n');
-    const blob = new Blob([csv], {type:'text/csv'});
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url; a.download = 'timeline.csv';
-    document.body.appendChild(a); a.click(); a.remove();
-    URL.revokeObjectURL(url);
+  function togglePin(id = state.selectedId) {
+    const ev = state.events.find(x => x.id === id);
+    if (!ev) return;
+    commit(() => { ev.pinned = !ev.pinned; ev.updatedAt = new Date().toISOString(); state.selectedId = id; }, ev.pinned ? 'Event unpinned' : 'Event pinned');
   }
-  function escapeCell(s) { return String(s||'').replace(/"/g,'""'); }
 
-  fileImport.addEventListener('change', (e) => {
-    const f = e.target.files[0];
-    if (!f) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      const txt = reader.result;
-      // try parse JSON first, fallback CSV
-      try {
-        const arr = JSON.parse(txt);
-        if (Array.isArray(arr)) {
-          // simple merge - preserve existing ids if present else create
-          const converted = arr.map((r, idx) => {
-            return {
-              id: r.id || uid(),
-              name: r.name || r.title || `Imported ${idx}`,
-              date: r.date ? r.date.slice(0,10) : nowISODate(),
-              icon: r.icon || '',
-              color: r.color || '#3498db',
-              desc: r.desc || r.description || '',
-              order: events.length + idx
-            };
-          });
-          events = events.concat(converted);
-          saveState('import-json');
-          render();
-          alert('JSON imported');
-          fileImport.value = '';
-          return;
-        } else {
-          throw new Error('Not array');
-        }
-      } catch (err) {
-        // try CSV parse minimal
-        const lines = txt.split(/\r?\n/).map(l => l.trim()).filter(l => l.length);
-        if (!lines.length) { alert('No data found'); return; }
-        const headers = parseCSVLine(lines[0]);
-        const parsed = [];
-        for (let i=1;i<lines.length;i++){
-          const row = parseCSVLine(lines[i]);
-          const obj = {};
-          for (let j=0;j<headers.length;j++) obj[headers[j]] = row[j] || '';
-          parsed.push(obj);
-        }
-        const converted = parsed.map((r, idx) => ({
-          id: r.id || uid(),
-          name: r.name || r.title || `Imported ${idx}`,
-          date: r.date ? r.date.slice(0,10) : nowISODate(),
-          icon: r.icon || '',
-          color: r.color || '#3498db',
-          desc: r.desc || r.description || '',
-          order: events.length + idx
-        }));
-        events = events.concat(converted);
-        saveState('import-csv');
-        render();
-        alert('CSV imported');
-        fileImport.value = '';
-      }
-    };
-    reader.readAsText(f);
-  });
-
-  function parseCSVLine(line) {
-    // naive CSV (handles quotes)
-    const res = [];
-    let cur = '';
-    let inQuotes = false;
-    for (let i=0;i<line.length;i++){
-      const ch = line[i];
-      if (ch === '"' ) {
-        if (inQuotes && line[i+1] === '"') { cur += '"'; i++; continue; }
-        inQuotes = !inQuotes; continue;
-      }
-      if (ch === ',' && !inQuotes) { res.push(cur); cur=''; continue; }
-      cur += ch;
+  function reorderByDrop(srcId, dstId) {
+    if (!srcId || !dstId || srcId === dstId) return;
+    if (els.sortSelect.value !== 'manual') {
+      els.sortSelect.value = 'manual';
+      toast('Switched to manual sort for reordering');
     }
-    res.push(cur);
-    return res.map(s => s.trim());
+    commit(() => {
+      const srcIndex = state.events.findIndex(x => x.id === srcId);
+      const dstIndex = state.events.findIndex(x => x.id === dstId);
+      if (srcIndex < 0 || dstIndex < 0) return;
+      const [item] = state.events.splice(srcIndex, 1);
+      state.events.splice(dstIndex, 0, item);
+      state.selectedId = item.id;
+    }, 'Timeline reordered');
   }
 
-  // Drag-to-scroll timeline (desktop & touch)
-  timelineEl.addEventListener('mousedown', (e) => {
-    dragState.isDown = true;
-    dragState.startX = e.pageX - timelineEl.offsetLeft;
-    dragState.scrollLeft = timelineEl.scrollLeft;
-  });
-  document.addEventListener('mouseup', () => { dragState.isDown = false; });
-  timelineEl.addEventListener('mousemove', (e) => {
-    if (!dragState.isDown) return;
-    e.preventDefault();
-    const x = e.pageX - timelineEl.offsetLeft;
-    const walk = (x - dragState.startX) * 1; // scroll speed
-    timelineEl.scrollLeft = dragState.scrollLeft - walk;
-  });
-  // Touch
-  let touchStartX = 0, touchStartScroll = 0;
-  timelineEl.addEventListener('touchstart', (e) => {
-    touchStartX = e.touches[0].pageX;
-    touchStartScroll = timelineEl.scrollLeft;
-  }, {passive:true});
-  timelineEl.addEventListener('touchmove', (e) => {
-    if (e.touches.length !== 1) return;
-    const x = e.touches[0].pageX;
-    const dx = x - touchStartX;
-    timelineEl.scrollLeft = touchStartScroll - dx;
-  }, {passive:true});
-
-  // Zoom & sort handlers
-  zoomRange.addEventListener('input', () => {
-    currentZoom = parseFloat(zoomRange.value);
-    render();
-  });
-  sortSelect.addEventListener('change', () => { render(); });
-
-  // Search & filters
-  searchInput.addEventListener('input', debounce(render, 180));
-  filterFrom.addEventListener('change', render);
-  filterTo.addEventListener('change', render);
-  clearFilters.addEventListener('click', () => {
-    filterFrom.value = ''; filterTo.value = ''; searchInput.value = ''; render();
-  });
-
-  // Modal actions
-  btnAdd.addEventListener('click', openAddModal);
-  modalCancel.addEventListener('click', closeModal);
-  modalSave.addEventListener('click', saveModal);
-
-  // Details actions
-  btnEditSelected.addEventListener('click', () => {
-    if (!selectedId) { alert('No event selected'); return; }
-    openEditModal(selectedId);
-  });
-  btnDeleteSelected.addEventListener('click', deleteSelected);
-  btnCenterSelected.addEventListener('click', () => {
-    if (!selectedId) return;
-    const el = timelineEl.querySelector(`.event[data-id="${selectedId}"]`);
-    if (el) centerEventInView(el);
-  });
-
-  btnExportJSON.addEventListener('click', exportJSON);
-  btnExportCSV.addEventListener('click', exportCSV);
-
-  // keyboard shortcuts
-  document.addEventListener('keydown', (e) => {
-    if (e.key === 'N' || e.key === 'n') {
-      // open new event modal unless the user is in a text field
-      if (document.activeElement && ['INPUT','TEXTAREA','SELECT'].includes(document.activeElement.tagName)) return;
-      openAddModal();
-    }
-    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
-      e.preventDefault();
-      undo();
-    }
-    if (e.key === 'Delete') {
-      // delete selected
-      if (selectedId) deleteSelected();
-    }
-  });
-
-  // center element into view
-  function centerEventInView(el) {
-    const rect = el.getBoundingClientRect();
-    const parentRect = timelineEl.getBoundingClientRect();
-    const offset = rect.left - parentRect.left - (parentRect.width/2 - rect.width/2);
-    animateScroll(timelineEl, timelineEl.scrollLeft + offset, 300);
+  function centerCard(card) {
+    const rect = card.getBoundingClientRect();
+    const parent = els.timelineView.getBoundingClientRect();
+    const target = els.timelineView.scrollLeft + rect.left - parent.left - (parent.width / 2 - rect.width / 2);
+    animateScroll(els.timelineView, target, 280);
   }
-
-  // Simple animated scroll (for center)
+  function centerSelected() {
+    const card = els.eventTrack.querySelector(`[data-id="${CSS.escape(state.selectedId || '')}"]`);
+    if (card) centerCard(card);
+  }
   function animateScroll(container, to, duration=250) {
     const start = container.scrollLeft;
     const change = to - start;
     const startTime = performance.now();
-    function step(now) {
-      const t = Math.min(1, (now - startTime)/duration);
-      const eased = t<0.5 ? 2*t*t : -1 + (4-2*t)*t;
+    const step = (now) => {
+      const t = Math.min(1, (now - startTime) / duration);
+      const eased = t < .5 ? 2*t*t : -1 + (4 - 2*t)*t;
       container.scrollLeft = start + change * eased;
       if (t < 1) requestAnimationFrame(step);
-    }
+    };
     requestAnimationFrame(step);
   }
 
-  // Utility debounce
-  function debounce(fn, wait=200) {
-    let t;
-    return (...args) => { clearTimeout(t); t = setTimeout(()=>fn(...args), wait); };
+  function setView(view) {
+    state.view = view;
+    const isTimeline = view === 'timeline';
+    const isList = view === 'list';
+    const isStory = view === 'story';
+    els.timelineView.classList.toggle('hidden', !isTimeline);
+    els.listView.classList.toggle('show', isList);
+    els.storyView.classList.toggle('show', isStory);
+    for (const [btn, active] of [[els.tabTimeline,isTimeline],[els.tabList,isList],[els.tabStory,isStory]]) {
+      btn.classList.toggle('active', active);
+      btn.setAttribute('aria-selected', active ? 'true' : 'false');
+    }
   }
 
-  // CSV helper done above
+  function exportJSON() {
+    downloadFile('timeline-research-export.json', JSON.stringify(state.events, null, 2), 'application/json');
+  }
 
-  // Public methods to expose minimal API for debugging and automation
-  window.TimelineTool = {
-    addEventManual: (obj) => {
-      const id = uid();
-      events.push({ id, name: obj.name || 'Event', date: obj.date || nowISODate(), icon: obj.icon||'', color: obj.color||'#3498db', desc: obj.desc||'', order: events.length });
-      saveState('api-add');
+  function exportCSV() {
+    const headers = ['id','title','year','month','day','endYear','precision','dateLabel','icon','color','category','location','tags','importance','confidence','source','desc','order','pinned'];
+    const rows = [headers, ...state.events.map(ev => headers.map(h => h === 'tags' ? ev.tags.join('; ') : ev[h] ?? ''))];
+    const csv = rows.map(row => row.map(csvCell).join(',')).join('\n');
+    downloadFile('timeline-research-export.csv', csv, 'text/csv');
+  }
+
+  function exportMarkdown() {
+    const arr = visibleEvents();
+    const md = ['# Historical Timeline', '', `Exported: ${new Date().toLocaleString()}`, '', ...arr.map(ev => {
+      const tags = ev.tags.length ? `\n**Tags:** ${ev.tags.map(t => `#${t}`).join(' ')}` : '';
+      const source = ev.source ? `\n**Source:** ${ev.source}` : '';
+      return `## ${formatDate(ev)} — ${ev.title}\n\n**Category:** ${ev.category}  \n**Location:** ${ev.location || '—'}  \n**Importance:** ${ev.importance}/5  \n**Confidence:** ${ev.confidence}%${tags}${source}\n\n${ev.desc || ''}\n`;
+    })].join('\n');
+    downloadFile('timeline.md', md, 'text/markdown');
+  }
+
+  function csvCell(value) {
+    return `"${String(value ?? '').replace(/"/g,'""')}"`;
+  }
+
+  function downloadFile(filename, content, type) {
+    const blob = new Blob([content], {type});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+    toast(`Exported ${filename}`);
+  }
+
+  function importFile(file) {
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const text = String(reader.result || '');
+      try {
+        const imported = parseImport(text, file.name);
+        if (!imported.length) return alert('No events found in that file.');
+        commit(() => {
+          const offset = state.events.length;
+          imported.map((ev,i) => normalizeEvent({...ev, id: ev.id || uid(), order: offset+i}, offset+i)).forEach(ev => state.events.push(ev));
+        }, `Imported ${imported.length} event${imported.length === 1 ? '' : 's'}`);
+        els.fileImport.value = '';
+      } catch (err) {
+        alert(`Import failed: ${err.message}`);
+      }
+    };
+    reader.readAsText(file);
+  }
+
+  function parseImport(text, name='') {
+    const trimmed = text.trim();
+    if (!trimmed) return [];
+    if (name.endsWith('.json') || trimmed.startsWith('[') || trimmed.startsWith('{')) {
+      const json = JSON.parse(trimmed);
+      if (Array.isArray(json)) return json;
+      if (Array.isArray(json.events)) return json.events;
+      throw new Error('JSON must be an array of events or an object with an events array.');
+    }
+    if (name.endsWith('.md') || /^#/.test(trimmed)) return parseMarkdown(trimmed);
+    return parseCSV(trimmed);
+  }
+
+  function parseCSV(text) {
+    const lines = text.split(/\r?\n/).filter(Boolean);
+    const headers = parseCSVLine(lines.shift()).map(h => h.trim());
+    return lines.map(line => {
+      const cells = parseCSVLine(line);
+      const obj = {};
+      headers.forEach((h,i) => obj[h] = cells[i] ?? '');
+      if (typeof obj.tags === 'string') obj.tags = obj.tags.split(/[;,]/).map(t=>t.trim()).filter(Boolean);
+      return obj;
+    });
+  }
+
+  function parseCSVLine(line) {
+    const out = [];
+    let cur = '', quoted = false;
+    for (let i=0; i<line.length; i++) {
+      const ch = line[i];
+      if (ch === '"') {
+        if (quoted && line[i+1] === '"') { cur += '"'; i++; }
+        else quoted = !quoted;
+      } else if (ch === ',' && !quoted) { out.push(cur); cur = ''; }
+      else cur += ch;
+    }
+    out.push(cur);
+    return out.map(s => s.trim());
+  }
+
+  function parseMarkdown(text) {
+    const sections = text.split(/\n(?=##\s+)/).filter(s => /^##\s+/.test(s));
+    return sections.map((sec, i) => {
+      const first = sec.split('\n')[0].replace(/^##\s+/, '').trim();
+      const parts = first.split('—').map(p => p.trim());
+      const date = parts.length > 1 ? parts[0] : '';
+      const title = parts.length > 1 ? parts.slice(1).join('—').trim() : first;
+      const p = parseLegacyDate(date);
+      const desc = sec.split('\n').slice(1).filter(line => !/^\*\*/.test(line.trim())).join('\n').trim();
+      return { title: title || `Markdown event ${i+1}`, year:p.year, month:p.month, day:p.day, precision:p.precision, dateLabel:date, desc };
+    });
+  }
+
+  function saveSnapshot() {
+    const snaps = getSnapshots();
+    snaps.unshift({ id: uid(), createdAt: new Date().toISOString(), count: state.events.length, events: state.events });
+    localStorage.setItem(SNAPSHOT_KEY, JSON.stringify(snaps.slice(0,12)));
+    renderSnapshots();
+    toast('Snapshot saved');
+  }
+
+  function getSnapshots() { return safeJSON(localStorage.getItem(SNAPSHOT_KEY), []) || []; }
+
+  function renderSnapshots() {
+    const snaps = getSnapshots();
+    els.snapshotList.innerHTML = snaps.map(s => `<button class="snapshot-btn" data-id="${escapeHTML(s.id)}"><span>${escapeHTML(new Date(s.createdAt).toLocaleString())}<br><span class="muted">${s.count} events</span></span><b>Load</b></button>`).join('') || '<div class="muted">No snapshots saved.</div>';
+    els.snapshotList.querySelectorAll('[data-id]').forEach(btn => btn.addEventListener('click', () => {
+      const snap = getSnapshots().find(s => s.id === btn.dataset.id);
+      if (!snap) return;
+      if (!confirm('Load this snapshot? Current data can be restored with undo.')) return;
+      commit(() => { state.events = snap.events.map(normalizeEvent); state.selectedId = null; }, 'Snapshot loaded');
+    }));
+  }
+
+  function clearSnapshots() {
+    if (!confirm('Clear all saved snapshots?')) return;
+    localStorage.removeItem(SNAPSHOT_KEY);
+    renderSnapshots();
+    toast('Snapshots cleared');
+  }
+
+  function applySettings() {
+    document.documentElement.dataset.theme = state.settings.theme;
+    document.documentElement.dataset.density = state.settings.density;
+    els.btnTheme.textContent = state.settings.theme === 'dark' ? '☀️ Theme' : '🌙 Theme';
+    els.btnDensity.textContent = state.settings.density === 'compact' ? 'Comfortable' : 'Compact';
+  }
+
+  function toggleTheme() {
+    state.settings.theme = state.settings.theme === 'dark' ? 'light' : 'dark';
+    applySettings(); persist();
+  }
+  function toggleDensity() {
+    state.settings.density = state.settings.density === 'compact' ? 'comfortable' : 'compact';
+    applySettings(); persist(); render();
+  }
+
+  function toast(message) {
+    const div = document.createElement('div');
+    div.className = 'toast';
+    div.textContent = message;
+    els.toastWrap.appendChild(div);
+    setTimeout(() => { div.style.opacity = '0'; div.style.transform = 'translateY(8px)'; }, 2200);
+    setTimeout(() => div.remove(), 2700);
+  }
+
+  function bind() {
+    els.btnAdd.addEventListener('click', openAddModal);
+    els.btnUndo.addEventListener('click', undo);
+    els.btnRedo.addEventListener('click', redo);
+    els.btnTheme.addEventListener('click', toggleTheme);
+    els.btnDensity.addEventListener('click', toggleDensity);
+    els.btnPrint.addEventListener('click', () => window.print());
+    els.btnExportJSON.addEventListener('click', exportJSON);
+    els.btnExportCSV.addEventListener('click', exportCSV);
+    els.btnExportMarkdown.addEventListener('click', exportMarkdown);
+    els.fileImport.addEventListener('change', e => importFile(e.target.files[0]));
+    els.btnSnapshot.addEventListener('click', saveSnapshot);
+    els.btnClearSnapshots.addEventListener('click', clearSnapshots);
+
+    const filterRender = debounce(render, 120);
+    [els.searchInput, els.filterFromYear, els.filterToYear, els.categoryFilter, els.tagFilter, els.minConfidence, els.minImportance, els.zoomRange, els.sortSelect].forEach(el => el.addEventListener('input', filterRender));
+    els.sortSelect.addEventListener('change', render);
+    els.clearFilters.addEventListener('click', () => {
+      els.searchInput.value = ''; els.filterFromYear.value = ''; els.filterToYear.value = ''; els.categoryFilter.value = ''; els.tagFilter.value = ''; els.minConfidence.value = 0; els.minImportance.value = 1; state.pinnedOnly = false; els.btnShowPinned.textContent = 'Pinned Only'; render();
+    });
+    els.btnShowPinned.addEventListener('click', () => {
+      state.pinnedOnly = !state.pinnedOnly;
+      els.btnShowPinned.textContent = state.pinnedOnly ? 'Show All' : 'Pinned Only';
       render();
-      return id;
-    },
-    getEvents: () => JSON.parse(JSON.stringify(events)),
-    reset: () => { if (confirm('Reset timeline to empty (cannot be undone)?')) { events = []; saveState('reset'); render(); } }
+    });
+
+    els.tabTimeline.addEventListener('click', () => setView('timeline'));
+    els.tabList.addEventListener('click', () => setView('list'));
+    els.tabStory.addEventListener('click', () => setView('story'));
+
+    els.btnEditSelected.addEventListener('click', () => state.selectedId ? openEditModal(state.selectedId) : toast('No event selected'));
+    els.btnPinSelected.addEventListener('click', () => togglePin());
+    els.btnCenterSelected.addEventListener('click', centerSelected);
+    els.btnDuplicateSelected.addEventListener('click', duplicateSelected);
+    els.btnDeleteSelected.addEventListener('click', () => deleteEvent());
+
+    els.modalCancel.addEventListener('click', closeModal);
+    els.modalSave.addEventListener('click', saveModal);
+    els.modalDelete.addEventListener('click', () => deleteEvent(state.editingId));
+    els.modalBackdrop.addEventListener('click', (e) => { if (e.target === els.modalBackdrop) closeModal(); });
+
+    document.addEventListener('keydown', (e) => {
+      const tag = document.activeElement?.tagName;
+      const typing = ['INPUT','TEXTAREA','SELECT'].includes(tag);
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') { e.preventDefault(); return e.shiftKey ? redo() : undo(); }
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'y') { e.preventDefault(); return redo(); }
+      if (!typing && e.key.toLowerCase() === 'n') openAddModal();
+      if (!typing && e.key === '/') { e.preventDefault(); els.searchInput.focus(); }
+      if (!typing && e.key === 'Delete') deleteEvent();
+      if (e.key === 'Escape') closeModal();
+    });
+
+    els.timelineView.addEventListener('pointerdown', (e) => {
+      if (e.target.closest('.event-card')) return;
+      state.dragScroll.active = true;
+      state.dragScroll.startX = e.clientX;
+      state.dragScroll.scrollLeft = els.timelineView.scrollLeft;
+      state.dragScroll.pointerId = e.pointerId;
+      els.timelineView.setPointerCapture(e.pointerId);
+    });
+    els.timelineView.addEventListener('pointermove', (e) => {
+      if (!state.dragScroll.active) return;
+      const dx = e.clientX - state.dragScroll.startX;
+      els.timelineView.scrollLeft = state.dragScroll.scrollLeft - dx;
+    });
+    els.timelineView.addEventListener('pointerup', endDragScroll);
+    els.timelineView.addEventListener('pointercancel', endDragScroll);
+
+    window.addEventListener('dragover', e => e.preventDefault());
+    window.addEventListener('drop', e => {
+      if (e.dataTransfer.files?.length) return;
+      const text = e.dataTransfer.getData('text/plain');
+      if (!text || e.target.closest('.event-card')) return;
+      try {
+        const imported = parseImport(text, 'drop.json');
+        if (imported.length) commit(() => imported.forEach((r,i) => state.events.push(normalizeEvent(r, state.events.length+i))), `Dropped ${imported.length} events`);
+      } catch {}
+    });
+  }
+
+  function endDragScroll(e) {
+    if (!state.dragScroll.active) return;
+    state.dragScroll.active = false;
+    try { els.timelineView.releasePointerCapture(state.dragScroll.pointerId); } catch {}
+  }
+
+  window.TimelineTool = {
+    addEvent: (obj) => { let id; commit(() => { const ev = normalizeEvent(obj, state.events.length); ev.id = uid(); state.events.push(ev); id = ev.id; state.selectedId = id; }, 'Event added by API'); return id; },
+    getEvents: () => JSON.parse(JSON.stringify(state.events)),
+    setEvents: (arr) => { if (!Array.isArray(arr)) throw new Error('setEvents expects an array'); commit(() => { state.events = arr.map(normalizeEvent); state.selectedId = null; }, 'Events replaced'); },
+    reset: () => { if (confirm('Reset timeline to sample data?')) commit(() => { state.events = sampleEvents(); state.selectedId = null; }, 'Timeline reset'); },
+    exportJSON: () => JSON.stringify(state.events, null, 2)
   };
 
-  // initial load and render
   load();
+  bind();
   render();
-
-  // Helper: escape text when required (we avoid innerHTML)
-  function safeTextNode(text) {
-    return document.createTextNode(String(text || ''));
-  }
-
-  // Integration: allow drop JSON content directly into the timeline area
-  window.addEventListener('dragover', (e) => { e.preventDefault(); });
-  window.addEventListener('drop', (e) => {
-    e.preventDefault();
-    // Try to parse JSON text
-    const data = e.dataTransfer.getData('text');
-    if (!data) return;
-    try {
-      const arr = JSON.parse(data);
-      if (Array.isArray(arr)) {
-        arr.forEach((r, i) => {
-          const id = uid();
-          events.push({ id, name: r.name||r.title||`Drop ${i}`, date: r.date? r.date.slice(0,10) : nowISODate(), icon: r.icon||'', color:r.color||'#3498db', desc:r.desc||'', order: events.length });
-        });
-        saveState('drop-import');
-        render();
-        alert('JSON dropped and imported');
-      }
-    } catch(_) {}
-  });
-
-  // Ensure UI accessibility focus outlines
-  document.addEventListener('focusin', (e) => {
-    if (e.target.classList.contains('event')) e.target.classList.add('keyboard-focus');
-  });
-
-  // Small helper to keep storage changes in sync without double-pushing undo stack
-  function saveState(action) {
-    // push previous snapshot to undo stack
-    try {
-      const snapshot = JSON.stringify(events);
-      undoStack.push(snapshot);
-      if (undoStack.length > 40) undoStack.shift();
-    } catch(e){}
-    persistNoUndo();
-  }
-
 })();
 </script>
 </body>
