@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+  <title>Ultra Locked Kiosk Page</title>
+
+  <style>
+    :root {
+      --bg: #05070d;
+      --panel: rgba(255, 255, 255, 0.08);
+      --border: rgba(255, 255, 255, 0.16);
+      --text: #f4f7ff;
+      --muted: #aab4cc;
+      --accent: #69f0ff;
+      --danger: #ff5c7a;
+    }
+
+    * {
+      box-sizing: border-box;
+      user-select: none;
+      -webkit-user-select: none;
+      -ms-user-select: none;
+      -webkit-touch-callout: none;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    html,
+    body {
+      margin: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      overscroll-behavior: none;
+      touch-action: none;
+      background:
+        radial-gradient(circle at top, #18213a, transparent 45%),
+        linear-gradient(135deg, #05070d, #080b14);
+      color: var(--text);
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    body.locked {
+      cursor: not-allowed;
+    }
+
+    img,
+    video,
+    canvas,
+    svg,
+    a,
+    button,
+    input,
+    textarea,
+    select,
+    iframe {
+      pointer-events: none;
+      user-select: none;
+      -webkit-user-drag: none;
+    }
+
+    ::selection {
+      background: transparent;
+    }
+
+    .page {
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      padding: 2rem;
+      text-align: center;
+    }
+
+    .card {
+      width: min(720px, 100%);
+      padding: 2rem;
+      border-radius: 28px;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      box-shadow: 0 30px 100px rgba(0, 0, 0, 0.45);
+      backdrop-filter: blur(18px);
+    }
+
+    h1 {
+      margin: 0 0 1rem;
+      font-size: clamp(2rem, 6vw, 4.5rem);
+      letter-spacing: -0.06em;
+    }
+
+    p {
+      color: var(--muted);
+      font-size: 1.05rem;
+      line-height: 1.7;
+    }
+
+    .status {
+      margin-top: 1.5rem;
+      padding: 1rem;
+      border-radius: 18px;
+      background: rgba(105, 240, 255, 0.08);
+      border: 1px solid rgba(105, 240, 255, 0.25);
+      color: var(--accent);
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 0.9rem;
+    }
+
+    .unlock-zone {
+      position: fixed;
+      right: 1rem;
+      bottom: 1rem;
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      background: var(--danger);
+      opacity: 0.35;
+      pointer-events: auto;
+      cursor: pointer;
+      z-index: 100000;
+    }
+
+    .unlock-zone:hover {
+      opacity: 1;
+    }
+
+    .shield {
+      position: fixed;
+      inset: 0;
+      z-index: 99999;
+      background: transparent;
+    }
+
+    body.unlocked {
+      overflow: auto;
+      touch-action: auto;
+      cursor: auto;
+    }
+
+    body.unlocked * {
+      pointer-events: auto;
+      user-select: auto;
+      -webkit-user-select: auto;
+    }
+
+    body.unlocked .shield,
+    body.unlocked .unlock-zone {
+      display: none;
+    }
+  </style>
+</head>
+
+<body class="locked">
+  <main class="page">
+    <section class="card">
+      <h1>Ultra Locked Page</h1>
+      <p>
+        This page blocks page-level right-click, scrolling, keyboard input,
+        pointer events, touch gestures, text selection, copy/paste, drag/drop,
+        form interaction, focus changes, and common browser shortcut attempts.
+      </p>
+
+      <div class="status" id="status">
+        LOCKED MODE ACTIVE — hold Escape for 2 seconds or click the red dot 5 times to unlock.
+      </div>
+    </section>
+  </main>
+
+  <div class="shield" aria-hidden="true"></div>
+  <div class="unlock-zone" id="unlockZone" title="Emergency unlock"></div>
+
+  <script>
+    (() => {
+      let locked = true;
+      let escapeTimer = null;
+      let unlockClicks = 0;
+
+      const status = document.getElementById("status");
+      const unlockZone = document.getElementById("unlockZone");
+
+      const blockedEvents = [
+        "contextmenu",
+        "wheel",
+        "scroll",
+        "selectstart",
+        "selectionchange",
+        "copy",
+        "cut",
+        "paste",
+        "drag",
+        "dragstart",
+        "dragover",
+        "drop",
+        "mousedown",
+        "mouseup",
+        "mousemove",
+        "mouseenter",
+        "mouseleave",
+        "mouseover",
+        "mouseout",
+        "click",
+        "dblclick",
+        "auxclick",
+        "pointerdown",
+        "pointerup",
+        "pointermove",
+        "pointerenter",
+        "pointerleave",
+        "touchstart",
+        "touchmove",
+        "touchend",
+        "touchcancel",
+        "input",
+        "change",
+        "submit",
+        "focus",
+        "focusin",
+        "beforeinput"
+      ];
+
+      function blockEvent(event) {
+        if (!locked) return;
+
+        const target = event.target;
+
+        if (target === unlockZone) {
+          return;
+        }
+
+        event.preventDefault();
+        event.stopPropagation();
+        event.stopImmediatePropagation();
+
+        return false;
+      }
+
+      blockedEvents.forEach(eventName => {
+        document.addEventListener(eventName, blockEvent, {
+          capture: true,
+          passive: false
+        });
+
+        window.addEventListener(eventName, blockEvent, {
+          capture: true,
+          passive: false
+        });
+      });
+
+      document.addEventListener("keydown", event => {
+        if (!locked) return;
+
+        const key = event.key.toLowerCase();
+
+        const allowedEmergencyKey = key === "escape";
+
+        if (!allowedEmergencyKey) {
+          event.preventDefault();
+          event.stopPropagation();
+          event.stopImmediatePropagation();
+          return false;
+        }
+
+        if (key === "escape" && !escapeTimer) {
+          status.textContent = "Emergency unlock: keep holding Escape...";
+          escapeTimer = setTimeout(unlockPage, 2000);
+        }
+      }, {
+        capture: true,
+        passive: false
+      });
+
+      document.addEventListener("keyup", event => {
+        if (event.key.toLowerCase() === "escape") {
+          clearTimeout(escapeTimer);
+          escapeTimer = null;
+
+          if (locked) {
+            status.textContent = "LOCKED MODE ACTIVE — hold Escape for 2 seconds or click the red dot 5 times to unlock.";
+          }
+        }
+      }, {
+        capture: true,
+        passive: false
+      });
+
+      window.addEventListener("blur", () => {
+        if (!locked) return;
+        status.textContent = "LOCKED MODE ACTIVE — focus change blocked inside page.";
+      });
+
+      window.addEventListener("resize", () => {
+        if (!locked) return;
+        window.scrollTo(0, 0);
+      });
+
+      unlockZone.addEventListener("click", event => {
+        event.preventDefault();
+        event.stopPropagation();
+
+        unlockClicks++;
+
+        status.textContent = `Emergency unlock clicks: ${unlockClicks}/5`;
+
+        if (unlockClicks >= 5) {
+          unlockPage();
+        }
+      });
+
+      function disableFocusableElements() {
+        const selectors = "a, button, input, textarea, select, iframe, audio, video, [tabindex]";
+        document.querySelectorAll(selectors).forEach(element => {
+          element.setAttribute("tabindex", "-1");
+          element.setAttribute("aria-disabled", "true");
+
+          if ("disabled" in element) {
+            element.disabled = true;
+          }
+        });
+      }
+
+      function clearSelectionLoop() {
+        if (!locked) return;
+
+        const selection = window.getSelection();
+
+        if (selection) {
+          selection.removeAllRanges();
+        }
+
+        window.scrollTo(0, 0);
+        requestAnimationFrame(clearSelectionLoop);
+      }
+
+      function requestFullscreenLock() {
+        document.documentElement.requestFullscreen?.().catch(() => {
+          status.textContent = "LOCKED MODE ACTIVE — fullscreen requires user permission.";
+        });
+      }
+
+      function unlockPage() {
+        locked = false;
+        clearTimeout(escapeTimer);
+
+        document.body.classList.remove("locked");
+        document.body.classList.add("unlocked");
+
+        status.textContent = "UNLOCKED — normal interaction restored.";
+
+        document.exitFullscreen?.().catch(() => {});
+      }
+
+      disableFocusableElements();
+      clearSelectionLoop();
+
+      document.addEventListener("click", requestFullscreenLock, {
+        once: true,
+        capture: true
+      });
+
+      window.scrollTo(0, 0);
+    })();
+  </script>
+</body>
+</html>
