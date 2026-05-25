@@ -1,0 +1,1481 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Quantum Bloom Geometry Lab — Advanced Three.js</title>
+  <meta name="description" content="An advanced single-file Three.js WebGL scene with bloom, orbit controls, procedural particles, live controls, diagnostics, presets, screenshot export, and robust error handling." />
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://unpkg.com/three@0.184.0/build/three.module.js",
+      "three/addons/": "https://unpkg.com/three@0.184.0/examples/jsm/"
+    }
+  }
+  </script>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #050816;
+      --panel: rgba(9, 15, 34, 0.78);
+      --panel-strong: rgba(10, 16, 38, 0.94);
+      --line: rgba(255, 255, 255, 0.14);
+      --text: #f8fbff;
+      --muted: #9fb0c8;
+      --accent: #79d8ff;
+      --accent-2: #ffb35c;
+      --danger: #ff6680;
+      --ok: #78ffaa;
+      --shadow: 0 24px 90px rgba(0, 0, 0, 0.45);
+      --radius: 22px;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    * { box-sizing: border-box; }
+
+    html,
+    body {
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      overflow: hidden;
+      background:
+        radial-gradient(circle at 20% 10%, rgba(121, 216, 255, 0.16), transparent 30%),
+        radial-gradient(circle at 85% 25%, rgba(255, 179, 92, 0.16), transparent 28%),
+        linear-gradient(135deg, #02030c, var(--bg));
+      color: var(--text);
+    }
+
+    canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+      outline: none;
+    }
+
+    button,
+    input,
+    select {
+      font: inherit;
+    }
+
+    button {
+      border: 1px solid var(--line);
+      background: rgba(255, 255, 255, 0.08);
+      color: var(--text);
+      border-radius: 14px;
+      padding: 0.68rem 0.82rem;
+      cursor: pointer;
+      transition: transform 160ms ease, background 160ms ease, border-color 160ms ease;
+      touch-action: manipulation;
+    }
+
+    button:hover,
+    button:focus-visible {
+      background: rgba(121, 216, 255, 0.18);
+      border-color: rgba(121, 216, 255, 0.46);
+      transform: translateY(-1px);
+      outline: none;
+    }
+
+    button.primary {
+      background: linear-gradient(135deg, rgba(121, 216, 255, 0.32), rgba(255, 179, 92, 0.22));
+      border-color: rgba(121, 216, 255, 0.56);
+    }
+
+    button.danger {
+      border-color: rgba(255, 102, 128, 0.45);
+    }
+
+    select,
+    input[type="color"] {
+      width: 100%;
+      min-height: 2.5rem;
+      color: var(--text);
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 0.55rem 0.7rem;
+      outline: none;
+    }
+
+    input[type="range"] {
+      width: 100%;
+      accent-color: var(--accent);
+    }
+
+    .stage {
+      position: fixed;
+      inset: 0;
+    }
+
+    .vignette {
+      pointer-events: none;
+      position: fixed;
+      inset: 0;
+      background:
+        radial-gradient(circle at center, transparent 35%, rgba(0, 0, 0, 0.43) 100%),
+        linear-gradient(to bottom, rgba(255,255,255,0.03), rgba(0,0,0,0.12));
+      mix-blend-mode: soft-light;
+    }
+
+    .topbar {
+      position: fixed;
+      top: 18px;
+      left: 18px;
+      right: 18px;
+      z-index: 10;
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 1rem;
+      pointer-events: none;
+    }
+
+    .brand,
+    .status-card,
+    .panel {
+      pointer-events: auto;
+      backdrop-filter: blur(18px) saturate(150%);
+      background: var(--panel);
+      border: 1px solid var(--line);
+      box-shadow: var(--shadow);
+    }
+
+    .brand {
+      border-radius: var(--radius);
+      padding: 1rem 1.1rem;
+      max-width: min(460px, calc(100vw - 36px));
+    }
+
+    .brand h1 {
+      margin: 0;
+      font-size: clamp(1.12rem, 1.7vw, 1.75rem);
+      letter-spacing: -0.04em;
+      line-height: 1.05;
+    }
+
+    .brand p {
+      margin: 0.42rem 0 0;
+      color: var(--muted);
+      font-size: 0.9rem;
+      line-height: 1.35;
+    }
+
+    .status-card {
+      display: grid;
+      grid-template-columns: repeat(4, auto);
+      gap: 0.55rem;
+      align-items: center;
+      border-radius: 18px;
+      padding: 0.7rem 0.82rem;
+      color: var(--muted);
+      font-size: 0.82rem;
+    }
+
+    .status-card strong {
+      color: var(--text);
+      font-variant-numeric: tabular-nums;
+    }
+
+    .panel {
+      position: fixed;
+      z-index: 11;
+      right: 18px;
+      bottom: 18px;
+      width: min(420px, calc(100vw - 36px));
+      max-height: min(76vh, 720px);
+      overflow: auto;
+      border-radius: var(--radius);
+      padding: 1rem;
+      scrollbar-width: thin;
+    }
+
+    .panel h2 {
+      margin: 0 0 0.75rem;
+      font-size: 1rem;
+      letter-spacing: -0.02em;
+    }
+
+    .grid {
+      display: grid;
+      gap: 0.75rem;
+    }
+
+    .grid.two {
+      grid-template-columns: 1fr 1fr;
+    }
+
+    .control {
+      display: grid;
+      gap: 0.36rem;
+    }
+
+    .control label,
+    .toggle {
+      color: var(--muted);
+      font-size: 0.78rem;
+      letter-spacing: 0.02em;
+      text-transform: uppercase;
+    }
+
+    .control .readout {
+      color: var(--text);
+      font-variant-numeric: tabular-nums;
+      text-transform: none;
+      letter-spacing: 0;
+      float: right;
+    }
+
+    .button-row {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 0.55rem;
+    }
+
+    .button-row.three {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
+    .toggles {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0.5rem 0.7rem;
+      padding: 0.7rem;
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      background: rgba(255, 255, 255, 0.045);
+    }
+
+    .toggle {
+      display: flex;
+      align-items: center;
+      gap: 0.48rem;
+      cursor: pointer;
+      user-select: none;
+    }
+
+    .toggle input {
+      width: 1rem;
+      height: 1rem;
+      accent-color: var(--accent);
+    }
+
+    .section {
+      border-top: 1px solid var(--line);
+      padding-top: 0.8rem;
+      margin-top: 0.8rem;
+    }
+
+    .debug {
+      min-height: 4.8rem;
+      max-height: 8rem;
+      overflow: auto;
+      border-radius: 14px;
+      background: rgba(0,0,0,0.26);
+      border: 1px solid var(--line);
+      padding: 0.65rem;
+      color: #bdd1ea;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 0.72rem;
+      line-height: 1.4;
+      white-space: pre-wrap;
+    }
+
+    .hint {
+      color: var(--muted);
+      font-size: 0.76rem;
+      line-height: 1.35;
+    }
+
+    .loading,
+    .fatal {
+      position: fixed;
+      inset: 0;
+      z-index: 50;
+      display: grid;
+      place-items: center;
+      padding: 2rem;
+      background: rgba(2, 4, 12, 0.82);
+      backdrop-filter: blur(16px);
+    }
+
+    .loading-card,
+    .fatal-card {
+      width: min(560px, 100%);
+      border-radius: 28px;
+      background: var(--panel-strong);
+      border: 1px solid var(--line);
+      box-shadow: var(--shadow);
+      padding: 1.4rem;
+    }
+
+    .loading-card h2,
+    .fatal-card h2 {
+      margin: 0;
+      font-size: 1.28rem;
+      letter-spacing: -0.03em;
+    }
+
+    .loading-card p,
+    .fatal-card p {
+      margin: 0.6rem 0 0;
+      color: var(--muted);
+      line-height: 1.5;
+    }
+
+    .loader {
+      width: 100%;
+      height: 10px;
+      overflow: hidden;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.08);
+      margin-top: 1rem;
+    }
+
+    .loader span {
+      display: block;
+      width: 40%;
+      height: 100%;
+      border-radius: inherit;
+      background: linear-gradient(90deg, var(--accent), var(--accent-2));
+      animation: load 1.2s infinite ease-in-out;
+    }
+
+    @keyframes load {
+      0% { transform: translateX(-100%); }
+      100% { transform: translateX(260%); }
+    }
+
+    .hidden { display: none; }
+
+    @media (max-width: 760px) {
+      .topbar {
+        flex-direction: column;
+      }
+
+      .status-card {
+        grid-template-columns: repeat(2, auto);
+        align-self: flex-start;
+      }
+
+      .panel {
+        left: 12px;
+        right: 12px;
+        bottom: 12px;
+        width: auto;
+        max-height: 52vh;
+        padding: 0.85rem;
+      }
+
+      .brand {
+        padding: 0.85rem;
+      }
+
+      .button-row.three {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <noscript>This advanced Three.js demo needs JavaScript enabled.</noscript>
+
+  <main class="stage" id="stage" aria-label="Interactive Three.js geometry scene"></main>
+  <div class="vignette" aria-hidden="true"></div>
+
+  <header class="topbar">
+    <section class="brand" aria-label="Project title">
+      <h1>Quantum Bloom Geometry Lab</h1>
+      <p>Random geometry, bloom, procedural particles, live mutation controls, diagnostics, screenshot export, and graceful fallbacks in one HTML file.</p>
+    </section>
+    <aside class="status-card" aria-label="Render status">
+      <span>FPS <strong id="fps">--</strong></span>
+      <span>Draw <strong id="draws">--</strong></span>
+      <span>Tris <strong id="tris">--</strong></span>
+      <span>Mode <strong id="mode">WebGL</strong></span>
+    </aside>
+  </header>
+
+  <aside class="panel" aria-label="Scene controls">
+    <h2>Control console</h2>
+
+    <div class="grid">
+      <div class="grid two">
+        <div class="control">
+          <label for="shapeSelect">Geometry</label>
+          <select id="shapeSelect">
+            <option value="random">Random</option>
+            <option value="Box">Box</option>
+            <option value="Sphere">Sphere</option>
+            <option value="Cone">Cone</option>
+            <option value="Cylinder">Cylinder</option>
+            <option value="Torus">Torus</option>
+            <option value="TorusKnot">Torus Knot</option>
+            <option value="Dodecahedron">Dodecahedron</option>
+            <option value="Icosahedron">Icosahedron</option>
+            <option value="Octahedron">Octahedron</option>
+            <option value="Capsule">Capsule</option>
+          </select>
+        </div>
+
+        <div class="control">
+          <label for="presetSelect">Preset</label>
+          <select id="presetSelect">
+            <option value="aurora">Aurora Metal</option>
+            <option value="solar">Solar Core</option>
+            <option value="obsidian">Obsidian Neon</option>
+            <option value="ice">Ice Crystal</option>
+            <option value="matrix">Signal Matrix</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="control">
+        <label for="speedRange">Rotation speed <span class="readout" id="speedValue">0.70</span></label>
+        <input id="speedRange" type="range" min="0" max="3" step="0.01" value="0.70" />
+      </div>
+
+      <div class="grid two">
+        <div class="control">
+          <label for="metalRange">Metalness <span class="readout" id="metalValue">0.78</span></label>
+          <input id="metalRange" type="range" min="0" max="1" step="0.01" value="0.78" />
+        </div>
+        <div class="control">
+          <label for="roughRange">Roughness <span class="readout" id="roughValue">0.22</span></label>
+          <input id="roughRange" type="range" min="0" max="1" step="0.01" value="0.22" />
+        </div>
+      </div>
+
+      <div class="grid two">
+        <div class="control">
+          <label for="bloomRange">Bloom <span class="readout" id="bloomValue">1.25</span></label>
+          <input id="bloomRange" type="range" min="0" max="3.5" step="0.01" value="1.25" />
+        </div>
+        <div class="control">
+          <label for="exposureRange">Exposure <span class="readout" id="exposureValue">1.00</span></label>
+          <input id="exposureRange" type="range" min="0.3" max="2.2" step="0.01" value="1.00" />
+        </div>
+      </div>
+
+      <div class="grid two">
+        <div class="control">
+          <label for="cloneRange">Echo clones <span class="readout" id="cloneValue">7</span></label>
+          <input id="cloneRange" type="range" min="0" max="18" step="1" value="7" />
+        </div>
+        <div class="control">
+          <label for="pixelRange">Pixel cap <span class="readout" id="pixelValue">1.75</span></label>
+          <input id="pixelRange" type="range" min="0.75" max="3" step="0.05" value="1.75" />
+        </div>
+      </div>
+
+      <div class="grid two">
+        <div class="control">
+          <label for="colorInput">Primary colour</label>
+          <input id="colorInput" type="color" value="#79d8ff" />
+        </div>
+        <div class="control">
+          <label for="particleRange">Particles <span class="readout" id="particleValue">1200</span></label>
+          <input id="particleRange" type="range" min="0" max="2500" step="50" value="1200" />
+        </div>
+      </div>
+
+      <div class="toggles">
+        <label class="toggle"><input id="autoEvolveToggle" type="checkbox" /> Auto evolve</label>
+        <label class="toggle"><input id="wireToggle" type="checkbox" /> Wireframe</label>
+        <label class="toggle"><input id="gridToggle" type="checkbox" checked /> Grid</label>
+        <label class="toggle"><input id="particlesToggle" type="checkbox" checked /> Particles</label>
+      </div>
+
+      <div class="button-row three">
+        <button class="primary" id="randomButton">Randomise</button>
+        <button id="pulseButton">Energy pulse</button>
+        <button id="shotButton">Screenshot</button>
+      </div>
+
+      <div class="button-row">
+        <button id="pauseButton">Pause</button>
+        <button class="danger" id="resetButton">Reset</button>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="debug" id="debugLog" aria-live="polite"></div>
+      <p class="hint">Shortcuts: <strong>Space</strong> pause, <strong>R</strong> randomise, <strong>E</strong> auto evolve, <strong>S</strong> screenshot. Drag to orbit, scroll to zoom.</p>
+    </div>
+  </aside>
+
+  <div class="loading" id="loading">
+    <div class="loading-card">
+      <h2>Loading GPU scene…</h2>
+      <p>Fetching Three.js modules, building bloom pipeline, and preparing procedural particles.</p>
+      <div class="loader"><span></span></div>
+    </div>
+  </div>
+
+  <div class="fatal hidden" id="fatal">
+    <div class="fatal-card">
+      <h2>Could not start the 3D scene</h2>
+      <p id="fatalText">Unknown error.</p>
+      <p class="hint">Check your connection, browser WebGL support, and console logs.</p>
+    </div>
+  </div>
+
+  <script type="module" id="main-script">
+    const VERSION = "2.0.0-advanced";
+    const STORAGE_KEY = "quantum-bloom-geometry-lab-settings-v2";
+    const GEOMETRY_TYPES = [
+      "Box",
+      "Sphere",
+      "Cone",
+      "Cylinder",
+      "Torus",
+      "TorusKnot",
+      "Dodecahedron",
+      "Icosahedron",
+      "Octahedron",
+      "Capsule"
+    ];
+
+    const presets = {
+      aurora: {
+        color: "#79d8ff",
+        backgroundA: "#07091f",
+        backgroundB: "#1a1134",
+        accent: "#79d8ff",
+        accent2: "#ffb35c",
+        metalness: 0.78,
+        roughness: 0.22,
+        bloom: 1.25,
+        exposure: 1
+      },
+      solar: {
+        color: "#ff9f43",
+        backgroundA: "#130705",
+        backgroundB: "#321504",
+        accent: "#ffb35c",
+        accent2: "#fff07a",
+        metalness: 0.62,
+        roughness: 0.18,
+        bloom: 1.8,
+        exposure: 1.12
+      },
+      obsidian: {
+        color: "#b983ff",
+        backgroundA: "#020204",
+        backgroundB: "#0c0614",
+        accent: "#b983ff",
+        accent2: "#69f0ff",
+        metalness: 0.95,
+        roughness: 0.16,
+        bloom: 1.55,
+        exposure: 0.9
+      },
+      ice: {
+        color: "#bff4ff",
+        backgroundA: "#03101a",
+        backgroundB: "#0b2a3d",
+        accent: "#bff4ff",
+        accent2: "#76ffd8",
+        metalness: 0.5,
+        roughness: 0.06,
+        bloom: 1.15,
+        exposure: 1.08
+      },
+      matrix: {
+        color: "#7dff9a",
+        backgroundA: "#010807",
+        backgroundB: "#071d14",
+        accent: "#7dff9a",
+        accent2: "#79d8ff",
+        metalness: 0.84,
+        roughness: 0.28,
+        bloom: 1.35,
+        exposure: 0.95
+      }
+    };
+
+    const state = {
+      shape: "random",
+      preset: "aurora",
+      speed: 0.7,
+      metalness: 0.78,
+      roughness: 0.22,
+      bloom: 1.25,
+      exposure: 1,
+      cloneCount: 7,
+      pixelRatio: 1.75,
+      color: "#79d8ff",
+      particles: 1200,
+      autoEvolve: false,
+      wireframe: false,
+      showGrid: true,
+      showParticles: true,
+      paused: false,
+      pulse: 0,
+      currentShape: "Sphere"
+    };
+
+    const el = {
+      stage: document.getElementById("stage"),
+      loading: document.getElementById("loading"),
+      fatal: document.getElementById("fatal"),
+      fatalText: document.getElementById("fatalText"),
+      fps: document.getElementById("fps"),
+      draws: document.getElementById("draws"),
+      tris: document.getElementById("tris"),
+      mode: document.getElementById("mode"),
+      debugLog: document.getElementById("debugLog"),
+      shapeSelect: document.getElementById("shapeSelect"),
+      presetSelect: document.getElementById("presetSelect"),
+      speedRange: document.getElementById("speedRange"),
+      speedValue: document.getElementById("speedValue"),
+      metalRange: document.getElementById("metalRange"),
+      metalValue: document.getElementById("metalValue"),
+      roughRange: document.getElementById("roughRange"),
+      roughValue: document.getElementById("roughValue"),
+      bloomRange: document.getElementById("bloomRange"),
+      bloomValue: document.getElementById("bloomValue"),
+      exposureRange: document.getElementById("exposureRange"),
+      exposureValue: document.getElementById("exposureValue"),
+      cloneRange: document.getElementById("cloneRange"),
+      cloneValue: document.getElementById("cloneValue"),
+      pixelRange: document.getElementById("pixelRange"),
+      pixelValue: document.getElementById("pixelValue"),
+      colorInput: document.getElementById("colorInput"),
+      particleRange: document.getElementById("particleRange"),
+      particleValue: document.getElementById("particleValue"),
+      autoEvolveToggle: document.getElementById("autoEvolveToggle"),
+      wireToggle: document.getElementById("wireToggle"),
+      gridToggle: document.getElementById("gridToggle"),
+      particlesToggle: document.getElementById("particlesToggle"),
+      randomButton: document.getElementById("randomButton"),
+      pulseButton: document.getElementById("pulseButton"),
+      shotButton: document.getElementById("shotButton"),
+      pauseButton: document.getElementById("pauseButton"),
+      resetButton: document.getElementById("resetButton")
+    };
+
+    let THREE;
+    let OrbitControls;
+    let EffectComposer;
+    let RenderPass;
+    let UnrealBloomPass;
+    let OutputPass;
+    let RoomEnvironment;
+
+    let scene;
+    let camera;
+    let renderer;
+    let composer;
+    let controls;
+    let bloomPass;
+    let shapeGroup;
+    let mainMesh;
+    let edgeMesh;
+    let particleSystem;
+    let grid;
+    let pointLightA;
+    let pointLightB;
+    let environmentTexture;
+    let animationHandle = 0;
+    let lastEvolve = 0;
+    let lastHudUpdate = 0;
+    let fpsAccumulator = 0;
+    let fpsFrames = 0;
+    let reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+    function log(message, level = "info") {
+      const time = new Date().toLocaleTimeString();
+      const prefix = level === "error" ? "✖" : level === "warn" ? "!" : "•";
+      const line = `[${time}] ${prefix} ${message}`;
+      console[level === "error" ? "error" : level === "warn" ? "warn" : "log"](line);
+      el.debugLog.textContent = `${line}\n${el.debugLog.textContent}`.slice(0, 1800);
+    }
+
+    function showFatal(error) {
+      const message = error && error.message ? error.message : String(error);
+      el.loading.classList.add("hidden");
+      el.fatal.classList.remove("hidden");
+      el.fatalText.textContent = message;
+      log(message, "error");
+    }
+
+    async function loadModules() {
+      try {
+        THREE = await import("three");
+        const optionalModules = await Promise.allSettled([
+          import("three/addons/controls/OrbitControls.js"),
+          import("three/addons/postprocessing/EffectComposer.js"),
+          import("three/addons/postprocessing/RenderPass.js"),
+          import("three/addons/postprocessing/UnrealBloomPass.js"),
+          import("three/addons/postprocessing/OutputPass.js"),
+          import("three/addons/environments/RoomEnvironment.js")
+        ]);
+
+        if (optionalModules[0].status === "fulfilled") OrbitControls = optionalModules[0].value.OrbitControls;
+        if (optionalModules[1].status === "fulfilled") EffectComposer = optionalModules[1].value.EffectComposer;
+        if (optionalModules[2].status === "fulfilled") RenderPass = optionalModules[2].value.RenderPass;
+        if (optionalModules[3].status === "fulfilled") UnrealBloomPass = optionalModules[3].value.UnrealBloomPass;
+        if (optionalModules[4].status === "fulfilled") OutputPass = optionalModules[4].value.OutputPass;
+        if (optionalModules[5].status === "fulfilled") RoomEnvironment = optionalModules[5].value.RoomEnvironment;
+
+        const failed = optionalModules.filter((result) => result.status === "rejected").length;
+        if (failed) {
+          log(`${failed} optional module(s) failed. Running with safe fallbacks.`, "warn");
+        }
+
+        return true;
+      } catch (error) {
+        showFatal(error);
+        return false;
+      }
+    }
+
+    function clampNumber(value, min, max, fallback) {
+      const number = Number(value);
+      if (!Number.isFinite(number)) return fallback;
+      return Math.min(max, Math.max(min, number));
+    }
+
+    function loadSettings() {
+      try {
+        const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}");
+        Object.assign(state, {
+          shape: typeof saved.shape === "string" ? saved.shape : state.shape,
+          preset: presets[saved.preset] ? saved.preset : state.preset,
+          speed: clampNumber(saved.speed, 0, 3, state.speed),
+          metalness: clampNumber(saved.metalness, 0, 1, state.metalness),
+          roughness: clampNumber(saved.roughness, 0, 1, state.roughness),
+          bloom: clampNumber(saved.bloom, 0, 3.5, state.bloom),
+          exposure: clampNumber(saved.exposure, 0.3, 2.2, state.exposure),
+          cloneCount: clampNumber(saved.cloneCount, 0, 18, state.cloneCount),
+          pixelRatio: clampNumber(saved.pixelRatio, 0.75, 3, state.pixelRatio),
+          color: /^#[0-9a-f]{6}$/i.test(saved.color || "") ? saved.color : state.color,
+          particles: clampNumber(saved.particles, 0, 2500, state.particles),
+          autoEvolve: Boolean(saved.autoEvolve),
+          wireframe: Boolean(saved.wireframe),
+          showGrid: saved.showGrid === undefined ? state.showGrid : Boolean(saved.showGrid),
+          showParticles: saved.showParticles === undefined ? state.showParticles : Boolean(saved.showParticles)
+        });
+        log("Settings loaded.");
+      } catch (error) {
+        log("Could not load saved settings; using defaults.", "warn");
+      }
+    }
+
+    function saveSettings() {
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+      } catch (error) {
+        log("Could not save settings.", "warn");
+      }
+    }
+
+    function applyPreset(name, pushValues = true) {
+      const preset = presets[name] || presets.aurora;
+      document.documentElement.style.setProperty("--accent", preset.accent);
+      document.documentElement.style.setProperty("--accent-2", preset.accent2);
+      document.documentElement.style.setProperty("--bg", preset.backgroundA);
+      document.body.style.background = `
+        radial-gradient(circle at 20% 10%, ${hexToRgba(preset.accent, 0.16)}, transparent 30%),
+        radial-gradient(circle at 85% 25%, ${hexToRgba(preset.accent2, 0.16)}, transparent 28%),
+        linear-gradient(135deg, ${preset.backgroundA}, ${preset.backgroundB})
+      `;
+
+      if (pushValues) {
+        state.preset = name;
+        state.color = preset.color;
+        state.metalness = preset.metalness;
+        state.roughness = preset.roughness;
+        state.bloom = preset.bloom;
+        state.exposure = preset.exposure;
+      }
+
+      updateMaterial();
+      updateBloom();
+      syncControls();
+      saveSettings();
+    }
+
+    function hexToRgba(hex, alpha) {
+      const value = hex.replace("#", "");
+      const r = parseInt(value.slice(0, 2), 16);
+      const g = parseInt(value.slice(2, 4), 16);
+      const b = parseInt(value.slice(4, 6), 16);
+      return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+    }
+
+    function syncControls() {
+      el.shapeSelect.value = state.shape;
+      el.presetSelect.value = state.preset;
+      el.speedRange.value = state.speed;
+      el.speedValue.textContent = state.speed.toFixed(2);
+      el.metalRange.value = state.metalness;
+      el.metalValue.textContent = state.metalness.toFixed(2);
+      el.roughRange.value = state.roughness;
+      el.roughValue.textContent = state.roughness.toFixed(2);
+      el.bloomRange.value = state.bloom;
+      el.bloomValue.textContent = state.bloom.toFixed(2);
+      el.exposureRange.value = state.exposure;
+      el.exposureValue.textContent = state.exposure.toFixed(2);
+      el.cloneRange.value = state.cloneCount;
+      el.cloneValue.textContent = String(state.cloneCount);
+      el.pixelRange.value = state.pixelRatio;
+      el.pixelValue.textContent = state.pixelRatio.toFixed(2);
+      el.colorInput.value = state.color;
+      el.particleRange.value = state.particles;
+      el.particleValue.textContent = String(state.particles);
+      el.autoEvolveToggle.checked = state.autoEvolve;
+      el.wireToggle.checked = state.wireframe;
+      el.gridToggle.checked = state.showGrid;
+      el.particlesToggle.checked = state.showParticles;
+      el.pauseButton.textContent = state.paused ? "Resume" : "Pause";
+      el.mode.textContent = renderer ? (renderer.capabilities.isWebGL2 ? "WebGL2" : "WebGL1") : "WebGL";
+    }
+
+    function initScene() {
+      scene = new THREE.Scene();
+      scene.background = new THREE.Color(0x050816);
+      scene.fog = new THREE.FogExp2(0x050816, 0.032);
+
+      camera = new THREE.PerspectiveCamera(62, window.innerWidth / window.innerHeight, 0.1, 140);
+      camera.position.set(0, 1.45, 6.2);
+
+      renderer = new THREE.WebGLRenderer({
+        antialias: true,
+        alpha: false,
+        powerPreference: "high-performance",
+        preserveDrawingBuffer: true
+      });
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, state.pixelRatio));
+      renderer.outputColorSpace = THREE.SRGBColorSpace;
+      renderer.toneMapping = THREE.ACESFilmicToneMapping;
+      renderer.toneMappingExposure = state.exposure;
+      renderer.shadowMap.enabled = true;
+      renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+      el.stage.appendChild(renderer.domElement);
+
+      if (RoomEnvironment) {
+        const pmrem = new THREE.PMREMGenerator(renderer);
+        environmentTexture = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+        scene.environment = environmentTexture;
+        pmrem.dispose();
+      }
+
+      if (OrbitControls) {
+        controls = new OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        controls.dampingFactor = 0.06;
+        controls.minDistance = 2.3;
+        controls.maxDistance = 15;
+        controls.autoRotate = reducedMotion ? false : true;
+        controls.autoRotateSpeed = 0.28;
+      }
+
+      const ambient = new THREE.HemisphereLight(0xbdeeff, 0x0b1028, 1.25);
+      scene.add(ambient);
+
+      const key = new THREE.DirectionalLight(0xffffff, 2.2);
+      key.position.set(5, 8, 5);
+      key.castShadow = true;
+      key.shadow.mapSize.set(1024, 1024);
+      scene.add(key);
+
+      pointLightA = new THREE.PointLight(0x79d8ff, 3.4, 12);
+      pointLightA.position.set(2.8, 2, 2.2);
+      scene.add(pointLightA);
+
+      pointLightB = new THREE.PointLight(0xffb35c, 2.4, 12);
+      pointLightB.position.set(-2.9, -0.6, 3.1);
+      scene.add(pointLightB);
+
+      grid = new THREE.GridHelper(12, 36, 0x79d8ff, 0x28314d);
+      grid.position.y = -1.82;
+      grid.material.transparent = true;
+      grid.material.opacity = 0.32;
+      scene.add(grid);
+
+      const floor = new THREE.Mesh(
+        new THREE.CircleGeometry(5.6, 96),
+        new THREE.MeshStandardMaterial({
+          color: 0x091120,
+          metalness: 0.18,
+          roughness: 0.78,
+          transparent: true,
+          opacity: 0.44
+        })
+      );
+      floor.rotation.x = -Math.PI / 2;
+      floor.position.y = -1.84;
+      floor.receiveShadow = true;
+      scene.add(floor);
+
+      shapeGroup = new THREE.Group();
+      scene.add(shapeGroup);
+
+      buildShape();
+      createParticles();
+
+      if (EffectComposer && RenderPass && UnrealBloomPass) {
+        composer = new EffectComposer(renderer);
+        composer.addPass(new RenderPass(scene, camera));
+        bloomPass = new UnrealBloomPass(
+          new THREE.Vector2(window.innerWidth, window.innerHeight),
+          state.bloom,
+          0.44,
+          0.18
+        );
+        composer.addPass(bloomPass);
+        if (OutputPass) composer.addPass(new OutputPass());
+        log("Bloom post-processing enabled.");
+      } else {
+        log("Post-processing unavailable; using direct renderer fallback.", "warn");
+      }
+
+      applyPreset(state.preset, false);
+      syncControls();
+      el.loading.classList.add("hidden");
+      log(`Quantum Bloom Geometry Lab ${VERSION} ready.`);
+    }
+
+    function createGeometry(type) {
+      switch (type) {
+        case "Box":
+          return new THREE.BoxGeometry(1.9, 1.9, 1.9, 32, 32, 32);
+        case "Sphere":
+          return new THREE.SphereGeometry(1.35, 96, 64);
+        case "Cone":
+          return new THREE.ConeGeometry(1.22, 2.45, 72, 18);
+        case "Cylinder":
+          return new THREE.CylinderGeometry(1.05, 1.05, 2.25, 80, 20);
+        case "Torus":
+          return new THREE.TorusGeometry(1.08, 0.38, 48, 144);
+        case "TorusKnot":
+          return new THREE.TorusKnotGeometry(0.92, 0.28, 220, 32, 2, 3);
+        case "Dodecahedron":
+          return new THREE.DodecahedronGeometry(1.45, 2);
+        case "Icosahedron":
+          return new THREE.IcosahedronGeometry(1.48, 3);
+        case "Octahedron":
+          return new THREE.OctahedronGeometry(1.55, 3);
+        case "Capsule":
+          if (THREE.CapsuleGeometry) return new THREE.CapsuleGeometry(0.72, 1.35, 18, 42);
+          return new THREE.CylinderGeometry(0.82, 0.82, 2.3, 72, 20);
+        default:
+          return createGeometry(randomGeometryType());
+      }
+    }
+
+    function randomGeometryType() {
+      return GEOMETRY_TYPES[Math.floor(Math.random() * GEOMETRY_TYPES.length)];
+    }
+
+    function makeMaterial(opacity = 1, wire = false) {
+      const color = new THREE.Color(state.color);
+      const material = new THREE.MeshPhysicalMaterial({
+        color,
+        metalness: state.metalness,
+        roughness: state.roughness,
+        clearcoat: 1,
+        clearcoatRoughness: 0.15,
+        emissive: color.clone().multiplyScalar(0.16),
+        emissiveIntensity: 0.45,
+        transparent: opacity < 1,
+        opacity,
+        wireframe: wire,
+        side: THREE.DoubleSide
+      });
+
+      if ("iridescence" in material) {
+        material.iridescence = 0.42;
+        material.iridescenceIOR = 1.45;
+        material.iridescenceThicknessRange = [100, 480];
+      }
+
+      return material;
+    }
+
+    function disposeObject(object) {
+      if (!object) return;
+      object.traverse((child) => {
+        if (child.geometry) child.geometry.dispose();
+        if (child.material) {
+          if (Array.isArray(child.material)) child.material.forEach((material) => material.dispose());
+          else child.material.dispose();
+        }
+      });
+    }
+
+    function buildShape(forceType = null) {
+      if (!shapeGroup) return;
+      disposeObject(shapeGroup);
+      shapeGroup.clear();
+
+      const type = forceType || (state.shape === "random" ? randomGeometryType() : state.shape);
+      state.currentShape = type;
+      const geometry = createGeometry(type);
+      geometry.computeBoundingSphere();
+      geometry.computeVertexNormals();
+
+      const material = makeMaterial(1, state.wireframe);
+      mainMesh = new THREE.Mesh(geometry, material);
+      mainMesh.castShadow = true;
+      mainMesh.receiveShadow = true;
+      shapeGroup.add(mainMesh);
+
+      const edgeGeometry = new THREE.EdgesGeometry(geometry, 26);
+      const edgeMaterial = new THREE.LineBasicMaterial({
+        color: new THREE.Color(state.color).offsetHSL(0.08, 0.2, 0.18),
+        transparent: true,
+        opacity: state.wireframe ? 0.08 : 0.35
+      });
+      edgeMesh = new THREE.LineSegments(edgeGeometry, edgeMaterial);
+      edgeMesh.scale.setScalar(1.006);
+      shapeGroup.add(edgeMesh);
+
+      const clones = Math.max(0, Math.floor(state.cloneCount));
+      for (let i = 0; i < clones; i += 1) {
+        const angle = (i / Math.max(1, clones)) * Math.PI * 2;
+        const ring = 2.18 + Math.sin(i * 1.7) * 0.18;
+        const mini = new THREE.Mesh(geometry, makeMaterial(0.26, state.wireframe));
+        mini.scale.setScalar(0.15 + (i % 4) * 0.025);
+        mini.position.set(Math.cos(angle) * ring, Math.sin(angle * 1.45) * 0.62, Math.sin(angle) * ring);
+        mini.rotation.set(angle * 0.6, angle * 1.1, angle * 0.35);
+        mini.userData = { angle, ring, offset: Math.random() * Math.PI * 2 };
+        shapeGroup.add(mini);
+      }
+
+      log(`Geometry built: ${type} with ${clones} echo clone(s).`);
+    }
+
+    function updateMaterial() {
+      if (!shapeGroup) return;
+      const color = new THREE.Color(state.color);
+      shapeGroup.traverse((child) => {
+        if (child.isMesh && child.material) {
+          child.material.color.copy(color);
+          child.material.metalness = state.metalness;
+          child.material.roughness = state.roughness;
+          child.material.emissive.copy(color).multiplyScalar(0.16);
+          child.material.wireframe = state.wireframe;
+          child.material.needsUpdate = true;
+        }
+
+        if (child.isLineSegments && child.material) {
+          child.material.color.copy(color).offsetHSL(0.08, 0.2, 0.18);
+          child.material.opacity = state.wireframe ? 0.08 : 0.35;
+          child.material.needsUpdate = true;
+        }
+      });
+
+      if (pointLightA) pointLightA.color.set(state.color);
+      if (particleSystem && particleSystem.material) {
+        particleSystem.material.color.set(state.color);
+        particleSystem.material.needsUpdate = true;
+      }
+    }
+
+    function updateBloom() {
+      if (bloomPass) {
+        bloomPass.strength = state.bloom;
+        bloomPass.radius = 0.44;
+        bloomPass.threshold = 0.18;
+      }
+
+      if (renderer) {
+        renderer.toneMappingExposure = state.exposure;
+      }
+    }
+
+    function createParticles() {
+      if (particleSystem) {
+        particleSystem.geometry.dispose();
+        particleSystem.material.dispose();
+        scene.remove(particleSystem);
+        particleSystem = null;
+      }
+
+      const count = Math.max(0, Math.floor(state.particles));
+      if (count === 0) return;
+
+      const positions = new Float32Array(count * 3);
+      const sizes = new Float32Array(count);
+
+      for (let i = 0; i < count; i += 1) {
+        const radius = 8 + Math.random() * 32;
+        const theta = Math.random() * Math.PI * 2;
+        const phi = Math.acos((Math.random() * 2) - 1);
+        positions[i * 3] = Math.sin(phi) * Math.cos(theta) * radius;
+        positions[i * 3 + 1] = Math.cos(phi) * radius * 0.56;
+        positions[i * 3 + 2] = Math.sin(phi) * Math.sin(theta) * radius;
+        sizes[i] = Math.random();
+      }
+
+      const geometry = new THREE.BufferGeometry();
+      geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+      geometry.setAttribute("sizeSeed", new THREE.BufferAttribute(sizes, 1));
+
+      const material = new THREE.PointsMaterial({
+        color: state.color,
+        size: 0.035,
+        sizeAttenuation: true,
+        transparent: true,
+        opacity: 0.72,
+        depthWrite: false,
+        blending: THREE.AdditiveBlending
+      });
+
+      particleSystem = new THREE.Points(geometry, material);
+      particleSystem.visible = state.showParticles;
+      scene.add(particleSystem);
+      log(`Particle field rebuilt: ${count}.`);
+    }
+
+    function resize() {
+      if (!renderer || !camera) return;
+      const width = window.innerWidth;
+      const height = window.innerHeight;
+      const cappedPixelRatio = Math.min(window.devicePixelRatio || 1, state.pixelRatio);
+
+      camera.aspect = width / height;
+      camera.updateProjectionMatrix();
+      renderer.setPixelRatio(cappedPixelRatio);
+      renderer.setSize(width, height, false);
+      if (composer) {
+        composer.setPixelRatio(cappedPixelRatio);
+        composer.setSize(width, height);
+      }
+      log(`Resize: ${width}×${height}, DPR cap ${cappedPixelRatio.toFixed(2)}.`);
+    }
+
+    function randomiseScene() {
+      state.shape = "random";
+      state.color = `#${Math.floor(Math.random() * 0xffffff).toString(16).padStart(6, "0")}`;
+      state.speed = Number((0.24 + Math.random() * 1.9).toFixed(2));
+      state.metalness = Number((0.4 + Math.random() * 0.6).toFixed(2));
+      state.roughness = Number((0.05 + Math.random() * 0.46).toFixed(2));
+      state.bloom = Number((0.7 + Math.random() * 2.15).toFixed(2));
+      state.exposure = Number((0.78 + Math.random() * 0.62).toFixed(2));
+      state.cloneCount = Math.floor(3 + Math.random() * 13);
+      buildShape();
+      updateMaterial();
+      updateBloom();
+      syncControls();
+      saveSettings();
+    }
+
+    function energyPulse() {
+      state.pulse = Math.min(1, state.pulse + 0.92);
+      if (pointLightA) pointLightA.intensity = 7.5;
+      if (pointLightB) pointLightB.intensity = 5.8;
+      log("Energy pulse fired.");
+    }
+
+    function screenshot() {
+      try {
+        renderFrame(performance.now(), true);
+        const link = document.createElement("a");
+        const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+        link.download = `quantum-bloom-${stamp}.png`;
+        link.href = renderer.domElement.toDataURL("image/png");
+        link.click();
+        log("Screenshot exported.");
+      } catch (error) {
+        log(`Screenshot failed: ${error.message}`, "error");
+      }
+    }
+
+    function resetSettings() {
+      localStorage.removeItem(STORAGE_KEY);
+      Object.assign(state, {
+        shape: "random",
+        preset: "aurora",
+        speed: 0.7,
+        metalness: 0.78,
+        roughness: 0.22,
+        bloom: 1.25,
+        exposure: 1,
+        cloneCount: 7,
+        pixelRatio: 1.75,
+        color: "#79d8ff",
+        particles: 1200,
+        autoEvolve: false,
+        wireframe: false,
+        showGrid: true,
+        showParticles: true,
+        paused: false
+      });
+      applyPreset("aurora", false);
+      buildShape();
+      createParticles();
+      updateMaterial();
+      updateBloom();
+      resize();
+      syncControls();
+      log("Reset to advanced defaults.");
+    }
+
+    function bindControls() {
+      el.shapeSelect.addEventListener("change", () => {
+        state.shape = el.shapeSelect.value;
+        buildShape();
+        saveSettings();
+      });
+
+      el.presetSelect.addEventListener("change", () => {
+        applyPreset(el.presetSelect.value, true);
+      });
+
+      el.speedRange.addEventListener("input", () => {
+        state.speed = Number(el.speedRange.value);
+        el.speedValue.textContent = state.speed.toFixed(2);
+        saveSettings();
+      });
+
+      el.metalRange.addEventListener("input", () => {
+        state.metalness = Number(el.metalRange.value);
+        el.metalValue.textContent = state.metalness.toFixed(2);
+        updateMaterial();
+        saveSettings();
+      });
+
+      el.roughRange.addEventListener("input", () => {
+        state.roughness = Number(el.roughRange.value);
+        el.roughValue.textContent = state.roughness.toFixed(2);
+        updateMaterial();
+        saveSettings();
+      });
+
+      el.bloomRange.addEventListener("input", () => {
+        state.bloom = Number(el.bloomRange.value);
+        el.bloomValue.textContent = state.bloom.toFixed(2);
+        updateBloom();
+        saveSettings();
+      });
+
+      el.exposureRange.addEventListener("input", () => {
+        state.exposure = Number(el.exposureRange.value);
+        el.exposureValue.textContent = state.exposure.toFixed(2);
+        updateBloom();
+        saveSettings();
+      });
+
+      el.cloneRange.addEventListener("input", () => {
+        state.cloneCount = Number(el.cloneRange.value);
+        el.cloneValue.textContent = String(state.cloneCount);
+        buildShape(state.currentShape);
+        saveSettings();
+      });
+
+      el.pixelRange.addEventListener("input", () => {
+        state.pixelRatio = Number(el.pixelRange.value);
+        el.pixelValue.textContent = state.pixelRatio.toFixed(2);
+        resize();
+        saveSettings();
+      });
+
+      el.colorInput.addEventListener("input", () => {
+        state.color = el.colorInput.value;
+        updateMaterial();
+        saveSettings();
+      });
+
+      el.particleRange.addEventListener("change", () => {
+        state.particles = Number(el.particleRange.value);
+        el.particleValue.textContent = String(state.particles);
+        createParticles();
+        saveSettings();
+      });
+
+      el.particleRange.addEventListener("input", () => {
+        el.particleValue.textContent = String(el.particleRange.value);
+      });
+
+      el.autoEvolveToggle.addEventListener("change", () => {
+        state.autoEvolve = el.autoEvolveToggle.checked;
+        saveSettings();
+        log(`Auto evolve ${state.autoEvolve ? "enabled" : "disabled"}.`);
+      });
+
+      el.wireToggle.addEventListener("change", () => {
+        state.wireframe = el.wireToggle.checked;
+        updateMaterial();
+        saveSettings();
+      });
+
+      el.gridToggle.addEventListener("change", () => {
+        state.showGrid = el.gridToggle.checked;
+        if (grid) grid.visible = state.showGrid;
+        saveSettings();
+      });
+
+      el.particlesToggle.addEventListener("change", () => {
+        state.showParticles = el.particlesToggle.checked;
+        if (particleSystem) particleSystem.visible = state.showParticles;
+        saveSettings();
+      });
+
+      el.randomButton.addEventListener("click", randomiseScene);
+      el.pulseButton.addEventListener("click", energyPulse);
+      el.shotButton.addEventListener("click", screenshot);
+
+      el.pauseButton.addEventListener("click", () => {
+        state.paused = !state.paused;
+        syncControls();
+        saveSettings();
+      });
+
+      el.resetButton.addEventListener("click", resetSettings);
+
+      window.addEventListener("resize", resize, { passive: true });
+
+      document.addEventListener("visibilitychange", () => {
+        state.paused = document.hidden;
+        syncControls();
+      });
+
+      window.addEventListener("keydown", (event) => {
+        if (event.target && ["INPUT", "SELECT", "TEXTAREA"].includes(event.target.tagName)) return;
+        if (event.code === "Space") {
+          event.preventDefault();
+          state.paused = !state.paused;
+          syncControls();
+        } else if (event.key.toLowerCase() === "r") {
+          randomiseScene();
+        } else if (event.key.toLowerCase() === "e") {
+          state.autoEvolve = !state.autoEvolve;
+          syncControls();
+          saveSettings();
+        } else if (event.key.toLowerCase() === "s") {
+          screenshot();
+        }
+      });
+    }
+
+    function updateHud(now) {
+      if (!renderer || now - lastHudUpdate < 350) return;
+      const fps = fpsFrames ? Math.round((fpsFrames / fpsAccumulator) * 1000) : 0;
+      el.fps.textContent = Number.isFinite(fps) ? String(fps) : "--";
+      el.draws.textContent = String(renderer.info.render.calls);
+      el.tris.textContent = renderer.info.render.triangles.toLocaleString();
+      fpsFrames = 0;
+      fpsAccumulator = 0;
+      lastHudUpdate = now;
+    }
+
+    function renderFrame(now, force = false) {
+      if (!renderer || !scene || !camera) return;
+      if (state.paused && !force) {
+        if (controls) controls.update();
+        renderer.render(scene, camera);
+        return;
+      }
+
+      const t = now * 0.001;
+      const speed = reducedMotion ? state.speed * 0.28 : state.speed;
+      const pulseBoost = state.pulse * 0.9;
+
+      if (shapeGroup) {
+        shapeGroup.rotation.x += 0.0035 * speed + pulseBoost * 0.004;
+        shapeGroup.rotation.y += 0.0065 * speed + pulseBoost * 0.006;
+
+        for (const child of shapeGroup.children) {
+          if (child !== mainMesh && child.isMesh && child.userData) {
+            const angle = child.userData.angle + t * (0.12 + speed * 0.08);
+            child.position.x = Math.cos(angle) * child.userData.ring;
+            child.position.z = Math.sin(angle) * child.userData.ring;
+            child.position.y = Math.sin(t * 1.4 + child.userData.offset) * 0.75;
+            child.rotation.x += 0.005 * speed;
+            child.rotation.y += 0.008 * speed;
+          }
+        }
+
+        const scale = 1 + Math.sin(t * 2.7) * 0.018 + state.pulse * 0.08;
+        mainMesh.scale.setScalar(scale);
+        if (edgeMesh) edgeMesh.scale.setScalar(scale * 1.01);
+      }
+
+      if (particleSystem && state.showParticles) {
+        particleSystem.rotation.y += 0.0008 + state.speed * 0.00055;
+        particleSystem.rotation.x = Math.sin(t * 0.12) * 0.05;
+      }
+
+      if (grid) {
+        grid.visible = state.showGrid;
+        grid.material.opacity = 0.25 + Math.sin(t * 1.2) * 0.05;
+      }
+
+      if (pointLightA) {
+        pointLightA.position.x = Math.cos(t * 0.88) * 3.4;
+        pointLightA.position.z = Math.sin(t * 0.88) * 3.4;
+        pointLightA.position.y = 1.3 + Math.sin(t * 1.3) * 0.7;
+        pointLightA.intensity = 3.2 + state.pulse * 6;
+      }
+
+      if (pointLightB) {
+        pointLightB.position.x = Math.cos(t * -0.67) * 4.1;
+        pointLightB.position.z = Math.sin(t * -0.67) * 3.2;
+        pointLightB.intensity = 2.2 + state.pulse * 4.2;
+      }
+
+      if (state.pulse > 0) {
+        state.pulse = Math.max(0, state.pulse - 0.026);
+      }
+
+      if (state.autoEvolve && now - lastEvolve > 5200) {
+        lastEvolve = now;
+        randomiseScene();
+      }
+
+      if (controls) controls.update();
+
+      if (composer) composer.render();
+      else renderer.render(scene, camera);
+    }
+
+    function animate(now) {
+      animationHandle = requestAnimationFrame(animate);
+      try {
+        const delta = Math.min(100, now - (animate.lastNow || now));
+        animate.lastNow = now;
+        fpsAccumulator += delta;
+        fpsFrames += 1;
+        renderFrame(now);
+        updateHud(now);
+      } catch (error) {
+        log(`Animation error: ${error.message}`, "error");
+      }
+    }
+
+    async function main() {
+      window.addEventListener("error", (event) => {
+        log(`Unhandled error: ${event.message}`, "error");
+      });
+
+      window.addEventListener("unhandledrejection", (event) => {
+        log(`Unhandled promise rejection: ${event.reason?.message || event.reason}`, "error");
+      });
+
+      loadSettings();
+      const loaded = await loadModules();
+      if (!loaded) return;
+
+      try {
+        initScene();
+        bindControls();
+        if (grid) grid.visible = state.showGrid;
+        if (particleSystem) particleSystem.visible = state.showParticles;
+        syncControls();
+        animationHandle = requestAnimationFrame(animate);
+      } catch (error) {
+        cancelAnimationFrame(animationHandle);
+        showFatal(error);
+      }
+    }
+
+    main();
+  </script>
+</body>
+</html>
