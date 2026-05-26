@@ -3136,5 +3136,476 @@ self.addEventListener("fetch", (e)=>{
 
 })();
 </script>
+
+
+<!-- Research Upgrade Layer: preserves the original single-file app and adds offline/local-first research tools. -->
+<script>
+(() => {
+  "use strict";
+
+  const STORE_KEY = "keycoach.v2";
+  const UPGRADE_KEY = "keycoach.researchUpgrade.v3";
+  const $ = (sel, root=document) => root.querySelector(sel);
+  const $$ = (sel, root=document) => Array.from(root.querySelectorAll(sel));
+  const clamp = (n,a,b)=>Math.max(a,Math.min(b,n));
+  const round = (n,d=0)=>{ const p=10**d; return Math.round(n*p)/p; };
+  const escapeHtml = (s)=>String(s).replace(/[&<>\"']/g, ch => ({"&":"&amp;","<":"&lt;",">":"&gt;",'\"':"&quot;","'":"&#039;"}[ch]));
+  const now = () => Date.now();
+  const mean = (arr)=>arr.length ? arr.reduce((a,b)=>a+b,0)/arr.length : 0;
+
+  const defaultUpgrade = () => ({
+    version: 3,
+    highFocus: false,
+    microbreaks: true,
+    customPrompt: "the quick brown fox jumps over the lazy dog\nfocus on smooth rhythm, light touch, and steady accuracy",
+    lastCustom: null,
+    reportCount: 0
+  });
+
+  function readCore(){
+    try{
+      return JSON.parse(localStorage.getItem(STORE_KEY) || "null") || null;
+    }catch(_){ return null; }
+  }
+  function writeCore(state){
+    try{ localStorage.setItem(STORE_KEY, JSON.stringify(state)); return true; }catch(_){ return false; }
+  }
+  function readUpgrade(){
+    try{ return Object.assign(defaultUpgrade(), JSON.parse(localStorage.getItem(UPGRADE_KEY) || "{}")); }
+    catch(_){ return defaultUpgrade(); }
+  }
+  function writeUpgrade(v){
+    try{ localStorage.setItem(UPGRADE_KEY, JSON.stringify(v)); }catch(_){ }
+  }
+
+  let upgrade = readUpgrade();
+
+  function toast(msg, ms=2200){
+    const el = document.querySelector('#toast');
+    if(!el){ alert(msg.replace(/<[^>]+>/g,'')); return; }
+    el.innerHTML = msg;
+    el.classList.add('show');
+    clearTimeout(el._researchT);
+    el._researchT = setTimeout(()=>el.classList.remove('show'), ms);
+  }
+
+  function css(){
+    const style = document.createElement('style');
+    style.id = 'researchUpgradeStyle';
+    style.textContent = `
+      .research-upgrade-card{
+        margin-top:14px;
+        border:1px solid var(--border);
+        border-radius:var(--radius);
+        background:linear-gradient(135deg, rgba(123,220,255,.075), rgba(73,226,139,.055));
+        box-shadow:var(--shadow);
+        overflow:hidden;
+      }
+      .research-upgrade-card .ru-hd{
+        display:flex;align-items:center;justify-content:space-between;gap:10px;
+        padding:14px 16px;border-bottom:1px solid var(--border);
+      }
+      .research-upgrade-card .ru-hd h2{margin:0;font-size:14px;font-weight:900;letter-spacing:.2px}
+      .research-upgrade-card .ru-bd{padding:16px;display:flex;flex-direction:column;gap:12px}
+      .ru-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+      @media(max-width:860px){.ru-grid{grid-template-columns:1fr}}
+      .ru-metric{border:1px solid var(--border);border-radius:14px;padding:11px;background:rgba(255,255,255,.035)}
+      .ru-metric .k{font-size:11px;color:var(--muted);margin-bottom:4px}.ru-metric .v{font-weight:950;font-size:18px}.ru-metric .s{font-size:12px;color:var(--muted);line-height:1.35;margin-top:4px}
+      .ru-two{display:grid;grid-template-columns:1fr 1fr;gap:10px}.ru-two textarea{min-height:120px;resize:vertical}.ru-two textarea,.ru-two input{width:100%;border:1px solid var(--border);border-radius:12px;background:rgba(255,255,255,.045);padding:10px;outline:none;font:inherit;color:inherit}.ru-two textarea:focus-visible,.ru-two input:focus-visible{box-shadow:var(--focus)}
+      @media(max-width:860px){.ru-two{grid-template-columns:1fr}}
+      .ru-report{white-space:pre-wrap;max-height:260px;overflow:auto;border:1px solid var(--border);border-radius:14px;padding:12px;background:rgba(0,0,0,.11);font-family:var(--mono);font-size:12px;line-height:1.45}
+      .ru-nudge{position:fixed;right:16px;bottom:70px;z-index:115;max-width:340px;padding:12px 14px;border-radius:16px;border:1px solid var(--border);background:rgba(10,15,30,.93);box-shadow:0 16px 45px rgba(0,0,0,.42);display:none;color:rgba(255,255,255,.92);font-size:13px;line-height:1.4}.ru-nudge.show{display:block}
+      @media(prefers-color-scheme: light){.ru-nudge{background:rgba(255,255,255,.96);color:rgba(10,20,40,.92)}}
+      body.research-high-focus .btn:focus-visible, body.research-high-focus .tab:focus-visible, body.research-high-focus select:focus-visible, body.research-high-focus input:focus-visible, body.research-high-focus textarea:focus-visible{outline:3px solid var(--accent)!important;outline-offset:3px!important;box-shadow:none!important}
+      body.research-high-focus .prompt .cursor{outline:3px solid var(--accent);outline-offset:2px}
+      @media (prefers-reduced-motion: reduce){*,*::before,*::after{animation-duration:.001ms!important;animation-iteration-count:1!important;scroll-behavior:auto!important;transition-duration:.001ms!important}}
+    `;
+    document.head.appendChild(style);
+    document.body.classList.toggle('research-high-focus', !!upgrade.highFocus);
+  }
+
+  function idealKeyIntervalMs(targetWpm){ return 60000 / (Math.max(1,targetWpm) * 5); }
+  function keyStrength(item, targetWpm){
+    const acc = item.attempts ? (item.correct || 0) / item.attempts : 0.2;
+    const lat = item.latCount ? item.latSum / item.latCount : idealKeyIntervalMs(targetWpm) * 1.25;
+    const speed = clamp(idealKeyIntervalMs(targetWpm) / Math.max(1,lat), 0, 1);
+    return clamp(0.72*acc + 0.28*speed, 0, 1);
+  }
+  function weakList(state, kind='keys', n=8){
+    if(!state) return [];
+    const target = Number(state.profile?.targetWpm || 35);
+    return Object.entries(state[kind] || {})
+      .map(([id,it]) => ({ id, attempts:it.attempts||0, errors:it.errors||0, acc:it.attempts ? (it.correct||0)/it.attempts : 1, lat:it.latCount ? it.latSum/it.latCount : null, strength:keyStrength(it,target) }))
+      .filter(x=>x.attempts >= (kind==='keys' ? 4 : 3))
+      .sort((a,b)=>a.strength-b.strength || b.errors-a.errors)
+      .slice(0,n);
+  }
+  function recentTrend(state){
+    const sessions = state?.stats?.sessions || [];
+    const last = sessions.slice(-5);
+    if(!last.length) return {wpm:0, acc:0, label:'No sessions yet'};
+    return {
+      wpm: round(mean(last.map(s=>Number(s.wpm)||0)), 1),
+      acc: round(mean(last.map(s=>Number(s.acc)||1))*100, 1),
+      label: `${last.length} recent session${last.length>1?'s':''}`
+    };
+  }
+  function storageKB(){
+    let total = 0;
+    for(let i=0;i<localStorage.length;i++){
+      const k = localStorage.key(i);
+      total += (k?.length || 0) + (localStorage.getItem(k)?.length || 0);
+    }
+    return round(total/1024,1);
+  }
+
+  function updateMiniMetrics(){
+    const state = readCore();
+    const trend = recentTrend(state);
+    const weakKeys = weakList(state,'keys',6);
+    const weakBigrams = weakList(state,'bigrams',6);
+    const set = (id, val)=>{ const el=document.getElementById(id); if(el) el.textContent = val; };
+    set('ruMetricTrend', trend.label === 'No sessions yet' ? '—' : `${trend.wpm} WPM / ${trend.acc}%`);
+    set('ruMetricTrendSub', trend.label);
+    set('ruMetricTargets', `${weakBigrams.map(x=>x.id).join(' ') || '—'} ${weakKeys.map(x=>x.id).join(' ') || ''}`.trim() || '—');
+    set('ruMetricTargetsSub', weakKeys.length || weakBigrams.length ? 'Lowest strength items from local data' : 'Practice once to unlock weak-target analysis');
+    set('ruMetricPrivacy', `${storageKB()} KB`);
+    set('ruMetricPrivacySub', 'Local browser storage only');
+  }
+
+  function buildPracticePlan(state){
+    const profile = state?.profile || {};
+    const trend = recentTrend(state);
+    const wk = weakList(state,'keys',8);
+    const wb = weakList(state,'bigrams',8);
+    const accuracy = trend.acc || 0;
+    const targetWpm = Number(profile.targetWpm || 35);
+    const recommendedWpm = !trend.wpm ? targetWpm : accuracy >= 97 ? Math.min(140, Math.round(Math.max(targetWpm, trend.wpm) + 2)) : accuracy < 92 ? Math.max(10, Math.round(targetWpm - 3)) : targetWpm;
+    const difficulty = accuracy >= 97 ? 55 : accuracy < 92 ? 25 : Number(profile.aiDifficulty || 35);
+    return {
+      recommendedWpm,
+      difficulty,
+      hintPolicy: accuracy < 90 ? 'afterTry' : (accuracy > 98 ? 'off' : 'afterTry'),
+      correctionMode: accuracy < 90 ? 'strict' : 'flow',
+      rhythmDefault: true,
+      focusKeys: wk.map(x=>x.id).slice(0,5),
+      focusBigrams: wb.map(x=>x.id).slice(0,5),
+      note: !trend.wpm ? 'Start with a baseline session, then adapt.' : (accuracy >= 97 ? 'Accuracy is high; slightly raise desirable difficulty.' : accuracy < 92 ? 'Protect accuracy; slow down and use stricter corrections.' : 'Keep steady; interleave weak items with transfer text.')
+    };
+  }
+
+  function applyAdaptiveDefaults(){
+    const state = readCore();
+    if(!state){ toast('Start one normal session first so KeyCoach can adapt.', 2600); return; }
+    state.profile = state.profile || {};
+    const plan = buildPracticePlan(state);
+    Object.assign(state.profile, {
+      targetWpm: plan.recommendedWpm,
+      aiDifficulty: clamp(plan.difficulty,0,100),
+      hintPolicy: plan.hintPolicy,
+      correctionMode: plan.correctionMode,
+      rhythmDefault: plan.rhythmDefault
+    });
+    writeCore(state);
+    const target = document.getElementById('targetWpm'); if(target) target.value = String(state.profile.targetWpm);
+    const diff = document.getElementById('aiDiff'); if(diff) diff.value = String(state.profile.aiDifficulty);
+    const hint = document.getElementById('hintPolicy'); if(hint) hint.value = state.profile.hintPolicy;
+    const corr = document.getElementById('correctionMode'); if(corr) corr.value = state.profile.correctionMode;
+    const rhythm = document.getElementById('rhythmDefault'); if(rhythm) rhythm.value = state.profile.rhythmDefault ? 'on' : 'off';
+    updateMiniMetrics();
+    toast(`Adaptive defaults applied: <b>${plan.recommendedWpm} WPM</b>, AI difficulty <b>${state.profile.aiDifficulty}</b>.`, 2800);
+  }
+
+  function generateReport(){
+    const state = readCore();
+    const trend = recentTrend(state);
+    const plan = buildPracticePlan(state);
+    const sessions = state?.stats?.sessions || [];
+    const replays = state?.stats?.replays || [];
+    const weakKeys = weakList(state,'keys',10);
+    const weakBigrams = weakList(state,'bigrams',10);
+    const last = sessions[sessions.length-1];
+    const lines = [];
+    lines.push('# KeyCoach Research Coach Report');
+    lines.push('');
+    lines.push(`Generated: ${new Date().toLocaleString()}`);
+    lines.push(`Sessions recorded: ${sessions.length}`);
+    lines.push(`Replays stored: ${replays.length}`);
+    lines.push(`Recent trend: ${trend.label === 'No sessions yet' ? 'no data yet' : `${trend.wpm} WPM / ${trend.acc}% accuracy (${trend.label})`}`);
+    if(last) lines.push(`Last session: ${last.date || 'unknown'} · ${last.wpm || 0} WPM · ${Math.round((last.acc || 0)*100)}% · ${last.plan || 'auto'}`);
+    lines.push('');
+    lines.push('## Recommended next session');
+    lines.push(`- Target pace: ${plan.recommendedWpm} WPM`);
+    lines.push(`- AI difficulty: ${plan.difficulty}`);
+    lines.push(`- Hint policy: ${plan.hintPolicy}`);
+    lines.push(`- Correction mode: ${plan.correctionMode}`);
+    lines.push(`- Rhythm default: ${plan.rhythmDefault ? 'on' : 'off'}`);
+    lines.push(`- Focus bigrams: ${plan.focusBigrams.join(', ') || 'collect more data'}`);
+    lines.push(`- Focus keys: ${plan.focusKeys.join(', ') || 'collect more data'}`);
+    lines.push(`- Coach note: ${plan.note}`);
+    lines.push('');
+    lines.push('## Weak keys');
+    if(weakKeys.length){
+      weakKeys.forEach(x=>lines.push(`- ${x.id === ' ' ? 'Space' : x.id}: ${Math.round(x.acc*100)}% accuracy, ${x.errors} errors, strength ${round(x.strength,2)}`));
+    } else lines.push('- No weak-key data yet. Run a normal session first.');
+    lines.push('');
+    lines.push('## Weak bigrams');
+    if(weakBigrams.length){
+      weakBigrams.forEach(x=>lines.push(`- ${x.id}: ${Math.round(x.acc*100)}% accuracy, ${x.errors} errors, strength ${round(x.strength,2)}`));
+    } else lines.push('- No weak-bigram data yet. Run a normal session first.');
+    lines.push('');
+    lines.push('## Research-inspired guidance');
+    lines.push('- Keep short spaced sessions rather than one long grind.');
+    lines.push('- Use interleaving: mix weak keys/bigrams with realistic text.');
+    lines.push('- Fade hints: use support while learning, then remove it for transfer.');
+    lines.push('- Use microbreaks when accuracy drops or rhythm becomes unstable.');
+    return lines.join('\n');
+  }
+
+  function showReport(download=false){
+    const report = generateReport();
+    const out = document.getElementById('ruReport');
+    if(out) out.textContent = report;
+    upgrade.reportCount = (upgrade.reportCount||0) + 1;
+    writeUpgrade(upgrade);
+    if(download){
+      const blob = new Blob([report], {type:'text/markdown'});
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = `keycoach-research-report-${new Date().toISOString().slice(0,10)}.md`;
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(()=>URL.revokeObjectURL(url), 2500);
+      toast('Downloaded research coach report.', 1800);
+    } else {
+      toast('Research report generated.', 1600);
+    }
+  }
+
+  function generateWeakPrompt(){
+    const state = readCore();
+    const plan = buildPracticePlan(state);
+    const bigrams = plan.focusBigrams.length ? plan.focusBigrams : ['th','he','in','er','an'];
+    const keys = plan.focusKeys.length ? plan.focusKeys : ['a','s','d','f','j'];
+    const sentences = [
+      `Focused transitions: ${bigrams.join(' ')} ${bigrams.map(x=>x+x).join(' ')}.`,
+      `Key rhythm: ${keys.join(' ')} ${keys.reverse().join(' ')}.`,
+      `Now transfer it into natural text: the aim is steady accuracy, light fingers, and smooth spacing.`,
+      `Keep moving, review errors after the attempt, and repeat the hardest transition twice.`
+    ];
+    const prompt = sentences.join('\n');
+    const p = document.getElementById('ruCustomPrompt');
+    if(p) p.value = prompt;
+    upgrade.customPrompt = prompt;
+    writeUpgrade(upgrade);
+    toast('Built a weak-target custom drill.', 1800);
+  }
+
+  function ensureKey(state, ch){
+    state.keys = state.keys || {};
+    if(!state.keys[ch]) state.keys[ch] = {attempts:0,correct:0,errors:0,latCount:0,latSum:0,latSqSum:0,intervalDays:.5,nextDue:0,lastSeen:0,consecutiveErrors:0,subs:{}};
+    return state.keys[ch];
+  }
+  function ensureBigram(state, bg){
+    state.bigrams = state.bigrams || {};
+    if(!state.bigrams[bg]) state.bigrams[bg] = {attempts:0,correct:0,errors:0,latCount:0,latSum:0,latSqSum:0,intervalDays:.5,nextDue:0,lastSeen:0};
+    return state.bigrams[bg];
+  }
+  function scoreCustom(){
+    const prompt = (document.getElementById('ruCustomPrompt')?.value || '').replace(/\r\n/g,'\n');
+    const typed = (document.getElementById('ruCustomTyped')?.value || '').replace(/\r\n/g,'\n');
+    if(!prompt || !typed){ toast('Add prompt text and type a response first.', 2200); return; }
+    const started = Number(document.getElementById('ruCustomTyped')?.dataset.started || now());
+    const elapsed = Math.max(1, now() - started);
+    const n = Math.min(prompt.length, typed.length);
+    let correct = 0;
+    for(let i=0;i<n;i++) if(prompt[i] === typed[i]) correct++;
+    const acc = typed.length ? correct / typed.length : 1;
+    const wpm = (typed.length/5) / (elapsed/60000);
+    const state = readCore() || {version:2,profile:{targetWpm:35},stats:{sessions:[],replays:[]},keys:{},bigrams:{},fingers:{}};
+    for(let i=0;i<typed.length;i++){
+      const expected = prompt[i] || '';
+      const got = typed[i];
+      const k = ensureKey(state, expected || got);
+      k.attempts++; k.lastSeen = now();
+      if(expected && got === expected) k.correct++; else { k.errors++; k.consecutiveErrors = (k.consecutiveErrors||0)+1; k.subs = k.subs || {}; if(got) k.subs[got] = (k.subs[got]||0)+1; }
+      if(i>0){
+        const bg = prompt.slice(i-1,i+1);
+        if(bg.length===2){
+          const b = ensureBigram(state,bg);
+          b.attempts++; b.lastSeen=now();
+          if(typed.slice(i-1,i+1)===bg) b.correct++; else b.errors++;
+        }
+      }
+    }
+    state.stats = state.stats || {sessions:[],replays:[]};
+    state.stats.sessions = state.stats.sessions || [];
+    state.stats.sessions.push({date:new Date().toISOString().slice(0,10), mode:'custom', minutes:round(elapsed/60000,2), wpm:round(wpm,1), acc:round(acc,3), transferWpm:round(wpm,1), transferAcc:round(acc,3), focusKeys:[], focusBigrams:[], plan:'research-custom'});
+    state.stats.sessions = state.stats.sessions.slice(-60);
+    writeCore(state);
+    upgrade.lastCustom = {wpm:round(wpm,1), acc:round(acc*100,1), dateTime:new Date().toISOString()};
+    upgrade.customPrompt = prompt;
+    writeUpgrade(upgrade);
+    const res = document.getElementById('ruCustomResult');
+    if(res) res.textContent = `${round(wpm,1)} WPM · ${round(acc*100,1)}% accuracy · saved into KeyCoach local stats`;
+    updateMiniMetrics();
+    toast('Custom drill result saved into local learning data.', 2600);
+  }
+
+  function resetCustomTimer(){
+    const t = document.getElementById('ruCustomTyped');
+    if(t) t.dataset.started = String(now());
+  }
+
+  function injectPracticeCoach(){
+    const grid = document.querySelector('#viewPractice .grid');
+    if(!grid || document.getElementById('researchPracticeCoach')) return;
+    const card = document.createElement('div');
+    card.className = 'research-upgrade-card';
+    card.id = 'researchPracticeCoach';
+    card.innerHTML = `
+      <div class="ru-hd"><h2>Research Upgrade Coach</h2><span class="pill">v3 local layer</span></div>
+      <div class="ru-bd">
+        <div class="ru-grid">
+          <div class="ru-metric"><div class="k">Recent trend</div><div class="v" id="ruMetricTrend">—</div><div class="s" id="ruMetricTrendSub">—</div></div>
+          <div class="ru-metric"><div class="k">Next weak targets</div><div class="v" id="ruMetricTargets">—</div><div class="s" id="ruMetricTargetsSub">—</div></div>
+          <div class="ru-metric"><div class="k">Privacy footprint</div><div class="v" id="ruMetricPrivacy">—</div><div class="s" id="ruMetricPrivacySub">—</div></div>
+        </div>
+        <div class="row">
+          <button class="btn small" id="ruApplyAdaptive">Apply adaptive defaults</button>
+          <button class="btn small" id="ruBuildPrompt">Build weak-target drill</button>
+          <button class="btn small" id="ruShowReport">Show research report</button>
+          <button class="btn small" id="ruDownloadReport">Download report</button>
+        </div>
+        <div class="help">Adds a research layer on top of your current app: adaptive defaults, microbreak nudges, custom drill scoring, and local coach reports.</div>
+      </div>`;
+    grid.appendChild(card);
+  }
+
+  function injectSettingsLab(){
+    const settingsGrid = document.querySelector('#viewSettings .grid');
+    if(!settingsGrid || document.getElementById('researchSettingsLab')) return;
+    const lab = document.createElement('div');
+    lab.className = 'research-upgrade-card';
+    lab.id = 'researchSettingsLab';
+    lab.style.gridColumn = '1 / -1';
+    lab.innerHTML = `
+      <div class="ru-hd"><h2>Research Lab: custom drills, accessibility, reports</h2><span class="pill">offline / no network</span></div>
+      <div class="ru-bd">
+        <div class="ru-two">
+          <div>
+            <label class="help" for="ruCustomPrompt"><b>Custom prompt / weak-target drill</b></label>
+            <textarea id="ruCustomPrompt" spellcheck="false"></textarea>
+            <div class="row" style="margin-top:8px">
+              <button class="btn small" id="ruFillWeak">Use weak targets</button>
+              <button class="btn small" id="ruSavePrompt">Save prompt</button>
+            </div>
+          </div>
+          <div>
+            <label class="help" for="ruCustomTyped"><b>Type here, then save score</b></label>
+            <textarea id="ruCustomTyped" spellcheck="false" autocomplete="off" autocapitalize="off" placeholder="Start typing the prompt here..."></textarea>
+            <div class="row" style="margin-top:8px">
+              <button class="btn small primary" id="ruScoreCustom">Save custom drill result</button>
+              <button class="btn small" id="ruClearCustom">Clear typed text</button>
+              <span class="badge" id="ruCustomResult">No custom result yet</span>
+            </div>
+          </div>
+        </div>
+        <div class="row">
+          <button class="btn small" id="ruToggleFocus">High-focus accessibility: ${upgrade.highFocus ? 'on' : 'off'}</button>
+          <button class="btn small" id="ruToggleBreaks">Microbreak nudges: ${upgrade.microbreaks ? 'on' : 'off'}</button>
+          <button class="btn small" id="ruReportSettings">Refresh report</button>
+        </div>
+        <div class="ru-report" id="ruReport">Generate a report to see next-session recommendations.</div>
+      </div>`;
+    settingsGrid.appendChild(lab);
+  }
+
+  function bindEvents(){
+    document.addEventListener('click', (e)=>{
+      const id = e.target && e.target.id;
+      if(id === 'ruApplyAdaptive') applyAdaptiveDefaults();
+      if(id === 'ruBuildPrompt' || id === 'ruFillWeak') generateWeakPrompt();
+      if(id === 'ruShowReport' || id === 'ruReportSettings') showReport(false);
+      if(id === 'ruDownloadReport') showReport(true);
+      if(id === 'ruSavePrompt'){
+        upgrade.customPrompt = document.getElementById('ruCustomPrompt')?.value || upgrade.customPrompt;
+        writeUpgrade(upgrade); toast('Custom prompt saved locally.', 1600);
+      }
+      if(id === 'ruScoreCustom') scoreCustom();
+      if(id === 'ruClearCustom'){
+        const t = document.getElementById('ruCustomTyped'); if(t){ t.value=''; resetCustomTimer(); }
+        const r = document.getElementById('ruCustomResult'); if(r) r.textContent='Cleared';
+      }
+      if(id === 'ruToggleFocus'){
+        upgrade.highFocus = !upgrade.highFocus; writeUpgrade(upgrade);
+        document.body.classList.toggle('research-high-focus', !!upgrade.highFocus);
+        e.target.textContent = `High-focus accessibility: ${upgrade.highFocus ? 'on' : 'off'}`;
+      }
+      if(id === 'ruToggleBreaks'){
+        upgrade.microbreaks = !upgrade.microbreaks; writeUpgrade(upgrade);
+        e.target.textContent = `Microbreak nudges: ${upgrade.microbreaks ? 'on' : 'off'}`;
+      }
+    });
+
+    document.addEventListener('focusin', (e)=>{
+      if(e.target && e.target.id === 'ruCustomTyped' && !e.target.dataset.started) resetCustomTimer();
+    });
+    document.addEventListener('input', (e)=>{
+      if(e.target && e.target.id === 'ruCustomPrompt'){
+        upgrade.customPrompt = e.target.value; writeUpgrade(upgrade);
+      }
+      if(e.target && e.target.id === 'ruCustomTyped' && !e.target.dataset.started) resetCustomTimer();
+    });
+    document.addEventListener('keydown', (e)=>{
+      if(e.altKey && String(e.key).toLowerCase() === 'r'){
+        e.preventDefault();
+        showReport(false);
+        const settings = document.getElementById('tabSettings');
+        if(settings) settings.click();
+      }
+    });
+  }
+
+  function microbreakMonitor(){
+    const nudge = document.getElementById('ruNudge');
+    if(!nudge || !upgrade.microbreaks) return;
+    const runner = document.getElementById('runner');
+    if(!runner || !runner.classList.contains('active')) { nudge.classList.remove('show'); return; }
+    const accText = document.getElementById('statAcc')?.textContent || '100%';
+    const phaseLeft = document.getElementById('statPhaseLeft')?.textContent || '';
+    const acc = parseFloat(accText.replace('%','')) || 100;
+    const prog = parseFloat((document.getElementById('statProg')?.textContent || '0').replace('%','')) || 0;
+    if(acc < 88 && prog > 5){
+      nudge.innerHTML = '<b>Microbreak:</b> accuracy dipped. Pause for 20 seconds, relax shoulders, then restart slower.';
+      nudge.classList.add('show');
+    }else if(/0:0[0-9]/.test(phaseLeft) && acc < 94){
+      nudge.innerHTML = '<b>End-of-phase reset:</b> finish calmly. Next phase should prioritise accuracy over speed.';
+      nudge.classList.add('show');
+    }else{
+      nudge.classList.remove('show');
+    }
+  }
+
+  function init(){
+    css();
+    injectPracticeCoach();
+    injectSettingsLab();
+    bindEvents();
+    const prompt = document.getElementById('ruCustomPrompt'); if(prompt) prompt.value = upgrade.customPrompt || defaultUpgrade().customPrompt;
+    const nudge = document.createElement('div');
+    nudge.className = 'ru-nudge';
+    nudge.id = 'ruNudge';
+    document.body.appendChild(nudge);
+    updateMiniMetrics();
+    showReport(false);
+    setInterval(updateMiniMetrics, 4500);
+    setInterval(microbreakMonitor, 2000);
+  }
+
+  if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
+  else init();
+})();
+</script>
+
 </body>
 </html>
