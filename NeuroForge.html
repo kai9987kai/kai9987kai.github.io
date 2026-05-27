@@ -1,0 +1,2734 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>NeuroForge — Advanced Synthetic Neuron Generator</title>
+  <meta name="description" content="Advanced 3D synthetic neuron morphology generator with flow-matching animation, signal propagation, and morphometric analysis." />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/EffectComposer.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/RenderPass.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/UnrealBloomPass.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/CopyShader.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/ShaderPass.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/LuminosityHighPassShader.js"></script>
+  <style>
+    :root {
+      --bg: #050b12;
+      --bg2: #0a1520;
+      --panel: rgba(8, 16, 26, 0.88);
+      --panel-strong: rgba(12, 24, 38, 0.95);
+      --line: rgba(100, 180, 255, 0.12);
+      --line-bright: rgba(100, 180, 255, 0.25);
+      --text: #e4f0fa;
+      --text-dim: #8ba3b8;
+      --muted: #5e7a8f;
+      --accent: #00e5ff;
+      --accent-glow: rgba(0, 229, 255, 0.3);
+      --accent2: #a855f7;
+      --accent2-glow: rgba(168, 85, 247, 0.3);
+      --good: #34d399;
+      --good-glow: rgba(52, 211, 153, 0.3);
+      --warn: #fbbf24;
+      --danger: #f87171;
+      --radius: 16px;
+      --radius-sm: 10px;
+      --radius-xs: 6px;
+      --transition: 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { height: 100%; overflow: hidden; }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      font-size: 13px;
+      line-height: 1.5;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    #app { width: 100vw; height: 100vh; position: relative; }
+    canvas { display: block; }
+
+    /* ── Scrollbar ── */
+    ::-webkit-scrollbar { width: 5px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: rgba(100,180,255,0.15); border-radius: 10px; }
+    ::-webkit-scrollbar-thumb:hover { background: rgba(100,180,255,0.3); }
+
+    /* ── Panel ── */
+    .panel {
+      position: absolute;
+      top: 12px;
+      left: 12px;
+      width: min(400px, calc(100vw - 24px));
+      max-height: calc(100vh - 24px);
+      overflow-y: auto;
+      overflow-x: hidden;
+      border: 1px solid var(--line);
+      border-radius: 20px;
+      background: var(--panel);
+      backdrop-filter: blur(24px) saturate(1.4);
+      box-shadow:
+        0 0 0 1px rgba(255,255,255,0.03) inset,
+        0 32px 80px rgba(0,0,0,0.5),
+        0 0 60px rgba(0,229,255,0.04);
+      z-index: 10;
+    }
+
+    .panel-inner { padding: 16px; }
+
+    /* ── Header ── */
+    .header {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      padding-bottom: 12px;
+      border-bottom: 1px solid var(--line);
+      margin-bottom: 12px;
+    }
+    .logo {
+      width: 44px;
+      height: 44px;
+      border-radius: 14px;
+      background: conic-gradient(from 135deg, var(--accent), var(--accent2), var(--good), var(--accent));
+      box-shadow: 0 0 24px var(--accent-glow), 0 0 8px var(--accent2-glow);
+      position: relative;
+      flex-shrink: 0;
+      animation: logoPulse 4s ease-in-out infinite;
+    }
+    @keyframes logoPulse {
+      0%, 100% { box-shadow: 0 0 24px var(--accent-glow), 0 0 8px var(--accent2-glow); }
+      50% { box-shadow: 0 0 36px var(--accent-glow), 0 0 16px var(--accent2-glow); }
+    }
+    .logo::after {
+      content: "";
+      position: absolute;
+      inset: 8px;
+      border-radius: 9px;
+      background: var(--bg);
+    }
+    .logo-icon {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 1;
+      font-size: 18px;
+    }
+    h1 {
+      font-size: 16px;
+      font-weight: 700;
+      line-height: 1.15;
+      letter-spacing: -0.03em;
+      background: linear-gradient(135deg, var(--text), var(--accent));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    .version {
+      font-size: 10px;
+      font-weight: 500;
+      color: var(--accent);
+      background: rgba(0,229,255,0.1);
+      padding: 2px 7px;
+      border-radius: 20px;
+      display: inline-block;
+      margin-top: 2px;
+      letter-spacing: 0.04em;
+    }
+
+    /* ── Tabs ── */
+    .tabs {
+      display: flex;
+      gap: 2px;
+      background: rgba(255,255,255,0.03);
+      border-radius: var(--radius-sm);
+      padding: 3px;
+      margin-bottom: 12px;
+    }
+    .tab {
+      flex: 1;
+      text-align: center;
+      padding: 7px 4px;
+      border-radius: 8px;
+      font-size: 11px;
+      font-weight: 500;
+      color: var(--text-dim);
+      cursor: pointer;
+      transition: all var(--transition);
+      letter-spacing: 0.02em;
+      text-transform: uppercase;
+      border: none;
+      background: none;
+    }
+    .tab:hover { color: var(--text); background: rgba(255,255,255,0.05); }
+    .tab.active {
+      color: var(--accent);
+      background: rgba(0,229,255,0.1);
+      box-shadow: 0 0 12px rgba(0,229,255,0.1);
+    }
+    .tab-content { display: none; }
+    .tab-content.active { display: block; }
+
+    /* ── Section ── */
+    .section {
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      margin-bottom: 10px;
+      overflow: hidden;
+      transition: border-color var(--transition);
+    }
+    .section:hover { border-color: var(--line-bright); }
+    .section-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 12px;
+      cursor: pointer;
+      user-select: none;
+      background: rgba(255,255,255,0.02);
+      transition: background var(--transition);
+    }
+    .section-header:hover { background: rgba(255,255,255,0.04); }
+    .section-title {
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--text-dim);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .section-title .icon { font-size: 13px; }
+    .section-chevron {
+      width: 16px;
+      height: 16px;
+      transition: transform 0.3s ease;
+      color: var(--muted);
+    }
+    .section.collapsed .section-chevron { transform: rotate(-90deg); }
+    .section.collapsed .section-body { display: none; }
+    .section-body { padding: 10px 12px 12px; }
+
+    /* ── Form controls ── */
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .grid.three { grid-template-columns: 1fr 1fr 1fr; }
+    .full-width { grid-column: 1 / -1; }
+
+    .field {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .field-label {
+      font-size: 10px;
+      font-weight: 500;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .field-value {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 10px;
+      color: var(--accent);
+    }
+
+    input, select {
+      width: 100%;
+      border: 1px solid var(--line);
+      border-radius: var(--radius-xs);
+      background: rgba(255,255,255,0.04);
+      color: var(--text);
+      padding: 7px 9px;
+      outline: none;
+      font: inherit;
+      font-size: 12px;
+      transition: all var(--transition);
+    }
+    input:focus, select:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 2px rgba(0,229,255,0.12);
+    }
+    input[type="range"] {
+      -webkit-appearance: none;
+      appearance: none;
+      height: 4px;
+      padding: 0;
+      border: none;
+      border-radius: 2px;
+      background: rgba(255,255,255,0.08);
+      cursor: pointer;
+    }
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      background: var(--accent);
+      border: 2px solid var(--bg);
+      box-shadow: 0 0 8px var(--accent-glow);
+      cursor: pointer;
+    }
+    input[type="range"]::-moz-range-thumb {
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      background: var(--accent);
+      border: 2px solid var(--bg);
+      box-shadow: 0 0 8px var(--accent-glow);
+      cursor: pointer;
+    }
+    select {
+      cursor: pointer;
+      appearance: none;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='%235e7a8f' viewBox='0 0 16 16'%3E%3Cpath d='M8 11L3 6h10z'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 8px center;
+      padding-right: 24px;
+    }
+
+    /* ── Buttons ── */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      padding: 8px 12px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius-xs);
+      background: rgba(255,255,255,0.04);
+      color: var(--text);
+      font: inherit;
+      font-size: 11px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all var(--transition);
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+      width: 100%;
+    }
+    .btn:hover {
+      background: rgba(255,255,255,0.08);
+      border-color: var(--line-bright);
+      transform: translateY(-1px);
+    }
+    .btn:active { transform: translateY(0); }
+    .btn-primary {
+      background: linear-gradient(135deg, rgba(0,229,255,0.2), rgba(168,85,247,0.15));
+      border-color: rgba(0,229,255,0.3);
+      color: var(--accent);
+    }
+    .btn-primary:hover {
+      background: linear-gradient(135deg, rgba(0,229,255,0.3), rgba(168,85,247,0.25));
+      border-color: rgba(0,229,255,0.5);
+      box-shadow: 0 0 20px rgba(0,229,255,0.15);
+    }
+    .btn-signal {
+      background: linear-gradient(135deg, rgba(52,211,153,0.15), rgba(0,229,255,0.1));
+      border-color: rgba(52,211,153,0.3);
+      color: var(--good);
+    }
+    .btn-signal:hover {
+      background: linear-gradient(135deg, rgba(52,211,153,0.25), rgba(0,229,255,0.2));
+      box-shadow: 0 0 20px var(--good-glow);
+    }
+    .btn-sm {
+      padding: 5px 8px;
+      font-size: 10px;
+    }
+
+    .btn-group { display: grid; gap: 6px; }
+    .btn-group.cols-2 { grid-template-columns: 1fr 1fr; }
+    .btn-group.cols-3 { grid-template-columns: 1fr 1fr 1fr; }
+    .btn-group.cols-4 { grid-template-columns: 1fr 1fr 1fr 1fr; }
+
+    /* ── Metrics ── */
+    .metrics-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 6px;
+    }
+    .metric-card {
+      padding: 10px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius-sm);
+      background: rgba(255,255,255,0.02);
+      transition: all var(--transition);
+    }
+    .metric-card:hover {
+      border-color: var(--line-bright);
+      background: rgba(255,255,255,0.04);
+    }
+    .metric-val {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 18px;
+      font-weight: 600;
+      color: var(--text);
+      line-height: 1.1;
+    }
+    .metric-label {
+      font-size: 10px;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      margin-top: 2px;
+    }
+
+    /* ── Color mode pills ── */
+    .color-modes {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px;
+    }
+    .color-mode {
+      padding: 5px 10px;
+      border: 1px solid var(--line);
+      border-radius: 20px;
+      font-size: 10px;
+      font-weight: 500;
+      color: var(--text-dim);
+      cursor: pointer;
+      transition: all var(--transition);
+      background: transparent;
+    }
+    .color-mode:hover { border-color: var(--line-bright); color: var(--text); }
+    .color-mode.active {
+      border-color: var(--accent);
+      color: var(--accent);
+      background: rgba(0,229,255,0.08);
+    }
+
+    /* ── Presets ── */
+    .preset-chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px;
+    }
+    .preset-chip {
+      padding: 5px 10px;
+      border: 1px solid var(--line);
+      border-radius: 20px;
+      font-size: 10px;
+      font-weight: 500;
+      color: var(--text-dim);
+      cursor: pointer;
+      transition: all var(--transition);
+      background: transparent;
+    }
+    .preset-chip:hover {
+      border-color: var(--accent2);
+      color: var(--accent2);
+      background: rgba(168,85,247,0.08);
+    }
+
+    /* Research library */
+    .library-toolbar {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 8px;
+      margin-bottom: 8px;
+    }
+    .filter-chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px;
+    }
+    .filter-chip {
+      padding: 5px 9px;
+      border: 1px solid var(--line);
+      border-radius: 20px;
+      color: var(--text-dim);
+      background: transparent;
+      font: inherit;
+      font-size: 10px;
+      cursor: pointer;
+      transition: all var(--transition);
+    }
+    .filter-chip:hover,
+    .filter-chip.active {
+      color: var(--accent);
+      border-color: var(--accent);
+      background: rgba(0,229,255,0.08);
+    }
+    .resource-list {
+      display: grid;
+      gap: 6px;
+      max-height: 330px;
+      overflow-y: auto;
+      padding-right: 2px;
+    }
+    .resource-card {
+      display: block;
+      padding: 9px 10px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius-sm);
+      background: rgba(255,255,255,0.025);
+      color: inherit;
+      text-decoration: none;
+      transition: all var(--transition);
+    }
+    .resource-card:hover {
+      border-color: var(--line-bright);
+      background: rgba(255,255,255,0.055);
+      transform: translateY(-1px);
+    }
+    .resource-meta {
+      display: flex;
+      justify-content: space-between;
+      gap: 8px;
+      margin-bottom: 4px;
+      color: var(--accent);
+      font-size: 9px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+    .resource-title {
+      color: var(--text);
+      font-size: 12px;
+      font-weight: 600;
+      line-height: 1.3;
+    }
+    .resource-note {
+      color: var(--muted);
+      font-size: 10px;
+      line-height: 1.45;
+      margin-top: 4px;
+    }
+    .anchor-grid {
+      display: grid;
+      gap: 6px;
+    }
+    .anchor-link {
+      display: flex;
+      justify-content: space-between;
+      gap: 8px;
+      padding: 8px 10px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius-sm);
+      color: var(--text-dim);
+      text-decoration: none;
+      background: rgba(255,255,255,0.025);
+    }
+    .anchor-link:hover { color: var(--text); border-color: var(--line-bright); }
+    .anchor-link span:last-child { color: var(--accent); flex-shrink: 0; }
+
+    /* Research compass */
+    .compass-grid {
+      display: grid;
+      gap: 8px;
+    }
+    .score-row {
+      display: grid;
+      grid-template-columns: 96px 1fr 42px;
+      align-items: center;
+      gap: 8px;
+      font-size: 10px;
+      color: var(--text-dim);
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    .score-track {
+      height: 5px;
+      border-radius: 999px;
+      background: rgba(255,255,255,0.08);
+      overflow: hidden;
+    }
+    .score-fill {
+      height: 100%;
+      width: 0%;
+      border-radius: inherit;
+      background: linear-gradient(90deg, var(--good), var(--accent), var(--accent2));
+      box-shadow: 0 0 12px rgba(0,229,255,0.22);
+    }
+    .compass-note {
+      color: var(--muted);
+      font-size: 11px;
+      line-height: 1.5;
+      padding-top: 2px;
+    }
+
+    /* ── Toggle ── */
+    .toggle-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 4px 0;
+    }
+    .toggle-label {
+      font-size: 11px;
+      color: var(--text-dim);
+    }
+    .toggle {
+      width: 34px;
+      height: 18px;
+      border-radius: 9px;
+      background: rgba(255,255,255,0.1);
+      cursor: pointer;
+      position: relative;
+      transition: background var(--transition);
+      border: none;
+    }
+    .toggle.on { background: rgba(0,229,255,0.35); }
+    .toggle::after {
+      content: '';
+      position: absolute;
+      top: 2px;
+      left: 2px;
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      background: var(--text);
+      transition: transform var(--transition);
+    }
+    .toggle.on::after { transform: translateX(16px); }
+
+    /* ── Sholl chart ── */
+    .sholl-chart {
+      width: 100%;
+      height: 120px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius-sm);
+      background: rgba(0,0,0,0.2);
+      overflow: hidden;
+    }
+    .sholl-chart canvas { width: 100% !important; height: 100% !important; }
+
+    /* ── Legend ── */
+    .legend {
+      position: absolute;
+      right: 12px;
+      bottom: 12px;
+      width: min(360px, calc(100vw - 24px));
+      padding: 12px 14px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: var(--panel);
+      backdrop-filter: blur(24px) saturate(1.4);
+      z-index: 10;
+    }
+    .legend-title {
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--text-dim);
+      margin-bottom: 6px;
+    }
+    .legend-text {
+      font-size: 11px;
+      color: var(--muted);
+      line-height: 1.5;
+    }
+    .pills {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px;
+      margin-top: 8px;
+    }
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 4px 8px;
+      border-radius: 999px;
+      background: rgba(255,255,255,0.05);
+      font-size: 10px;
+      color: var(--text-dim);
+    }
+    .dot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; flex-shrink: 0; }
+
+    /* ── Toast ── */
+    .toast {
+      position: fixed;
+      bottom: 80px;
+      left: 50%;
+      transform: translateX(-50%) translateY(20px);
+      padding: 8px 18px;
+      background: var(--panel-strong);
+      border: 1px solid var(--line-bright);
+      border-radius: 12px;
+      font-size: 12px;
+      color: var(--accent);
+      opacity: 0;
+      pointer-events: none;
+      transition: all 0.4s ease;
+      z-index: 100;
+      backdrop-filter: blur(12px);
+    }
+    .toast.show {
+      opacity: 1;
+      transform: translateX(-50%) translateY(0);
+    }
+
+    /* ── FPS Counter ── */
+    .fps-badge {
+      position: absolute;
+      top: 12px;
+      right: 12px;
+      padding: 4px 10px;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 10px;
+      color: var(--good);
+      backdrop-filter: blur(12px);
+      z-index: 10;
+    }
+
+    /* ── Signal progress bar ── */
+    .signal-bar {
+      height: 3px;
+      background: rgba(255,255,255,0.05);
+      border-radius: 2px;
+      overflow: hidden;
+      margin-top: 6px;
+    }
+    .signal-fill {
+      height: 100%;
+      width: 0%;
+      background: linear-gradient(90deg, var(--good), var(--accent));
+      border-radius: 2px;
+      transition: width 0.1s linear;
+      box-shadow: 0 0 8px var(--good-glow);
+    }
+
+    /* ── Responsive ── */
+    @media (max-width: 760px) {
+      .panel { width: calc(100vw - 16px); left: 8px; top: 8px; max-height: 55vh; }
+      .legend { left: 8px; right: 8px; bottom: 8px; width: auto; }
+    }
+
+    /* ── Animations ── */
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+    .animate-in { animation: fadeIn 0.4s ease forwards; }
+  </style>
+</head>
+<body>
+  <div id="app"></div>
+
+  <div class="fps-badge" id="fpsBadge">-- FPS</div>
+
+  <section class="panel" id="mainPanel">
+    <div class="panel-inner">
+      <!-- Header -->
+      <div class="header">
+        <div class="logo"><span class="logo-icon">⚡</span></div>
+        <div>
+          <h1>NeuroForge</h1>
+          <span class="version">v2.0 — Advanced Neuron Generator</span>
+        </div>
+      </div>
+
+      <!-- Tabs -->
+      <div class="tabs" id="tabBar">
+        <button class="tab active" data-tab="generate">Generate</button>
+        <button class="tab" data-tab="visualize">Visualize</button>
+        <button class="tab" data-tab="analyze">Analyze</button>
+        <button class="tab" data-tab="learn">Learn</button>
+        <button class="tab" data-tab="export">Export</button>
+      </div>
+
+      <!-- ═══ TAB: Generate ═══ -->
+      <div class="tab-content active" id="tab-generate">
+
+        <!-- Presets -->
+        <div class="section">
+          <div class="section-header" onclick="toggleSection(this)">
+            <span class="section-title"><span class="icon">✦</span> Presets</span>
+            <svg class="section-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+          </div>
+          <div class="section-body">
+            <div class="preset-chips">
+              <button class="preset-chip" data-preset="pyramidal">Pyramidal Cell</button>
+              <button class="preset-chip" data-preset="purkinje">Purkinje Cell</button>
+              <button class="preset-chip" data-preset="stellate">Stellate Cell</button>
+              <button class="preset-chip" data-preset="bipolar">Bipolar Cell</button>
+              <button class="preset-chip" data-preset="motor">Motor Neuron</button>
+              <button class="preset-chip" data-preset="chandelier">Chandelier Cell</button>
+              <button class="preset-chip" data-preset="granule">Granule Cell</button>
+              <button class="preset-chip" data-preset="network">Network (3)</button>
+              <button class="preset-chip" data-preset="tufted">Apical Tuft</button>
+              <button class="preset-chip" data-preset="basket">Basket Cell</button>
+              <button class="preset-chip" data-preset="martinotti">Martinotti</button>
+              <button class="preset-chip" data-preset="retinal">Retinal Ganglion</button>
+              <button class="preset-chip" data-preset="mitral">Mitral Cell</button>
+              <button class="preset-chip" data-preset="astrocyte">Astrocyte-like</button>
+              <button class="preset-chip" data-preset="microns">MICrONS Patch</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Core Parameters -->
+        <div class="section">
+          <div class="section-header" onclick="toggleSection(this)">
+            <span class="section-title"><span class="icon">◈</span> Morphology</span>
+            <svg class="section-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+          </div>
+          <div class="section-body">
+            <div class="grid">
+              <div class="field">
+                <div class="field-label">Seed <span class="field-value" id="seedVal">9987</span></div>
+                <input id="seed" type="number" value="9987" min="1" max="999999" />
+              </div>
+              <div class="field">
+                <div class="field-label">Neuron Style</div>
+                <select id="style">
+                  <option value="mixed">Mixed cortex</option>
+                  <option value="dendrite">Dendrite arbor</option>
+                  <option value="axon">Long axon fiber</option>
+                  <option value="spiny">Spiny dendrite</option>
+                  <option value="interneuron">Interneuron</option>
+                  <option value="tufted">Apical tuft</option>
+                  <option value="basket">Basket interneuron</option>
+                  <option value="astrocyte">Astrocyte-like glia</option>
+                </select>
+              </div>
+              <div class="field">
+                <div class="field-label">Points <span class="field-value" id="pointsVal">12000</span></div>
+                <input id="points" type="range" min="2000" max="40000" step="500" value="12000" />
+              </div>
+              <div class="field">
+                <div class="field-label">Complexity <span class="field-value" id="complexityVal">0.70</span></div>
+                <input id="complexity" type="range" min="0" max="1" step="0.01" value="0.70" />
+              </div>
+              <div class="field">
+                <div class="field-label">Tortuosity <span class="field-value" id="tortuosityVal">0.48</span></div>
+                <input id="tortuosity" type="range" min="0" max="1" step="0.01" value="0.48" />
+              </div>
+              <div class="field">
+                <div class="field-label">Branch Spread <span class="field-value" id="spreadVal">0.75</span></div>
+                <input id="spread" type="range" min="0.1" max="1.4" step="0.01" value="0.75" />
+              </div>
+              <div class="field">
+                <div class="field-label">Taper Rate <span class="field-value" id="taperVal">0.72</span></div>
+                <input id="taper" type="range" min="0.3" max="0.95" step="0.01" value="0.72" />
+              </div>
+              <div class="field">
+                <div class="field-label">Neuron Count <span class="field-value" id="neuronCountVal">1</span></div>
+                <input id="neuronCount" type="range" min="1" max="5" step="1" value="1" />
+              </div>
+              <div class="field">
+                <div class="field-label">Spine Density <span class="field-value" id="spineVal">0.14</span></div>
+                <input id="spineDensity" type="range" min="0" max="0.45" step="0.01" value="0.14" />
+              </div>
+              <div class="field">
+                <div class="field-label">Bouton Density <span class="field-value" id="boutonVal">0.06</span></div>
+                <input id="boutonDensity" type="range" min="0" max="0.30" step="0.01" value="0.06" />
+              </div>
+              <div class="field full-width">
+                <div class="field-label">Growth Bias</div>
+                <select id="growthBias">
+                  <option value="balanced">Balanced radial</option>
+                  <option value="apical">Apical / cortical column</option>
+                  <option value="planar">Planar fan</option>
+                  <option value="columnar">Vertical column</option>
+                  <option value="chaotic">High exploratory drift</option>
+                </select>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Flow & Animation -->
+        <div class="section">
+          <div class="section-header" onclick="toggleSection(this)">
+            <span class="section-title"><span class="icon">◎</span> Flow & Animation</span>
+            <svg class="section-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+          </div>
+          <div class="section-body">
+            <div class="grid">
+              <div class="field">
+                <div class="field-label">Flow Noise <span class="field-value" id="noiseVal">1.00</span></div>
+                <input id="noise" type="range" min="0" max="3.0" step="0.01" value="1.0" />
+              </div>
+              <div class="field">
+                <div class="field-label">Flow Duration <span class="field-value" id="flowDurVal">4.0s</span></div>
+                <input id="flowDur" type="range" min="1.0" max="10.0" step="0.1" value="4.0" />
+              </div>
+              <div class="field">
+                <div class="field-label">Signal Speed <span class="field-value" id="signalSpeedVal">1.00</span></div>
+                <input id="signalSpeed" type="range" min="0.2" max="3.0" step="0.05" value="1.0" />
+              </div>
+              <div class="field">
+                <div class="field-label">Pulse Width <span class="field-value" id="pulseWidthVal">0.15</span></div>
+                <input id="pulseWidth" type="range" min="0.05" max="0.5" step="0.01" value="0.15" />
+              </div>
+            </div>
+            <div class="btn-group cols-2" style="margin-top:8px">
+              <button class="btn btn-primary" id="generateBtn">⚡ Generate</button>
+              <button class="btn" id="flowBtn">↻ Replay Flow</button>
+            </div>
+            <div class="btn-group cols-2" style="margin-top:4px">
+              <button class="btn btn-signal" id="signalBtn">◉ Fire Signal</button>
+              <button class="btn" id="randomSeedBtn">🎲 Random</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ═══ TAB: Visualize ═══ -->
+      <div class="tab-content" id="tab-visualize">
+
+        <!-- Rendering -->
+        <div class="section">
+          <div class="section-header" onclick="toggleSection(this)">
+            <span class="section-title"><span class="icon">◉</span> Rendering</span>
+            <svg class="section-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+          </div>
+          <div class="section-body">
+            <div class="grid">
+              <div class="field">
+                <div class="field-label">Point Size <span class="field-value" id="pointSizeVal">0.035</span></div>
+                <input id="pointSize" type="range" min="0.005" max="0.12" step="0.001" value="0.035" />
+              </div>
+              <div class="field">
+                <div class="field-label">Bloom Strength <span class="field-value" id="bloomVal">0.65</span></div>
+                <input id="bloom" type="range" min="0" max="2.0" step="0.01" value="0.65" />
+              </div>
+              <div class="field">
+                <div class="field-label">Bloom Radius <span class="field-value" id="bloomRadVal">0.55</span></div>
+                <input id="bloomRad" type="range" min="0" max="1.0" step="0.01" value="0.55" />
+              </div>
+              <div class="field">
+                <div class="field-label">Ambient Particles <span class="field-value" id="dustVal">800</span></div>
+                <input id="dust" type="range" min="0" max="3000" step="50" value="800" />
+              </div>
+            </div>
+            <div style="margin-top: 8px; display:flex; flex-direction:column; gap:4px;">
+              <div class="toggle-row">
+                <span class="toggle-label">Show Skeleton</span>
+                <button class="toggle on" id="toggleSkeleton" onclick="this.classList.toggle('on')"></button>
+              </div>
+              <div class="toggle-row">
+                <span class="toggle-label">Show Synapse Markers</span>
+                <button class="toggle on" id="toggleSynapses" onclick="this.classList.toggle('on')"></button>
+              </div>
+              <div class="toggle-row">
+                <span class="toggle-label">Show Soma Sphere</span>
+                <button class="toggle on" id="toggleSoma" onclick="this.classList.toggle('on')"></button>
+              </div>
+              <div class="toggle-row">
+                <span class="toggle-label">Show Grid</span>
+                <button class="toggle on" id="toggleGrid" onclick="this.classList.toggle('on')"></button>
+              </div>
+              <div class="toggle-row">
+                <span class="toggle-label">Auto-Rotate</span>
+                <button class="toggle" id="toggleRotate" onclick="this.classList.toggle('on')"></button>
+              </div>
+              <div class="toggle-row">
+                <span class="toggle-label">Depth-of-Field</span>
+                <button class="toggle" id="toggleDOF" onclick="this.classList.toggle('on')"></button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Color Mode -->
+        <div class="section">
+          <div class="section-header" onclick="toggleSection(this)">
+            <span class="section-title"><span class="icon">◐</span> Color Mode</span>
+            <svg class="section-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+          </div>
+          <div class="section-body">
+            <div class="color-modes">
+              <button class="color-mode active" data-mode="type">By Type</button>
+              <button class="color-mode" data-mode="depth">By Depth</button>
+              <button class="color-mode" data-mode="distance">By Distance</button>
+              <button class="color-mode" data-mode="branch">Branch Order</button>
+              <button class="color-mode" data-mode="heat">Heat Map</button>
+              <button class="color-mode" data-mode="cool">Cool Plasma</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Sholl Analysis Overlay -->
+        <div class="section">
+          <div class="section-header" onclick="toggleSection(this)">
+            <span class="section-title"><span class="icon">◎</span> Sholl Overlay</span>
+            <svg class="section-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+          </div>
+          <div class="section-body">
+            <div class="toggle-row">
+              <span class="toggle-label">Show Sholl Rings</span>
+              <button class="toggle" id="toggleSholl" onclick="this.classList.toggle('on')"></button>
+            </div>
+            <div class="field" style="margin-top:6px">
+              <div class="field-label">Ring Count <span class="field-value" id="shollCountVal">8</span></div>
+              <input id="shollCount" type="range" min="3" max="20" step="1" value="8" />
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ═══ TAB: Analyze ═══ -->
+      <div class="tab-content" id="tab-analyze">
+        <div class="section">
+          <div class="section-header" onclick="toggleSection(this)">
+            <span class="section-title"><span class="icon">◈</span> Morphometrics</span>
+            <svg class="section-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+          </div>
+          <div class="section-body">
+            <div class="metrics-grid">
+              <div class="metric-card"><div class="metric-val" id="mPoints">0</div><div class="metric-label">Total Points</div></div>
+              <div class="metric-card"><div class="metric-val" id="mBranches">0</div><div class="metric-label">Segments</div></div>
+              <div class="metric-card"><div class="metric-val" id="mTips">0</div><div class="metric-label">Terminal Tips</div></div>
+              <div class="metric-card"><div class="metric-val" id="mLength">0</div><div class="metric-label">Cable Length</div></div>
+              <div class="metric-card"><div class="metric-val" id="mBifurc">0</div><div class="metric-label">Bifurcations</div></div>
+              <div class="metric-card"><div class="metric-val" id="mMaxOrder">0</div><div class="metric-label">Max Branch Order</div></div>
+              <div class="metric-card"><div class="metric-val" id="mAvgLen">0</div><div class="metric-label">Avg Segment Len</div></div>
+              <div class="metric-card"><div class="metric-val" id="mExtent">0</div><div class="metric-label">Max Extent</div></div>
+              <div class="metric-card"><div class="metric-val" id="mSynapses">0</div><div class="metric-label">Synapse Markers</div></div>
+              <div class="metric-card"><div class="metric-val" id="mFractal">0.00</div><div class="metric-label">Fractal Est.</div></div>
+              <div class="metric-card"><div class="metric-val" id="mShollPeak">0</div><div class="metric-label">Sholl Peak</div></div>
+              <div class="metric-card"><div class="metric-val" id="mEntropy">0.00</div><div class="metric-label">Branch Entropy</div></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Sholl Profile -->
+        <div class="section">
+          <div class="section-header" onclick="toggleSection(this)">
+            <span class="section-title"><span class="icon">◎</span> Sholl Profile</span>
+            <svg class="section-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+          </div>
+          <div class="section-body">
+            <div class="sholl-chart"><canvas id="shollCanvas"></canvas></div>
+          </div>
+        </div>
+
+        <!-- Branch Order Distribution -->
+        <div class="section">
+          <div class="section-header" onclick="toggleSection(this)">
+            <span class="section-title"><span class="icon">▥</span> Branch Order Distribution</span>
+            <svg class="section-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+          </div>
+          <div class="section-body">
+            <div class="sholl-chart"><canvas id="branchOrderCanvas"></canvas></div>
+          </div>
+        </div>
+
+        <!-- Research Compass -->
+        <div class="section">
+          <div class="section-header" onclick="toggleSection(this)">
+            <span class="section-title"><span class="icon">#</span> Research Compass</span>
+            <svg class="section-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+          </div>
+          <div class="section-body">
+            <div class="compass-grid">
+              <div class="score-row"><span>Arbor load</span><div class="score-track"><div class="score-fill" id="scoreArbor"></div></div><span id="scoreArborVal">0%</span></div>
+              <div class="score-row"><span>Signal reach</span><div class="score-track"><div class="score-fill" id="scoreReach"></div></div><span id="scoreReachVal">0%</span></div>
+              <div class="score-row"><span>Synaptic load</span><div class="score-track"><div class="score-fill" id="scoreSynapse"></div></div><span id="scoreSynapseVal">0%</span></div>
+              <div class="score-row"><span>Shape novelty</span><div class="score-track"><div class="score-fill" id="scoreNovelty"></div></div><span id="scoreNoveltyVal">0%</span></div>
+              <div class="compass-note" id="compassNote">Generate a morphology to build a research signature.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ═══ TAB: Learn ═══ -->
+      <div class="tab-content" id="tab-learn">
+        <div class="section">
+          <div class="section-header" onclick="toggleSection(this)">
+            <span class="section-title"><span class="icon">></span> Video Library</span>
+            <svg class="section-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+          </div>
+          <div class="section-body">
+            <div class="library-toolbar">
+              <input id="resourceSearch" type="search" placeholder="Search videos, datasets, standards..." />
+              <div class="filter-chips" id="resourceFilters"></div>
+            </div>
+            <div class="resource-list" id="resourceList"></div>
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section-header" onclick="toggleSection(this)">
+            <span class="section-title"><span class="icon">+</span> Research Anchors</span>
+            <svg class="section-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+          </div>
+          <div class="section-body">
+            <div class="anchor-grid">
+              <a class="anchor-link" href="https://neuromorpho.org/" target="_blank" rel="noopener"><span>NeuroMorpho.Org morphology archive</span><span>Open</span></a>
+              <a class="anchor-link" href="https://celltypes.brain-map.org/" target="_blank" rel="noopener"><span>Allen Cell Types: morphology + ephys + transcriptomics</span><span>Open</span></a>
+              <a class="anchor-link" href="https://www.microns-explorer.org/" target="_blank" rel="noopener"><span>MICrONS connectomics explorer</span><span>Open</span></a>
+              <a class="anchor-link" href="https://neuromorpho.org/StdSwc1.21.jsp" target="_blank" rel="noopener"><span>Standardized SWC process</span><span>Open</span></a>
+              <a class="anchor-link" href="https://imagej.net/imagej-wiki-static/Simple_Neurite_Tracer%3A_Sholl_analysis.html" target="_blank" rel="noopener"><span>Simple Neurite Tracer Sholl workflow</span><span>Open</span></a>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ═══ TAB: Export ═══ -->
+      <div class="tab-content" id="tab-export">
+        <div class="section">
+          <div class="section-header" onclick="toggleSection(this)">
+            <span class="section-title"><span class="icon">↓</span> Export Morphology</span>
+            <svg class="section-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+          </div>
+          <div class="section-body">
+            <div class="btn-group cols-2">
+              <button class="btn" id="exportJsonBtn">📄 JSON</button>
+              <button class="btn" id="exportSwcBtn">🧬 SWC</button>
+              <button class="btn" id="exportObjBtn">📐 OBJ</button>
+              <button class="btn" id="exportPlyBtn">🔷 PLY</button>
+            </div>
+          </div>
+        </div>
+        <div class="section">
+          <div class="section-header" onclick="toggleSection(this)">
+            <span class="section-title"><span class="icon">#</span> Research Report</span>
+            <svg class="section-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+          </div>
+          <div class="section-body">
+            <button class="btn btn-primary" id="exportReportBtn">Export Markdown Report</button>
+          </div>
+        </div>
+        <div class="section">
+          <div class="section-header" onclick="toggleSection(this)">
+            <span class="section-title"><span class="icon">📷</span> Capture</span>
+            <svg class="section-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+          </div>
+          <div class="section-body">
+            <div class="btn-group cols-2">
+              <button class="btn btn-primary" id="screenshotBtn">📸 Screenshot (PNG)</button>
+              <button class="btn" id="screenshot4kBtn">🖼 4K Screenshot</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <aside class="legend" id="legendPanel">
+    <div class="legend-title">Active Visualization</div>
+    <div class="legend-text" id="legendText">
+      Recursive neurite skeleton → target 3D point cloud. Flow animation interpolates from random noise with curl-like drift into the morphology. Signal propagation simulates action potential travel along the dendritic/axonal tree.
+    </div>
+    <div class="pills" id="legendPills">
+      <span class="pill"><i class="dot" style="background:#00e5ff"></i>Dendrite</span>
+      <span class="pill"><i class="dot" style="background:#34d399"></i>Axon</span>
+      <span class="pill"><i class="dot" style="background:#fbbf24"></i>Soma</span>
+      <span class="pill"><i class="dot" style="background:#f472b6"></i>Synapse</span>
+      <span class="pill"><i class="dot" style="background:#a855f7"></i>Skeleton</span>
+    </div>
+    <div class="signal-bar" id="signalBarWrap" style="display:none">
+      <div class="signal-fill" id="signalFill"></div>
+    </div>
+  </aside>
+
+  <div class="toast" id="toast"></div>
+
+<script>
+(() => {
+  "use strict";
+
+  // ═══════════════════════════════════════════════════════════
+  //  UTILITY FUNCTIONS
+  // ═══════════════════════════════════════════════════════════
+  const $ = id => document.getElementById(id);
+  const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+  const lerp = (a, b, t) => a + (b - a) * t;
+  const ease = t => t < 0.5 ? 4*t*t*t : 1 - Math.pow(-2*t + 2, 3) / 2;
+  const v3 = (x=0,y=0,z=0) => new THREE.Vector3(x,y,z);
+
+  function mulberry32(seed) {
+    return function() {
+      let t = seed += 0x6D2B79F5;
+      t = Math.imul(t ^ (t >>> 15), t | 1);
+      t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+
+  function randn(rng) {
+    return Math.sqrt(-2 * Math.log(1 - rng())) * Math.cos(2 * Math.PI * (1 - rng()));
+  }
+
+  function randomUnit(rng) {
+    const z = rng() * 2 - 1;
+    const a = rng() * Math.PI * 2;
+    const s = Math.sqrt(1 - z*z);
+    return v3(Math.cos(a)*s, z, Math.sin(a)*s).normalize();
+  }
+
+  function coneDirection(base, spread, rng) {
+    const side = new THREE.Vector3().crossVectors(randomUnit(rng), base).normalize();
+    if (side.lengthSq() < 0.01) side.set(1,0,0);
+    const side2 = new THREE.Vector3().crossVectors(base, side).normalize();
+    const angle = (rng() - 0.5) * Math.PI * spread;
+    const twist = rng() * Math.PI * 2;
+    return new THREE.Vector3()
+      .addScaledVector(base, Math.cos(angle))
+      .addScaledVector(side, Math.sin(angle) * Math.cos(twist))
+      .addScaledVector(side2, Math.sin(angle) * Math.sin(twist))
+      .normalize();
+  }
+
+  function localFrame(tangent) {
+    const up = Math.abs(tangent.y) < 0.86 ? v3(0,1,0) : v3(1,0,0);
+    const n = new THREE.Vector3().crossVectors(up, tangent).normalize();
+    const b = new THREE.Vector3().crossVectors(tangent, n).normalize();
+    return { n, b };
+  }
+
+  // HSL to THREE.Color
+  function hsl(h, s, l) {
+    const c = new THREE.Color();
+    c.setHSL(h, s, l);
+    return c;
+  }
+
+  // Toast
+  let toastTimer;
+  function showToast(msg) {
+    const t = $('toast');
+    t.textContent = msg;
+    t.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => t.classList.remove('show'), 2200);
+  }
+
+  // Section toggling
+  window.toggleSection = function(header) {
+    header.parentElement.classList.toggle('collapsed');
+  };
+
+  // ═══════════════════════════════════════════════════════════
+  //  CUSTOM GLSL SHADERS
+  // ═══════════════════════════════════════════════════════════
+  const neuronVertexShader = `
+    attribute float aSize;
+    attribute float aSignal;
+    attribute float aDepth;
+    varying vec3 vColor;
+    varying float vSignal;
+    varying float vAlpha;
+    varying float vDepthVal;
+    uniform float uTime;
+    uniform float uPointSize;
+    uniform float uDofEnabled;
+    uniform float uDofFocus;
+
+    void main() {
+      vColor = color;
+      vSignal = aSignal;
+      vDepthVal = aDepth;
+
+      vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+      gl_Position = projectionMatrix * mvPosition;
+
+      float dist = -mvPosition.z;
+      float sizeAtten = 300.0 / dist;
+      float pulse = 1.0 + vSignal * 1.8;
+      gl_PointSize = uPointSize * sizeAtten * (aSize + 0.5) * pulse;
+
+      // Depth of field
+      float dofBlur = uDofEnabled * abs(dist - uDofFocus) * 0.015;
+      gl_PointSize += dofBlur * 8.0;
+
+      vAlpha = clamp(1.0 - dofBlur * 0.3, 0.2, 1.0);
+      vAlpha *= smoothstep(120.0, 20.0, dist);
+    }
+  `;
+
+  const neuronFragmentShader = `
+    varying vec3 vColor;
+    varying float vSignal;
+    varying float vAlpha;
+    varying float vDepthVal;
+    uniform float uTime;
+
+    void main() {
+      vec2 cxy = 2.0 * gl_PointCoord - 1.0;
+      float r = dot(cxy, cxy);
+      if (r > 1.0) discard;
+
+      // Soft circular point with glow halo
+      float core = 1.0 - smoothstep(0.0, 0.45, r);
+      float halo = exp(-r * 2.5) * 0.6;
+      float shape = core + halo;
+
+      // Signal glow
+      vec3 signalColor = mix(vColor, vec3(1.0, 1.0, 0.85), vSignal * 0.7);
+      float signalGlow = vSignal * (1.0 - r) * 2.0;
+
+      vec3 col = signalColor * shape + vec3(1.0, 0.95, 0.8) * signalGlow;
+      float alpha = shape * vAlpha * 0.88;
+
+      gl_FragColor = vec4(col, alpha);
+    }
+  `;
+
+  const dustVertexShader = `
+    attribute float aSize;
+    varying float vAlpha;
+    uniform float uTime;
+
+    void main() {
+      vec3 pos = position;
+      pos.x += sin(uTime * 0.3 + position.y * 2.0) * 0.15;
+      pos.y += cos(uTime * 0.2 + position.z * 1.5) * 0.1;
+      pos.z += sin(uTime * 0.25 + position.x * 1.8) * 0.12;
+
+      vec4 mvPosition = modelViewMatrix * vec4(pos, 1.0);
+      gl_Position = projectionMatrix * mvPosition;
+
+      float dist = -mvPosition.z;
+      gl_PointSize = aSize * 200.0 / dist;
+
+      vAlpha = smoothstep(80.0, 10.0, dist) * 0.3;
+    }
+  `;
+
+  const dustFragmentShader = `
+    varying float vAlpha;
+    void main() {
+      vec2 cxy = 2.0 * gl_PointCoord - 1.0;
+      float r = dot(cxy, cxy);
+      if (r > 1.0) discard;
+      float shape = exp(-r * 3.0);
+      gl_FragColor = vec4(0.4, 0.7, 0.9, shape * vAlpha);
+    }
+  `;
+
+  // ═══════════════════════════════════════════════════════════
+  //  THREE.JS SETUP
+  // ═══════════════════════════════════════════════════════════
+  const app = $('app');
+  const scene = new THREE.Scene();
+  scene.fog = new THREE.FogExp2(0x050b12, 0.022);
+
+  const camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.01, 500);
+  camera.position.set(6, 4.5, 9);
+
+  const renderer = new THREE.WebGLRenderer({
+    antialias: true,
+    preserveDrawingBuffer: true,
+    alpha: false
+  });
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+  renderer.setClearColor(0x050b12, 1);
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.1;
+  app.appendChild(renderer.domElement);
+
+  // Post-processing: Bloom
+  const composer = new THREE.EffectComposer(renderer);
+  const renderPass = new THREE.RenderPass(scene, camera);
+  composer.addPass(renderPass);
+  const bloomPass = new THREE.UnrealBloomPass(
+    new THREE.Vector2(window.innerWidth, window.innerHeight),
+    0.65, 0.55, 0.15
+  );
+  composer.addPass(bloomPass);
+
+  // Controls
+  const controls = new THREE.OrbitControls(camera, renderer.domElement);
+  controls.enableDamping = true;
+  controls.dampingFactor = 0.06;
+  controls.rotateSpeed = 0.7;
+  controls.zoomSpeed = 0.9;
+  controls.autoRotate = false;
+  controls.autoRotateSpeed = 0.4;
+
+  // Lighting
+  const hemi = new THREE.HemisphereLight(0xb8e4ff, 0x101018, 1.2);
+  scene.add(hemi);
+  const key = new THREE.PointLight(0x00e5ff, 2.2, 25);
+  key.position.set(4, 5, 5);
+  scene.add(key);
+  const rim = new THREE.PointLight(0xa855f7, 1.6, 18);
+  rim.position.set(-4, 3, -4);
+  scene.add(rim);
+  const fill = new THREE.PointLight(0x34d399, 0.8, 15);
+  fill.position.set(0, -3, 3);
+  scene.add(fill);
+
+  // Grid
+  const grid = new THREE.GridHelper(16, 32, 0x132840, 0x0e1e2e);
+  grid.position.y = -3.5;
+  grid.material.transparent = true;
+  grid.material.opacity = 0.22;
+  scene.add(grid);
+
+  // ═══════════════════════════════════════════════════════════
+  //  STATE
+  // ═══════════════════════════════════════════════════════════
+  let pointsMesh, skeletonLines, somaMeshes = [];
+  let dustMesh;
+  let synapseMesh;
+  let shollRings = [];
+  let allTargets = [];
+  let allSources = [];
+  let allMeta = [];
+  let skeletonData = [];
+  let swcNodesAll = [];
+  let statsData = {};
+  let flowStart = 0;
+  let playingFlow = false;
+  let signalStart = 0;
+  let playingSignal = false;
+  let currentColorMode = 'type';
+  let fpsFrames = 0, fpsTime = 0, fpsDisplay = 0;
+
+  // ═══════════════════════════════════════════════════════════
+  //  UI REFERENCES
+  // ═══════════════════════════════════════════════════════════
+  const ui = {
+    seed: $('seed'), style: $('style'), points: $('points'), complexity: $('complexity'),
+    tortuosity: $('tortuosity'), spread: $('spread'), taper: $('taper'),
+    neuronCount: $('neuronCount'), spineDensity: $('spineDensity'), boutonDensity: $('boutonDensity'),
+    growthBias: $('growthBias'), noise: $('noise'), flowDur: $('flowDur'),
+    signalSpeed: $('signalSpeed'), pulseWidth: $('pulseWidth'),
+    pointSize: $('pointSize'), bloom: $('bloom'), bloomRad: $('bloomRad'), dust: $('dust'),
+    shollCount: $('shollCount')
+  };
+
+  // ═══════════════════════════════════════════════════════════
+  //  TABS
+  // ═══════════════════════════════════════════════════════════
+  document.querySelectorAll('.tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+      document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+      document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+      tab.classList.add('active');
+      $('tab-' + tab.dataset.tab).classList.add('active');
+    });
+  });
+
+  // ═══════════════════════════════════════════════════════════
+  //  COLOR MODES
+  // ═══════════════════════════════════════════════════════════
+  document.querySelectorAll('.color-mode').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.color-mode').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      currentColorMode = btn.dataset.mode;
+      recolorPoints();
+      showToast('Color mode: ' + btn.textContent);
+    });
+  });
+
+  // Color palettes
+  const palettes = {
+    type: (p) => {
+      if (p.type === 'soma') return new THREE.Color(0xfbbf24);
+      if (p.type === 'axon') return new THREE.Color(0x34d399);
+      if (p.type === 'glia') return new THREE.Color(0xf472b6);
+      return new THREE.Color(0x00e5ff);
+    },
+    depth: (p) => {
+      const t = clamp(p.depth / 8, 0, 1);
+      return hsl(0.55 - t * 0.4, 0.85, 0.35 + t * 0.35);
+    },
+    distance: (p) => {
+      const d = Math.sqrt(p.x*p.x + p.y*p.y + p.z*p.z);
+      const t = clamp(d / 6, 0, 1);
+      return hsl(0.08 + t * 0.55, 0.9, 0.4 + t * 0.25);
+    },
+    branch: (p) => {
+      const t = clamp(p.branchOrder / 6, 0, 1);
+      return hsl(0.72 - t * 0.6, 0.8, 0.4 + t * 0.2);
+    },
+    heat: (p) => {
+      const d = Math.sqrt(p.x*p.x + p.y*p.y + p.z*p.z);
+      const t = clamp(d / 5, 0, 1);
+      if (t < 0.33) return hsl(0.0, 1.0, 0.15 + t * 2);
+      if (t < 0.66) return hsl(0.08 * ((t - 0.33) / 0.33), 1.0, 0.5 + (t-0.33));
+      return hsl(0.15, 0.8 - (t-0.66)*2, 0.7 + (t-0.66));
+    },
+    cool: (p) => {
+      const d = Math.sqrt(p.x*p.x + p.y*p.y + p.z*p.z);
+      const t = clamp(d / 6, 0, 1);
+      // Plasma-inspired: purple → blue → cyan → green → yellow
+      const h = 0.8 - t * 0.65;
+      return hsl(h, 0.9, 0.3 + t * 0.4);
+    }
+  };
+
+  function recolorPoints() {
+    if (!pointsMesh || !allTargets.length) return;
+    const colors = pointsMesh.geometry.attributes.color.array;
+    const fn = palettes[currentColorMode] || palettes.type;
+    for (let i = 0; i < allTargets.length; i++) {
+      const c = fn(allTargets[i]);
+      colors[i*3] = c.r;
+      colors[i*3+1] = c.g;
+      colors[i*3+2] = c.b;
+    }
+    pointsMesh.geometry.attributes.color.needsUpdate = true;
+
+    // Update legend pills
+    const pills = $('legendPills');
+    if (currentColorMode === 'type') {
+      pills.innerHTML = `
+        <span class="pill"><i class="dot" style="background:#00e5ff"></i>Dendrite</span>
+        <span class="pill"><i class="dot" style="background:#34d399"></i>Axon</span>
+        <span class="pill"><i class="dot" style="background:#fbbf24"></i>Soma</span>
+        <span class="pill"><i class="dot" style="background:#f472b6"></i>Glia/Synapse</span>
+        <span class="pill"><i class="dot" style="background:#a855f7"></i>Skeleton</span>`;
+    } else {
+      pills.innerHTML = `<span class="pill"><i class="dot" style="background:${currentColorMode === 'heat' ? '#ff4444' : '#a855f7'}"></i>${currentColorMode} gradient applied</span>`;
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  //  PRESETS
+  // ═══════════════════════════════════════════════════════════
+  const presets = {
+    pyramidal: { style:'mixed', complexity:0.72, tortuosity:0.40, spread:0.80, taper:0.70, points:14000, neuronCount:1 },
+    purkinje: { style:'dendrite', complexity:0.95, tortuosity:0.55, spread:1.10, taper:0.65, points:22000, neuronCount:1 },
+    stellate: { style:'dendrite', complexity:0.60, tortuosity:0.50, spread:1.20, taper:0.72, points:10000, neuronCount:1 },
+    bipolar: { style:'axon', complexity:0.30, tortuosity:0.35, spread:0.30, taper:0.78, points:8000, neuronCount:1 },
+    motor: { style:'mixed', complexity:0.65, tortuosity:0.30, spread:0.70, taper:0.68, points:15000, neuronCount:1 },
+    chandelier: { style:'interneuron', complexity:0.80, tortuosity:0.60, spread:0.55, taper:0.60, points:12000, neuronCount:1 },
+    granule: { style:'dendrite', complexity:0.25, tortuosity:0.20, spread:0.50, taper:0.80, points:5000, neuronCount:1 },
+    network: { style:'mixed', complexity:0.55, tortuosity:0.40, spread:0.70, taper:0.72, points:8000, neuronCount:3, boutonDensity:0.12 },
+    tufted: { style:'tufted', complexity:0.82, tortuosity:0.36, spread:0.58, taper:0.64, points:18000, neuronCount:1, spineDensity:0.22, boutonDensity:0.08, growthBias:'apical' },
+    basket: { style:'basket', complexity:0.72, tortuosity:0.58, spread:1.08, taper:0.68, points:12000, neuronCount:1, spineDensity:0.06, boutonDensity:0.16, growthBias:'planar' },
+    martinotti: { style:'tufted', complexity:0.70, tortuosity:0.52, spread:0.48, taper:0.72, points:11000, neuronCount:1, spineDensity:0.10, boutonDensity:0.18, growthBias:'columnar' },
+    retinal: { style:'dendrite', complexity:0.50, tortuosity:0.32, spread:1.25, taper:0.82, points:9000, neuronCount:1, spineDensity:0.04, boutonDensity:0.08, growthBias:'planar' },
+    mitral: { style:'tufted', complexity:0.62, tortuosity:0.28, spread:0.46, taper:0.76, points:10500, neuronCount:1, spineDensity:0.08, boutonDensity:0.10, growthBias:'apical' },
+    astrocyte: { style:'astrocyte', complexity:0.78, tortuosity:0.68, spread:1.18, taper:0.74, points:16000, neuronCount:1, spineDensity:0.00, boutonDensity:0.04, growthBias:'balanced' },
+    microns: { style:'mixed', complexity:0.88, tortuosity:0.62, spread:0.92, taper:0.62, points:24000, neuronCount:4, spineDensity:0.18, boutonDensity:0.20, growthBias:'chaotic' }
+  };
+
+  document.querySelectorAll('.preset-chip').forEach(chip => {
+    chip.addEventListener('click', () => {
+      const p = presets[chip.dataset.preset];
+      if (!p) return;
+      ui.style.value = p.style;
+      ui.complexity.value = p.complexity;
+      ui.tortuosity.value = p.tortuosity;
+      ui.spread.value = p.spread;
+      ui.taper.value = p.taper;
+      ui.points.value = p.points;
+      ui.neuronCount.value = p.neuronCount;
+      ui.spineDensity.value = p.spineDensity ?? 0.14;
+      ui.boutonDensity.value = p.boutonDensity ?? 0.06;
+      ui.growthBias.value = p.growthBias ?? 'balanced';
+      updateLabels();
+      regenerate();
+      showToast('Preset: ' + chip.textContent);
+    });
+  });
+
+  const safeText = s => String(s).replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
+  const resourceLibrary = [
+    { kind:'Video', tag:'morphology', title:'NeuroMorpho.Org Quickstart', source:'NeuroMorpho.Org', url:'https://www.neuromorpho.org/main_help.jsp', note:'Search, inspect, and download curated neuron reconstructions.' },
+    { kind:'Dataset', tag:'morphology', title:'NeuroMorpho.Org morphology archive', source:'NeuroMorpho.Org', url:'https://neuromorpho.org/index.jsp', note:'Large public archive of neuronal and glial morphology files.' },
+    { kind:'Dataset', tag:'morphology', title:'Allen Cell Types Database', source:'Allen Institute', url:'https://celltypes.brain-map.org/', note:'Morphology, electrophysiology, and transcriptomic cell-type data.' },
+    { kind:'Tool', tag:'morphology', title:'AllenSDK Cell Types guide', source:'Allen Institute', url:'https://alleninstitute.github.io/AllenSDK/cell_types.html', note:'Programmatic access patterns for cell-type morphology data.' },
+    { kind:'Dataset', tag:'morphology', title:'MouseLight NeuronBrowser', source:'Janelia', url:'https://www.janelia.org/project-team/mouselight/neuronbrowser', note:'Whole-brain mouse neuron reconstructions and projection context.' },
+    { kind:'Dataset', tag:'morphology', title:'Blue Brain OpenData', source:'Blue Brain', url:'https://github.com/BlueBrain/OpenData', note:'Open model and morphology assets for computational neuroscience.' },
+    { kind:'Video', tag:'signal', title:'Lecture 22: Neurons, Action Potential, and Optogenetics', source:'MIT OCW', url:'https://ocw.mit.edu/courses/7-016-introductory-biology-fall-2018/resources/lecture-22-neurons-action-potential-and-optogenetics/', note:'Introductory lecture with action-potential context.' },
+    { kind:'Video', tag:'signal', title:'Neuron action potential mechanism', source:'Khan Academy', url:'https://www.khanacademy.org/science/health-and-medicine/nervous-system-and-sensory-infor/neuron-membrane-potentials-topic/v/neuron-action-potential-mechanism', note:'Accessible animation of membrane potential dynamics.' },
+    { kind:'Video', tag:'signal', title:'Electrical Activity of Neurons', source:'HHMI BioInteractive', url:'https://www.biointeractive.org/classroom-resources/electrical-activity-neurons', note:'Classroom-ready resource on neural electrical signaling.' },
+    { kind:'Video', tag:'signal', title:'Neurophysiology Virtual Lab: Action Potential', source:'HHMI BioInteractive', url:'https://media.hhmi.org/biointeractive/vlabs/neurophysiology2/background-ap.html', note:'Interactive action-potential background material.' },
+    { kind:'Video', tag:'computation', title:'Introduction to Neural Computation lecture videos', source:'MIT OCW', url:'https://ocw.mit.edu/courses/9-40-introduction-to-neural-computation-spring-2018/video_galleries/lecture-videos/', note:'Full lecture series for computational neuroscience models.' },
+    { kind:'Video', tag:'computation', title:'RC Circuit and Nernst Potential', source:'MIT OCW', url:'https://ocw.mit.edu/courses/9-40-introduction-to-neural-computation-spring-2018/resources/2/', note:'Biophysical foundation for membrane dynamics.' },
+    { kind:'Video', tag:'computation', title:'Nernst Potential and Integrate-and-Fire Models', source:'MIT OCW', url:'https://ocw.mit.edu/courses/9-40-introduction-to-neural-computation-spring-2018/resources/3/', note:'Bridges ion gradients and simplified neuron models.' },
+    { kind:'Video', tag:'morphology', title:'Dendrites', source:'MIT OCW', url:'https://ocw.mit.edu/courses/9-40-introduction-to-neural-computation-spring-2018/resources/6/', note:'Dendritic structure and computation lecture.' },
+    { kind:'Course', tag:'computation', title:'Neuromatch Academy Computational Neuroscience', source:'Neuromatch', url:'https://compneuro.neuromatch.io/tutorials/intro', note:'Hands-on notebooks and tutorials for modern neuroscience modeling.' },
+    { kind:'Video', tag:'computation', title:'Theoretical Neuroscience I', source:'Bernstein Network', url:'https://bernstein-network.de/en/teaching-and-research/study-and-training/online-learning/theoretical-neuroscience-i/', note:'Online lectures for theoretical neuroscience foundations.' },
+    { kind:'Tool', tag:'analysis', title:'SNT Sholl Analysis', source:'ImageJ', url:'https://imagej.net/plugins/snt/sholl', note:'Reference workflow for Sholl profiles and neuronal arbor analysis.' },
+    { kind:'Tool', tag:'analysis', title:'SNT Analysis', source:'ImageJ', url:'https://imagej.net/plugins/snt/analysis', note:'Morphometric analysis tools for traced neurons.' },
+    { kind:'Paper', tag:'analysis', title:'SNT: a unifying toolbox for neuronal anatomy', source:'Nature Methods', url:'https://www.nature.com/articles/s41592-021-01105-7', note:'Tooling background for robust neuron morphology quantification.' },
+    { kind:'Standard', tag:'swc', title:'INCF SWC', source:'INCF', url:'https://www.incf.org/swc', note:'Community standard context for SWC morphology files.' },
+    { kind:'Standard', tag:'swc', title:'SWC Specification', source:'ReadTheDocs', url:'https://swc-specification.readthedocs.io/en/latest/swc.html', note:'Detailed SWC file-format reference.' },
+    { kind:'Tool', tag:'swc', title:'NEURON morphology loading', source:'NEURON', url:'https://www.neuronsimulator.org/en/9.0.1/dev/morphology/morphology.html', note:'How morphology files are consumed by the NEURON simulator.' },
+    { kind:'Tool', tag:'swc', title:'Arbor SWC file format', source:'Arbor', url:'https://docs.arbor-sim.org/en/stable/fileformat/swc.html', note:'Simulator-focused SWC interpretation notes.' },
+    { kind:'Video', tag:'connectomics', title:'MICrONS neuroscience data insights', source:'Allen Institute', url:'https://alleninstitute.org/news/explore-the-connections-of-the-brain-microns-neuroscience-data-insights', note:'Connectomics dataset overview and exploration entry point.' },
+    { kind:'Video', tag:'connectomics', title:'MICrONS Explorer annotations tutorial', source:'Allen Institute', url:'https://alleninstitute.org/science-resource/microns-explorer-adding-annotations-tutorial/', note:'Practical tutorial for exploring and annotating MICrONS data.' },
+    { kind:'Dataset', tag:'connectomics', title:'MICrONS Explorer', source:'Allen Institute', url:'https://www.microns-explorer.org/', note:'Browser-based nanoscale connectomics data exploration.' },
+    { kind:'Video', tag:'connectomics', title:'I am my connectome', source:'TED', url:'https://www.ted.com/talks/sebastian_seung_i_am_my_connectome', note:'High-level connectomics motivation and interpretation.' },
+    { kind:'Dataset', tag:'connectomics', title:'FlyWire Apps', source:'FlyWire', url:'https://flywire.ai/apps', note:'Interactive tools for the adult fly connectome.' },
+    { kind:'Interactive', tag:'connectomics', title:'The FlyWire connectome', source:'Nature', url:'https://www.nature.com/immersive/d42859-024-00053-4/index.html', note:'Immersive visual guide to full-brain wiring.' },
+    { kind:'Paper', tag:'connectomics', title:'Neuronal wiring diagram of an adult brain', source:'Nature', url:'https://www.nature.com/articles/s41586-024-07558-y', note:'Dense connectome reference for adult Drosophila.' },
+    { kind:'Paper', tag:'spines', title:'Dendritic spines: from structure to in vivo function', source:'PMC', url:'https://pmc.ncbi.nlm.nih.gov/articles/PMC3410382/', note:'Overview of spine morphology and functional interpretation.' },
+    { kind:'Paper', tag:'spines', title:'Examining form and function of dendritic spines', source:'PMC', url:'https://pmc.ncbi.nlm.nih.gov/articles/PMC3345238/', note:'Methods and concepts for spine structure-function analysis.' },
+    { kind:'Paper', tag:'spines', title:'Actin in dendritic spines', source:'PMC', url:'https://pmc.ncbi.nlm.nih.gov/articles/PMC2872912/', note:'Cytoskeletal dynamics behind spine shape changes.' },
+    { kind:'Research', tag:'morphology', title:'Topological Morphology Descriptor', source:'PMC', url:'https://pmc.ncbi.nlm.nih.gov/articles/PMC5797226/', note:'Persistent-homology descriptor for neuronal tree shapes.' },
+    { kind:'Research', tag:'morphology', title:'NeuroTS morphology synthesis', source:'Cell Reports Methods', url:'https://www.sciencedirect.com/science/article/pii/S2211124722003308', note:'Topology-guided synthesis ideas for realistic arbors.' }
+  ];
+  let activeResourceFilter = 'all';
+
+  function renderResourceFilters() {
+    const filters = ['all', ...Array.from(new Set(resourceLibrary.map(r => r.tag)))];
+    $('resourceFilters').innerHTML = filters.map(tag =>
+      `<button class="filter-chip${tag === activeResourceFilter ? ' active' : ''}" data-resource-filter="${safeText(tag)}">${safeText(tag)}</button>`
+    ).join('');
+    document.querySelectorAll('[data-resource-filter]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        activeResourceFilter = btn.dataset.resourceFilter;
+        renderResourceFilters();
+        renderResourceList();
+      });
+    });
+  }
+
+  function renderResourceList() {
+    const q = $('resourceSearch').value.trim().toLowerCase();
+    const list = resourceLibrary.filter(item => {
+      const matchesFilter = activeResourceFilter === 'all' || item.tag === activeResourceFilter;
+      const haystack = `${item.kind} ${item.tag} ${item.title} ${item.source} ${item.note}`.toLowerCase();
+      return matchesFilter && (!q || haystack.includes(q));
+    });
+    $('resourceList').innerHTML = list.length ? list.map(item => `
+      <a class="resource-card" href="${safeText(item.url)}" target="_blank" rel="noopener">
+        <div class="resource-meta"><span>${safeText(item.kind)} / ${safeText(item.tag)}</span><span>${safeText(item.source)}</span></div>
+        <div class="resource-title">${safeText(item.title)}</div>
+        <div class="resource-note">${safeText(item.note)}</div>
+      </a>
+    `).join('') : '<div class="resource-note">No matching resources.</div>';
+  }
+
+  $('resourceSearch').addEventListener('input', renderResourceList);
+  renderResourceFilters();
+  renderResourceList();
+
+  // ═══════════════════════════════════════════════════════════
+  //  SKELETON GENERATOR (Enhanced recursive growth)
+  // ═══════════════════════════════════════════════════════════
+  function makeSkeleton(params, rng, offset = v3()) {
+    const sk = [];
+    const swcNodes = [];
+    let nodeId = 1;
+    const somaRadius = params.style === 'axon' ? 0.22 : params.style === 'interneuron' || params.style === 'basket' ? 0.26 : params.style === 'astrocyte' ? 0.30 : 0.34;
+    const growthBias = params.growthBias || 'balanced';
+
+    swcNodes.push({ id: nodeId++, type:1, x:offset.x, y:offset.y, z:offset.z, r:somaRadius, parent:-1 });
+
+    const profiles = {
+      axon:        { roots:2, depth:9, len:1.25, split:0.42, radius:0.08,  lengthDecay:0.86, radiusDecay:0.72 },
+      dendrite:    { roots:7, depth:7, len:0.82, split:0.74, radius:0.13,  lengthDecay:0.70, radiusDecay:0.66 },
+      spiny:       { roots:6, depth:7, len:0.72, split:0.78, radius:0.11,  lengthDecay:0.74, radiusDecay:0.68 },
+      mixed:       { roots:5, depth:8, len:0.92, split:0.60, radius:0.11,  lengthDecay:0.76, radiusDecay:0.68 },
+      interneuron: { roots:8, depth:6, len:0.65, split:0.68, radius:0.09,  lengthDecay:0.72, radiusDecay:0.70 },
+      tufted:      { roots:6, depth:9, len:0.86, split:0.66, radius:0.12,  lengthDecay:0.76, radiusDecay:0.66 },
+      basket:      { roots:10, depth:5, len:0.58, split:0.74, radius:0.08, lengthDecay:0.74, radiusDecay:0.72 },
+      astrocyte:   { roots:12, depth:5, len:0.50, split:0.82, radius:0.10, lengthDecay:0.70, radiusDecay:0.74 }
+    };
+
+    const prof = profiles[params.style] || profiles.mixed;
+    const roots = Math.round(prof.roots + params.complexity * 4);
+    const maxDepth = Math.round(prof.depth + params.complexity * 4);
+    let tips = 0, bifurcations = 0, maxOrder = 0;
+
+    function applyGrowthBias(dir, rootKind, depth = 0) {
+      if (growthBias === 'apical' && rootKind !== 'axon') {
+        dir.y += depth < 2 ? 0.38 : 0.08;
+        dir.x *= 0.82;
+        dir.z *= 0.82;
+      } else if (growthBias === 'planar') {
+        dir.y *= 0.18;
+      } else if (growthBias === 'columnar') {
+        dir.y += rootKind === 'axon' ? -0.05 : 0.24;
+        dir.x *= 0.55;
+        dir.z *= 0.55;
+      } else if (growthBias === 'chaotic') {
+        dir.add(randomUnit(rng).multiplyScalar(0.12 + params.tortuosity * 0.20));
+      }
+      return dir.normalize();
+    }
+
+    function grow(start, dir, depth, len, radius, parentId, rootKind) {
+      maxOrder = Math.max(maxOrder, depth);
+      const steps = Math.max(5, Math.round(10 + len * 6));
+      let prev = start.clone();
+      let parent = parentId;
+      let currentDir = dir.clone();
+      const centerline = [];
+      let cable = 0;
+
+      // Gravitropism: slight downward bias for dendrites
+      const gravity = rootKind === 'dendrite' ? -0.008 : 0;
+
+      for (let i = 1; i <= steps; i++) {
+        const t = i / steps;
+
+        // Tortuosity: Perlin-like drift
+        const drift = coneDirection(currentDir, 0.20 + params.tortuosity * 0.4, rng)
+          .multiplyScalar(params.tortuosity * 0.06 * Math.sin(t * Math.PI * 1.5));
+        currentDir.add(drift);
+        currentDir.y += gravity;
+        if (growthBias === 'apical' && rootKind !== 'axon') currentDir.y += 0.006 * (1 - depth / (maxDepth + 1));
+        if (growthBias === 'planar') currentDir.y *= 0.96;
+        if (growthBias === 'columnar' && rootKind !== 'axon') currentDir.y += 0.004;
+        if (growthBias === 'chaotic') currentDir.add(randomUnit(rng).multiplyScalar(0.012));
+        currentDir.normalize();
+
+        const stepLen = len / steps * (0.70 + rng() * 0.65);
+        const next = prev.clone().add(currentDir.clone().multiplyScalar(stepLen));
+
+        // Micro-oscillation for biological realism
+        next.y += Math.sin((depth + t) * 3.2 + rng() * 6) * params.tortuosity * 0.015;
+
+        const r = Math.max(0.010, radius * Math.pow(1 - t * 0.4, params.taper));
+        const type = rootKind === 'axon' ? 2 : rootKind === 'glia' ? 7 : 3;
+        const id = nodeId++;
+        swcNodes.push({ id, type, x:next.x, y:next.y, z:next.z, r, parent });
+        parent = id;
+        centerline.push({
+          pos: next.clone(),
+          radius: r,
+          tangent: currentDir.clone(),
+          type: rootKind,
+          depth,
+          branchOrder: depth,
+          distFromSoma: next.distanceTo(offset)
+        });
+        cable += next.distanceTo(prev);
+        prev = next;
+      }
+
+      sk.push({ centerline, depth, radius, rootKind, cable });
+
+      // Branching decision
+      const splitChance = prof.split + params.complexity * 0.30 - depth * 0.04;
+      const canSplit = depth < maxDepth && radius > 0.015 && len > 0.09;
+      const splitCount = canSplit && rng() < splitChance
+        ? (rng() < 0.15 + params.complexity * 0.20 ? 3 : 2)
+        : 0;
+
+      if (!splitCount) { tips++; return; }
+      bifurcations++;
+
+      for (let s = 0; s < splitCount; s++) {
+        const spreadMult = rootKind === 'axon' ? 0.50 : 1.0;
+        const ndir = coneDirection(currentDir, params.spread * spreadMult, rng);
+        const nlen = len * prof.lengthDecay * (0.68 + rng() * 0.52);
+        const nr = radius * prof.radiusDecay * (0.78 + rng() * 0.20);
+        grow(prev, ndir, depth + 1, nlen, nr, parent, rootKind);
+      }
+    }
+
+    for (let i = 0; i < roots; i++) {
+      let dir = randomUnit(rng);
+      dir.y *= 0.42;
+      dir.normalize();
+      const rootKind = params.style === 'axon' ? 'axon'
+        : params.style === 'astrocyte' ? 'glia'
+        : (params.style === 'interneuron' || params.style === 'basket') ? (i < Math.max(2, Math.round(roots * 0.24)) ? 'axon' : 'dendrite')
+        : (params.style === 'mixed' && i === 0 ? 'axon' : 'dendrite');
+      dir = applyGrowthBias(dir, rootKind, 0);
+      const start = offset.clone().add(dir.clone().multiplyScalar(somaRadius * (0.65 + rng() * 0.45)));
+      const lenBoost = rootKind === 'axon' ? 1.6 : params.style === 'tufted' && growthBias === 'apical' && i === 0 ? 1.45 : 1;
+      grow(start, dir, 0, prof.len * lenBoost * (0.75 + rng() * 0.75), prof.radius, 1, rootKind);
+    }
+
+    return { skeleton: sk, swcNodes, somaRadius, tips, bifurcations, maxOrder, offset };
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  //  POINT CLOUD GENERATOR
+  // ═══════════════════════════════════════════════════════════
+  function makePointCloud(params, rng, offset = v3()) {
+    const skData = makeSkeleton(params, rng, offset);
+    const samples = [];
+    let cable = 0;
+
+    for (const seg of skData.skeleton) {
+      cable += seg.cable;
+      for (const c of seg.centerline) samples.push(c);
+    }
+
+    const N = params.points;
+    const somaCount = Math.round(N * (params.style === 'axon' ? 0.04 : 0.08));
+    const cloud = [];
+
+    // Soma points
+    for (let i = 0; i < somaCount; i++) {
+      const d = randomUnit(rng);
+      const shell = Math.cbrt(rng()) * skData.somaRadius;
+      const pt = d.multiplyScalar(shell * (0.68 + rng() * 0.50)).add(offset);
+      cloud.push({
+        x:pt.x, y:pt.y, z:pt.z,
+        type:'soma', r:skData.somaRadius,
+        depth:0, branchOrder:0, distFromSoma:pt.distanceTo(offset)
+      });
+    }
+
+    // Neurite points
+    for (let i = somaCount; i < N; i++) {
+      const c = samples[Math.floor(rng() * samples.length)];
+      const { n, b } = localFrame(c.tangent);
+      const angle = rng() * Math.PI * 2;
+      const rr = Math.sqrt(rng()) * c.radius * (0.50 + rng() * 0.80);
+      let synapse = false;
+      const pt = c.pos.clone()
+        .add(n.clone().multiplyScalar(Math.cos(angle) * rr))
+        .add(b.clone().multiplyScalar(Math.sin(angle) * rr));
+
+      // Spiny protrusions
+      if ((params.style === 'spiny' || params.style === 'dendrite' || params.style === 'tufted') && rng() < params.spineDensity && c.type !== 'axon' && c.type !== 'glia') {
+        const spineLen = c.radius * (1.6 + rng() * 2.8);
+        const outward = pt.clone().sub(c.pos).normalize();
+        if (outward.lengthSq() > 0.01) pt.add(outward.multiplyScalar(spineLen));
+        synapse = rng() < 0.55;
+      }
+
+      // Varicosity: occasional swellings along axons
+      if (c.type === 'axon' && rng() < params.boutonDensity) {
+        const swell = randomUnit(rng).multiplyScalar(c.radius * (0.5 + rng() * 1.2));
+        pt.add(swell);
+        synapse = true;
+      }
+      if (c.type !== 'glia' && rng() < params.boutonDensity * 0.08) synapse = true;
+
+      cloud.push({
+        x:pt.x, y:pt.y, z:pt.z,
+        type: c.type, r: c.radius,
+        depth: c.depth,
+        branchOrder: c.branchOrder,
+        distFromSoma: c.distFromSoma,
+        synapse
+      });
+    }
+
+    return { cloud, skeleton: skData.skeleton, swcNodes: skData.swcNodes, somaRadius: skData.somaRadius, tips: skData.tips, bifurcations: skData.bifurcations, maxOrder: skData.maxOrder, cable, offset };
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  //  FLOW SOURCE (noise field)
+  // ═══════════════════════════════════════════════════════════
+  function buildSource(target, rng, noise) {
+    const bb = new THREE.Box3();
+    for (const p of target) bb.expandByPoint(v3(p.x, p.y, p.z));
+    const size = bb.getSize(v3()).length() || 5;
+    return target.map((p, i) => {
+      const burst = randomUnit(rng).multiplyScalar(size * (0.3 + rng() * 0.8) * noise);
+      // Curl-like swirl for more organic look
+      const swirl = v3(
+        Math.sin(i * 12.9898 + p.y * 3) * size * 0.14 * noise,
+        Math.cos(i * 78.233 + p.z * 2) * size * 0.12 * noise,
+        Math.sin(i * 37.719 + p.x * 4) * size * 0.14 * noise
+      );
+      return { x: burst.x + swirl.x, y: burst.y + swirl.y, z: burst.z + swirl.z };
+    });
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  //  AMBIENT DUST PARTICLES
+  // ═══════════════════════════════════════════════════════════
+  function disposeObject(obj) {
+    if (!obj) return;
+    scene.remove(obj);
+    if (obj.geometry) obj.geometry.dispose();
+    if (Array.isArray(obj.material)) obj.material.forEach(m => m && m.dispose && m.dispose());
+    else if (obj.material && obj.material.dispose) obj.material.dispose();
+  }
+
+  function createDust(count) {
+    if (dustMesh) {
+      disposeObject(dustMesh);
+      dustMesh = null;
+    }
+    if (count <= 0) return;
+    const positions = new Float32Array(count * 3);
+    const sizes = new Float32Array(count);
+    const rng = mulberry32(42);
+    for (let i = 0; i < count; i++) {
+      positions[i*3]   = (rng() - 0.5) * 30;
+      positions[i*3+1] = (rng() - 0.5) * 20;
+      positions[i*3+2] = (rng() - 0.5) * 30;
+      sizes[i] = 0.02 + rng() * 0.05;
+    }
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    geo.setAttribute('aSize', new THREE.BufferAttribute(sizes, 1));
+    const mat = new THREE.ShaderMaterial({
+      vertexShader: dustVertexShader,
+      fragmentShader: dustFragmentShader,
+      uniforms: { uTime: { value: 0 } },
+      transparent: true,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending
+    });
+    dustMesh = new THREE.Points(geo, mat);
+    scene.add(dustMesh);
+  }
+
+  function createSynapseMarkers(points) {
+    if (synapseMesh) {
+      disposeObject(synapseMesh);
+      synapseMesh = null;
+    }
+    const synapses = points.filter(p => p.synapse);
+    if (!synapses.length) {
+      synapseMesh = null;
+      return 0;
+    }
+
+    const positions = new Float32Array(synapses.length * 3);
+    const colors = new Float32Array(synapses.length * 3);
+    for (let i = 0; i < synapses.length; i++) {
+      const p = synapses[i];
+      positions[i*3] = p.x;
+      positions[i*3+1] = p.y;
+      positions[i*3+2] = p.z;
+      const c = p.type === 'axon' ? new THREE.Color(0xff7ad9) : new THREE.Color(0xfff2a8);
+      colors[i*3] = c.r;
+      colors[i*3+1] = c.g;
+      colors[i*3+2] = c.b;
+    }
+
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+    const mat = new THREE.PointsMaterial({
+      size: 0.075,
+      sizeAttenuation: true,
+      vertexColors: true,
+      transparent: true,
+      opacity: 0.88,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending
+    });
+    synapseMesh = new THREE.Points(geo, mat);
+    scene.add(synapseMesh);
+    return synapses.length;
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  //  SHOLL ANALYSIS
+  // ═══════════════════════════════════════════════════════════
+  function computeSholl(skeleton, center, ringCount) {
+    let maxDist = 0;
+    const allPts = [];
+    for (const seg of skeleton) {
+      for (const c of seg.centerline) {
+        const d = c.pos.distanceTo(center);
+        maxDist = Math.max(maxDist, d);
+        allPts.push({ pos: c.pos, dist: d, prevPos: null });
+      }
+    }
+    // Compute segment crossings at each radius
+    const step = maxDist / ringCount;
+    const crossings = new Array(ringCount).fill(0);
+    for (const seg of skeleton) {
+      for (let i = 1; i < seg.centerline.length; i++) {
+        const d1 = seg.centerline[i-1].pos.distanceTo(center);
+        const d2 = seg.centerline[i].pos.distanceTo(center);
+        for (let r = 0; r < ringCount; r++) {
+          const radius = (r + 1) * step;
+          if ((d1 <= radius && d2 > radius) || (d1 > radius && d2 <= radius)) {
+            crossings[r]++;
+          }
+        }
+      }
+    }
+    return { crossings, step, maxDist };
+  }
+
+  function estimateFractalDimension(points) {
+    if (points.length < 20) return 0;
+    const bb = new THREE.Box3();
+    points.forEach(p => bb.expandByPoint(v3(p.x, p.y, p.z)));
+    const size = Math.max(bb.getSize(v3()).x, bb.getSize(v3()).y, bb.getSize(v3()).z) || 1;
+    const scales = [4, 6, 9, 13];
+    const samples = scales.map(divs => {
+      const occupied = new Set();
+      const cell = size / divs;
+      for (const p of points) {
+        const ix = Math.floor((p.x - bb.min.x) / cell);
+        const iy = Math.floor((p.y - bb.min.y) / cell);
+        const iz = Math.floor((p.z - bb.min.z) / cell);
+        occupied.add(ix + ':' + iy + ':' + iz);
+      }
+      return { x: Math.log(divs), y: Math.log(Math.max(occupied.size, 1)) };
+    });
+    const n = samples.length;
+    const sx = samples.reduce((s, p) => s + p.x, 0);
+    const sy = samples.reduce((s, p) => s + p.y, 0);
+    const sxx = samples.reduce((s, p) => s + p.x * p.x, 0);
+    const sxy = samples.reduce((s, p) => s + p.x * p.y, 0);
+    const denom = n * sxx - sx * sx;
+    return denom ? clamp((n * sxy - sx * sy) / denom, 0, 3) : 0;
+  }
+
+  function computeBranchEntropy(skeleton) {
+    const counts = {};
+    for (const seg of skeleton) counts[seg.depth] = (counts[seg.depth] || 0) + 1;
+    const vals = Object.values(counts);
+    const total = vals.reduce((s, v) => s + v, 0);
+    if (!total || vals.length < 2) return 0;
+    const entropy = vals.reduce((sum, v) => {
+      const p = v / total;
+      return sum - p * Math.log2(p);
+    }, 0);
+    return entropy / Math.log2(vals.length);
+  }
+
+  function setScore(id, value) {
+    const pct = Math.round(clamp(value, 0, 1) * 100);
+    $(id).style.width = pct + '%';
+    $(id + 'Val').textContent = pct + '%';
+  }
+
+  function updateResearchCompass(metrics, params) {
+    const arbor = clamp(metrics.cable / 110, 0, 1);
+    const reach = clamp(metrics.extent / 18, 0, 1);
+    const synapse = clamp(metrics.synapses / Math.max(metrics.points * 0.12, 1), 0, 1);
+    const novelty = clamp((metrics.fractal - 1.15) / 0.75 + metrics.entropy * 0.35 + params.tortuosity * 0.18, 0, 1);
+    setScore('scoreArbor', arbor);
+    setScore('scoreReach', reach);
+    setScore('scoreSynapse', synapse);
+    setScore('scoreNovelty', novelty);
+
+    const dominant = [
+      ['arbor load', arbor],
+      ['signal reach', reach],
+      ['synaptic load', synapse],
+      ['shape novelty', novelty]
+    ].sort((a, b) => b[1] - a[1])[0][0];
+    $('compassNote').textContent = `Signature: ${params.style} morphology with ${params.growthBias} growth bias. Dominant axis is ${dominant}; use Sholl peak and branch entropy to tune plausibility.`;
+  }
+
+  function drawShollChart(crossings, step) {
+    const canvas = $('shollCanvas');
+    const ctx = canvas.getContext('2d');
+    const rect = canvas.parentElement.getBoundingClientRect();
+    canvas.width = rect.width * 2;
+    canvas.height = rect.height * 2;
+    ctx.scale(2, 2);
+    const w = rect.width;
+    const h = rect.height;
+
+    ctx.clearRect(0, 0, w, h);
+
+    const max = Math.max(...crossings, 1);
+    const pad = { top: 8, bottom: 18, left: 30, right: 8 };
+    const plotW = w - pad.left - pad.right;
+    const plotH = h - pad.top - pad.bottom;
+
+    // Grid lines
+    ctx.strokeStyle = 'rgba(100,180,255,0.08)';
+    ctx.lineWidth = 0.5;
+    for (let i = 0; i <= 4; i++) {
+      const y = pad.top + plotH * (1 - i / 4);
+      ctx.beginPath(); ctx.moveTo(pad.left, y); ctx.lineTo(pad.left + plotW, y); ctx.stroke();
+    }
+
+    // Bars with gradient
+    const barW = plotW / crossings.length * 0.7;
+    const gap = plotW / crossings.length;
+    for (let i = 0; i < crossings.length; i++) {
+      const x = pad.left + i * gap + (gap - barW) / 2;
+      const barH = (crossings[i] / max) * plotH;
+      const y = pad.top + plotH - barH;
+
+      const grad = ctx.createLinearGradient(x, y, x, y + barH);
+      grad.addColorStop(0, 'rgba(0,229,255,0.8)');
+      grad.addColorStop(1, 'rgba(168,85,247,0.4)');
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.roundRect(x, y, barW, barH, 2);
+      ctx.fill();
+
+      // Value label
+      if (crossings[i] > 0) {
+        ctx.fillStyle = 'rgba(228,240,250,0.7)';
+        ctx.font = '8px JetBrains Mono';
+        ctx.textAlign = 'center';
+        ctx.fillText(crossings[i], x + barW/2, y - 3);
+      }
+    }
+
+    // Axis labels
+    ctx.fillStyle = 'rgba(94,122,143,0.8)';
+    ctx.font = '8px Inter';
+    ctx.textAlign = 'center';
+    for (let i = 0; i < crossings.length; i++) {
+      const x = pad.left + i * gap + gap/2;
+      ctx.fillText(((i+1) * step).toFixed(1), x, h - 4);
+    }
+    ctx.save();
+    ctx.translate(8, pad.top + plotH/2);
+    ctx.rotate(-Math.PI/2);
+    ctx.fillText('Crossings', 0, 0);
+    ctx.restore();
+  }
+
+  function drawBranchOrderChart(skeleton) {
+    const canvas = $('branchOrderCanvas');
+    const ctx = canvas.getContext('2d');
+    const rect = canvas.parentElement.getBoundingClientRect();
+    canvas.width = rect.width * 2;
+    canvas.height = rect.height * 2;
+    ctx.scale(2, 2);
+    const w = rect.width;
+    const h = rect.height;
+    ctx.clearRect(0, 0, w, h);
+
+    const orders = {};
+    for (const seg of skeleton) {
+      const o = seg.depth;
+      orders[o] = (orders[o] || 0) + 1;
+    }
+    const keys = Object.keys(orders).map(Number).sort((a,b) => a - b);
+    if (!keys.length) return;
+    const vals = keys.map(k => orders[k]);
+    const max = Math.max(...vals, 1);
+
+    const pad = { top: 8, bottom: 18, left: 30, right: 8 };
+    const plotW = w - pad.left - pad.right;
+    const plotH = h - pad.top - pad.bottom;
+
+    const barW = Math.min(plotW / keys.length * 0.7, 20);
+    const gap = plotW / keys.length;
+
+    for (let i = 0; i < keys.length; i++) {
+      const x = pad.left + i * gap + (gap - barW) / 2;
+      const barH = (vals[i] / max) * plotH;
+      const y = pad.top + plotH - barH;
+
+      const grad = ctx.createLinearGradient(x, y, x, y + barH);
+      grad.addColorStop(0, 'rgba(52,211,153,0.8)');
+      grad.addColorStop(1, 'rgba(0,229,255,0.3)');
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.roundRect(x, y, barW, barH, 2);
+      ctx.fill();
+
+      ctx.fillStyle = 'rgba(228,240,250,0.7)';
+      ctx.font = '8px JetBrains Mono';
+      ctx.textAlign = 'center';
+      ctx.fillText(vals[i], x + barW/2, y - 3);
+    }
+
+    ctx.fillStyle = 'rgba(94,122,143,0.8)';
+    ctx.font = '8px Inter';
+    ctx.textAlign = 'center';
+    for (let i = 0; i < keys.length; i++) {
+      ctx.fillText('O' + keys[i], pad.left + i * gap + gap/2, h - 4);
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  //  SHOLL RINGS (3D overlay)
+  // ═══════════════════════════════════════════════════════════
+  function updateShollRings() {
+    // Remove old
+    shollRings.forEach(disposeObject);
+    shollRings = [];
+
+    if (!$('toggleSholl').classList.contains('on') || !skeletonData.length) return;
+
+    const center = skeletonData[0].offset || v3();
+    const flatSkeleton = [];
+    for (const sd of skeletonData) {
+      for (const seg of sd.skeleton) flatSkeleton.push(seg);
+    }
+    const shollData = computeSholl(flatSkeleton, center, parseInt(ui.shollCount.value));
+
+    for (let i = 0; i < shollData.crossings.length; i++) {
+      const radius = (i + 1) * shollData.step;
+      const geo = new THREE.RingGeometry(radius - 0.015, radius + 0.015, 64);
+      const mat = new THREE.MeshBasicMaterial({
+        color: 0x00e5ff,
+        transparent: true,
+        opacity: 0.12 + (shollData.crossings[i] / Math.max(...shollData.crossings, 1)) * 0.18,
+        side: THREE.DoubleSide,
+        blending: THREE.AdditiveBlending
+      });
+      const ring = new THREE.Mesh(geo, mat);
+      ring.rotation.x = -Math.PI / 2;
+      ring.position.copy(center);
+      scene.add(ring);
+      shollRings.push(ring);
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  //  SKELETON LINE BUILDER (with glow)
+  // ═══════════════════════════════════════════════════════════
+  function buildSkeletonLines(skeletons) {
+    const arr = [];
+    for (const sd of skeletons) {
+      for (const seg of sd.skeleton) {
+        for (let i = 1; i < seg.centerline.length; i++) {
+          const a = seg.centerline[i-1].pos;
+          const b = seg.centerline[i].pos;
+          arr.push(a.x,a.y,a.z, b.x,b.y,b.z);
+        }
+      }
+    }
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(arr, 3));
+    const mat = new THREE.LineBasicMaterial({
+      color: 0xa855f7,
+      transparent: true,
+      opacity: 0.28,
+      blending: THREE.AdditiveBlending
+    });
+    return new THREE.LineSegments(geo, mat);
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  //  MAIN REGENERATION
+  // ═══════════════════════════════════════════════════════════
+  function readParams() {
+    return {
+      seed: parseInt(ui.seed.value || '1', 10),
+      style: ui.style.value,
+      points: parseInt(ui.points.value, 10),
+      complexity: parseFloat(ui.complexity.value),
+      tortuosity: parseFloat(ui.tortuosity.value),
+      spread: parseFloat(ui.spread.value),
+      taper: parseFloat(ui.taper.value),
+      spineDensity: parseFloat(ui.spineDensity.value),
+      boutonDensity: parseFloat(ui.boutonDensity.value),
+      growthBias: ui.growthBias.value,
+      noise: parseFloat(ui.noise.value),
+      pointSize: parseFloat(ui.pointSize.value),
+      neuronCount: parseInt(ui.neuronCount.value, 10)
+    };
+  }
+
+  function updateLabels() {
+    $('seedVal').textContent = ui.seed.value;
+    $('pointsVal').textContent = ui.points.value;
+    $('complexityVal').textContent = Number(ui.complexity.value).toFixed(2);
+    $('tortuosityVal').textContent = Number(ui.tortuosity.value).toFixed(2);
+    $('spreadVal').textContent = Number(ui.spread.value).toFixed(2);
+    $('taperVal').textContent = Number(ui.taper.value).toFixed(2);
+    $('neuronCountVal').textContent = ui.neuronCount.value;
+    $('spineVal').textContent = Number(ui.spineDensity.value).toFixed(2);
+    $('boutonVal').textContent = Number(ui.boutonDensity.value).toFixed(2);
+    $('noiseVal').textContent = Number(ui.noise.value).toFixed(2);
+    $('flowDurVal').textContent = Number(ui.flowDur.value).toFixed(1) + 's';
+    $('signalSpeedVal').textContent = Number(ui.signalSpeed.value).toFixed(2);
+    $('pulseWidthVal').textContent = Number(ui.pulseWidth.value).toFixed(2);
+    $('pointSizeVal').textContent = Number(ui.pointSize.value).toFixed(3);
+    $('bloomVal').textContent = Number(ui.bloom.value).toFixed(2);
+    $('bloomRadVal').textContent = Number(ui.bloomRad.value).toFixed(2);
+    $('dustVal').textContent = ui.dust.value;
+    $('shollCountVal').textContent = ui.shollCount.value;
+
+    // Live-update bloom
+    bloomPass.strength = parseFloat(ui.bloom.value);
+    bloomPass.radius = parseFloat(ui.bloomRad.value);
+  }
+
+  function regenerate() {
+    updateLabels();
+    const params = readParams();
+    const rng = mulberry32(params.seed);
+
+    // Clear old
+    if (pointsMesh) disposeObject(pointsMesh);
+    if (skeletonLines) disposeObject(skeletonLines);
+    if (synapseMesh) disposeObject(synapseMesh);
+    synapseMesh = null;
+    somaMeshes.forEach(disposeObject);
+    somaMeshes = [];
+
+    allTargets = [];
+    allSources = [];
+    allMeta = [];
+    skeletonData = [];
+    swcNodesAll = [];
+
+    let totalCable = 0, totalTips = 0, totalBifurc = 0, maxOrder = 0;
+    let swcIdOffset = 0;
+
+    // Generate multiple neurons if requested
+    const neuronCount = params.neuronCount;
+    for (let n = 0; n < neuronCount; n++) {
+      const offset = neuronCount > 1
+        ? v3((rng() - 0.5) * 8 * neuronCount, (rng() - 0.5) * 2, (rng() - 0.5) * 8 * neuronCount)
+        : v3();
+
+      const made = makePointCloud(params, mulberry32(params.seed + n * 7919), offset);
+      allTargets.push(...made.cloud);
+      skeletonData.push({ skeleton: made.skeleton, offset });
+      swcNodesAll.push(...made.swcNodes.map(node => ({
+        ...node,
+        id: node.id + swcIdOffset,
+        parent: node.parent < 0 ? -1 : node.parent + swcIdOffset
+      })));
+      swcIdOffset += made.swcNodes.length;
+      totalCable += made.cable;
+      totalTips += made.tips;
+      totalBifurc += made.bifurcations;
+      maxOrder = Math.max(maxOrder, made.maxOrder);
+
+      // Soma sphere
+      const somaGeo = new THREE.SphereGeometry(made.somaRadius, 36, 22);
+      const somaMat = new THREE.MeshStandardMaterial({
+        color: 0xffc870,
+        emissive: 0x503000,
+        emissiveIntensity: 0.5,
+        roughness: 0.35,
+        metalness: 0.08,
+        transparent: true,
+        opacity: 0.5
+      });
+      const somaMesh = new THREE.Mesh(somaGeo, somaMat);
+      somaMesh.position.copy(offset);
+      scene.add(somaMesh);
+      somaMeshes.push(somaMesh);
+    }
+
+    // Source positions for flow
+    allSources = buildSource(allTargets, mulberry32(params.seed + 1337), params.noise);
+
+    // Stats
+    statsData = {
+      points: allTargets.length,
+      branches: skeletonData.reduce((s, d) => s + d.skeleton.length, 0),
+      tips: totalTips,
+      cable: totalCable,
+      bifurcations: totalBifurc,
+      maxOrder
+    };
+
+    // Build geometry with custom shader attributes
+    const N = allTargets.length;
+    const positions = new Float32Array(N * 3);
+    const colors = new Float32Array(N * 3);
+    const sizes = new Float32Array(N);
+    const signals = new Float32Array(N);
+    const depths = new Float32Array(N);
+    const sizeRng = mulberry32(params.seed + 4242);
+
+    const colorFn = palettes[currentColorMode] || palettes.type;
+    for (let i = 0; i < N; i++) {
+      const p = allSources[i]; // start from source
+      positions[i*3] = p.x;
+      positions[i*3+1] = p.y;
+      positions[i*3+2] = p.z;
+
+      const c = colorFn(allTargets[i]);
+      colors[i*3] = c.r;
+      colors[i*3+1] = c.g;
+      colors[i*3+2] = c.b;
+
+      sizes[i] = allTargets[i].type === 'soma' ? 1.4 : (0.6 + sizeRng() * 0.8);
+      depths[i] = allTargets[i].depth || 0;
+    }
+
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+    geo.setAttribute('aSize', new THREE.BufferAttribute(sizes, 1));
+    geo.setAttribute('aSignal', new THREE.BufferAttribute(signals, 1));
+    geo.setAttribute('aDepth', new THREE.BufferAttribute(depths, 1));
+    geo.computeBoundingSphere();
+
+    const mat = new THREE.ShaderMaterial({
+      vertexShader: neuronVertexShader,
+      fragmentShader: neuronFragmentShader,
+      uniforms: {
+        uTime: { value: 0 },
+        uPointSize: { value: params.pointSize * 100 },
+        uDofEnabled: { value: 0 },
+        uDofFocus: { value: 10 }
+      },
+      vertexColors: true,
+      transparent: true,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending
+    });
+
+    pointsMesh = new THREE.Points(geo, mat);
+    scene.add(pointsMesh);
+
+    // Skeleton lines
+    skeletonLines = buildSkeletonLines(skeletonData);
+    scene.add(skeletonLines);
+
+    const synapseCount = createSynapseMarkers(allTargets);
+
+    // Higher-order analysis
+    const bb = new THREE.Box3();
+    for (const p of allTargets) bb.expandByPoint(v3(p.x, p.y, p.z));
+    const extent = bb.getSize(v3()).length();
+    const flatSk = [];
+    for (const sd of skeletonData) for (const seg of sd.skeleton) flatSk.push(seg);
+    const center = skeletonData[0]?.offset || v3();
+    const shollData = computeSholl(flatSk, center, parseInt(ui.shollCount.value));
+    const fractal = estimateFractalDimension(allTargets);
+    const entropy = computeBranchEntropy(flatSk);
+    const shollPeak = Math.max(...shollData.crossings, 0);
+    Object.assign(statsData, {
+      synapses: synapseCount,
+      extent,
+      fractal,
+      shollPeak,
+      entropy,
+      params: { ...params }
+    });
+
+    // Update metrics
+    $('mPoints').textContent = statsData.points.toLocaleString();
+    $('mBranches').textContent = statsData.branches.toLocaleString();
+    $('mTips').textContent = statsData.tips.toLocaleString();
+    $('mLength').textContent = statsData.cable.toFixed(2);
+    $('mBifurc').textContent = statsData.bifurcations.toLocaleString();
+    $('mMaxOrder').textContent = statsData.maxOrder;
+    $('mAvgLen').textContent = statsData.branches ? (statsData.cable / statsData.branches).toFixed(3) : '0';
+    $('mExtent').textContent = statsData.extent.toFixed(2);
+    $('mSynapses').textContent = statsData.synapses.toLocaleString();
+    $('mFractal').textContent = statsData.fractal.toFixed(2);
+    $('mShollPeak').textContent = statsData.shollPeak.toLocaleString();
+    $('mEntropy').textContent = statsData.entropy.toFixed(2);
+    updateResearchCompass(statsData, params);
+
+    drawShollChart(shollData.crossings, shollData.step);
+    drawBranchOrderChart(flatSk);
+
+    // Dust
+    createDust(parseInt(ui.dust.value));
+
+    // Sholl rings
+    updateShollRings();
+
+    fitCamera();
+    replayFlow();
+    showToast('Generated ' + statsData.points.toLocaleString() + ' points');
+  }
+
+  function fitCamera() {
+    const bb = new THREE.Box3();
+    for (const p of allTargets) bb.expandByPoint(v3(p.x, p.y, p.z));
+    const center = bb.getCenter(v3());
+    const size = bb.getSize(v3()).length();
+    controls.target.copy(center);
+    camera.position.copy(center.clone().add(v3(size * 0.52, size * 0.40, size * 0.78)));
+    camera.near = Math.max(0.01, size / 250);
+    camera.far = Math.max(500, size * 60);
+    camera.updateProjectionMatrix();
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  //  FLOW ANIMATION
+  // ═══════════════════════════════════════════════════════════
+  function replayFlow() {
+    flowStart = performance.now();
+    playingFlow = true;
+    if (skeletonLines) skeletonLines.visible = false;
+  }
+
+  function animateFlow(now) {
+    if (!pointsMesh || !playingFlow) return;
+    const duration = parseFloat(ui.flowDur.value) * 1000;
+    const raw = clamp((now - flowStart) / duration, 0, 1);
+    const t = ease(raw);
+    const pos = pointsMesh.geometry.attributes.position.array;
+
+    for (let i = 0; i < allTargets.length; i++) {
+      const a = allSources[i], b = allTargets[i];
+      // Enhanced curl drift
+      const curlT = raw * Math.PI * 4;
+      const drift = Math.sin(curlT + i * 0.012) * (1 - raw) * 0.04;
+      const swirl = Math.cos(curlT * 0.7 + i * 0.0087) * (1 - raw) * 0.025;
+      pos[i*3]   = lerp(a.x, b.x, t) + drift * Math.sin(i * 0.029);
+      pos[i*3+1] = lerp(a.y, b.y, t) + drift * Math.cos(i * 0.021) + swirl;
+      pos[i*3+2] = lerp(a.z, b.z, t) + drift * Math.sin(i * 0.015);
+    }
+    pointsMesh.geometry.attributes.position.needsUpdate = true;
+
+    if (raw >= 1) {
+      playingFlow = false;
+      if (skeletonLines) {
+        const showSk = $('toggleSkeleton').classList.contains('on');
+        skeletonLines.visible = showSk;
+      }
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  //  SIGNAL PROPAGATION
+  // ═══════════════════════════════════════════════════════════
+  function fireSignal() {
+    signalStart = performance.now();
+    playingSignal = true;
+    $('signalBarWrap').style.display = 'block';
+    showToast('⚡ Action potential fired!');
+  }
+
+  function animateSignal(now) {
+    if (!pointsMesh || !playingSignal) return;
+    const speed = parseFloat(ui.signalSpeed.value);
+    const width = parseFloat(ui.pulseWidth.value);
+    const elapsed = (now - signalStart) / 1000 * speed;
+    const maxDist = Math.max(1, allTargets.reduce((m, p) => Math.max(m, p.distFromSoma || 0), 0));
+    const signalArr = pointsMesh.geometry.attributes.aSignal.array;
+    let anyActive = false;
+
+    for (let i = 0; i < allTargets.length; i++) {
+      const d = allTargets[i].distFromSoma || 0;
+      const typeFactor = allTargets[i].type === 'axon' ? 1.28 : allTargets[i].type === 'glia' ? 0.42 : 0.86;
+      const normalized = (d / maxDist) / typeFactor;
+      const waveFront = elapsed / (maxDist * 0.15);
+      const delta = Math.abs(normalized - waveFront);
+      const signal = Math.exp(-delta * delta / (width * width * 0.01));
+      signalArr[i] = signal > 0.01 ? signal : 0;
+      if (signal > 0.01) anyActive = true;
+    }
+
+    pointsMesh.geometry.attributes.aSignal.needsUpdate = true;
+
+    // Progress bar
+    const progress = clamp(elapsed / (maxDist * 0.15), 0, 1);
+    $('signalFill').style.width = (progress * 100) + '%';
+
+    if (!anyActive || progress > 1.2) {
+      playingSignal = false;
+      // Clear signals
+      signalArr.fill(0);
+      pointsMesh.geometry.attributes.aSignal.needsUpdate = true;
+      $('signalBarWrap').style.display = 'none';
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  //  EXPORTS
+  // ═══════════════════════════════════════════════════════════
+  function download(name, text, type='text/plain') {
+    const blob = new Blob([text], { type });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = name;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    showToast('Downloaded: ' + name);
+  }
+
+  function exportJSON() {
+    const data = {
+      meta: { generator:'NeuroForge v2.0', stats:statsData, params:readParams(), timestamp: new Date().toISOString() },
+      points: allTargets,
+      swcNodes: swcNodesAll
+    };
+    download('neuroforge_neuron.json', JSON.stringify(data, null, 2), 'application/json');
+  }
+
+  function exportSWC() {
+    const header = '# SWC generated by NeuroForge v2.0\n# id type x y z radius parent\n';
+    const body = swcNodesAll.map(n => `${n.id} ${n.type} ${n.x.toFixed(5)} ${n.y.toFixed(5)} ${n.z.toFixed(5)} ${n.r.toFixed(5)} ${n.parent}`).join('\n');
+    download('neuroforge_neuron.swc', header + body);
+  }
+
+  function exportOBJ() {
+    const verts = allTargets.map(p => `v ${p.x.toFixed(5)} ${p.y.toFixed(5)} ${p.z.toFixed(5)}`).join('\n');
+    download('neuroforge_pointcloud.obj', '# OBJ point cloud — NeuroForge v2.0\n' + verts);
+  }
+
+  function exportPLY() {
+    const colorFn = palettes[currentColorMode] || palettes.type;
+    let header = 'ply\nformat ascii 1.0\n';
+    header += `element vertex ${allTargets.length}\n`;
+    header += 'property float x\nproperty float y\nproperty float z\n';
+    header += 'property uchar red\nproperty uchar green\nproperty uchar blue\n';
+    header += 'end_header\n';
+    const lines = allTargets.map(p => {
+      const c = colorFn(p);
+      return `${p.x.toFixed(5)} ${p.y.toFixed(5)} ${p.z.toFixed(5)} ${Math.round(c.r*255)} ${Math.round(c.g*255)} ${Math.round(c.b*255)}`;
+    });
+    download('neuroforge_pointcloud.ply', header + lines.join('\n'));
+  }
+
+  function exportReport() {
+    const params = statsData.params || readParams();
+    const lines = [
+      '# NeuroForge Research Report',
+      '',
+      `Generated: ${new Date().toISOString()}`,
+      '',
+      '## Parameters',
+      `- Style: ${params.style}`,
+      `- Growth bias: ${params.growthBias}`,
+      `- Points: ${params.points}`,
+      `- Complexity: ${Number(params.complexity).toFixed(2)}`,
+      `- Tortuosity: ${Number(params.tortuosity).toFixed(2)}`,
+      `- Spread: ${Number(params.spread).toFixed(2)}`,
+      `- Taper: ${Number(params.taper).toFixed(2)}`,
+      `- Spine density: ${Number(params.spineDensity).toFixed(2)}`,
+      `- Bouton density: ${Number(params.boutonDensity).toFixed(2)}`,
+      '',
+      '## Morphometrics',
+      `- Total points: ${(statsData.points || 0).toLocaleString()}`,
+      `- Segments: ${(statsData.branches || 0).toLocaleString()}`,
+      `- Terminal tips: ${(statsData.tips || 0).toLocaleString()}`,
+      `- Cable length: ${(statsData.cable || 0).toFixed(3)}`,
+      `- Bifurcations: ${(statsData.bifurcations || 0).toLocaleString()}`,
+      `- Max branch order: ${statsData.maxOrder || 0}`,
+      `- Max extent: ${(statsData.extent || 0).toFixed(3)}`,
+      `- Synapse markers: ${(statsData.synapses || 0).toLocaleString()}`,
+      `- Fractal estimate: ${(statsData.fractal || 0).toFixed(3)}`,
+      `- Sholl peak: ${statsData.shollPeak || 0}`,
+      `- Branch entropy: ${(statsData.entropy || 0).toFixed(3)}`,
+      '',
+      '## Research Anchors',
+      '- NeuroMorpho.Org for empirical morphology distributions',
+      '- Allen Cell Types for morphology/ephys/transcriptomic context',
+      '- SNT and Sholl analysis for arbor quantification',
+      '- SWC specification for interoperable morphology export',
+      '- MICrONS/FlyWire for connectomics-scale synapse context'
+    ];
+    download('neuroforge_research_report.md', lines.join('\n'), 'text/markdown');
+  }
+
+  function takeScreenshot(scale = 1) {
+    const w = window.innerWidth * scale;
+    const h = window.innerHeight * scale;
+    const ssRenderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+    ssRenderer.setSize(w, h);
+    ssRenderer.setPixelRatio(1);
+    ssRenderer.setClearColor(0x050b12, 1);
+    ssRenderer.toneMapping = THREE.ACESFilmicToneMapping;
+    ssRenderer.toneMappingExposure = 1.1;
+
+    const ssComposer = new THREE.EffectComposer(ssRenderer);
+    ssComposer.addPass(new THREE.RenderPass(scene, camera));
+    const ssBP = new THREE.UnrealBloomPass(new THREE.Vector2(w, h), bloomPass.strength, bloomPass.radius, 0.15);
+    ssComposer.addPass(ssBP);
+    ssComposer.render();
+
+    const link = document.createElement('a');
+    link.download = `neuroforge_${scale > 1 ? '4k_' : ''}screenshot.png`;
+    link.href = ssRenderer.domElement.toDataURL('image/png');
+    link.click();
+    ssRenderer.dispose();
+    showToast('Screenshot saved!');
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  //  EVENT LISTENERS
+  // ═══════════════════════════════════════════════════════════
+  $('generateBtn').addEventListener('click', regenerate);
+  $('flowBtn').addEventListener('click', replayFlow);
+  $('signalBtn').addEventListener('click', fireSignal);
+  $('randomSeedBtn').addEventListener('click', () => {
+    ui.seed.value = Math.floor(Math.random() * 999999) + 1;
+    updateLabels();
+    regenerate();
+  });
+
+  $('exportJsonBtn').addEventListener('click', exportJSON);
+  $('exportSwcBtn').addEventListener('click', exportSWC);
+  $('exportObjBtn').addEventListener('click', exportOBJ);
+  $('exportPlyBtn').addEventListener('click', exportPLY);
+  $('exportReportBtn').addEventListener('click', exportReport);
+  $('screenshotBtn').addEventListener('click', () => takeScreenshot(1));
+  $('screenshot4kBtn').addEventListener('click', () => takeScreenshot(2));
+
+  // Live parameter updates
+  for (const key of Object.keys(ui)) {
+    ui[key].addEventListener('input', () => {
+      updateLabels();
+      // Live-update point size
+      if (key === 'pointSize' && pointsMesh) {
+        pointsMesh.material.uniforms.uPointSize.value = parseFloat(ui.pointSize.value) * 100;
+      }
+    });
+  }
+
+  // Dust slider
+  ui.dust.addEventListener('change', () => createDust(parseInt(ui.dust.value)));
+
+  // Sholl controls
+  $('toggleSholl').addEventListener('click', () => setTimeout(updateShollRings, 50));
+  ui.shollCount.addEventListener('change', () => {
+    updateShollRings();
+    // Recompute chart
+    const flatSk = [];
+    for (const sd of skeletonData) for (const seg of sd.skeleton) flatSk.push(seg);
+    const center = skeletonData[0]?.offset || v3();
+    const shollData = computeSholl(flatSk, center, parseInt(ui.shollCount.value));
+    drawShollChart(shollData.crossings, shollData.step);
+  });
+
+  // Resize
+  window.addEventListener('resize', () => {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    composer.setSize(window.innerWidth, window.innerHeight);
+  });
+
+  // ═══════════════════════════════════════════════════════════
+  //  RENDER LOOP
+  // ═══════════════════════════════════════════════════════════
+  function tick(now) {
+    requestAnimationFrame(tick);
+
+    // FPS counter
+    fpsFrames++;
+    if (now - fpsTime > 500) {
+      fpsDisplay = Math.round(fpsFrames / ((now - fpsTime) / 1000));
+      fpsTime = now;
+      fpsFrames = 0;
+      $('fpsBadge').textContent = fpsDisplay + ' FPS';
+    }
+
+    const time = now * 0.001;
+
+    // Animations
+    animateFlow(now);
+    animateSignal(now);
+
+    // Update uniforms
+    if (pointsMesh) pointsMesh.material.uniforms.uTime.value = time;
+    if (dustMesh) dustMesh.material.uniforms.uTime.value = time;
+
+    // DOF toggle
+    if (pointsMesh) {
+      pointsMesh.material.uniforms.uDofEnabled.value = $('toggleDOF').classList.contains('on') ? 1.0 : 0.0;
+      pointsMesh.material.uniforms.uDofFocus.value = camera.position.distanceTo(controls.target);
+    }
+
+    // Toggle visibility
+    if (skeletonLines && !playingFlow) {
+      skeletonLines.visible = $('toggleSkeleton').classList.contains('on');
+    }
+    if (synapseMesh) {
+      synapseMesh.visible = $('toggleSynapses').classList.contains('on');
+      synapseMesh.material.size = 0.065 + Math.sin(time * 3.0) * 0.012;
+    }
+    somaMeshes.forEach(m => {
+      m.visible = $('toggleSoma').classList.contains('on');
+      m.rotation.y += 0.0015;
+    });
+    grid.visible = $('toggleGrid').classList.contains('on');
+    controls.autoRotate = $('toggleRotate').classList.contains('on');
+
+    // Animate soma glow
+    somaMeshes.forEach(m => {
+      m.material.emissiveIntensity = 0.4 + Math.sin(time * 1.5) * 0.15;
+    });
+
+    // Sholl ring animation
+    shollRings.forEach((ring, i) => {
+      ring.material.opacity = 0.1 + Math.sin(time * 0.8 + i * 0.5) * 0.05;
+    });
+
+    controls.update();
+    composer.render();
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  //  INIT
+  // ═══════════════════════════════════════════════════════════
+  updateLabels();
+  regenerate();
+  tick(performance.now());
+
+})();
+</script>
+</body>
+</html>
