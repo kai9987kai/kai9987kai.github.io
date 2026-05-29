@@ -1,18 +1,1043 @@
-
-
 <!DOCTYPE html>
-<html>
-  <head>
-    <title>ARjs + Aframe by AIreality</title>
-    <script src="https://aframe.io/releases/1.0.4/aframe.min.js"></script>
-    <script src="https://jeromeetienne.github.io/AR.js/aframe/build/aframe-ar.js"></script>
-  </head>
-  <body>
-    <a-scene embedded arjs="trackingMethod: best; sourceType: webcam; debugUIEnabled: false;">
-      <a-entity camera></a-entity>
-      <a-marker type="hiro">
-        <a-entity particle-system="preset: fire; color: #ff0000; particleCount: 500"></a-entity>
-      </a-marker>
-    </a-scene>
-  </body>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
+  <meta name="theme-color" content="#05070b" />
+  <title>AR Fire Lab V3 — Adaptive Marker AR</title>
+
+  <!-- AR.js docs recommend matching AR.js 3.4.x with A-Frame 1.6.0. -->
+  <script src="https://aframe.io/releases/1.6.0/aframe.min.js"></script>
+  <script src="https://raw.githack.com/AR-js-org/AR.js/3.4.7/aframe/build/aframe-ar.js"></script>
+
+  <style>
+    :root {
+      --bg: #05070b;
+      --panel: rgba(6, 10, 20, 0.72);
+      --panel-strong: rgba(6, 10, 20, 0.92);
+      --line: rgba(255, 255, 255, 0.15);
+      --line-strong: rgba(255, 255, 255, 0.25);
+      --text: #f8fbff;
+      --muted: #a7b2c2;
+      --hot: #ff7a18;
+      --hot2: #ffd166;
+      --ok: #2af5a5;
+      --warn: #ffe08a;
+      --bad: #ff5a7a;
+      --glass: blur(18px) saturate(1.25);
+    }
+
+    * { box-sizing: border-box; }
+
+    html, body {
+      margin: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: radial-gradient(circle at top, #172033 0%, var(--bg) 46%, #010205 100%);
+      color: var(--text);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      touch-action: none;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    a-scene { width: 100vw; height: 100vh; }
+
+    .ui {
+      position: fixed;
+      inset: 0;
+      z-index: 30;
+      display: grid;
+      grid-template-rows: auto 1fr auto;
+      padding: max(12px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) max(12px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left));
+      pointer-events: none;
+    }
+
+    .panel {
+      pointer-events: auto;
+      border: 1px solid var(--line);
+      background: linear-gradient(135deg, var(--panel-strong), rgba(35, 15, 6, 0.72));
+      backdrop-filter: var(--glass);
+      -webkit-backdrop-filter: var(--glass);
+      box-shadow: 0 22px 70px rgba(0, 0, 0, 0.42);
+    }
+
+    .topbar {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 12px;
+      align-items: center;
+      border-radius: 22px;
+      padding: 12px 14px;
+    }
+
+    .brand { min-width: 0; }
+    .brand strong {
+      display: block;
+      font-size: 13px;
+      text-transform: uppercase;
+      letter-spacing: 0.11em;
+    }
+    .brand span {
+      display: block;
+      color: var(--muted);
+      font-size: 12px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .status {
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      white-space: nowrap;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 999px;
+      background: var(--warn);
+      box-shadow: 0 0 16px currentColor;
+    }
+    .dot.locked { background: var(--ok); }
+    .dot.error { background: var(--bad); }
+
+    .center {
+      display: grid;
+      place-items: center;
+      pointer-events: none;
+    }
+
+    .scan-card {
+      width: min(64vw, 350px);
+      aspect-ratio: 1;
+      display: grid;
+      place-items: center;
+      border-radius: 32px;
+      border: 1px dashed rgba(255,255,255,0.28);
+      background:
+        linear-gradient(90deg, transparent 49%, rgba(255,255,255,0.22) 50%, transparent 51%),
+        linear-gradient(0deg, transparent 49%, rgba(255,255,255,0.22) 50%, transparent 51%),
+        radial-gradient(circle, transparent 58%, rgba(255,122,24,0.1) 60%, transparent 62%);
+      opacity: 0.72;
+      transform: scale(1);
+      transition: opacity 240ms ease, transform 240ms ease;
+    }
+    .scan-card.locked {
+      opacity: 0;
+      transform: scale(0.9);
+    }
+    .scan-card span {
+      border: 1px solid var(--line);
+      background: rgba(0,0,0,0.35);
+      padding: 8px 12px;
+      border-radius: 999px;
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    .bottom {
+      display: grid;
+      gap: 10px;
+      justify-items: center;
+      pointer-events: none;
+    }
+
+    .hint {
+      max-width: 860px;
+      border-radius: 18px;
+      padding: 10px 13px;
+      background: rgba(6, 10, 20, 0.72);
+      border: 1px solid var(--line);
+      color: var(--muted);
+      line-height: 1.36;
+      font-size: 12px;
+      text-align: center;
+      backdrop-filter: var(--glass);
+      -webkit-backdrop-filter: var(--glass);
+      pointer-events: auto;
+    }
+
+    .controls {
+      width: min(980px, calc(100vw - 24px));
+      border-radius: 22px;
+      padding: 10px;
+      background: var(--panel-strong);
+    }
+
+    .buttons {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      justify-content: center;
+      margin-bottom: 10px;
+    }
+
+    button, .pill {
+      border: 1px solid rgba(255,255,255,0.15);
+      background: rgba(255,255,255,0.08);
+      color: var(--text);
+      border-radius: 14px;
+      padding: 9px 11px;
+      font-size: 12px;
+      font-weight: 760;
+      letter-spacing: 0.01em;
+    }
+    button { cursor: pointer; }
+    button:hover { background: rgba(255,255,255,0.12); }
+    button:active { transform: translateY(1px) scale(0.99); }
+    button.primary {
+      background: linear-gradient(135deg, rgba(255,122,24,0.9), rgba(255,209,102,0.72));
+      color: #201003;
+      border-color: rgba(255,255,255,0.24);
+    }
+
+    .metrics {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      gap: 8px;
+      margin-bottom: 10px;
+    }
+    .metric {
+      min-width: 0;
+      border: 1px solid rgba(255,255,255,0.11);
+      border-radius: 16px;
+      padding: 8px 10px;
+      background: rgba(255,255,255,0.045);
+    }
+    .metric span {
+      display: block;
+      color: var(--muted);
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      overflow: hidden;
+      white-space: nowrap;
+      text-overflow: ellipsis;
+    }
+    .metric b {
+      display: block;
+      margin-top: 2px;
+      font-size: 14px;
+    }
+
+    .sliders {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(120px, 1fr));
+      gap: 8px;
+    }
+    label.slider {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      align-items: center;
+      gap: 6px;
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 16px;
+      padding: 8px 10px;
+      background: rgba(255,255,255,0.045);
+      color: var(--muted);
+      font-size: 11px;
+    }
+    label.slider output { color: var(--text); font-weight: 800; }
+    input[type="range"] {
+      grid-column: 1 / -1;
+      width: 100%;
+      accent-color: var(--hot);
+    }
+
+    .drawer {
+      position: fixed;
+      right: max(12px, env(safe-area-inset-right));
+      top: 88px;
+      width: min(420px, calc(100vw - 24px));
+      max-height: calc(100vh - 174px);
+      overflow: auto;
+      z-index: 45;
+      border-radius: 22px;
+      padding: 16px;
+      display: none;
+    }
+    .drawer.open { display: block; }
+    .drawer h2 {
+      margin: 0 0 8px;
+      font-size: 16px;
+    }
+    .drawer p, .drawer li {
+      color: var(--muted);
+      line-height: 1.45;
+      font-size: 13px;
+    }
+    .drawer ul { padding-left: 18px; }
+    .drawer code {
+      background: rgba(255,255,255,0.08);
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 6px;
+      padding: 1px 4px;
+      color: #ffe7b0;
+    }
+
+    .toast {
+      position: fixed;
+      left: 50%;
+      top: max(90px, env(safe-area-inset-top));
+      transform: translateX(-50%) translateY(-20px);
+      z-index: 80;
+      opacity: 0;
+      pointer-events: none;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 9px 13px;
+      background: rgba(0,0,0,0.78);
+      color: var(--text);
+      backdrop-filter: var(--glass);
+      -webkit-backdrop-filter: var(--glass);
+      transition: opacity 180ms ease, transform 180ms ease;
+      font-size: 12px;
+    }
+    .toast.show {
+      opacity: 1;
+      transform: translateX(-50%) translateY(0);
+    }
+
+    @media (max-width: 800px) {
+      .topbar { grid-template-columns: 1fr; }
+      .metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .sliders { grid-template-columns: 1fr; }
+      .buttons button { flex: 1 1 auto; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; }
+    }
+  </style>
+</head>
+<body>
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+  <div id="infoDrawer" class="drawer panel" aria-hidden="true">
+    <h2>AR Fire Lab V3</h2>
+    <p>This version keeps Hiro marker AR as the stable default and adds a WebXR-ready design path for markerless placement later.</p>
+    <ul>
+      <li><strong>Tracking:</strong> smoothed marker pose, lock/loss telemetry, stability score, slow movement guidance.</li>
+      <li><strong>Simulation:</strong> adaptive particle budget, wind, turbulence, sparks, smoke/ember/neon modes, thermal pulse lighting.</li>
+      <li><strong>Tools:</strong> local presets, debug JSON export, snapshot attempt, scan marker shortcut, mobile-friendly controls.</li>
+      <li><strong>Best use:</strong> open over HTTPS or localhost, allow camera, use a flat printed Hiro marker in good light.</li>
+    </ul>
+    <p>Console API: <code>ARFireLabV3.burst()</code>, <code>ARFireLabV3.setMode('plasma')</code>, <code>ARFireLabV3.exportDebug()</code></p>
+  </div>
+
+  <main class="ui" aria-live="polite">
+    <section class="topbar panel">
+      <div class="brand">
+        <strong>AR Fire Lab V3</strong>
+        <span>Adaptive marker AR · procedural fire · presets · research-ready structure</span>
+      </div>
+      <div class="status">
+        <span id="markerDot" class="dot"></span>
+        <span id="markerText">Checking camera + marker tracking</span>
+      </div>
+    </section>
+
+    <section class="center">
+      <div id="scanCard" class="scan-card" aria-hidden="true"><span>Scan Hiro marker</span></div>
+    </section>
+
+    <section class="bottom">
+      <div id="hint" class="hint">Open on HTTPS or localhost, allow camera access, and point at a Hiro marker. Use the controls to tune the fire in real time.</div>
+      <section class="controls panel" aria-label="AR controls">
+        <div class="buttons">
+          <button id="burstBtn" class="primary" type="button">Burst</button>
+          <button id="modeBtn" type="button">Mode: Ember</button>
+          <button id="pauseBtn" type="button">Pause</button>
+          <button id="qualityBtn" type="button">Auto quality: On</button>
+          <button id="snapshotBtn" type="button">Snapshot</button>
+          <button id="saveBtn" type="button">Save preset</button>
+          <button id="loadBtn" type="button">Load preset</button>
+          <button id="debugBtn" type="button">Export debug</button>
+          <button id="markerBtn" type="button">Open Hiro marker</button>
+          <button id="infoBtn" type="button">Info</button>
+        </div>
+
+        <div class="metrics">
+          <div class="metric"><span>FPS</span><b id="fpsValue">--</b></div>
+          <div class="metric"><span>Particles</span><b id="particleValue">--</b></div>
+          <div class="metric"><span>Stability</span><b id="stabilityValue">0%</b></div>
+          <div class="metric"><span>Losses</span><b id="lossValue">0</b></div>
+          <div class="metric"><span>XR</span><b id="xrValue">Check</b></div>
+        </div>
+
+        <div class="sliders">
+          <label class="slider">Intensity <output id="intensityOut">1.00</output><input id="intensityRange" type="range" min="0.35" max="2.2" step="0.01" value="1"></label>
+          <label class="slider">Wind <output id="windOut">0.04</output><input id="windRange" type="range" min="-0.22" max="0.22" step="0.01" value="0.04"></label>
+          <label class="slider">Turbulence <output id="turbulenceOut">0.55</output><input id="turbulenceRange" type="range" min="0" max="1.6" step="0.01" value="0.55"></label>
+          <label class="slider">Scale <output id="scaleOut">1.00</output><input id="scaleRange" type="range" min="0.45" max="2.4" step="0.01" value="1"></label>
+          <label class="slider">Budget <output id="budgetOut">920</output><input id="budgetRange" type="range" min="120" max="1400" step="10" value="920"></label>
+        </div>
+      </section>
+    </section>
+  </main>
+
+  <a-scene
+    id="scene"
+    embedded
+    vr-mode-ui="enabled: false"
+    device-orientation-permission-ui="enabled: true"
+    loading-screen="dotsColor: #ff7a18; backgroundColor: #05070b"
+    renderer="antialias: true; alpha: true; precision: mediump; logarithmicDepthBuffer: true; colorManagement: true; physicallyCorrectLights: true"
+    arjs="sourceType: webcam; trackingMethod: best; debugUIEnabled: false; detectionMode: mono; patternRatio: 0.75; sourceWidth: 1280; sourceHeight: 720; displayWidth: 1280; displayHeight: 720"
+    adaptive-performance="targetFps: 50; minParticles: 160; maxParticles: 1400">
+
+    <a-assets timeout="8000"></a-assets>
+
+    <a-marker
+      id="hiroMarker"
+      preset="hiro"
+      emitevents="true"
+      smooth="true"
+      smoothCount="12"
+      smoothTolerance="0.008"
+      smoothThreshold="4"
+      marker-brain>
+
+      <a-entity id="flameRig" position="0 0.015 0" scale="1 1 1">
+        <a-cylinder
+          id="emberBase"
+          position="0 0.004 0"
+          radius="0.38"
+          height="0.018"
+          segments-radial="96"
+          material="color: #160702; emissive: #310a02; emissiveIntensity: 0.7; roughness: 0.82; metalness: 0.06">
+        </a-cylinder>
+
+        <a-torus
+          id="thermalRing"
+          position="0 0.025 0"
+          rotation="90 0 0"
+          radius="0.43"
+          radius-tubular="0.012"
+          segments-radial="12"
+          segments-tubular="128"
+          material="color: #ff8a2a; emissive: #ff4d00; emissiveIntensity: 0.8; metalness: 0.2; roughness: 0.32; transparent: true; opacity: 0.9"
+          animation="property: rotation; to: 90 0 360; dur: 13000; easing: linear; loop: true">
+        </a-torus>
+
+        <a-entity
+          id="fireCore"
+          position="0 0.04 0"
+          v3-fire="particleCount: 920; radius: 0.34; height: 1.28; intensity: 1; wind: 0.04; turbulence: 0.55; mode: ember">
+        </a-entity>
+
+        <a-entity
+          id="sparkHalo"
+          position="0 0.34 0"
+          spark-halo="count: 90; radius: 0.42; speed: 0.65; mode: ember">
+        </a-entity>
+
+        <a-entity position="0 0.68 0" animation="property: rotation; to: 0 360 0; dur: 8500; easing: linear; loop: true">
+          <a-torus rotation="90 0 0" radius="0.22" radius-tubular="0.004" material="color: #ffd166; emissive: #ff7a18; emissiveIntensity: 0.75; transparent: true; opacity: 0.38"></a-torus>
+          <a-torus rotation="90 0 0" radius="0.31" radius-tubular="0.003" material="color: #ffffff; emissive: #ff7a18; emissiveIntensity: 0.5; transparent: true; opacity: 0.18"></a-torus>
+        </a-entity>
+
+        <a-entity id="labelText" position="0 -0.004 -0.60" rotation="-90 0 0" text="value: AR FIRE LAB V3 · ADAPTIVE TRACKING; align: center; width: 1.12; color: #ffd166; baseline: center"></a-entity>
+      </a-entity>
+    </a-marker>
+
+    <a-entity light="type: ambient; color: #ffffff; intensity: 0.62"></a-entity>
+    <a-entity id="fireLight" light="type: point; color: #ff7a18; intensity: 1.45; distance: 3.6; decay: 2" position="0 1.1 0" thermal-light></a-entity>
+    <a-entity camera></a-entity>
+  </a-scene>
+
+  <script>
+    (() => {
+      'use strict';
+
+      const THREE = AFRAME.THREE;
+      const TWO_PI = Math.PI * 2;
+      const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
+      const rand = (min, max) => min + Math.random() * (max - min);
+      const fmt = (v, d = 2) => Number(v).toFixed(d);
+
+      const $ = (id) => document.getElementById(id);
+
+      const ui = {};
+      const state = {
+        markerLocked: false,
+        lastLockTime: 0,
+        lastLossTime: 0,
+        markerLosses: 0,
+        stability: 0,
+        paused: false,
+        autoQuality: true,
+        modeIndex: 0,
+        modes: ['ember', 'plasma', 'smoke', 'neon', 'ghost'],
+        presetKey: 'ar-fire-lab-v3-preset',
+        startedAt: Date.now(),
+        lastFps: 0,
+        secure: window.isSecureContext,
+        xrSupported: 'unknown'
+      };
+
+      function toast(message) {
+        if (!ui.toast) return;
+        ui.toast.textContent = message;
+        ui.toast.classList.add('show');
+        clearTimeout(toast._timer);
+        toast._timer = setTimeout(() => ui.toast.classList.remove('show'), 2200);
+      }
+
+      function getFire() {
+        const el = $('fireCore');
+        return el && el.components['v3-fire'];
+      }
+
+      function getSparkHalo() {
+        const el = $('sparkHalo');
+        return el && el.components['spark-halo'];
+      }
+
+      function getRig() { return $('flameRig'); }
+
+      function downloadText(filename, text, type = 'application/json') {
+        const blob = new Blob([text], { type });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 800);
+      }
+
+      function currentPreset() {
+        const fire = getFire();
+        const rig = getRig();
+        return {
+          version: 3,
+          mode: state.modes[state.modeIndex],
+          intensity: Number(ui.intensityRange.value),
+          wind: Number(ui.windRange.value),
+          turbulence: Number(ui.turbulenceRange.value),
+          scale: Number(ui.scaleRange.value),
+          budget: Number(ui.budgetRange.value),
+          paused: state.paused,
+          autoQuality: state.autoQuality,
+          runtime: {
+            fps: state.lastFps,
+            particles: fire ? fire.activeParticles : null,
+            markerLocked: state.markerLocked,
+            stability: Math.round(state.stability),
+            markerLosses: state.markerLosses,
+            sessionMs: Date.now() - state.startedAt,
+            rigScale: rig ? rig.getAttribute('scale') : null
+          }
+        };
+      }
+
+      function applyPreset(preset) {
+        if (!preset) return;
+        if (typeof preset.intensity === 'number') ui.intensityRange.value = preset.intensity;
+        if (typeof preset.wind === 'number') ui.windRange.value = preset.wind;
+        if (typeof preset.turbulence === 'number') ui.turbulenceRange.value = preset.turbulence;
+        if (typeof preset.scale === 'number') ui.scaleRange.value = preset.scale;
+        if (typeof preset.budget === 'number') ui.budgetRange.value = preset.budget;
+        if (typeof preset.autoQuality === 'boolean') state.autoQuality = preset.autoQuality;
+        if (preset.mode) {
+          const idx = state.modes.indexOf(preset.mode);
+          if (idx !== -1) state.modeIndex = idx;
+        }
+        syncControls();
+        toast('Preset applied');
+      }
+
+      function syncControls() {
+        const intensity = Number(ui.intensityRange.value);
+        const wind = Number(ui.windRange.value);
+        const turbulence = Number(ui.turbulenceRange.value);
+        const scale = Number(ui.scaleRange.value);
+        const budget = Number(ui.budgetRange.value);
+        const mode = state.modes[state.modeIndex];
+        const fire = getFire();
+        const halo = getSparkHalo();
+        const rig = getRig();
+
+        ui.intensityOut.textContent = fmt(intensity, 2);
+        ui.windOut.textContent = fmt(wind, 2);
+        ui.turbulenceOut.textContent = fmt(turbulence, 2);
+        ui.scaleOut.textContent = fmt(scale, 2);
+        ui.budgetOut.textContent = String(budget);
+        ui.modeBtn.textContent = 'Mode: ' + mode[0].toUpperCase() + mode.slice(1);
+        ui.qualityBtn.textContent = 'Auto quality: ' + (state.autoQuality ? 'On' : 'Off');
+        ui.pauseBtn.textContent = state.paused ? 'Resume' : 'Pause';
+
+        if (fire) {
+          fire.setIntensity(intensity);
+          fire.setWind(wind);
+          fire.setTurbulence(turbulence);
+          fire.setMode(mode);
+          fire.setParticleBudget(budget);
+          fire.setPaused(state.paused);
+        }
+        if (halo) halo.setMode(mode);
+        if (rig) rig.setAttribute('scale', { x: scale, y: scale, z: scale });
+      }
+
+      function setMarkerLocked(locked) {
+        state.markerLocked = locked;
+        const now = performance.now();
+        if (locked) {
+          state.lastLockTime = now;
+        } else {
+          state.markerLosses += state.lastLockTime ? 1 : 0;
+          state.lastLossTime = now;
+        }
+
+        ui.markerDot.classList.toggle('locked', locked);
+        ui.scanCard.classList.toggle('locked', locked);
+        ui.markerText.textContent = locked ? 'Hiro marker locked' : 'Searching for Hiro marker';
+        ui.lossValue.textContent = String(state.markerLosses);
+        ui.hint.textContent = locked
+          ? 'Marker locked. Tune wind/intensity, save a preset, or tap the scene for an energy burst.'
+          : 'Point at the Hiro marker. Good light, a flat marker, and slow camera motion improve tracking stability.';
+      }
+
+      function updateStability(dtMs) {
+        const delta = (dtMs || 16) / 1000;
+        const target = state.markerLocked ? 100 : 0;
+        const rate = state.markerLocked ? 38 : 52;
+        state.stability += (target - state.stability) * clamp(delta * rate / 100, 0.02, 0.3);
+        ui.stabilityValue.textContent = Math.round(state.stability) + '%';
+      }
+
+      AFRAME.registerComponent('marker-brain', {
+        init() {
+          this.el.addEventListener('markerFound', () => setMarkerLocked(true));
+          this.el.addEventListener('markerLost', () => setMarkerLocked(false));
+        },
+        tick(time, dtMs) { updateStability(dtMs); }
+      });
+
+      AFRAME.registerComponent('thermal-light', {
+        init() { this.base = 1.35; },
+        tick(time) {
+          const light = this.el.getObject3D('light');
+          if (!light) return;
+          const pulse = 0.22 * Math.sin(time * 0.006) + 0.12 * Math.sin(time * 0.017);
+          const lock = state.markerLocked ? 1 : 0.42;
+          light.intensity = Math.max(0.25, (this.base + pulse) * lock);
+        }
+      });
+
+      AFRAME.registerComponent('adaptive-performance', {
+        schema: {
+          targetFps: { type: 'number', default: 50 },
+          minParticles: { type: 'int', default: 160 },
+          maxParticles: { type: 'int', default: 1400 }
+        },
+        init() {
+          this.elapsed = 0;
+          this.frames = 0;
+        },
+        tick(time, dtMs) {
+          this.elapsed += dtMs || 16;
+          this.frames += 1;
+          if (this.elapsed < 800) return;
+          const fps = Math.round(this.frames * 1000 / this.elapsed);
+          this.elapsed = 0;
+          this.frames = 0;
+          state.lastFps = fps;
+          ui.fpsValue.textContent = String(fps);
+
+          const fire = getFire();
+          if (!fire) return;
+          if (state.autoQuality) {
+            let budget = fire.activeParticles;
+            if (fps < this.data.targetFps - 10) budget = Math.max(this.data.minParticles, Math.floor(budget * 0.82));
+            if (fps > this.data.targetFps + 8) budget = Math.min(this.data.maxParticles, Math.floor(budget * 1.06 + 12));
+            if (budget !== fire.activeParticles) {
+              fire.setParticleBudget(budget);
+              ui.budgetRange.value = String(budget);
+              ui.budgetOut.textContent = String(budget);
+            }
+          }
+          ui.particleValue.textContent = String(fire.activeParticles);
+        }
+      });
+
+      AFRAME.registerComponent('spark-halo', {
+        schema: {
+          count: { type: 'int', default: 90 },
+          radius: { type: 'number', default: 0.42 },
+          speed: { type: 'number', default: 0.65 },
+          mode: { type: 'string', default: 'ember' }
+        },
+        init() {
+          this.positions = new Float32Array(this.data.count * 3);
+          this.colors = new Float32Array(this.data.count * 3);
+          this.phase = new Float32Array(this.data.count);
+          this.size = new Float32Array(this.data.count);
+          this.geometry = new THREE.BufferGeometry();
+          this.geometry.setAttribute('position', new THREE.BufferAttribute(this.positions, 3));
+          this.geometry.setAttribute('color', new THREE.BufferAttribute(this.colors, 3));
+          this.material = new THREE.PointsMaterial({
+            size: 0.022,
+            vertexColors: true,
+            transparent: true,
+            opacity: 0.72,
+            depthWrite: false,
+            blending: THREE.AdditiveBlending
+          });
+          this.points = new THREE.Points(this.geometry, this.material);
+          this.points.frustumCulled = false;
+          this.el.object3D.add(this.points);
+          for (let i = 0; i < this.data.count; i++) {
+            this.phase[i] = Math.random() * TWO_PI;
+            this.size[i] = rand(0.6, 1.4);
+          }
+          this.setMode(this.data.mode);
+        },
+        remove() {
+          this.el.object3D.remove(this.points);
+          this.geometry.dispose();
+          this.material.dispose();
+        },
+        setMode(mode) {
+          this.data.mode = mode;
+          this.colorA = new THREE.Color(mode === 'plasma' ? '#a7f3ff' : mode === 'neon' ? '#00fff0' : mode === 'ghost' ? '#dbeafe' : mode === 'smoke' ? '#9ca3af' : '#ffd166');
+          this.colorB = new THREE.Color(mode === 'plasma' ? '#a855f7' : mode === 'neon' ? '#ff33aa' : mode === 'ghost' ? '#60a5fa' : mode === 'smoke' ? '#374151' : '#ff4d00');
+        },
+        tick(time, dtMs) {
+          const t = time * 0.001 * this.data.speed;
+          for (let i = 0; i < this.data.count; i++) {
+            const i3 = i * 3;
+            const p = this.phase[i];
+            const radius = this.data.radius * (0.74 + 0.24 * Math.sin(t * 0.9 + p));
+            const y = 0.12 + 0.78 * ((Math.sin(t + p * 1.7) + 1) * 0.5);
+            this.positions[i3] = Math.cos(t + p) * radius;
+            this.positions[i3 + 1] = y;
+            this.positions[i3 + 2] = Math.sin(t * 1.13 + p) * radius;
+            const mix = (Math.sin(t * 2 + p) + 1) * 0.5;
+            const c = this.colorA.clone().lerp(this.colorB, mix);
+            const fade = state.markerLocked ? 1 : 0.35;
+            this.colors[i3] = c.r * fade;
+            this.colors[i3 + 1] = c.g * fade;
+            this.colors[i3 + 2] = c.b * fade;
+          }
+          this.geometry.attributes.position.needsUpdate = true;
+          this.geometry.attributes.color.needsUpdate = true;
+        }
+      });
+
+      AFRAME.registerComponent('v3-fire', {
+        schema: {
+          particleCount: { type: 'int', default: 920 },
+          radius: { type: 'number', default: 0.34 },
+          height: { type: 'number', default: 1.28 },
+          intensity: { type: 'number', default: 1 },
+          wind: { type: 'number', default: 0.04 },
+          turbulence: { type: 'number', default: 0.55 },
+          mode: { type: 'string', default: 'ember' }
+        },
+
+        init() {
+          this.maxParticles = clamp(this.data.particleCount, 80, 1800);
+          this.activeParticles = this.maxParticles;
+          this.paused = false;
+          this.burstEnergy = 0;
+          this.tmpColor = new THREE.Color();
+          this.colorsByMode = {};
+          this.velocities = [];
+          this.ages = null;
+          this.lifetimes = null;
+          this.seed = null;
+          this._build();
+          this.setMode(this.data.mode);
+          this.setParticleBudget(this.activeParticles);
+        },
+
+        remove() { this._dispose(); },
+
+        _dispose() {
+          if (!this.points) return;
+          this.el.object3D.remove(this.points);
+          this.geometry.dispose();
+          this.material.dispose();
+          this.points = null;
+        },
+
+        _build() {
+          this.positions = new Float32Array(this.maxParticles * 3);
+          this.colors = new Float32Array(this.maxParticles * 3);
+          this.ages = new Float32Array(this.maxParticles);
+          this.lifetimes = new Float32Array(this.maxParticles);
+          this.seed = new Float32Array(this.maxParticles);
+          this.velocities = new Array(this.maxParticles);
+
+          this.geometry = new THREE.BufferGeometry();
+          this.geometry.setAttribute('position', new THREE.BufferAttribute(this.positions, 3));
+          this.geometry.setAttribute('color', new THREE.BufferAttribute(this.colors, 3));
+          this.geometry.setDrawRange(0, this.maxParticles);
+
+          this.material = new THREE.PointsMaterial({
+            size: 0.036,
+            vertexColors: true,
+            transparent: true,
+            opacity: 0.94,
+            depthWrite: false,
+            blending: THREE.AdditiveBlending,
+            sizeAttenuation: true
+          });
+
+          this.points = new THREE.Points(this.geometry, this.material);
+          this.points.frustumCulled = false;
+          this.el.object3D.add(this.points);
+          for (let i = 0; i < this.maxParticles; i++) this._resetParticle(i, true);
+        },
+
+        _resetParticle(i, randomAge) {
+          const angle = Math.random() * TWO_PI;
+          const spread = Math.pow(Math.random(), 0.62) * this.data.radius;
+          const i3 = i * 3;
+          this.positions[i3] = Math.cos(angle) * spread * rand(0.28, 0.72);
+          this.positions[i3 + 1] = rand(0.0, 0.045);
+          this.positions[i3 + 2] = Math.sin(angle) * spread * rand(0.28, 0.72);
+
+          this.velocities[i] = {
+            x: rand(-0.048, 0.048) + this.data.wind,
+            y: rand(0.62, 1.22) * this.data.intensity,
+            z: rand(-0.048, 0.048)
+          };
+          this.lifetimes[i] = rand(0.68, 1.62);
+          this.ages[i] = randomAge ? Math.random() * this.lifetimes[i] : 0;
+          this.seed[i] = Math.random() * 1000;
+        },
+
+        setMode(mode) {
+          this.data.mode = mode;
+          const palette = {
+            ember: ['#fff7ad', '#ff8a18', '#d62b00', '#1f130b', 0.038],
+            plasma: ['#ffffff', '#7dd3fc', '#8b5cf6', '#111827', 0.034],
+            smoke: ['#ffd6a5', '#b45309', '#6b7280', '#111827', 0.052],
+            neon: ['#f0fdfa', '#2dd4bf', '#ec4899', '#171136', 0.036],
+            ghost: ['#ffffff', '#bfdbfe', '#60a5fa', '#0f172a', 0.04]
+          }[mode] || ['#fff7ad', '#ff8a18', '#d62b00', '#1f130b', 0.038];
+          this.hotColor = new THREE.Color(palette[0]);
+          this.midColor = new THREE.Color(palette[1]);
+          this.coolColor = new THREE.Color(palette[2]);
+          this.smokeColor = new THREE.Color(palette[3]);
+          this.material.size = palette[4];
+          this.material.needsUpdate = true;
+
+          const ring = $('thermalRing');
+          const base = $('emberBase');
+          const label = $('labelText');
+          if (ring) ring.setAttribute('material', 'color', palette[1]);
+          if (ring) ring.setAttribute('material', 'emissive', palette[2]);
+          if (base) base.setAttribute('material', 'emissive', mode === 'smoke' ? '#1f2937' : palette[2]);
+          if (label) label.setAttribute('text', 'value', 'AR FIRE LAB V3 · ' + mode.toUpperCase() + ' MODE');
+        },
+
+        setIntensity(value) { this.data.intensity = clamp(Number(value) || 1, 0.2, 3); },
+        setWind(value) { this.data.wind = clamp(Number(value) || 0, -0.35, 0.35); },
+        setTurbulence(value) { this.data.turbulence = clamp(Number(value) || 0, 0, 2.5); },
+        setPaused(paused) { this.paused = Boolean(paused); },
+
+        setParticleBudget(count) {
+          this.activeParticles = clamp(Math.floor(count), 80, this.maxParticles);
+          this.geometry.setDrawRange(0, this.activeParticles);
+          if (ui.particleValue) ui.particleValue.textContent = String(this.activeParticles);
+        },
+
+        burst(power = 1) {
+          this.burstEnergy = clamp(this.burstEnergy + power * 0.74, 0, 2.6);
+          for (let i = 0; i < this.activeParticles; i += 2) {
+            if (!this.velocities[i]) continue;
+            this.velocities[i].y += rand(0.1, 0.36) * power;
+            this.velocities[i].x += rand(-0.12, 0.12) * power;
+            this.velocities[i].z += rand(-0.12, 0.12) * power;
+          }
+        },
+
+        tick(time, dtMs) {
+          if (this.paused || !this.points) return;
+          const dt = clamp((dtMs || 16) / 1000, 0.004, 0.05);
+          const positions = this.positions;
+          const colors = this.colors;
+          const height = this.data.height;
+          const intensity = this.data.intensity + this.burstEnergy;
+          const turbulence = this.data.turbulence;
+          this.burstEnergy = Math.max(0, this.burstEnergy - dt * 1.05);
+
+          for (let i = 0; i < this.activeParticles; i++) {
+            const i3 = i * 3;
+            this.ages[i] += dt * rand(0.74, 1.14) * (0.78 + intensity * 0.18);
+            if (this.ages[i] >= this.lifetimes[i] || positions[i3 + 1] > height) this._resetParticle(i, false);
+
+            const age01 = clamp(this.ages[i] / this.lifetimes[i], 0, 1);
+            const heat = 1 - age01;
+            const seed = this.seed[i];
+            const swirl = Math.sin(time * 0.0028 + seed) * 0.022 * heat * turbulence;
+            const corkscrew = Math.cos(time * 0.0034 + seed * 1.73) * 0.018 * heat * turbulence;
+            const micro = Math.sin(time * 0.011 + seed * 0.21) * 0.006 * turbulence;
+            const v = this.velocities[i];
+
+            positions[i3] += (v.x + this.data.wind * heat + swirl + micro) * dt;
+            positions[i3 + 1] += v.y * dt * (0.52 + heat * 0.6 + intensity * 0.05);
+            positions[i3 + 2] += (v.z + corkscrew) * dt;
+
+            const inward = 1 - dt * (0.26 + age01 * 0.22);
+            positions[i3] *= inward;
+            positions[i3 + 2] *= inward;
+
+            if (age01 < 0.18) this.tmpColor.copy(this.hotColor).lerp(this.midColor, age01 / 0.18);
+            else if (age01 < 0.66) this.tmpColor.copy(this.midColor).lerp(this.coolColor, (age01 - 0.18) / 0.48);
+            else this.tmpColor.copy(this.coolColor).lerp(this.smokeColor, (age01 - 0.66) / 0.34);
+
+            const flicker = 0.74 + Math.sin(time * 0.017 + seed) * 0.16 + Math.random() * 0.12;
+            const lockFade = state.markerLocked ? 1 : 0.42;
+            colors[i3] = clamp(this.tmpColor.r * flicker * lockFade, 0, 1);
+            colors[i3 + 1] = clamp(this.tmpColor.g * flicker * lockFade, 0, 1);
+            colors[i3 + 2] = clamp(this.tmpColor.b * flicker * lockFade, 0, 1);
+          }
+
+          this.geometry.attributes.position.needsUpdate = true;
+          this.geometry.attributes.color.needsUpdate = true;
+          this.material.opacity = state.markerLocked ? 0.95 : 0.36;
+        }
+      });
+
+      function bindUI() {
+        ['toast', 'markerDot', 'markerText', 'scanCard', 'hint', 'fpsValue', 'particleValue', 'stabilityValue', 'lossValue', 'xrValue', 'burstBtn', 'modeBtn', 'pauseBtn', 'qualityBtn', 'snapshotBtn', 'saveBtn', 'loadBtn', 'debugBtn', 'markerBtn', 'infoBtn', 'infoDrawer', 'intensityRange', 'windRange', 'turbulenceRange', 'scaleRange', 'budgetRange', 'intensityOut', 'windOut', 'turbulenceOut', 'scaleOut', 'budgetOut'].forEach(id => { ui[id] = $(id); });
+
+        ui.burstBtn.addEventListener('click', () => {
+          const fire = getFire();
+          if (fire) fire.burst(1.15);
+          toast('Energy burst added');
+        });
+
+        document.body.addEventListener('pointerdown', (event) => {
+          if (event.target.closest('button') || event.target.closest('input') || event.target.closest('.drawer')) return;
+          const fire = getFire();
+          if (fire) fire.burst(0.68);
+        }, { passive: true });
+
+        ui.modeBtn.addEventListener('click', () => {
+          state.modeIndex = (state.modeIndex + 1) % state.modes.length;
+          syncControls();
+          toast('Mode changed to ' + state.modes[state.modeIndex]);
+        });
+
+        ui.pauseBtn.addEventListener('click', () => {
+          state.paused = !state.paused;
+          syncControls();
+          toast(state.paused ? 'Simulation paused' : 'Simulation resumed');
+        });
+
+        ui.qualityBtn.addEventListener('click', () => {
+          state.autoQuality = !state.autoQuality;
+          syncControls();
+          toast('Auto quality ' + (state.autoQuality ? 'enabled' : 'disabled'));
+        });
+
+        ui.snapshotBtn.addEventListener('click', () => {
+          try {
+            const scene = $('scene');
+            const canvas = scene.renderer && scene.renderer.domElement;
+            if (!canvas) throw new Error('Renderer canvas not ready');
+            const url = canvas.toDataURL('image/png');
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'ar-fire-lab-v3-snapshot.png';
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            toast('Snapshot saved');
+          } catch (err) {
+            toast('Snapshot blocked by browser/camera security');
+            console.warn('[ARFireLabV3] Snapshot failed:', err);
+          }
+        });
+
+        ui.saveBtn.addEventListener('click', () => {
+          localStorage.setItem(state.presetKey, JSON.stringify(currentPreset()));
+          toast('Preset saved locally');
+        });
+
+        ui.loadBtn.addEventListener('click', () => {
+          const raw = localStorage.getItem(state.presetKey);
+          if (!raw) { toast('No saved preset yet'); return; }
+          try { applyPreset(JSON.parse(raw)); }
+          catch (err) { toast('Preset could not be loaded'); }
+        });
+
+        ui.debugBtn.addEventListener('click', () => {
+          downloadText('ar-fire-lab-v3-debug.json', JSON.stringify(currentPreset(), null, 2));
+          toast('Debug JSON exported');
+        });
+
+        ui.markerBtn.addEventListener('click', () => {
+          window.open('https://raw.githubusercontent.com/AR-js-org/AR.js/master/data/images/hiro.png', '_blank', 'noopener,noreferrer');
+        });
+
+        ui.infoBtn.addEventListener('click', () => {
+          const open = ui.infoDrawer.classList.toggle('open');
+          ui.infoDrawer.setAttribute('aria-hidden', String(!open));
+        });
+
+        [ui.intensityRange, ui.windRange, ui.turbulenceRange, ui.scaleRange, ui.budgetRange].forEach(input => input.addEventListener('input', syncControls));
+      }
+
+      function environmentChecks() {
+        if (!window.isSecureContext) {
+          ui.markerDot.classList.add('error');
+          ui.markerText.textContent = 'HTTPS or localhost required';
+          ui.hint.textContent = 'Camera access usually requires HTTPS or localhost. Move this file to a local server or secure host.';
+        } else if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+          ui.markerDot.classList.add('error');
+          ui.markerText.textContent = 'Camera API unavailable';
+          ui.hint.textContent = 'This browser does not expose getUserMedia. Try Chrome, Edge, or Safari on a supported device.';
+        }
+
+        if (navigator.xr && navigator.xr.isSessionSupported) {
+          navigator.xr.isSessionSupported('immersive-ar').then((supported) => {
+            state.xrSupported = supported ? 'supported' : 'not supported';
+            ui.xrValue.textContent = supported ? 'AR yes' : 'No AR';
+          }).catch(() => {
+            state.xrSupported = 'unknown';
+            ui.xrValue.textContent = 'Unknown';
+          });
+        } else {
+          state.xrSupported = 'unavailable';
+          ui.xrValue.textContent = 'No API';
+        }
+      }
+
+      function boot() {
+        bindUI();
+        environmentChecks();
+        syncControls();
+        setTimeout(syncControls, 1000);
+
+        window.ARFireLabV3 = {
+          state,
+          burst(power = 1) { const fire = getFire(); if (fire) fire.burst(power); },
+          setMode(mode) { const idx = state.modes.indexOf(mode); if (idx !== -1) { state.modeIndex = idx; syncControls(); } },
+          setParticles(count) { ui.budgetRange.value = String(clamp(count, 120, 1400)); syncControls(); },
+          exportDebug() { return currentPreset(); },
+          savePreset() { localStorage.setItem(state.presetKey, JSON.stringify(currentPreset())); },
+          loadPreset() { const raw = localStorage.getItem(state.presetKey); if (raw) applyPreset(JSON.parse(raw)); }
+        };
+
+        toast('AR Fire Lab V3 loaded');
+      }
+
+      if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
+      else boot();
+    })();
+  </script>
+</body>
 </html>
