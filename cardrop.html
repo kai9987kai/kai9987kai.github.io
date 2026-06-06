@@ -1,94 +1,796 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Block Car Game</title>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Advanced Block Car Builder Game</title>
+
   <style>
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      background: linear-gradient(#7ecbff, #dff6ff);
+      font-family: Arial, sans-serif;
+      overflow: hidden;
+      color: white;
+    }
+
+    #gameWrap {
+      position: relative;
+      width: 100vw;
+      height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
     canvas {
-      display: block;
-      margin: 0 auto;
-      background-color: skyblue;
-      border: 2px solid black;
+      background: skyblue;
+      border: 3px solid #111;
+      border-radius: 14px;
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.35);
+      max-width: 96vw;
+      max-height: 88vh;
+    }
+
+    #hud {
+      position: absolute;
+      top: 14px;
+      left: 14px;
+      background: rgba(0, 0, 0, 0.45);
+      padding: 12px 14px;
+      border-radius: 12px;
+      backdrop-filter: blur(5px);
+      font-size: 14px;
+      line-height: 1.45;
+      user-select: none;
+    }
+
+    #tools {
+      position: absolute;
+      top: 14px;
+      right: 14px;
+      background: rgba(0, 0, 0, 0.45);
+      padding: 12px;
+      border-radius: 12px;
+      backdrop-filter: blur(5px);
+      width: 230px;
+      font-size: 13px;
+      user-select: none;
+    }
+
+    button {
+      border: none;
+      border-radius: 8px;
+      padding: 8px 10px;
+      margin: 3px;
+      cursor: pointer;
+      background: #222;
+      color: white;
+      font-weight: bold;
+    }
+
+    button:hover {
+      background: #444;
+    }
+
+    .active {
+      background: #ffd43b;
+      color: black;
+    }
+
+    #mobileControls {
+      position: absolute;
+      bottom: 18px;
+      left: 50%;
+      transform: translateX(-50%);
+      display: flex;
+      gap: 12px;
+      user-select: none;
+    }
+
+    .mobileBtn {
+      width: 68px;
+      height: 58px;
+      border-radius: 16px;
+      background: rgba(0, 0, 0, 0.45);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 24px;
+      font-weight: bold;
+      border: 2px solid rgba(255, 255, 255, 0.4);
+    }
+
+    @media (min-width: 900px) {
+      #mobileControls {
+        display: none;
+      }
     }
   </style>
 </head>
-<body>
-  <canvas id="gameCanvas" width="800" height="600"></canvas>
-  <script>
-    const canvas = document.getElementById('gameCanvas');
-    const ctx = canvas.getContext('2d');
 
-    let car = {
-      x: 100,
-      y: 400,
-      width: 50,
-      height: 30,
-      velocityX: 1
+<body>
+  <div id="gameWrap">
+    <canvas id="gameCanvas" width="960" height="540"></canvas>
+
+    <div id="hud">
+      <strong>Block Car Builder</strong><br>
+      Coins: <span id="coinText">0</span> /
+      <span id="totalCoinText">0</span><br>
+      Distance: <span id="distanceText">0</span>m<br>
+      Mode: <span id="modeText">Drive</span><br>
+      Status: <span id="statusText">Build roads. Reach the flag.</span>
+    </div>
+
+    <div id="tools">
+      <strong>Controls</strong><br>
+      A / D or ← / →: Drive<br>
+      W / Space / ↑: Jump<br>
+      E: Toggle build mode<br>
+      Click: Place block<br>
+      Right click: Remove block<br>
+      Z: Undo block<br>
+      R: Reset car<br><br>
+
+      <strong>Block Type</strong><br>
+      <button id="normalBtn" class="active">1 Normal</button>
+      <button id="boostBtn">2 Boost</button>
+      <button id="bounceBtn">3 Bounce</button>
+      <button id="iceBtn">4 Ice</button>
+      <button id="hazardBtn">5 Hazard</button>
+      <button id="finishBtn">6 Finish</button>
+    </div>
+
+    <div id="mobileControls">
+      <div class="mobileBtn" data-key="ArrowLeft">←</div>
+      <div class="mobileBtn" data-key="ArrowUp">↑</div>
+      <div class="mobileBtn" data-key="ArrowRight">→</div>
+    </div>
+  </div>
+
+  <script>
+    const canvas = document.getElementById("gameCanvas");
+    const ctx = canvas.getContext("2d");
+
+    const coinText = document.getElementById("coinText");
+    const totalCoinText = document.getElementById("totalCoinText");
+    const distanceText = document.getElementById("distanceText");
+    const modeText = document.getElementById("modeText");
+    const statusText = document.getElementById("statusText");
+
+    const W = canvas.width;
+    const H = canvas.height;
+
+    const keys = {};
+    let cameraX = 0;
+    let editMode = false;
+    let selectedType = "normal";
+    let blockWidth = 130;
+    let blockHeight = 18;
+    let score = 0;
+    let won = false;
+
+    const particles = [];
+
+    const car = {
+      x: 80,
+      y: 390,
+      w: 64,
+      h: 32,
+      vx: 0,
+      vy: 0,
+      onGround: false,
+      facing: 1,
+      angle: 0
     };
 
-    let platforms = [];
+    let platforms = [
+      { x: -400, y: 490, w: 1200, h: 50, type: "normal" },
+      { x: 860, y: 455, w: 180, h: 20, type: "normal" },
+      { x: 1120, y: 420, w: 170, h: 20, type: "boost" },
+      { x: 1400, y: 455, w: 160, h: 20, type: "bounce" },
+      { x: 1700, y: 500, w: 220, h: 28, type: "hazard" },
+      { x: 2020, y: 430, w: 190, h: 20, type: "ice" },
+      { x: 2440, y: 455, w: 120, h: 80, type: "finish" }
+    ];
 
-    canvas.addEventListener('click', (event) => {
-      const rect = canvas.getBoundingClientRect();
-      const x = event.clientX - rect.left;
-      const y = event.clientY - rect.top;
-      platforms.push({ x, y, width: 100, height: 10 });
-    });
+    let coins = [
+      { x: 940, y: 410, collected: false },
+      { x: 1185, y: 375, collected: false },
+      { x: 1470, y: 410, collected: false },
+      { x: 2090, y: 385, collected: false },
+      { x: 2490, y: 410, collected: false }
+    ];
 
-    function drawCar() {
-      ctx.fillStyle = 'black';
-      ctx.fillRect(car.x, car.y, car.width, car.height);
+    const typeColors = {
+      normal: "#8b5a2b",
+      boost: "#ffae00",
+      bounce: "#32d46b",
+      ice: "#8ee8ff",
+      hazard: "#e63946",
+      finish: "#ffffff"
+    };
+
+    function setTool(type) {
+      selectedType = type;
+
+      document.querySelectorAll("#tools button").forEach(btn => {
+        btn.classList.remove("active");
+      });
+
+      const map = {
+        normal: "normalBtn",
+        boost: "boostBtn",
+        bounce: "bounceBtn",
+        ice: "iceBtn",
+        hazard: "hazardBtn",
+        finish: "finishBtn"
+      };
+
+      document.getElementById(map[type]).classList.add("active");
     }
 
-    function drawPlatforms() {
-      ctx.fillStyle = 'brown';
-      for (let platform of platforms) {
-        ctx.fillRect(platform.x, platform.y, platform.width, platform.height);
+    document.getElementById("normalBtn").onclick = () => setTool("normal");
+    document.getElementById("boostBtn").onclick = () => setTool("boost");
+    document.getElementById("bounceBtn").onclick = () => setTool("bounce");
+    document.getElementById("iceBtn").onclick = () => setTool("ice");
+    document.getElementById("hazardBtn").onclick = () => setTool("hazard");
+    document.getElementById("finishBtn").onclick = () => setTool("finish");
+
+    window.addEventListener("keydown", e => {
+      keys[e.key] = true;
+
+      if (e.key === "e" || e.key === "E") {
+        editMode = !editMode;
+        modeText.textContent = editMode ? "Build" : "Drive";
+        statusText.textContent = editMode
+          ? "Click the world to place blocks."
+          : "Drive to the finish flag.";
+      }
+
+      if (e.key === "r" || e.key === "R") resetCar();
+
+      if (e.key === "z" || e.key === "Z") {
+        const removed = platforms.pop();
+        if (removed && removed.spawnedCoinIndex !== undefined) {
+          coins.splice(removed.spawnedCoinIndex, 1);
+        }
+      }
+
+      if (e.key === "1") setTool("normal");
+      if (e.key === "2") setTool("boost");
+      if (e.key === "3") setTool("bounce");
+      if (e.key === "4") setTool("ice");
+      if (e.key === "5") setTool("hazard");
+      if (e.key === "6") setTool("finish");
+    });
+
+    window.addEventListener("keyup", e => {
+      keys[e.key] = false;
+    });
+
+    document.querySelectorAll(".mobileBtn").forEach(btn => {
+      const key = btn.dataset.key;
+
+      btn.addEventListener("touchstart", e => {
+        e.preventDefault();
+        keys[key] = true;
+      });
+
+      btn.addEventListener("touchend", e => {
+        e.preventDefault();
+        keys[key] = false;
+      });
+
+      btn.addEventListener("mousedown", () => keys[key] = true);
+      btn.addEventListener("mouseup", () => keys[key] = false);
+      btn.addEventListener("mouseleave", () => keys[key] = false);
+    });
+
+    canvas.addEventListener("contextmenu", e => e.preventDefault());
+
+    canvas.addEventListener("mousedown", e => {
+      const rect = canvas.getBoundingClientRect();
+      const mx = (e.clientX - rect.left) * (canvas.width / rect.width);
+      const my = (e.clientY - rect.top) * (canvas.height / rect.height);
+
+      const worldX = mx + cameraX;
+      const worldY = my;
+
+      if (e.button === 2) {
+        removeNearestBlock(worldX, worldY);
+        return;
+      }
+
+      if (!editMode) return;
+
+      const snappedX = Math.round(worldX / 20) * 20;
+      const snappedY = Math.round(worldY / 20) * 20;
+
+      const block = {
+        x: snappedX - blockWidth / 2,
+        y: snappedY - blockHeight / 2,
+        w: blockWidth,
+        h: blockHeight,
+        type: selectedType
+      };
+
+      if (selectedType === "hazard") {
+        block.h = 26;
+      }
+
+      if (selectedType === "finish") {
+        block.w = 90;
+        block.h = 90;
+      }
+
+      if (selectedType !== "hazard" && selectedType !== "finish" && Math.random() > 0.45) {
+        coins.push({
+          x: block.x + block.w / 2,
+          y: block.y - 38,
+          collected: false
+        });
+
+        block.spawnedCoinIndex = coins.length - 1;
+      }
+
+      platforms.push(block);
+      burst(block.x + block.w / 2, block.y, typeColors[selectedType], 16);
+    });
+
+    canvas.addEventListener("wheel", e => {
+      if (!editMode) return;
+      e.preventDefault();
+
+      if (e.deltaY < 0) {
+        blockWidth = Math.min(260, blockWidth + 10);
+      } else {
+        blockWidth = Math.max(50, blockWidth - 10);
+      }
+
+      statusText.textContent = "Block width: " + blockWidth + "px";
+    });
+
+    function removeNearestBlock(x, y) {
+      let bestIndex = -1;
+      let bestDist = Infinity;
+
+      platforms.forEach((p, i) => {
+        const cx = p.x + p.w / 2;
+        const cy = p.y + p.h / 2;
+        const dist = Math.hypot(cx - x, cy - y);
+
+        if (dist < bestDist) {
+          bestDist = dist;
+          bestIndex = i;
+        }
+      });
+
+      if (bestIndex !== -1 && bestDist < 120) {
+        const p = platforms[bestIndex];
+        burst(p.x + p.w / 2, p.y + p.h / 2, "#ffffff", 18);
+        platforms.splice(bestIndex, 1);
       }
     }
 
-    function collision(car, platform) {
+    function resetCar() {
+      car.x = 80;
+      car.y = 390;
+      car.vx = 0;
+      car.vy = 0;
+      car.onGround = false;
+      won = false;
+      score = 0;
+
+      coins.forEach(c => c.collected = false);
+
+      statusText.textContent = "Car reset. Try again.";
+    }
+
+    function rectsIntersect(a, b) {
       return (
-        car.x < platform.x + platform.width &&
-        car.x + car.width > platform.x &&
-        car.y < platform.y + platform.height &&
-        car.y + car.height > platform.y
+        a.x < b.x + b.w &&
+        a.x + a.w > b.x &&
+        a.y < b.y + b.h &&
+        a.y + a.h > b.y
       );
     }
 
     function updateCar() {
-      car.x += car.velocityX;
+      if (won) return;
 
-      for (let platform of platforms) {
-        if (collision(car, platform)) {
-          car.y = platform.y - car.height;
-          break;
-        } else {
-          car.y += 1;
+      const left = keys["ArrowLeft"] || keys["a"] || keys["A"];
+      const right = keys["ArrowRight"] || keys["d"] || keys["D"];
+      const jump = keys["ArrowUp"] || keys["w"] || keys["W"] || keys[" "];
+
+      const gravity = 0.65;
+      const acceleration = car.onGround ? 0.45 : 0.22;
+      const maxSpeed = 9;
+
+      if (left) {
+        car.vx -= acceleration;
+        car.facing = -1;
+      }
+
+      if (right) {
+        car.vx += acceleration;
+        car.facing = 1;
+      }
+
+      if (jump && car.onGround) {
+        car.vy = -13;
+        car.onGround = false;
+        burst(car.x + car.w / 2, car.y + car.h, "#ffffff", 10);
+      }
+
+      car.vy += gravity;
+
+      if (car.onGround) {
+        car.vx *= 0.91;
+      } else {
+        car.vx *= 0.985;
+      }
+
+      car.vx = Math.max(-maxSpeed, Math.min(maxSpeed, car.vx));
+
+      const oldX = car.x;
+      const oldY = car.y;
+
+      car.x += car.vx;
+
+      for (const p of platforms) {
+        if (rectsIntersect(car, p)) {
+          if (p.type === "hazard") {
+            statusText.textContent = "You hit a hazard!";
+            burst(car.x, car.y, "#ff3333", 30);
+            resetCar();
+            return;
+          }
+
+          if (car.vx > 0) {
+            car.x = p.x - car.w;
+          } else if (car.vx < 0) {
+            car.x = p.x + p.w;
+          }
+
+          car.vx *= -0.15;
         }
       }
 
-      if (car.y > canvas.height) {
-        resetGame();
+      car.y += car.vy;
+      car.onGround = false;
+
+      for (const p of platforms) {
+        if (!rectsIntersect(car, p)) continue;
+
+        if (p.type === "hazard") {
+          statusText.textContent = "You hit a hazard!";
+          burst(car.x, car.y, "#ff3333", 30);
+          resetCar();
+          return;
+        }
+
+        if (p.type === "finish") {
+          won = true;
+          statusText.textContent = "You reached the finish!";
+          burst(car.x + car.w / 2, car.y, "#ffd43b", 80);
+          return;
+        }
+
+        const wasAbove = oldY + car.h <= p.y + 8;
+
+        if (car.vy >= 0 && wasAbove) {
+          car.y = p.y - car.h;
+          car.vy = 0;
+          car.onGround = true;
+
+          if (p.type === "boost") {
+            car.vx += 3.2 * car.facing;
+            burst(car.x + car.w / 2, car.y + car.h, "#ffae00", 10);
+          }
+
+          if (p.type === "bounce") {
+            car.vy = -16;
+            car.onGround = false;
+            burst(car.x + car.w / 2, car.y + car.h, "#32d46b", 16);
+          }
+
+          if (p.type === "ice") {
+            car.vx *= 1.03;
+          }
+        } else if (car.vy < 0) {
+          car.y = p.y + p.h;
+          car.vy = 0;
+        }
+      }
+
+      coins.forEach(c => {
+        if (c.collected) return;
+
+        const coinRect = {
+          x: c.x - 12,
+          y: c.y - 12,
+          w: 24,
+          h: 24
+        };
+
+        if (rectsIntersect(car, coinRect)) {
+          c.collected = true;
+          score++;
+          statusText.textContent = "Coin collected!";
+          burst(c.x, c.y, "#ffd43b", 20);
+        }
+      });
+
+      if (car.y > H + 300) {
+        statusText.textContent = "You fell off the map.";
+        resetCar();
+      }
+
+      car.angle = car.vx * 0.03;
+    }
+
+    function updateCamera() {
+      const target = car.x - W * 0.35;
+      cameraX += (target - cameraX) * 0.08;
+      if (cameraX < -120) cameraX = -120;
+    }
+
+    function burst(x, y, color, amount) {
+      for (let i = 0; i < amount; i++) {
+        particles.push({
+          x,
+          y,
+          vx: (Math.random() - 0.5) * 7,
+          vy: (Math.random() - 0.5) * 7,
+          life: 35 + Math.random() * 20,
+          color
+        });
       }
     }
 
-    function resetGame() {
-      car.x = 100;
-      car.y = 400;
-      platforms = [];
+    function updateParticles() {
+      for (let i = particles.length - 1; i >= 0; i--) {
+        const p = particles[i];
+        p.x += p.vx;
+        p.y += p.vy;
+        p.vy += 0.18;
+        p.life--;
+
+        if (p.life <= 0) {
+          particles.splice(i, 1);
+        }
+      }
     }
 
-    function draw() {
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      drawPlatforms();
-      drawCar();
+    function drawBackground() {
+      const gradient = ctx.createLinearGradient(0, 0, 0, H);
+      gradient.addColorStop(0, "#78cfff");
+      gradient.addColorStop(1, "#e9fbff");
+      ctx.fillStyle = gradient;
+      ctx.fillRect(0, 0, W, H);
+
+      ctx.fillStyle = "rgba(255, 255, 255, 0.75)";
+      for (let i = 0; i < 8; i++) {
+        const cloudX = ((i * 280 - cameraX * 0.25) % 1300) - 150;
+        const cloudY = 60 + (i % 3) * 45;
+
+        ctx.beginPath();
+        ctx.arc(cloudX, cloudY, 28, 0, Math.PI * 2);
+        ctx.arc(cloudX + 35, cloudY - 8, 34, 0, Math.PI * 2);
+        ctx.arc(cloudX + 75, cloudY, 25, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      ctx.fillStyle = "rgba(25, 120, 70, 0.45)";
+      for (let i = 0; i < 12; i++) {
+        const mx = ((i * 240 - cameraX * 0.12) % 1400) - 200;
+        ctx.beginPath();
+        ctx.moveTo(mx, 490);
+        ctx.lineTo(mx + 140, 310 + (i % 3) * 25);
+        ctx.lineTo(mx + 300, 490);
+        ctx.closePath();
+        ctx.fill();
+      }
+    }
+
+    function drawPlatforms() {
+      for (const p of platforms) {
+        const screenX = p.x - cameraX;
+
+        if (screenX + p.w < -80 || screenX > W + 80) continue;
+
+        ctx.fillStyle = typeColors[p.type] || "#8b5a2b";
+        ctx.fillRect(screenX, p.y, p.w, p.h);
+
+        ctx.strokeStyle = "rgba(0,0,0,0.45)";
+        ctx.lineWidth = 2;
+        ctx.strokeRect(screenX, p.y, p.w, p.h);
+
+        if (p.type === "boost") {
+          ctx.fillStyle = "rgba(255,255,255,0.7)";
+          for (let i = 0; i < p.w; i += 28) {
+            ctx.beginPath();
+            ctx.moveTo(screenX + i + 8, p.y + 4);
+            ctx.lineTo(screenX + i + 22, p.y + p.h / 2);
+            ctx.lineTo(screenX + i + 8, p.y + p.h - 4);
+            ctx.fill();
+          }
+        }
+
+        if (p.type === "hazard") {
+          ctx.fillStyle = "#111";
+          for (let i = 0; i < p.w; i += 24) {
+            ctx.beginPath();
+            ctx.moveTo(screenX + i, p.y);
+            ctx.lineTo(screenX + i + 12, p.y - 22);
+            ctx.lineTo(screenX + i + 24, p.y);
+            ctx.fill();
+          }
+        }
+
+        if (p.type === "finish") {
+          ctx.fillStyle = "#111";
+          ctx.fillRect(screenX + 10, p.y - 70, 8, 80);
+
+          ctx.fillStyle = "#ffd43b";
+          ctx.fillRect(screenX + 18, p.y - 70, 55, 32);
+
+          ctx.fillStyle = "#111";
+          ctx.font = "bold 12px Arial";
+          ctx.fillText("FINISH", screenX + 22, p.y - 49);
+        }
+      }
+    }
+
+    function drawCoins() {
+      for (const c of coins) {
+        if (c.collected) continue;
+
+        const x = c.x - cameraX;
+        const y = c.y;
+
+        if (x < -40 || x > W + 40) continue;
+
+        ctx.save();
+        ctx.translate(x, y);
+        ctx.rotate(Date.now() * 0.004);
+        ctx.fillStyle = "#ffd43b";
+        ctx.beginPath();
+        ctx.ellipse(0, 0, 12, 16, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.strokeStyle = "#a66f00";
+        ctx.lineWidth = 3;
+        ctx.stroke();
+
+        ctx.fillStyle = "rgba(255,255,255,0.65)";
+        ctx.fillRect(-4, -10, 3, 20);
+        ctx.restore();
+      }
+    }
+
+    function drawCar() {
+      const x = car.x - cameraX;
+      const y = car.y;
+
+      ctx.save();
+      ctx.translate(x + car.w / 2, y + car.h / 2);
+      ctx.rotate(car.angle);
+
+      ctx.fillStyle = "#111";
+      roundRect(-car.w / 2, -car.h / 2, car.w, car.h, 8);
+      ctx.fill();
+
+      ctx.fillStyle = "#333";
+      roundRect(-20, -32, 38, 18, 6);
+      ctx.fill();
+
+      ctx.fillStyle = "#66d9ff";
+      roundRect(-12, -29, 18, 12, 4);
+      ctx.fill();
+
+      drawWheel(-22, 18);
+      drawWheel(24, 18);
+
+      ctx.restore();
+    }
+
+    function drawWheel(x, y) {
+      ctx.fillStyle = "#050505";
+      ctx.beginPath();
+      ctx.arc(x, y, 11, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.fillStyle = "#777";
+      ctx.beginPath();
+      ctx.arc(x, y, 5, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    function roundRect(x, y, w, h, r) {
+      ctx.beginPath();
+      ctx.moveTo(x + r, y);
+      ctx.lineTo(x + w - r, y);
+      ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+      ctx.lineTo(x + w, y + h - r);
+      ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+      ctx.lineTo(x + r, y + h);
+      ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+      ctx.lineTo(x, y + r);
+      ctx.quadraticCurveTo(x, y, x + r, y);
+      ctx.closePath();
+    }
+
+    function drawParticles() {
+      for (const p of particles) {
+        ctx.globalAlpha = Math.max(0, p.life / 55);
+        ctx.fillStyle = p.color;
+        ctx.fillRect(p.x - cameraX, p.y, 4, 4);
+      }
+
+      ctx.globalAlpha = 1;
+    }
+
+    function drawBuildPreview() {
+      if (!editMode) return;
+
+      ctx.fillStyle = "rgba(255, 255, 255, 0.13)";
+      ctx.fillRect(0, 0, W, H);
+
+      ctx.strokeStyle = "rgba(255,255,255,0.18)";
+      ctx.lineWidth = 1;
+
+      for (let x = -cameraX % 20; x < W; x += 20) {
+        ctx.beginPath();
+        ctx.moveTo(x, 0);
+        ctx.lineTo(x, H);
+        ctx.stroke();
+      }
+
+      for (let y = 0; y < H; y += 20) {
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.lineTo(W, y);
+        ctx.stroke();
+      }
+
+      ctx.fillStyle = "rgba(0,0,0,0.5)";
+      ctx.font = "bold 18px Arial";
+      ctx.fillText("BUILD MODE: click to place, right click to remove, mouse wheel changes width", 24, H - 24);
+    }
+
+    function updateHUD() {
+      const totalCoins = coins.length;
+      const collected = coins.filter(c => c.collected).length;
+
+      coinText.textContent = collected;
+      totalCoinText.textContent = totalCoins;
+      distanceText.textContent = Math.max(0, Math.floor(car.x / 10));
+      modeText.textContent = editMode ? "Build" : "Drive";
+    }
+
+    function loop() {
       updateCar();
-      requestAnimationFrame(draw);
+      updateCamera();
+      updateParticles();
+      updateHUD();
+
+      drawBackground();
+      drawBuildPreview();
+      drawPlatforms();
+      drawCoins();
+      drawCar();
+      drawParticles();
+
+      requestAnimationFrame(loop);
     }
 
-    draw();
+    loop();
   </script>
 </body>
 </html>
