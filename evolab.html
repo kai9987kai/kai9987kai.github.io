@@ -262,6 +262,30 @@
             gap: 0.55rem;
         }
 
+        .resilience {
+            margin-top: 0.55rem;
+            padding: 0.72rem;
+            border: 1px solid var(--line);
+            border-radius: 10px;
+            background: rgba(4, 16, 13, 0.38);
+        }
+
+        .resilience strong,
+        .resilience span {
+            display: block;
+        }
+
+        .resilience strong {
+            font-size: 0.8rem;
+        }
+
+        .resilience span {
+            margin-top: 0.25rem;
+            color: var(--muted);
+            font-size: 0.68rem;
+            line-height: 1.4;
+        }
+
         .stat {
             min-height: 4.4rem;
             padding: 0.7rem;
@@ -351,6 +375,10 @@
             display: grid;
             grid-template-columns: 1fr 1fr;
             gap: 0.55rem;
+        }
+
+        .button-row .wide {
+            grid-column: 1 / -1;
         }
 
         .inspector-empty {
@@ -536,8 +564,14 @@
                         <div class="stat"><strong id="generationStat">0</strong><span>Max generation</span></div>
                         <div class="stat"><strong id="diversityStat">0%</strong><span>Trait diversity</span></div>
                         <div class="stat"><strong id="ecotypeStat">0</strong><span>Ecotypes</span></div>
+                        <div class="stat"><strong id="lagStat">0%</strong><span>Thermal lag</span></div>
+                        <div class="stat"><strong id="plasticityStat">0%</strong><span>Mean plasticity</span></div>
                         <div class="stat"><strong id="birthStat">0</strong><span>Births</span></div>
                         <div class="stat"><strong id="deathStat">0</strong><span>Deaths</span></div>
+                    </div>
+                    <div class="resilience">
+                        <strong id="resilienceStat">Recovery assay not started</strong>
+                        <span id="resilienceDetail">Trigger a drought to measure population resistance and recovery.</span>
                     </div>
                 </section>
 
@@ -597,7 +631,8 @@
                         </div>
                         <div class="button-row">
                             <button id="disturbanceButton" class="danger" type="button">Trigger drought</button>
-                            <button id="reseedButton" type="button">New seed</button>
+                            <button id="migrationButton" type="button">Gene-flow pulse</button>
+                            <button id="reseedButton" class="wide" type="button">New seed</button>
                         </div>
                     </div>
                 </section>
@@ -620,12 +655,12 @@
                 <p>Speed, body size, sensing, and heat mismatch all carry energetic costs. Survival and reproduction emerge from resource capture rather than a fixed fitness score.</p>
             </article>
             <article class="card note">
-                <h3>Selection varies in space and time</h3>
-                <p>A cool-to-warm habitat gradient, seasons, and droughts create changing local niches. Thermal preference is inherited, allowing adaptation to be observed rather than scripted.</p>
+                <h3>Plasticity can buy time</h3>
+                <p>Behavioral plasticity lets organisms seek a better thermal microhabitat, but maintaining that flexibility costs energy and may weaken selection on inherited thermal preference.</p>
             </article>
             <article class="card note">
                 <h3>Research-informed, not predictive</h3>
-                <p>This is an exploratory model, not a forecast. Its mechanisms draw on recent work in <a href="https://doi.org/10.1016/j.ecolmodel.2024.110848">bioenergetics</a>, <a href="https://doi.org/10.1186/s12862-024-02304-4">local adaptation</a>, and <a href="https://doi.org/10.1038/s42005-025-02120-2">mutation in finite populations</a>.</p>
+                <p>This exploratory model draws on recent work in <a href="https://doi.org/10.1038/s41467-026-70632-8">behavioral buffering</a>, <a href="https://doi.org/10.1038/s41598-025-24445-2">adaptation lag</a>, and <a href="https://doi.org/10.1038/s42003-025-08410-3">adaptive gene flow</a>.</p>
             </article>
         </section>
     </main>
@@ -643,7 +678,7 @@
             const TWO_PI = Math.PI * 2;
             const FIXED_STEP = 1 / 60;
             const MAX_POPULATION = 360;
-            const GENOME_KEYS = ["speed", "size", "vision", "efficiency", "aggression", "sociality", "thermal", "fecundity", "turning", "hue"];
+            const GENOME_KEYS = ["speed", "size", "vision", "efficiency", "aggression", "sociality", "plasticity", "thermal", "fecundity", "turning", "hue"];
             const TRAIT_META = {
                 speed: { label: "Speed", min: 0.45, max: 1.75 },
                 size: { label: "Body size", min: 0.55, max: 1.55 },
@@ -651,6 +686,7 @@
                 efficiency: { label: "Efficiency", min: 0.65, max: 1.4 },
                 aggression: { label: "Aggression", min: 0, max: 1 },
                 sociality: { label: "Sociality", min: -1, max: 1 },
+                plasticity: { label: "Plasticity", min: 0, max: 1 },
                 thermal: { label: "Heat optimum", min: 0, max: 1 },
                 fecundity: { label: "Fecundity", min: 0.7, max: 1.35 },
                 turning: { label: "Exploration", min: 0.15, max: 1.1 },
@@ -662,6 +698,7 @@
                 reset: document.getElementById("resetButton"),
                 fullscreen: document.getElementById("fullscreenButton"),
                 disturbance: document.getElementById("disturbanceButton"),
+                migration: document.getElementById("migrationButton"),
                 reseed: document.getElementById("reseedButton"),
                 environment: document.getElementById("environmentSelect"),
                 speed: document.getElementById("speedSelect"),
@@ -677,8 +714,12 @@
                 generation: document.getElementById("generationStat"),
                 diversity: document.getElementById("diversityStat"),
                 ecotypes: document.getElementById("ecotypeStat"),
+                lag: document.getElementById("lagStat"),
+                plasticity: document.getElementById("plasticityStat"),
                 births: document.getElementById("birthStat"),
                 deaths: document.getElementById("deathStat"),
+                resilience: document.getElementById("resilienceStat"),
+                resilienceDetail: document.getElementById("resilienceDetail"),
                 selection: document.getElementById("selectionLabel"),
                 inspector: document.getElementById("inspector")
             };
@@ -726,16 +767,9 @@
                 return Math.sqrt(-2 * Math.log(u)) * Math.cos(TWO_PI * v);
             }
 
-            function wrappedDelta(a, b, span) {
-                let delta = b - a;
-                if (delta > span / 2) delta -= span;
-                if (delta < -span / 2) delta += span;
-                return delta;
-            }
-
-            function wrappedDistance(a, b) {
-                const dx = wrappedDelta(a.x, b.x, W);
-                const dy = wrappedDelta(a.y, b.y, H);
+            function distanceBetween(a, b) {
+                const dx = b.x - a.x;
+                const dy = b.y - a.y;
                 return { dx, dy, distance: Math.hypot(dx, dy) };
             }
 
@@ -805,7 +839,7 @@
                 const band = index % 4;
                 const centerX = (band + 0.5) * W / 4;
                 return {
-                    x: (centerX + gaussian() * W * 0.12 + W) % W,
+                    x: clamp(centerX + gaussian() * W * 0.12, 1, W - 1),
                     y: rand(0, H),
                     amount: rand(8, 22),
                     capacity: rand(17, 28),
@@ -827,12 +861,19 @@
                     paused: false,
                     disturbance: 0,
                     selectedId: null,
+                    extinct: false,
+                    migrants: 0,
+                    notice: "",
+                    noticeUntil: 0,
+                    resilience: null,
                     histories: { population: [], resources: [], diversity: [] },
                     sampleClock: 0,
                     uiClock: 0,
                     ecotypeCount: 0,
                     diversity: 0,
-                    meanEnergy: 0
+                    meanEnergy: 0,
+                    meanThermalLag: 0,
+                    meanPlasticity: 0
                 };
 
                 for (let i = 0; i < 270; i++) {
@@ -867,7 +908,7 @@
                 let foodDistance = agent.genome.vision;
                 for (const resource of state.resources) {
                     if (resource.amount < 1.5) continue;
-                    const delta = wrappedDistance(agent, resource);
+                    const delta = distanceBetween(agent, resource);
                     if (delta.distance < foodDistance) {
                         food = resource;
                         foodDistance = delta.distance;
@@ -885,7 +926,7 @@
                 let neighbors = 0;
                 for (const other of state.agents) {
                     if (!other.alive || other.id === agent.id) continue;
-                    const delta = wrappedDistance(agent, other);
+                    const delta = distanceBetween(agent, other);
                     if (agent.energy > 94 && other.energy > 94 && agent.cooldown <= 0 && other.cooldown <= 0 && delta.distance < mateDistance) {
                         mate = other;
                         mateDistance = delta.distance;
@@ -922,7 +963,7 @@
 
             function resolveTarget(agent, target, maxDistance) {
                 if (!target || target.alive === false || target.amount < 0.5) return null;
-                const delta = wrappedDistance(agent, target);
+                const delta = distanceBetween(agent, target);
                 return delta.distance <= maxDistance ? { target, ...delta } : null;
             }
 
@@ -953,6 +994,19 @@
                     desiredY = targets.food.dy / Math.max(targets.food.distance, 1);
                 }
 
+                const localTemperature = environmentAt(agent.x);
+                const thermalMismatch = Math.abs(localTemperature - agent.genome.thermal);
+                if (thermalMismatch > 0.015 && agent.genome.plasticity > 0.03) {
+                    const probeDistance = 18 + agent.genome.vision * 0.2;
+                    const leftTemperature = environmentAt(clamp(agent.x - probeDistance, 0, W));
+                    const rightTemperature = environmentAt(clamp(agent.x + probeDistance, 0, W));
+                    const leftMismatch = Math.abs(leftTemperature - agent.genome.thermal);
+                    const rightMismatch = Math.abs(rightTemperature - agent.genome.thermal);
+                    const thermalDirection = leftMismatch < rightMismatch ? -1 : rightMismatch < leftMismatch ? 1 : 0;
+                    const thermalWeight = thermalMismatch * agent.genome.plasticity * 2.8;
+                    desiredX += thermalDirection * thermalWeight;
+                }
+
                 if (Math.abs(agent.genome.sociality) > 0.1) {
                     const socialWeight = agent.genome.sociality * 0.34;
                     desiredX += sensed.socialX * socialWeight;
@@ -968,8 +1022,20 @@
                 const speed = agent.genome.speed * 27 * energyFactor;
                 agent.vx = Math.cos(agent.heading) * speed;
                 agent.vy = Math.sin(agent.heading) * speed;
-                agent.x = (agent.x + agent.vx * dt + W) % W;
-                agent.y = (agent.y + agent.vy * dt + H) % H;
+                const nextX = agent.x + agent.vx * dt;
+                const nextY = agent.y + agent.vy * dt;
+                if (nextX <= 0 || nextX >= W) {
+                    agent.heading = Math.PI - agent.heading;
+                    agent.x = clamp(nextX, 1, W - 1);
+                } else {
+                    agent.x = nextX;
+                }
+                if (nextY <= 0 || nextY >= H) {
+                    agent.heading = -agent.heading;
+                    agent.y = clamp(nextY, 1, H - 1);
+                } else {
+                    agent.y = nextY;
+                }
 
                 interact(agent, targets, dt);
             }
@@ -1018,8 +1084,8 @@
                 const genome = recombineGenome(a.genome, b.genome);
                 const childGeneration = Math.max(a.generation, b.generation) + 1;
                 const childLineage = random() < 0.5 ? a.lineage : b.lineage;
-                const x = (a.x + gaussian() * 7 + W) % W;
-                const y = (a.y + gaussian() * 7 + H) % H;
+                const x = clamp(a.x + gaussian() * 7, 1, W - 1);
+                const y = clamp(a.y + gaussian() * 7, 1, H - 1);
                 createAgent(x, y, genome, childGeneration, [a.id, b.id], childLineage, 43);
                 state.births++;
             }
@@ -1049,8 +1115,9 @@
                     const locomotionCost = agent.genome.speed ** 2 * 0.11;
                     const bodyCost = agent.genome.size ** 2 * 0.085;
                     const sensingCost = (agent.genome.vision / 180) ** 1.4 * 0.065;
+                    const plasticityCost = agent.genome.plasticity ** 1.7 * 0.09;
                     const thermalCost = mismatch ** 1.7 * 0.85;
-                    const basalCost = 0.16 + locomotionCost + bodyCost + sensingCost + thermalCost;
+                    const basalCost = 0.16 + locomotionCost + bodyCost + sensingCost + plasticityCost + thermalCost;
                     agent.energy -= dt * basalCost / agent.genome.efficiency;
 
                     const ageLimit = 105 + 42 / agent.genome.size;
@@ -1065,11 +1132,9 @@
                 state.deaths += before - state.agents.length;
                 if (selectedDied) state.selectedId = null;
 
-                if (state.agents.length === 0) {
-                    for (let i = 0; i < 18; i++) {
-                        const x = rand(0, W);
-                        createAgent(x, rand(0, H), makeGenome(x / W), 0, [], null, 78);
-                    }
+                if (state.agents.length === 0 && !state.extinct) {
+                    state.extinct = true;
+                    state.paused = true;
                 }
             }
 
@@ -1079,7 +1144,7 @@
             }
 
             function genomeDistance(a, b) {
-                const keys = ["speed", "size", "vision", "efficiency", "aggression", "sociality", "thermal", "fecundity", "turning"];
+                const keys = ["speed", "size", "vision", "efficiency", "aggression", "sociality", "plasticity", "thermal", "fecundity", "turning"];
                 let sum = 0;
                 for (const key of keys) {
                     const difference = normalizedTrait(a, key) - normalizedTrait(b, key);
@@ -1089,8 +1154,10 @@
             }
 
             function calculateMetrics() {
-                if (!state.agents.length) return { diversity: 0, ecotypes: 0, meanEnergy: 0 };
-                const metricKeys = ["speed", "size", "vision", "efficiency", "aggression", "sociality", "thermal", "fecundity", "turning"];
+                if (!state.agents.length) {
+                    return { diversity: 0, ecotypes: 0, meanEnergy: 0, meanThermalLag: 0, meanPlasticity: 0 };
+                }
+                const metricKeys = ["speed", "size", "vision", "efficiency", "aggression", "sociality", "plasticity", "thermal", "fecundity", "turning"];
                 let varianceSum = 0;
                 for (const key of metricKeys) {
                     const values = state.agents.map((agent) => normalizedTrait(agent.genome, key));
@@ -1113,7 +1180,15 @@
                 }
 
                 const meanEnergy = state.agents.reduce((sum, agent) => sum + agent.energy, 0) / state.agents.length;
-                return { diversity, ecotypes: representatives.length, meanEnergy };
+                const meanThermalLag = state.agents.reduce(
+                    (sum, agent) => sum + Math.abs(environmentAt(agent.x) - agent.genome.thermal),
+                    0
+                ) / state.agents.length;
+                const meanPlasticity = state.agents.reduce(
+                    (sum, agent) => sum + agent.genome.plasticity,
+                    0
+                ) / state.agents.length;
+                return { diversity, ecotypes: representatives.length, meanEnergy, meanThermalLag, meanPlasticity };
             }
 
             function totalResourceRatio() {
@@ -1127,6 +1202,8 @@
                 state.diversity = metrics.diversity;
                 state.ecotypeCount = metrics.ecotypes;
                 state.meanEnergy = metrics.meanEnergy;
+                state.meanThermalLag = metrics.meanThermalLag;
+                state.meanPlasticity = metrics.meanPlasticity;
                 state.histories.population.push(state.agents.length);
                 state.histories.resources.push(totalResourceRatio() * 100);
                 state.histories.diversity.push(metrics.diversity * 100);
@@ -1135,11 +1212,33 @@
                 }
             }
 
+            function updateResilience() {
+                const assay = state.resilience;
+                if (!assay || assay.recoveredAt !== null) return;
+                assay.nadir = Math.min(assay.nadir, state.agents.length);
+                if (state.extinct) {
+                    assay.status = "extinct";
+                } else if (state.disturbance > 0) {
+                    assay.status = "stress";
+                } else if (assay.nadir >= assay.baselinePopulation * 0.9) {
+                    assay.status = "resisted";
+                    assay.recoveredAt = state.time;
+                } else if (state.agents.length >= assay.baselinePopulation * 0.9) {
+                    assay.status = "recovered";
+                    assay.recoveredAt = state.time;
+                } else if (state.time - assay.startedAt > 75) {
+                    assay.status = "not recovered";
+                } else {
+                    assay.status = "recovering";
+                }
+            }
+
             function update(dt) {
                 state.time += dt;
                 state.disturbance = Math.max(0, state.disturbance - dt);
                 updateResources(dt);
                 updateAgents(dt);
+                updateResilience();
                 state.sampleClock += dt;
                 state.uiClock += dt;
                 if (state.sampleClock >= 1) {
@@ -1312,6 +1411,7 @@
             function formatTrait(key, value) {
                 if (key === "vision") return `${Math.round(value)} px`;
                 if (key === "sociality") return value < -0.12 ? "solitary" : value > 0.12 ? "social" : "neutral";
+                if (key === "plasticity") return `${Math.round(value * 100)}%`;
                 if (key === "thermal") return `${Math.round(value * 100)}%`;
                 return value.toFixed(2);
             }
@@ -1326,7 +1426,7 @@
 
                 const temperature = environmentAt(agent.x);
                 const match = Math.max(0, 1 - Math.abs(temperature - agent.genome.thermal));
-                const displayedTraits = ["speed", "size", "vision", "efficiency", "aggression", "sociality", "thermal", "fecundity"];
+                const displayedTraits = ["speed", "size", "vision", "efficiency", "aggression", "sociality", "plasticity", "thermal", "fecundity"];
                 const traitRows = displayedTraits.map((key) => {
                     const normalized = clamp(normalizedTrait(agent.genome, key), 0, 1);
                     return `<div class="trait">
@@ -1348,27 +1448,78 @@
                     <div class="trait-list">${traitRows}</div>`;
             }
 
+            function renderResilience() {
+                const assay = state.resilience;
+                if (!assay) {
+                    elements.resilience.textContent = "Recovery assay not started";
+                    elements.resilienceDetail.textContent = "Trigger a drought to measure population resistance and recovery.";
+                    return;
+                }
+
+                const retained = assay.baselinePopulation
+                    ? Math.round(assay.nadir / assay.baselinePopulation * 100)
+                    : 0;
+                const labels = {
+                    stress: "Drought stress in progress",
+                    recovering: "Population recovering",
+                    resisted: "Population resisted drought",
+                    recovered: "Population recovered",
+                    "not recovered": "Recovery threshold missed",
+                    extinct: "Population extinct"
+                };
+                elements.resilience.textContent = labels[assay.status];
+                if (assay.status === "resisted") {
+                    elements.resilienceDetail.textContent = `${retained}% resistance at the nadir; no recovery phase was needed.`;
+                } else if (assay.recoveredAt !== null) {
+                    const recoveryDays = (assay.recoveredAt - assay.startedAt) / 5;
+                    elements.resilienceDetail.textContent = `${retained}% resistance at the nadir; recovered to 90% of baseline in ${recoveryDays.toFixed(1)} days.`;
+                } else {
+                    const recoveryPercent = assay.baselinePopulation
+                        ? Math.round(state.agents.length / assay.baselinePopulation * 100)
+                        : 0;
+                    elements.resilienceDetail.textContent = `${retained}% resistance at the nadir; population is ${recoveryPercent}% of its pre-drought baseline.`;
+                }
+            }
+
             function updateDashboard(force = false) {
                 const metrics = force ? calculateMetrics() : {
                     diversity: state.diversity,
                     ecotypes: state.ecotypeCount,
-                    meanEnergy: state.meanEnergy
+                    meanEnergy: state.meanEnergy,
+                    meanThermalLag: state.meanThermalLag,
+                    meanPlasticity: state.meanPlasticity
                 };
                 if (force) {
                     state.diversity = metrics.diversity;
                     state.ecotypeCount = metrics.ecotypes;
                     state.meanEnergy = metrics.meanEnergy;
+                    state.meanThermalLag = metrics.meanThermalLag;
+                    state.meanPlasticity = metrics.meanPlasticity;
                 }
                 elements.population.textContent = state.agents.length;
                 elements.generation.textContent = state.agents.reduce((max, agent) => Math.max(max, agent.generation), 0);
                 elements.diversity.textContent = `${Math.round(metrics.diversity * 100)}%`;
                 elements.ecotypes.textContent = metrics.ecotypes;
+                elements.lag.textContent = `${Math.round(metrics.meanThermalLag * 100)}%`;
+                elements.plasticity.textContent = `${Math.round(metrics.meanPlasticity * 100)}%`;
                 elements.births.textContent = state.births;
                 elements.deaths.textContent = state.deaths;
                 elements.time.textContent = `Day ${(state.time / 5).toFixed(1)}`;
-                elements.pause.textContent = state.paused ? "Resume" : "Pause";
+                elements.pause.textContent = state.extinct ? "Extinct" : state.paused ? "Resume" : "Pause";
+                elements.pause.disabled = state.extinct;
+                elements.disturbance.disabled = state.extinct;
+                elements.migration.disabled = state.extinct || state.agents.length >= MAX_POPULATION;
                 elements.statusDot.classList.toggle("paused", state.paused);
-                elements.statusText.textContent = state.paused ? "Experiment paused" : state.disturbance > 0 ? "Drought in progress" : "Experiment running";
+                elements.statusText.textContent = state.extinct
+                    ? "Population extinct"
+                    : state.noticeUntil > state.time
+                        ? state.notice
+                        : state.paused
+                            ? "Experiment paused"
+                            : state.disturbance > 0
+                                ? "Drought in progress"
+                                : "Experiment running";
+                renderResilience();
                 renderInspector();
             }
 
@@ -1381,7 +1532,7 @@
                 let selected = null;
                 let bestDistance = 22;
                 for (const agent of state.agents) {
-                    const distance = wrappedDistance(point, agent).distance;
+                    const distance = distanceBetween(point, agent).distance;
                     if (distance < bestDistance) {
                         bestDistance = distance;
                         selected = agent;
@@ -1393,6 +1544,7 @@
             }
 
             function togglePause() {
+                if (state.extinct) return;
                 state.paused = !state.paused;
                 updateDashboard();
             }
@@ -1406,8 +1558,35 @@
             }
 
             function triggerDrought() {
+                if (state.extinct) return;
                 state.disturbance = Math.max(state.disturbance, 18);
+                state.resilience = {
+                    baselinePopulation: state.agents.length,
+                    nadir: state.agents.length,
+                    startedAt: state.time,
+                    recoveredAt: null,
+                    status: "stress"
+                };
                 updateDashboard();
+            }
+
+            function introduceGeneFlow() {
+                if (state.extinct) return;
+                const count = Math.min(10, MAX_POPULATION - state.agents.length);
+                for (let i = 0; i < count; i++) {
+                    const x = rand(W * 0.62, W * 0.92);
+                    const y = rand(H * 0.08, H * 0.92);
+                    const sourceClimate = clamp(environmentAt(x) + rand(0.035, 0.11), 0, 1);
+                    const genome = makeGenome(sourceClimate);
+                    genome.plasticity = rand(0.3, 0.78);
+                    createAgent(x, y, genome, 0, [], null, rand(68, 84));
+                }
+                state.migrants += count;
+                state.notice = count ? `${count} warm-adapted migrants introduced` : "Population limit reached";
+                state.noticeUntil = state.time + 5;
+                sampleState();
+                updateDashboard(true);
+                render();
             }
 
             function animate(now) {
@@ -1430,6 +1609,7 @@
             elements.reset.addEventListener("click", resetSimulation);
             elements.fullscreen.addEventListener("click", toggleFullscreen);
             elements.disturbance.addEventListener("click", triggerDrought);
+            elements.migration.addEventListener("click", introduceGeneFlow);
             elements.reseed.addEventListener("click", () => {
                 elements.seed.value = Math.random().toString(36).slice(2, 10);
                 resetSimulation();
@@ -1468,8 +1648,8 @@
                     thermalOptimum: Number(agent.genome.thermal.toFixed(2))
                 }));
                 return JSON.stringify({
-                    coordinateSystem: "origin top-left; x increases right; y increases down; world wraps at edges",
-                    mode: state.paused ? "paused" : "running",
+                    coordinateSystem: "origin top-left; x increases right; y increases down; habitat has bounded reflective edges",
+                    mode: state.extinct ? "extinct" : state.paused ? "paused" : "running",
                     environment: elements.environment.value,
                     simulationDay: Number((state.time / 5).toFixed(2)),
                     droughtSecondsRemaining: Number(state.disturbance.toFixed(1)),
@@ -1479,7 +1659,16 @@
                     maxGeneration: state.agents.reduce((max, agent) => Math.max(max, agent.generation), 0),
                     traitDiversity: Number(state.diversity.toFixed(3)),
                     ecotypes: state.ecotypeCount,
+                    meanThermalLag: Number(state.meanThermalLag.toFixed(3)),
+                    meanBehavioralPlasticity: Number(state.meanPlasticity.toFixed(3)),
                     resourceCapacityRatio: Number(totalResourceRatio().toFixed(3)),
+                    introducedMigrants: state.migrants,
+                    resilienceAssay: state.resilience ? {
+                        status: state.resilience.status,
+                        baselinePopulation: state.resilience.baselinePopulation,
+                        nadirPopulation: state.resilience.nadir,
+                        recoveryThresholdReached: state.resilience.recoveredAt !== null
+                    } : null,
                     selected: selected ? {
                         id: selected.id,
                         energy: Number(selected.energy.toFixed(1)),
