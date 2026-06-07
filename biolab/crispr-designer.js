@@ -1,8 +1,19 @@
 (() => {
     const casSystems = {
-        cas9: { pam: 'NGG', length: 20 },
-        cas12: { pam: 'TTTV', length: 23 },
-        cas13: { pam: 'NNN', length: 22 }
+        cas9: {
+            name: 'SpCas9',
+            pam: 'NGG',
+            pamSide: '3prime',
+            guideLength: 20,
+            limit: 24
+        },
+        cas12: {
+            name: 'Cas12a',
+            pam: 'TTTV',
+            pamSide: '5prime',
+            guideLength: 23,
+            limit: 24
+        }
     };
 
     const casSelect = document.getElementById('crispr-cas-system');
@@ -12,144 +23,138 @@
     const analyzeBtn = document.getElementById('crispr-analyze');
     const listEl = document.getElementById('crispr-grna-list');
     const canvas = document.getElementById('crispr-canvas');
-    const offTargetEl = document.getElementById('crispr-offtarget-results');
-
+    const interpretationEl = document.getElementById('crispr-offtarget-results');
+    const candidateCountEl = document.getElementById('crispr-candidate-count');
+    const preferredCountEl = document.getElementById('crispr-preferred-count');
+    const strandCountEl = document.getElementById('crispr-strand-count');
     const ctx = canvas?.getContext('2d');
 
     let guides = [];
 
-    function sanitizeSequence(seq) {
-        return (seq || '').toUpperCase().replace(/[^ATCG]/g, '');
+    function modeContext() {
+        if (modeSelect.value === 'base') {
+            return 'Base-editor activity depends on editor chemistry, editable base, position in the activity window, and cell context. This view ranks spacer quality only.';
+        }
+        if (modeSelect.value === 'prime') {
+            return 'Prime editing also requires an intended edit, primer-binding site, reverse-transcription template, and often a nicking guide. This view ranks PAM-compatible spacers only.';
+        }
+        return 'Standard nuclease editing still requires genome-wide off-target search and empirical activity measurement.';
     }
 
-    function pamMatches(segment, pam) {
-        const degenerate = {
-            N: ['A', 'T', 'C', 'G'],
-            V: ['A', 'C', 'G']
-        };
-        for (let i = 0; i < pam.length; i++) {
-            const pamChar = pam[i];
-            if (pamChar === 'N' || pamChar === 'V') {
-                const allowed = degenerate[pamChar];
-                if (!allowed.includes(segment[i])) return false;
-            } else if (pamChar !== segment[i]) {
-                return false;
-            }
-        }
-        return true;
-    }
-
-    function findCandidates(sequence, pam, guideLength) {
-        const results = [];
-        for (let i = 0; i < sequence.length - pam.length - guideLength; i++) {
-            const pamSite = sequence.slice(i + guideLength, i + guideLength + pam.length);
-            if (pamMatches(pamSite, pam)) {
-                const guideSeq = sequence.slice(i, i + guideLength);
-                const gc =
-                    (guideSeq.split('').filter(ch => ch === 'G' || ch === 'C').length /
-                        guideSeq.length) *
-                    100;
-                results.push({
-                    sequence: guideSeq,
-                    pam: pamSite,
-                    start: i,
-                    end: i + guideLength,
-                    gc: Number(gc.toFixed(1))
-                });
-            }
-        }
-        return results.slice(0, 12);
+    function updateSummary() {
+        const forward = guides.filter(guide => guide.strand === '+').length;
+        const reverse = guides.length - forward;
+        candidateCountEl.textContent = guides.length;
+        preferredCountEl.textContent = guides.filter(guide => guide.band === 'preferred').length;
+        strandCountEl.textContent = `${forward} / ${reverse}`;
     }
 
     function renderGuides(data) {
         listEl.innerHTML = '';
         if (!data.length) {
-            listEl.innerHTML = '<p>No PAM sites detected in the provided sequence.</p>';
+            listEl.innerHTML =
+                '<p>No compatible PAM sites were found on either strand. Try a longer sequence or another nuclease model.</p>';
             return;
         }
 
-        data.forEach((guide, idx) => {
-            const card = document.createElement('div');
-            card.className = 'guide-card';
-            const label = `${guide.sequence.slice(0, 10)}…${guide.sequence.slice(-4)}`;
+        data.forEach((guide, index) => {
+            const card = document.createElement('article');
+            card.className = `guide-card quality-${guide.band}`;
+            const flags = guide.flags.length ? guide.flags.join('; ') : 'no basic sequence flags';
             card.innerHTML = `
+                <div class="guide-heading">
+                    <strong>#${index + 1} · score ${guide.score}/100</strong>
+                    <span class="evidence-badge ${guide.band}">${guide.band}</span>
+                </div>
                 <div class="guide-meta">
-                    <strong>gRNA ${idx + 1}</strong>
+                    <span>Strand: ${guide.strand}</span>
                     <span>PAM: ${guide.pam}</span>
                     <span>GC: ${guide.gc}%</span>
-                    <span>Window: ${guide.start}-${guide.end}</span>
+                    <span>Coordinates: ${guide.start + 1}-${guide.end}</span>
                 </div>
                 <div class="dna-sequence">${guide.sequence}</div>
+                <p class="guide-flags">${flags}</p>
+                <button class="btn-secondary compact" data-copy="${guide.sequence}">Copy spacer</button>
             `;
             listEl.appendChild(card);
         });
     }
 
-    function renderOffTargets(data, sequence) {
-        if (!data.length) {
-            offTargetEl.textContent = 'Design a gRNA to see off-target predictions...';
+    function renderInterpretation() {
+        if (!guides.length) {
+            interpretationEl.innerHTML =
+                '<p>No candidates are available to interpret. This tool does not infer off-targets without a reference genome.</p>';
             return;
         }
 
-        const rows = data.map(guide => {
-            const risk = Math.max(
-                5,
-                100 -
-                    guide.gc -
-                    Math.min(15, Math.abs(sequence.length - guide.sequence.length)) * 0.8
-            );
-            const specificity = Math.min(99, 60 + guide.gc * 0.25);
-            return `
-                <div class="guide-card">
-                    <div class="guide-meta">
-                        <span>Specificity: ${specificity.toFixed(1)}%</span>
-                        <span>Predicted off-target risk: ${risk.toFixed(1)}%</span>
-                        <span>Potential mismatches: ${Math.max(
-                            0,
-                            Math.round((100 - specificity) / 12)
-                        )}</span>
-                    </div>
-                    <div class="dna-sequence">${guide.sequence}</div>
-                </div>
-            `;
-        });
-        offTargetEl.innerHTML = rows.join('');
+        const top = guides[0];
+        const topFlags = top.flags.length ? top.flags.join(', ') : 'none detected';
+        interpretationEl.innerHTML = `
+            <div class="analysis-copy">
+                <p><strong>Top sequence-level candidate:</strong> ${top.sequence} (${top.strand} strand, ${top.score}/100).</p>
+                <p><strong>Basic flags:</strong> ${topFlags}.</p>
+                <p><strong>Editing mode:</strong> ${modeContext()}</p>
+                <p><strong>Required next checks:</strong> align against the correct reference assembly; score mismatch and bulge sites; inspect exons, regulatory regions, and population variants; then validate on-target activity and unintended editing experimentally.</p>
+                <p>This ranking uses GC balance, homopolymers, poly-T, and sequence complexity. It is not a learned activity score or a specificity percentage.</p>
+            </div>
+        `;
     }
 
     function drawSites(data, sequence) {
         if (!ctx || !canvas) return;
-        const w = canvas.width;
-        const h = canvas.height;
-        ctx.clearRect(0, 0, w, h);
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.05)';
-        ctx.fillRect(0, 0, w, h);
+        const width = canvas.width;
+        const height = canvas.height;
+        ctx.clearRect(0, 0, width, height);
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.04)';
+        ctx.fillRect(0, 0, width, height);
 
-        if (!data.length) return;
+        const padding = 24;
+        const axisWidth = width - padding * 2;
+        const forwardY = height * 0.38;
+        const reverseY = height * 0.67;
+        ctx.strokeStyle = 'rgba(255,255,255,0.32)';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(padding, forwardY);
+        ctx.lineTo(width - padding, forwardY);
+        ctx.moveTo(padding, reverseY);
+        ctx.lineTo(width - padding, reverseY);
+        ctx.stroke();
 
-        data.forEach((guide, idx) => {
-            const startX = (guide.start / sequence.length) * w;
-            const width = (guide.sequence.length / sequence.length) * w;
-            ctx.fillStyle = `hsla(${(idx * 35) % 360}, 80%, 60%, 0.8)`;
-            ctx.fillRect(startX, h / 2 - 20, width, 40);
+        ctx.font = '12px DM Mono, monospace';
+        ctx.fillStyle = 'rgba(230,236,255,0.72)';
+        ctx.fillText('+ strand', padding, forwardY - 14);
+        ctx.fillText('- strand', padding, reverseY - 14);
+
+        data.forEach((guide, index) => {
+            const startX = padding + (guide.start / sequence.length) * axisWidth;
+            const guideWidth = Math.max(4, ((guide.end - guide.start) / sequence.length) * axisWidth);
+            const y = guide.strand === '+' ? forwardY : reverseY;
+            const hue = guide.band === 'preferred' ? 165 : guide.band === 'usable' ? 238 : 18;
+            ctx.fillStyle = `hsla(${hue}, 78%, 62%, ${Math.max(0.42, 0.9 - index * 0.025)})`;
+            ctx.fillRect(startX, y - 7, guideWidth, 14);
         });
-
-        ctx.fillStyle = 'rgba(255,255,255,0.8)';
-        ctx.fillRect(0, h / 2 - 2, w, 4);
     }
 
     function designGuides() {
-        const sequence = sanitizeSequence(targetInput.value);
-        targetInput.value = sequence;
+        const sequence = BioUtils.sanitizeDna(targetInput.value);
         const cas = casSystems[casSelect.value] || casSystems.cas9;
-        if (!sequence || sequence.length < cas.length + cas.pam.length) {
-            listEl.innerHTML = '<p>Sequence is too short to design a guide.</p>';
+        targetInput.value = sequence;
+
+        if (sequence.length < cas.guideLength + cas.pam.length) {
+            guides = [];
+            renderGuides(guides);
+            renderInterpretation();
+            updateSummary();
+            drawSites([], sequence || 'A');
             return;
         }
 
-        guides = findCandidates(sequence, cas.pam, cas.length);
+        guides = BioUtils.findGuideCandidates(sequence, cas);
         renderGuides(guides);
+        renderInterpretation();
+        updateSummary();
         drawSites(guides, sequence);
-        renderOffTargets(guides, sequence);
         bioLab.updateSection('crispr', {
             cas: casSelect.value,
             mode: modeSelect.value,
@@ -158,40 +163,45 @@
         });
     }
 
-    function analyzeOffTargets() {
-        if (!guides.length) {
-            offTargetEl.textContent = 'Design a guide first to analyze off-targets.';
-            return;
-        }
-        renderOffTargets(guides, targetInput.value);
-    }
-
     function hydrate() {
         const state = bioLab.state.crispr || {};
-        if (state.cas) casSelect.value = state.cas;
+        if (state.cas && casSystems[state.cas]) casSelect.value = state.cas;
         if (state.mode) modeSelect.value = state.mode;
         if (state.target) targetInput.value = state.target;
-        if (Array.isArray(state.guides) && state.guides.length) {
-            guides = state.guides;
-            renderGuides(guides);
-            drawSites(guides, targetInput.value);
-            renderOffTargets(guides, targetInput.value);
-        }
     }
 
     document.addEventListener('DOMContentLoaded', () => {
         hydrate();
         designBtn?.addEventListener('click', designGuides);
-        analyzeBtn?.addEventListener('click', analyzeOffTargets);
-        [casSelect, modeSelect].forEach(el =>
-            el?.addEventListener('change', () => bioLab.updateSection('crispr', { [el.id === 'crispr-cas-system' ? 'cas' : 'mode']: el.value }))
+        analyzeBtn?.addEventListener('click', renderInterpretation);
+
+        [casSelect, modeSelect].forEach(element =>
+            element?.addEventListener('change', () => {
+                designGuides();
+            })
         );
+
+        listEl?.addEventListener('click', async event => {
+            const target = event.target;
+            if (!(target instanceof HTMLElement) || !target.dataset.copy) return;
+            try {
+                await navigator.clipboard.writeText(target.dataset.copy);
+                target.textContent = 'Copied';
+                setTimeout(() => (target.textContent = 'Copy spacer'), 1200);
+            } catch {
+                target.textContent = 'Copy unavailable';
+            }
+        });
+
+        if (bioLab.state.crispr?.target) designGuides();
+        else updateSummary();
     });
 
     bioLab.registerExporter('crisprDesigner', () => ({
         target: targetInput?.value || '',
         cas: casSelect?.value,
         mode: modeSelect?.value,
+        rankingMethod: 'sequence heuristics only; no genome-wide off-target search',
         guides
     }));
 })();

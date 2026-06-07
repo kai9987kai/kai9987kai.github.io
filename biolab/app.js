@@ -72,6 +72,9 @@ function showModule(moduleId) {
     });
     bioState.activeModule = moduleId;
     persistState();
+    document.dispatchEvent(
+        new CustomEvent('biolab:modulechange', { detail: { moduleId } })
+    );
 }
 
 function initNavigation() {
