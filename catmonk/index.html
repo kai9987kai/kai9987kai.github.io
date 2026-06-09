@@ -1,101 +1,568 @@
-<html>
-  <head>
-    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
-    <title>cat or monkey ai</title>
-    <style>
-body{
-    font-family:Arial,sans-serif;
-    text-align:center;
-    background:linear-gradient(to right,#00c6ff,#0072ff)
-}
-#input_button{
-    display:block;
-    margin:10px auto;
-    padding:10px 20px;
-    border:none;
-    border-radius:4px;
-    background:#0077c9;
-    color:#fff;
-    font-size:16px;
-    cursor:pointer;
-    transition:background 0.2s;
-    box-shadow:0 4px 6px rgba(0,0,0,0.1)
-}
-#input_button:hover{
-    background:#005b9f;
-    transform:translateY(-2px)
-}
-#img1{
-    display:block;
-    margin:10px auto;
-    border:1px solid #ddd;
-    border-radius:4px;
-    animation:fadein 2s;
-    box-shadow:0 4px 6px rgba(0,0,0,0.1)
-}
-@keyframes fadein{
-    from{
-        opacity:0
-    }
-    to{
-        opacity:1
-    }
-}
-#loading{
-    display:none;
-    margin:10px 0;
-    font-size:14px;
-    color:#aaa
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Cat, Dog or Monkey AI</title>
 
-}
-    </style>
-  </head>
-  <body>
-    CAT OR DOG OR MONKEY AI
-    <br>
-    <input accept="image/*" type='file' id="input_button" />
-    <br>
-    <img id="img1" src="./image.jpg" style="width: 300px " />
-    <br>  <br>
-    <button onclick="predict()">predict</button>
-    <br>
-    <div id="loading">Loading model...</div>
-    <p id="result"> </p>
-    <script>
-      let image = document.getElementById('img1');
-      let input_button = document.getElementById('input_button');
-      let loading = document.getElementById('loading');
-      let result = document.getElementById('result');
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest"></script>
 
-      input_button.onchange = evt => {
-        const [file] = input_button.files
-        if (file) {
-          image.src = URL.createObjectURL(file)
+  <style>
+    :root {
+      --bg1: #00c6ff;
+      --bg2: #0072ff;
+      --card: rgba(255, 255, 255, 0.92);
+      --dark: #111827;
+      --muted: #6b7280;
+      --accent: #0077c9;
+      --accent-dark: #005b9f;
+      --good: #16a34a;
+      --warn: #f59e0b;
+      --bad: #dc2626;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: Arial, sans-serif;
+      background: linear-gradient(135deg, var(--bg1), var(--bg2));
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      color: var(--dark);
+      padding: 20px;
+    }
+
+    .app {
+      width: min(920px, 100%);
+      background: var(--card);
+      border-radius: 24px;
+      padding: 24px;
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.22);
+      backdrop-filter: blur(10px);
+    }
+
+    h1 {
+      margin: 0;
+      font-size: clamp(28px, 5vw, 54px);
+      letter-spacing: -1px;
+    }
+
+    .subtitle {
+      color: var(--muted);
+      margin: 8px 0 22px;
+      font-size: 16px;
+    }
+
+    .layout {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 22px;
+    }
+
+    @media (max-width: 760px) {
+      .layout {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .panel {
+      background: white;
+      border-radius: 18px;
+      padding: 18px;
+      box-shadow: 0 8px 25px rgba(0, 0, 0, 0.08);
+    }
+
+    .drop-zone {
+      border: 2px dashed #93c5fd;
+      border-radius: 18px;
+      padding: 18px;
+      min-height: 360px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      transition: 0.2s ease;
+      overflow: hidden;
+      position: relative;
+    }
+
+    .drop-zone.dragover {
+      background: #eff6ff;
+      border-color: var(--accent);
+      transform: scale(1.01);
+    }
+
+    #preview,
+    #webcam {
+      width: 100%;
+      max-height: 430px;
+      object-fit: contain;
+      border-radius: 14px;
+      display: none;
+    }
+
+    .empty-state {
+      color: var(--muted);
+      line-height: 1.5;
+    }
+
+    .controls {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 14px;
+      justify-content: center;
+    }
+
+    input[type="file"] {
+      display: none;
+    }
+
+    button,
+    .upload-label {
+      border: none;
+      border-radius: 999px;
+      background: var(--accent);
+      color: #fff;
+      padding: 12px 18px;
+      font-size: 15px;
+      cursor: pointer;
+      transition: 0.2s ease;
+      box-shadow: 0 6px 14px rgba(0, 119, 201, 0.25);
+      user-select: none;
+    }
+
+    button:hover,
+    .upload-label:hover {
+      background: var(--accent-dark);
+      transform: translateY(-2px);
+    }
+
+    button:disabled {
+      background: #9ca3af;
+      cursor: not-allowed;
+      transform: none;
+      box-shadow: none;
+    }
+
+    .status {
+      margin-top: 12px;
+      color: var(--muted);
+      font-size: 14px;
+      text-align: center;
+      min-height: 20px;
+    }
+
+    .result-card {
+      margin-top: 12px;
+      padding: 16px;
+      border-radius: 16px;
+      background: #f9fafb;
+      border: 1px solid #e5e7eb;
+    }
+
+    .main-result {
+      font-size: 28px;
+      font-weight: bold;
+      margin-bottom: 4px;
+    }
+
+    .confidence {
+      color: var(--muted);
+      margin-bottom: 16px;
+    }
+
+    .prediction-row {
+      margin-bottom: 12px;
+    }
+
+    .prediction-top {
+      display: flex;
+      justify-content: space-between;
+      font-size: 14px;
+      margin-bottom: 5px;
+      gap: 10px;
+    }
+
+    .bar-bg {
+      height: 10px;
+      background: #e5e7eb;
+      border-radius: 999px;
+      overflow: hidden;
+    }
+
+    .bar {
+      height: 100%;
+      width: 0%;
+      background: linear-gradient(90deg, var(--accent), #22c55e);
+      transition: width 0.4s ease;
+    }
+
+    .small {
+      font-size: 13px;
+      color: var(--muted);
+      line-height: 1.5;
+    }
+
+    .badge {
+      display: inline-block;
+      padding: 4px 8px;
+      border-radius: 999px;
+      font-size: 12px;
+      background: #e0f2fe;
+      color: #075985;
+      margin-bottom: 8px;
+    }
+
+    .warning {
+      color: var(--warn);
+      font-weight: bold;
+    }
+
+    canvas {
+      display: none;
+    }
+  </style>
+</head>
+
+<body>
+  <main class="app">
+    <h1>Cat, Dog or Monkey AI</h1>
+    <p class="subtitle">
+      Upload an image or use your webcam. The AI will classify it and show confidence scores.
+    </p>
+
+    <div class="layout">
+      <section class="panel">
+        <div id="dropZone" class="drop-zone">
+          <div id="emptyState" class="empty-state">
+            <strong>Drop an image here</strong>
+            <br />
+            or choose one from your device.
+          </div>
+
+          <img id="preview" alt="Selected image preview" />
+          <video id="webcam" autoplay playsinline muted></video>
+          <canvas id="canvas"></canvas>
+        </div>
+
+        <div class="controls">
+          <label class="upload-label" for="fileInput">Choose image</label>
+          <input id="fileInput" type="file" accept="image/*" />
+
+          <button id="webcamBtn">Use webcam</button>
+          <button id="captureBtn" disabled>Capture frame</button>
+          <button id="predictBtn" disabled>Predict</button>
+        </div>
+
+        <div id="status" class="status">Loading AI model...</div>
+      </section>
+
+      <section class="panel">
+        <span class="badge">Live TensorFlow.js classifier</span>
+
+        <div id="resultBox" class="result-card">
+          <div class="main-result">No prediction yet</div>
+          <div class="confidence">Upload an image to begin.</div>
+          <div id="topResults"></div>
+        </div>
+
+        <p class="small">
+          This works best when the model was trained using the same class order as the labels in this file.
+          If the prediction seems wrong, check that your labels array matches your training export exactly.
+        </p>
+      </section>
+    </div>
+  </main>
+
+  <script>
+    const MODEL_URL = "./model.json";
+
+    const labels = [
+      "cat",
+      "dog",
+      "alouatta_palliata",
+      "aotus_nigriceps",
+      "cacajao_calvus",
+      "cebuella_pygmea",
+      "cebus_capucinus",
+      "erythrocebus_patas",
+      "macaca_fuscata",
+      "mico_argentatus",
+      "saimiri_sciureus",
+      "trachypithecus_johnii"
+    ];
+
+    const friendlyNames = {
+      cat: "Cat",
+      dog: "Dog",
+      alouatta_palliata: "Mantled Howler Monkey",
+      aotus_nigriceps: "Black-headed Night Monkey",
+      cacajao_calvus: "Bald Uakari",
+      cebuella_pygmea: "Pygmy Marmoset",
+      cebus_capucinus: "White-faced Capuchin",
+      erythrocebus_patas: "Patas Monkey",
+      macaca_fuscata: "Japanese Macaque",
+      mico_argentatus: "Silvery Marmoset",
+      saimiri_sciureus: "Common Squirrel Monkey",
+      trachypithecus_johnii: "Nilgiri Langur"
+    };
+
+    const fileInput = document.getElementById("fileInput");
+    const preview = document.getElementById("preview");
+    const webcam = document.getElementById("webcam");
+    const canvas = document.getElementById("canvas");
+    const dropZone = document.getElementById("dropZone");
+    const emptyState = document.getElementById("emptyState");
+    const predictBtn = document.getElementById("predictBtn");
+    const webcamBtn = document.getElementById("webcamBtn");
+    const captureBtn = document.getElementById("captureBtn");
+    const statusEl = document.getElementById("status");
+    const resultBox = document.getElementById("resultBox");
+    const topResults = document.getElementById("topResults");
+
+    let model = null;
+    let currentSource = null;
+    let webcamStream = null;
+
+    let targetWidth = 224;
+    let targetHeight = 224;
+
+    function setStatus(message) {
+      statusEl.textContent = message;
+    }
+
+    function showImageMode() {
+      emptyState.style.display = "none";
+      webcam.style.display = "none";
+      preview.style.display = "block";
+      currentSource = preview;
+      predictBtn.disabled = !model;
+    }
+
+    function showWebcamMode() {
+      emptyState.style.display = "none";
+      preview.style.display = "none";
+      webcam.style.display = "block";
+      currentSource = webcam;
+      predictBtn.disabled = !model;
+    }
+
+    function formatLabel(label) {
+      return friendlyNames[label] || label.replaceAll("_", " ");
+    }
+
+    function percent(value) {
+      return `${(value * 100).toFixed(1)}%`;
+    }
+
+    function getTopPredictions(scores, amount = 3) {
+      return Array.from(scores)
+        .map((score, index) => ({
+          label: labels[index] || `Class ${index}`,
+          score
+        }))
+        .sort((a, b) => b.score - a.score)
+        .slice(0, amount);
+    }
+
+    function displayResults(predictions) {
+      const best = predictions[0];
+
+      const confidenceText =
+        best.score < 0.45
+          ? `<span class="warning">Low confidence — this may not be one of the trained animals.</span>`
+          : `Confidence: ${percent(best.score)}`;
+
+      resultBox.querySelector(".main-result").textContent = formatLabel(best.label);
+      resultBox.querySelector(".confidence").innerHTML = confidenceText;
+
+      topResults.innerHTML = predictions
+        .map(prediction => {
+          const width = Math.max(1, prediction.score * 100);
+
+          return `
+            <div class="prediction-row">
+              <div class="prediction-top">
+                <strong>${formatLabel(prediction.label)}</strong>
+                <span>${percent(prediction.score)}</span>
+              </div>
+              <div class="bar-bg">
+                <div class="bar" style="width:${width}%"></div>
+              </div>
+            </div>
+          `;
+        })
+        .join("");
+    }
+
+    async function loadModel() {
+      try {
+        setStatus("Loading AI model...");
+
+        model = await tf.loadGraphModel(MODEL_URL);
+
+        const inputShape = model.inputs?.[0]?.shape;
+
+        if (inputShape && inputShape.length === 4) {
+          targetHeight = inputShape[1] || 224;
+          targetWidth = inputShape[2] || 224;
         }
+
+        const dummy = tf.zeros([1, targetHeight, targetWidth, 3]);
+        const warmup = await runModel(dummy);
+
+        tf.dispose(dummy);
+        tf.dispose(warmup);
+
+        setStatus(`Model ready. Input size: ${targetWidth}×${targetHeight}`);
+        predictBtn.disabled = !currentSource;
+      } catch (error) {
+        console.error(error);
+        setStatus("Could not load model. Make sure model.json is beside this HTML file.");
+      }
+    }
+
+    async function runModel(inputTensor) {
+      if (typeof model.predict === "function") {
+        return model.predict(inputTensor);
       }
 
-      async function predict() {
-        loading.style.display = 'block';
-        result.style.display = 'none';
-
-        var model = await tf.loadGraphModel('./model.json');
-
-        let example = tf.browser.fromPixels(document.getElementById("img1"), 3).cast('float32');
-        console.log(example.shape);
-        example = example.reshape([1, example.shape[0], example.shape[1], example.shape[2]]);
-
-        let prediction = await model.predict(example);
-        let class_scores = await prediction.data();
-        let max_score_id = class_scores.indexOf(Math.max(...class_scores));
-        let classes = ["cat", "dog", "alouatta_palliata", "aotus_nigriceps", "cacajao_calvus", "cebuella_pygmea", "cebus_capucinus", "erythrocebus_patas", "macaca_fuscata", "mico_argentatus", "saimiri_sciureus", "trachypithecus_johnii"];
-
-        console.log(class_scores);
-        result.innerHTML = classes[max_score_id].
-        toString();
-
-        loading.style.display = 'none';
-        result.style.display = 'block';
+      if (typeof model.executeAsync === "function") {
+        return await model.executeAsync(inputTensor);
       }
-    </script>
-  </body>
+
+      return model.execute(inputTensor);
+    }
+
+    function preprocessImage(source) {
+      return tf.tidy(() => {
+        return tf.browser
+          .fromPixels(source, 3)
+          .resizeBilinear([targetHeight, targetWidth])
+          .toFloat()
+          .div(255)
+          .expandDims(0);
+      });
+    }
+
+    async function predict() {
+      if (!model) {
+        setStatus("Model is not loaded yet.");
+        return;
+      }
+
+      if (!currentSource) {
+        setStatus("Choose an image or use the webcam first.");
+        return;
+      }
+
+      try {
+        predictBtn.disabled = true;
+        setStatus("Thinking...");
+
+        const input = preprocessImage(currentSource);
+        const output = await runModel(input);
+
+        const outputTensor = Array.isArray(output) ? output[0] : output;
+        const scores = await outputTensor.data();
+
+        const predictions = getTopPredictions(scores, 3);
+        displayResults(predictions);
+
+        tf.dispose(input);
+        tf.dispose(output);
+
+        setStatus("Prediction complete.");
+      } catch (error) {
+        console.error(error);
+        setStatus("Prediction failed. Check the console for details.");
+      } finally {
+        predictBtn.disabled = false;
+      }
+    }
+
+    function handleFile(file) {
+      if (!file || !file.type.startsWith("image/")) {
+        setStatus("Please choose an image file.");
+        return;
+      }
+
+      const imageURL = URL.createObjectURL(file);
+
+      preview.onload = () => {
+        URL.revokeObjectURL(imageURL);
+        showImageMode();
+        setStatus("Image loaded. Press Predict.");
+      };
+
+      preview.src = imageURL;
+    }
+
+    async function startWebcam() {
+      try {
+        webcamStream = await navigator.mediaDevices.getUserMedia({
+          video: true,
+          audio: false
+        });
+
+        webcam.srcObject = webcamStream;
+        showWebcamMode();
+        captureBtn.disabled = false;
+        setStatus("Webcam active. You can predict live or capture a frame.");
+      } catch (error) {
+        console.error(error);
+        setStatus("Could not access webcam.");
+      }
+    }
+
+    function captureFrame() {
+      const context = canvas.getContext("2d");
+
+      canvas.width = webcam.videoWidth;
+      canvas.height = webcam.videoHeight;
+
+      context.drawImage(webcam, 0, 0, canvas.width, canvas.height);
+
+      preview.onload = () => {
+        showImageMode();
+        setStatus("Frame captured. Press Predict.");
+      };
+
+      preview.src = canvas.toDataURL("image/png");
+    }
+
+    fileInput.addEventListener("change", () => {
+      handleFile(fileInput.files[0]);
+    });
+
+    predictBtn.addEventListener("click", predict);
+    webcamBtn.addEventListener("click", startWebcam);
+    captureBtn.addEventListener("click", captureFrame);
+
+    dropZone.addEventListener("dragover", event => {
+      event.preventDefault();
+      dropZone.classList.add("dragover");
+    });
+
+    dropZone.addEventListener("dragleave", () => {
+      dropZone.classList.remove("dragover");
+    });
+
+    dropZone.addEventListener("drop", event => {
+      event.preventDefault();
+      dropZone.classList.remove("dragover");
+
+      const file = event.dataTransfer.files[0];
+      handleFile(file);
+    });
+
+    loadModel();
+  </script>
+</body>
 </html>
