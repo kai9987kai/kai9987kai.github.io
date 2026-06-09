@@ -5,20 +5,20 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Cat, Dog or Monkey AI</title>
 
-  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest"></script>
+  <!-- Pinned TensorFlow.js version. Using latest can randomly break old exported models. -->
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.22.0/dist/tf.min.js"></script>
 
   <style>
     :root {
       --bg1: #00c6ff;
       --bg2: #0072ff;
-      --card: rgba(255, 255, 255, 0.92);
+      --card: rgba(255, 255, 255, 0.94);
       --dark: #111827;
       --muted: #6b7280;
+      --border: #e5e7eb;
       --accent: #0077c9;
       --accent-dark: #005b9f;
-      --good: #16a34a;
-      --warn: #f59e0b;
-      --bad: #dc2626;
+      --warning: #d97706;
     }
 
     * {
@@ -38,7 +38,7 @@
     }
 
     .app {
-      width: min(920px, 100%);
+      width: min(940px, 100%);
       background: var(--card);
       border-radius: 24px;
       padding: 24px;
@@ -48,7 +48,7 @@
 
     h1 {
       margin: 0;
-      font-size: clamp(28px, 5vw, 54px);
+      font-size: clamp(28px, 5vw, 52px);
       letter-spacing: -1px;
     }
 
@@ -56,6 +56,7 @@
       color: var(--muted);
       margin: 8px 0 22px;
       font-size: 16px;
+      line-height: 1.4;
     }
 
     .layout {
@@ -89,6 +90,7 @@
       transition: 0.2s ease;
       overflow: hidden;
       position: relative;
+      background: #f8fafc;
     }
 
     .drop-zone.dragover {
@@ -163,7 +165,7 @@
       padding: 16px;
       border-radius: 16px;
       background: #f9fafb;
-      border: 1px solid #e5e7eb;
+      border: 1px solid var(--border);
     }
 
     .main-result {
@@ -220,7 +222,7 @@
     }
 
     .warning {
-      color: var(--warn);
+      color: var(--warning);
       font-weight: bold;
     }
 
@@ -234,7 +236,7 @@
   <main class="app">
     <h1>Cat, Dog or Monkey AI</h1>
     <p class="subtitle">
-      Upload an image or use your webcam. The AI will classify it and show confidence scores.
+      Upload an image, drag one in, or use your webcam. The AI will classify it and show confidence scores.
     </p>
 
     <div class="layout">
@@ -246,7 +248,8 @@
             or choose one from your device.
           </div>
 
-          <img id="preview" alt="Selected image preview" />
+          <!-- Keeps your original default image if image.jpg exists in the repo. -->
+          <img id="preview" src="./image.jpg" alt="Selected image preview" />
           <video id="webcam" autoplay playsinline muted></video>
           <canvas id="canvas"></canvas>
         </div>
@@ -264,17 +267,17 @@
       </section>
 
       <section class="panel">
-        <span class="badge">Live TensorFlow.js classifier</span>
+        <span class="badge">TensorFlow.js classifier</span>
 
         <div id="resultBox" class="result-card">
           <div class="main-result">No prediction yet</div>
-          <div class="confidence">Upload an image to begin.</div>
+          <div class="confidence">Upload an image or use the included image.jpg.</div>
           <div id="topResults"></div>
         </div>
 
         <p class="small">
-          This works best when the model was trained using the same class order as the labels in this file.
-          If the prediction seems wrong, check that your labels array matches your training export exactly.
+          Fixed: this version will not crash when the model reports dynamic input sizes such as
+          <strong>[1, -1, -1, 3]</strong>. It safely falls back to 224×224.
         </p>
       </section>
     </div>
@@ -282,8 +285,17 @@
 
   <script>
     const MODEL_URL = "./model.json";
+    const CLASSES_URL = "./classes.json";
 
-    const labels = [
+    // Your original code did NOT divide pixels by 255, so this is false by default.
+    // If your model gives bad predictions, try changing this to true.
+    const NORMALIZE_TO_0_1 = false;
+
+    // CPU avoids the WebGL / D3D11 errors you were seeing in Chrome on Windows.
+    // Change to false if you want faster WebGL prediction later.
+    const FORCE_CPU_BACKEND = true;
+
+    let labels = [
       "cat",
       "dog",
       "alouatta_palliata",
@@ -337,12 +349,63 @@
       statusEl.textContent = message;
     }
 
-    function showImageMode() {
+    function safeDimension(value, fallback) {
+      return Number.isInteger(value) && value > 0 ? value : fallback;
+    }
+
+    async function setupTensorFlow() {
+      try {
+        if (FORCE_CPU_BACKEND) {
+          await tf.setBackend("cpu");
+        } else {
+          await tf.setBackend("webgl");
+        }
+
+        await tf.ready();
+        console.log("TensorFlow backend:", tf.getBackend());
+      } catch (error) {
+        console.warn("Chosen backend failed. Falling back to CPU.", error);
+        await tf.setBackend("cpu");
+        await tf.ready();
+        console.log("TensorFlow backend:", tf.getBackend());
+      }
+    }
+
+    async function loadLabels() {
+      try {
+        const response = await fetch(CLASSES_URL);
+
+        if (!response.ok) {
+          return;
+        }
+
+        const data = await response.json();
+
+        if (Array.isArray(data)) {
+          labels = data;
+        } else if (Array.isArray(data.classes)) {
+          labels = data.classes;
+        } else if (Array.isArray(data.labels)) {
+          labels = data.labels;
+        } else if (typeof data === "object" && data !== null) {
+          labels = Object.keys(data)
+            .sort((a, b) => Number(a) - Number(b))
+            .map(key => data[key]);
+        }
+
+        console.log("Loaded labels:", labels);
+      } catch (error) {
+        console.warn("Could not load classes.json. Using built-in labels.", error);
+      }
+    }
+
+    function showImageMode(message = "Image loaded. Press Predict.") {
       emptyState.style.display = "none";
       webcam.style.display = "none";
       preview.style.display = "block";
       currentSource = preview;
       predictBtn.disabled = !model;
+      setStatus(message);
     }
 
     function showWebcamMode() {
@@ -354,15 +417,33 @@
     }
 
     function formatLabel(label) {
-      return friendlyNames[label] || label.replaceAll("_", " ");
+      return friendlyNames[label] || String(label).replaceAll("_", " ");
     }
 
     function percent(value) {
       return `${(value * 100).toFixed(1)}%`;
     }
 
+    function softmax(values) {
+      const max = Math.max(...values);
+      const exps = values.map(value => Math.exp(value - max));
+      const sum = exps.reduce((total, value) => total + value, 0);
+      return exps.map(value => value / sum);
+    }
+
+    function cleanScores(rawScores) {
+      const values = Array.from(rawScores).map(Number);
+      const finiteValues = values.map(value => Number.isFinite(value) ? value : 0);
+      const min = Math.min(...finiteValues);
+      const max = Math.max(...finiteValues);
+      const sum = finiteValues.reduce((total, value) => total + value, 0);
+
+      const alreadyProbabilities = min >= 0 && max <= 1 && sum > 0.5 && sum < 1.5;
+      return alreadyProbabilities ? finiteValues : softmax(finiteValues);
+    }
+
     function getTopPredictions(scores, amount = 3) {
-      return Array.from(scores)
+      return scores
         .map((score, index) => ({
           label: labels[index] || `Class ${index}`,
           score
@@ -401,33 +482,6 @@
         .join("");
     }
 
-    async function loadModel() {
-      try {
-        setStatus("Loading AI model...");
-
-        model = await tf.loadGraphModel(MODEL_URL);
-
-        const inputShape = model.inputs?.[0]?.shape;
-
-        if (inputShape && inputShape.length === 4) {
-          targetHeight = inputShape[1] || 224;
-          targetWidth = inputShape[2] || 224;
-        }
-
-        const dummy = tf.zeros([1, targetHeight, targetWidth, 3]);
-        const warmup = await runModel(dummy);
-
-        tf.dispose(dummy);
-        tf.dispose(warmup);
-
-        setStatus(`Model ready. Input size: ${targetWidth}×${targetHeight}`);
-        predictBtn.disabled = !currentSource;
-      } catch (error) {
-        console.error(error);
-        setStatus("Could not load model. Make sure model.json is beside this HTML file.");
-      }
-    }
-
     async function runModel(inputTensor) {
       if (typeof model.predict === "function") {
         return model.predict(inputTensor);
@@ -440,14 +494,50 @@
       return model.execute(inputTensor);
     }
 
+    async function loadModel() {
+      try {
+        setStatus("Loading AI model...");
+
+        await setupTensorFlow();
+        await loadLabels();
+
+        model = await tf.loadGraphModel(MODEL_URL);
+
+        const inputShape = model.inputs?.[0]?.shape || [];
+        console.log("Model input shape:", inputShape);
+
+        // This is the main fix.
+        // If model shape is [1, -1, -1, 3], use 224 instead of trying to resize to -1.
+        targetHeight = safeDimension(inputShape[1], 224);
+        targetWidth = safeDimension(inputShape[2], 224);
+
+        // Warm up model with a valid positive shape.
+        const dummy = tf.zeros([1, targetHeight, targetWidth, 3]);
+        const warmup = await runModel(dummy);
+
+        tf.dispose(dummy);
+        tf.dispose(warmup);
+
+        setStatus(`Model ready. Using ${targetWidth}×${targetHeight}. Backend: ${tf.getBackend()}.`);
+        predictBtn.disabled = !currentSource;
+      } catch (error) {
+        console.error(error);
+        setStatus("Could not load model. Check model.json and the .bin shard files are in the same folder.");
+      }
+    }
+
     function preprocessImage(source) {
       return tf.tidy(() => {
-        return tf.browser
+        let tensor = tf.browser
           .fromPixels(source, 3)
           .resizeBilinear([targetHeight, targetWidth])
-          .toFloat()
-          .div(255)
-          .expandDims(0);
+          .toFloat();
+
+        if (NORMALIZE_TO_0_1) {
+          tensor = tensor.div(255);
+        }
+
+        return tensor.expandDims(0);
       });
     }
 
@@ -462,15 +552,20 @@
         return;
       }
 
+      if (currentSource === webcam && webcam.readyState < 2) {
+        setStatus("Webcam is not ready yet.");
+        return;
+      }
+
       try {
         predictBtn.disabled = true;
         setStatus("Thinking...");
 
         const input = preprocessImage(currentSource);
         const output = await runModel(input);
-
         const outputTensor = Array.isArray(output) ? output[0] : output;
-        const scores = await outputTensor.data();
+        const rawScores = await outputTensor.data();
+        const scores = cleanScores(rawScores);
 
         const predictions = getTopPredictions(scores, 3);
         displayResults(predictions);
@@ -478,12 +573,16 @@
         tf.dispose(input);
         tf.dispose(output);
 
-        setStatus("Prediction complete.");
+        if (labels.length !== scores.length) {
+          setStatus(`Prediction complete, but labels count (${labels.length}) does not match model output (${scores.length}).`);
+        } else {
+          setStatus("Prediction complete.");
+        }
       } catch (error) {
         console.error(error);
-        setStatus("Prediction failed. Check the console for details.");
+        setStatus("Prediction failed. Open the console and check the model input/output shape.");
       } finally {
-        predictBtn.disabled = false;
+        predictBtn.disabled = !model || !currentSource;
       }
     }
 
@@ -497,8 +596,7 @@
 
       preview.onload = () => {
         URL.revokeObjectURL(imageURL);
-        showImageMode();
-        setStatus("Image loaded. Press Predict.");
+        showImageMode("Image loaded. Press Predict.");
       };
 
       preview.src = imageURL;
@@ -506,6 +604,10 @@
 
     async function startWebcam() {
       try {
+        if (webcamStream) {
+          webcamStream.getTracks().forEach(track => track.stop());
+        }
+
         webcamStream = await navigator.mediaDevices.getUserMedia({
           video: true,
           audio: false
@@ -514,14 +616,19 @@
         webcam.srcObject = webcamStream;
         showWebcamMode();
         captureBtn.disabled = false;
-        setStatus("Webcam active. You can predict live or capture a frame.");
+        setStatus("Webcam active. Press Predict or Capture Frame.");
       } catch (error) {
         console.error(error);
-        setStatus("Could not access webcam.");
+        setStatus("Could not access webcam. This usually needs HTTPS or localhost.");
       }
     }
 
     function captureFrame() {
+      if (webcam.readyState < 2) {
+        setStatus("Webcam is not ready yet.");
+        return;
+      }
+
       const context = canvas.getContext("2d");
 
       canvas.width = webcam.videoWidth;
@@ -530,8 +637,7 @@
       context.drawImage(webcam, 0, 0, canvas.width, canvas.height);
 
       preview.onload = () => {
-        showImageMode();
-        setStatus("Frame captured. Press Predict.");
+        showImageMode("Frame captured. Press Predict.");
       };
 
       preview.src = canvas.toDataURL("image/png");
@@ -557,9 +663,21 @@
     dropZone.addEventListener("drop", event => {
       event.preventDefault();
       dropZone.classList.remove("dragover");
+      handleFile(event.dataTransfer.files[0]);
+    });
 
-      const file = event.dataTransfer.files[0];
-      handleFile(file);
+    preview.addEventListener("load", () => {
+      if (!currentSource) {
+        showImageMode("Default image loaded. Press Predict.");
+      }
+    });
+
+    preview.addEventListener("error", () => {
+      if (!currentSource) {
+        preview.style.display = "none";
+        emptyState.style.display = "block";
+        setStatus("No default image found. Upload an image to begin.");
+      }
     });
 
     loadModel();
