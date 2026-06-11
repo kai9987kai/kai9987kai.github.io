@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Advanced 3D UV Toolkit v2 — LSCM · ARAP · Atlas Packing</title>
+  <title>Advanced 3D UV Toolkit v3 — Tutte · LSCM · SLIM · Skyline Atlas</title>
 
   <script src="https://cdn.jsdelivr.net/npm/three@0.141.0/build/three.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/three@0.141.0/examples/js/controls/OrbitControls.js"></script>
@@ -235,7 +235,7 @@
 </head>
 <body class="dark-mode">
   <header>
-    <h1>Advanced 3D UV Toolkit <span class="badge">v2 · LSCM + ARAP</span></h1>
+    <h1>Advanced 3D UV Toolkit <span class="badge">v3 · Tutte + LSCM + SLIM</span></h1>
     <div class="header-buttons">
       <button id="toggle-debug" class="secondary">Debug</button>
       <button id="toggle-mode">Toggle Light/Dark</button>
@@ -262,13 +262,21 @@
         <option value="cylindrical">Cylindrical Projection</option>
         <option value="planar">Planar Projection</option>
       </select>
-      <div class="tooltip">Research Atlas runs the modern pipeline: normal-deviation region growing (xatlas-style segmentation), per-chart LSCM conformal flattening (Lévy 2002), optional ARAP refinement (Liu 2008), texel-density equalization, and PCA-oriented shelf packing.</div>
+      <div class="tooltip">Research Atlas runs the full modern pipeline: normal-deviation segmentation with topology-aware splitting of closed charts, LSCM conformal flattening (Lévy 2002) with a guaranteed-injective Tutte fallback (Floater 1997), flip-free SLIM optimization of symmetric Dirichlet energy (Rabinovich 2017), texel-density equalization, and skyline packing with 90° chart rotation.</div>
 
       <div id="advanced-options">
-        <label for="parameterizer">Chart Flattening</label>
+        <label for="parameterizer">Chart Flattening (initialization)</label>
         <select id="parameterizer">
-          <option value="lscm" selected>LSCM — conformal (least-squares)</option>
+          <option value="lscm" selected>LSCM conformal + Tutte fallback on flips</option>
+          <option value="tutte">Tutte harmonic — guaranteed injective</option>
           <option value="projection">Fast planar projection</option>
+        </select>
+
+        <label for="optimizer">Distortion Optimizer</label>
+        <select id="optimizer">
+          <option value="slim" selected>SLIM — symmetric Dirichlet, flip-free (Rabinovich 2017)</option>
+          <option value="arap">ARAP — as-rigid-as-possible (Liu 2008)</option>
+          <option value="none">None</option>
         </select>
 
         <label for="segmentation-angle-slider">Segmentation Angle: <span id="segmentation-angle-value">50°</span></label>
@@ -278,8 +286,8 @@
         <label for="max-chart-faces-slider">Max Faces per Chart: <span id="max-chart-faces-value">6000</span></label>
         <input type="range" id="max-chart-faces-slider" min="500" max="20000" step="500" value="6000" />
 
-        <label for="arap-iterations-slider">ARAP Refinement Iterations: <span id="arap-iterations-value">12</span></label>
-        <input type="range" id="arap-iterations-slider" min="0" max="40" step="1" value="12" />
+        <label for="arap-iterations-slider">Optimizer Iterations: <span id="arap-iterations-value">12</span></label>
+        <input type="range" id="arap-iterations-slider" min="0" max="60" step="1" value="12" />
 
         <label for="atlas-padding-slider">Atlas Padding: <span id="atlas-padding-value">3%</span></label>
         <input type="range" id="atlas-padding-slider" min="0" max="10" step="0.5" value="3" />
@@ -288,6 +296,7 @@
       </div>
 
       <div class="inline-check"><label for="texel-density">Equalize Texel Density Across Charts</label><input type="checkbox" id="texel-density" checked /></div>
+      <div class="inline-check"><label for="rotate-packing">Allow 90° Chart Rotation in Packing</label><input type="checkbox" id="rotate-packing" checked /></div>
       <div class="inline-check"><label for="checker-preview">Checker Texture Preview</label><input type="checkbox" id="checker-preview" checked /></div>
       <div class="inline-check"><label for="heatmap-preview">Stretch Heatmap (Sander L2)</label><input type="checkbox" id="heatmap-preview" /></div>
       <div class="inline-check"><label for="seam-preview">3D Seam Overlay</label><input type="checkbox" id="seam-preview" checked /></div>
@@ -296,7 +305,7 @@
     <div class="section button-grid">
       <button id="unwrap-button">Auto UV Unwrap</button>
       <button id="optimize-unwrap-btn">Optimize</button>
-      <button id="relax-uv-button" class="secondary">ARAP Relax</button>
+      <button id="relax-uv-button" class="secondary">Relax (SLIM)</button>
       <button id="repack-button" class="secondary">Repack Atlas</button>
       <button id="undo-button" class="secondary">Undo UV</button>
       <button id="export-uv-png-button" class="secondary">Export UV PNG</button>
@@ -311,11 +320,12 @@
     </div>
 
     <div class="pill-row">
+      <span class="pill">Tutte injective init</span>
       <span class="pill">LSCM conformal</span>
-      <span class="pill">ARAP relax</span>
-      <span class="pill">Sander stretch L2/L∞</span>
-      <span class="pill">shelf packing</span>
-      <span class="pill">texel density</span>
+      <span class="pill">SLIM flip-free</span>
+      <span class="pill">Sander L2/L∞</span>
+      <span class="pill">skyline + rotation</span>
+      <span class="pill">overlap check</span>
     </div>
   </div>
 
@@ -338,6 +348,8 @@
       <div class="metric-card"><div class="label">Faces</div><div class="value" id="metric-faces">0</div></div>
       <div class="metric-card"><div class="label">Stretch L2</div><div class="value" id="metric-l2">—</div></div>
       <div class="metric-card"><div class="label">Stretch L∞</div><div class="value" id="metric-linf">—</div></div>
+      <div class="metric-card"><div class="label">Sym. Dirichlet</div><div class="value" id="metric-sd">—</div></div>
+      <div class="metric-card"><div class="label">UV Overlap</div><div class="value" id="metric-overlap">0%</div></div>
       <div class="metric-card"><div class="label">Seam Length</div><div class="value" id="metric-seams">0</div></div>
       <div class="metric-card"><div class="label">Atlas Coverage</div><div class="value" id="metric-utilization">0%</div></div>
       <div class="metric-card"><div class="label">Angle Error</div><div class="value" id="metric-angle">0°</div></div>
@@ -353,10 +365,10 @@
   <div id="chat-container">
     <div id="chat-header">Toolkit Help</div>
     <div id="chat-body">
-      <div class="chat-line bot">Bot: Research Atlas + LSCM is the best default. For hard-surface models try a lower segmentation angle (30–40°). Watch Stretch L2 — 1.00 means perfectly isometric.</div>
+      <div class="chat-line bot">Bot: Research Atlas + LSCM + SLIM is the best default. SLIM drives Sym. Dirichlet toward 1.00 without ever flipping a triangle. For hard-surface models try a lower segmentation angle (30–40°).</div>
     </div>
     <div id="chat-footer">
-      <input type="text" id="user-input" placeholder="Ask about LSCM, ARAP, stretch, packing..." />
+      <input type="text" id="user-input" placeholder="Ask about SLIM, Tutte, LSCM, stretch, packing..." />
       <button id="send-button">Send</button>
     </div>
   </div>
@@ -390,14 +402,24 @@
     }
 
     /* =====================================================================
-     *  RESEARCH PIPELINE
+     *  RESEARCH PIPELINE v3
      *  1. weldMesh            — index topology by position for adjacency
      *  2. segmentCharts       — normal-deviation region growing (xatlas-style)
-     *  3. parameterizeChart   — planar init -> LSCM (Levy et al. 2002, CG solve)
-     *                            -> ARAP shape-matching refinement (Liu et al. 2008)
-     *  4. packCharts          — texel-density scaling, PCA orientation, shelf packing
-     *  5. metrics             — Sander L2 / Linf stretch (Sander et al. 2001),
-     *                            angle error, flipped tris, rasterized coverage
+     *     + ensureOpenCharts  — Euler/topology check, auto-bisects closed
+     *                            charts (a closed surface cannot flatten)
+     *  3. parameterizeChart   — planar init -> LSCM (Levy 2002, CG solve);
+     *                            if flips remain, Tutte harmonic embedding
+     *                            (Floater 1997) guarantees an injective start
+     *  4. optimize            — SLIM: reweighted local/global minimization of
+     *                            symmetric Dirichlet energy with a flip-blocking
+     *                            line search (Rabinovich et al. 2017), or
+     *                            classic ARAP (Liu et al. 2008)
+     *  5. packCharts          — texel-density scaling, PCA orientation,
+     *                            skyline bottom-left packing with optional
+     *                            90-degree rotation (better than shelf)
+     *  6. metrics             — Sander L2/Linf stretch, symmetric Dirichlet,
+     *                            angle error, flips, rasterized coverage AND
+     *                            chart-overlap detection
      * ===================================================================== */
 
     function weldMesh(geometry) {
@@ -414,7 +436,6 @@
         if (id === undefined) { id = weldPos.length / 3; map.set(key, id); weldPos.push(x, y, z); }
         cornerWeld[i] = id;
       }
-      // Face adjacency over shared welded edges + face normals/areas
       const edgeMap = new Map();
       const faceNormals = new Float32Array(faceCount * 3);
       const faceAreas = new Float32Array(faceCount);
@@ -452,7 +473,6 @@
       const cosThresh = Math.cos(THREE.MathUtils.degToRad(opts.angleDeg));
       const maxFaces = opts.maxFaces;
       const faceChart = new Int32Array(faceCount).fill(-1);
-      // Seed priority: flattest neighborhoods first (best planarity score)
       const planarity = new Float32Array(faceCount);
       for (let f = 0; f < faceCount; f++) {
         let s = 0, c = 0;
@@ -469,7 +489,6 @@
       for (const seed of order) {
         if (faceChart[seed] !== -1) continue;
         const faces = [];
-        // Average normal of the growing chart (area-weighted)
         let ax = 0, ay = 0, az = 0;
         const queue = [seed];
         faceChart[seed] = chartId;
@@ -492,7 +511,6 @@
       return { faceChart, chartFaces };
     }
 
-    // Box mode segmentation: dominant normal axis (classic triplanar charts)
     function segmentByAxis(weld) {
       const { faceCount, faceNormals } = weld;
       const faceChart = new Int32Array(faceCount);
@@ -517,14 +535,83 @@
       return { faceChart, chartFaces };
     }
 
-    /* --- 3a. Chart-local structure: weld vertices inside a chart,
-     *         compute initial planar projection onto best-fit plane. */
+    /* --- 2b. Topology guard: a chart with no boundary edge is a closed
+     *   surface (sphere-like) and cannot be flattened without a cut.
+     *   We detect it via welded-edge counts and bisect with a two-seed
+     *   farthest-point BFS, recursing until every chart is open. */
+    function chartHasBoundary(weld, faces) {
+      const { cornerWeld } = weld;
+      const cnt = new Map();
+      for (const f of faces) {
+        const i = f * 3;
+        const w = [cornerWeld[i], cornerWeld[i + 1], cornerWeld[i + 2]];
+        for (let k = 0; k < 3; k++) {
+          const a = w[k], b = w[(k + 1) % 3];
+          const key = a < b ? a + '_' + b : b + '_' + a;
+          cnt.set(key, (cnt.get(key) || 0) + 1);
+        }
+      }
+      for (const c of cnt.values()) if (c === 1) return true;
+      return false;
+    }
+
+    function ensureOpenCharts(weld, chartFaces) {
+      const out = [];
+      const stack = chartFaces.slice();
+      let guard = 0;
+      while (stack.length && guard++ < 10000) {
+        const faces = stack.pop();
+        if (!faces.length) continue;
+        if (faces.length < 4 || chartHasBoundary(weld, faces)) { out.push(faces); continue; }
+        // Closed chart: bisect via two farthest seeds
+        const inChart = new Set(faces);
+        const bfsFar = (start) => {
+          const dist = new Map([[start, 0]]);
+          const q = [start];
+          let far = start;
+          while (q.length) {
+            const f = q.shift();
+            for (const g of weld.adjacency[f]) {
+              if (!inChart.has(g) || dist.has(g)) continue;
+              dist.set(g, dist.get(f) + 1);
+              if (dist.get(g) > dist.get(far)) far = g;
+              q.push(g);
+            }
+          }
+          return { far, dist };
+        };
+        const s1 = bfsFar(faces[0]).far;
+        const r2 = bfsFar(s1);
+        const s2 = r2.far;
+        if (s1 === s2) { out.push(faces); continue; }
+        // Simultaneous two-source growth
+        const label = new Map([[s1, 0], [s2, 1]]);
+        const q = [s1, s2];
+        while (q.length) {
+          const f = q.shift();
+          for (const g of weld.adjacency[f]) {
+            if (!inChart.has(g) || label.has(g)) continue;
+            label.set(g, label.get(f));
+            q.push(g);
+          }
+        }
+        const A = [], B = [];
+        for (const f of faces) (label.get(f) === 1 ? B : A).push(f);
+        if (A.length && B.length) { stack.push(A); stack.push(B); }
+        else out.push(faces);
+      }
+      while (stack.length) out.push(stack.pop());
+      return out;
+    }
+
+    /* --- 3a. Chart-local structure + planar projection init. Also records
+     *   directed boundary edges so Tutte can trace boundary loops. */
     function buildChartLocal(weld, faces, posAttr) {
       const { cornerWeld } = weld;
-      const localOf = new Map();   // global weldId -> local index
-      const lp = [];               // local positions (flat xyz)
-      const tris = [];             // local triangle indices (flat, 3 per face)
-      const cornerLocal = [];      // per chart corner: [globalCorner, localIdx]
+      const localOf = new Map();
+      const lp = [];
+      const tris = [];
+      const cornerLocal = [];
       for (const f of faces) {
         for (let k = 0; k < 3; k++) {
           const corner = f * 3 + k;
@@ -540,7 +627,6 @@
         }
       }
       const nVerts = lp.length / 3;
-      // Area-weighted average normal -> orthonormal tangent frame
       let nx = 0, ny = 0, nz = 0;
       for (const f of faces) {
         const w = Math.max(EPS, weld.faceAreas[f]);
@@ -557,41 +643,50 @@
         uv[i * 2] = x * U.x + y * U.y + z * U.z;
         uv[i * 2 + 1] = x * V.x + y * V.y + z * V.z;
       }
-      // Boundary vertices: edges used by exactly one triangle in this chart
-      const edgeUse = new Map();
+      // Boundary: edges used by exactly one triangle. Keep direction (a->b
+      // as wound in its triangle) so loops can be traced for Tutte.
+      const edgeUse = new Map(); // key -> {count, a, b}
       const triCount = tris.length / 3;
       for (let t = 0; t < triCount; t++) {
         for (let k = 0; k < 3; k++) {
           const a = tris[t * 3 + k], b = tris[t * 3 + (k + 1) % 3];
           const key = a < b ? a + '_' + b : b + '_' + a;
-          edgeUse.set(key, (edgeUse.get(key) || 0) + 1);
+          const rec = edgeUse.get(key);
+          if (rec) rec.count++;
+          else edgeUse.set(key, { count: 1, a, b });
         }
       }
       const isBoundary = new Uint8Array(nVerts);
-      edgeUse.forEach((c, key) => {
-        if (c === 1) {
-          const [a, b] = key.split('_');
-          isBoundary[+a] = 1; isBoundary[+b] = 1;
+      const boundaryNext = new Map(); // directed a -> b along boundary
+      edgeUse.forEach(rec => {
+        if (rec.count === 1) {
+          isBoundary[rec.a] = 1; isBoundary[rec.b] = 1;
+          boundaryNext.set(rec.a, rec.b);
         }
       });
-      return { localOf, lp, tris, cornerLocal, nVerts, uv, isBoundary };
+      return { localOf, lp, tris, cornerLocal, nVerts, uv, isBoundary, boundaryNext };
     }
 
-    /* --- 3b. LSCM (Least Squares Conformal Maps, Levy et al. 2002).
-     *   Per triangle, flatten to a local isometric frame; the conformality
-     *   condition gives 2 linear rows per triangle. Two pinned vertices fix
-     *   the gauge. Solved with conjugate gradient on the normal equations,
-     *   warm-started from the planar projection. */
+    function countChartFlips(chart) {
+      const { uv, tris } = chart;
+      let flips = 0;
+      for (let t = 0; t < tris.length; t += 3) {
+        const a = tris[t] * 2, b = tris[t + 1] * 2, c = tris[t + 2] * 2;
+        const s = (uv[b] - uv[a]) * (uv[c + 1] - uv[a + 1]) - (uv[c] - uv[a]) * (uv[b + 1] - uv[a + 1]);
+        if (s < 0) flips++;
+      }
+      return flips;
+    }
+
+    /* --- 3b. LSCM (Least Squares Conformal Maps, Levy et al. 2002). */
     function solveLSCM(chart) {
       const { lp, tris, nVerts, uv, isBoundary } = chart;
       const triCount = tris.length / 3;
       if (nVerts < 4 || triCount < 2) return;
-      // Pick two pins: boundary verts with max separation (fallback: any two extremes)
       let candidates = [];
       for (let i = 0; i < nVerts; i++) if (isBoundary[i]) candidates.push(i);
       if (candidates.length < 2) candidates = Array.from({ length: nVerts }, (_, i) => i);
       let p0 = candidates[0], p1 = candidates[candidates.length - 1], bestD = -1;
-      // Heuristic: extremes along each axis, then max pairwise among <=6 picks
       const extremes = [];
       for (let axis = 0; axis < 3; axis++) {
         let mi = candidates[0], ma = candidates[0];
@@ -612,12 +707,10 @@
       const pinned = new Int32Array(nVerts).fill(-1);
       pinned[p0] = 0; pinned[p1] = 1;
       const pinUV = [uv[p0 * 2], uv[p0 * 2 + 1], uv[p1 * 2], uv[p1 * 2 + 1]];
-      // Free-variable indexing: vertex i -> columns 2*free, 2*free+1
       const freeIdx = new Int32Array(nVerts).fill(-1);
       let nFree = 0;
       for (let i = 0; i < nVerts; i++) if (pinned[i] === -1) freeIdx[i] = nFree++;
       const nCols = nFree * 2;
-      // Build sparse rows: each conformality row has up to 6 nonzeros.
       const rowsIdx = [], rowsVal = [], rhs = [];
       const A3 = new THREE.Vector3(), B3 = new THREE.Vector3(), C3 = new THREE.Vector3();
       const X = new THREE.Vector3(), nrm = new THREE.Vector3(), Y = new THREE.Vector3(), tmp = new THREE.Vector3();
@@ -632,7 +725,7 @@
         X.divideScalar(lx);
         tmp.subVectors(C3, A3);
         nrm.crossVectors(X, tmp);
-        const dT = nrm.length(); // = 2 * area
+        const dT = nrm.length();
         if (dT < EPS) continue;
         nrm.divideScalar(dT);
         Y.crossVectors(nrm, X);
@@ -640,21 +733,18 @@
         const x2 = lx, y2 = 0;
         const x3 = tmp.dot(X), y3 = tmp.dot(Y);
         const s = 1 / Math.sqrt(dT);
-        // W coefficients (real, imag) per vertex
         const W = [
           [(x3 - x2) * s, (y3 - y2) * s],
           [(x1 - x3) * s, (y1 - y3) * s],
           [(x2 - x1) * s, (y2 - y1) * s]
         ];
         const vids = [i0, i1, i2];
-        // Two rows: Re and Im of sum W_k * (u_k + i v_k) = 0
         for (let part = 0; part < 2; part++) {
           const idx = [], val = [];
           let b = 0;
           for (let k = 0; k < 3; k++) {
             const vid = vids[k];
             const [wr, wi] = W[k];
-            // Re row: wr*u - wi*v ; Im row: wi*u + wr*v
             const cu = part === 0 ? wr : wi;
             const cv = part === 0 ? -wi : wr;
             if (pinned[vid] !== -1) {
@@ -671,7 +761,6 @@
       }
       const nRows = rhs.length;
       if (!nRows || !nCols) return;
-      // Warm start from planar projection
       const x = new Float64Array(nCols);
       for (let i = 0; i < nVerts; i++) {
         if (freeIdx[i] !== -1) {
@@ -694,7 +783,6 @@
           for (let k = 0; k < idx.length; k++) out[idx[k]] += val[k] * v;
         }
       };
-      // CG on A^T A x = A^T b
       const Ax = new Float64Array(nRows), res = new Float64Array(nRows);
       const r = new Float64Array(nCols), p = new Float64Array(nCols), Ap = new Float64Array(nCols), tmpR = new Float64Array(nRows);
       applyA(x, Ax);
@@ -730,19 +818,158 @@
       }
     }
 
-    /* --- 3c. ARAP refinement (Liu et al. 2008), shape-matching variant.
-     *   Local step: per triangle, fit the best 2D rotation from its isometric
-     *   reference shape to the current UVs. Global step: Jacobi averaging of
-     *   the rotated reference positions, area-weighted. */
-    function arapRefine(chart, iterations) {
-      if (iterations <= 0) return;
-      const { lp, tris, nVerts, uv } = chart;
+    /* --- 3c. Tutte harmonic embedding (Tutte 1963 / Floater 1997).
+     *   The longest boundary loop is pinned to a circle by 3D arc length;
+     *   interior vertices solve a uniform-weight Laplace equation (CG).
+     *   With a convex boundary and convex-combination weights the result is
+     *   provably injective — the ideal flip-free start for SLIM. */
+    function traceBoundaryLoops(chart) {
+      const next = chart.boundaryNext;
+      const visited = new Set();
+      const loops = [];
+      next.forEach((_, start) => {
+        if (visited.has(start)) return;
+        const loop = [];
+        let cur = start, steps = 0;
+        while (cur !== undefined && !visited.has(cur) && steps++ <= chart.nVerts + 1) {
+          visited.add(cur);
+          loop.push(cur);
+          cur = next.get(cur);
+        }
+        if (cur === start && loop.length >= 3) loops.push(loop);
+      });
+      return loops;
+    }
+
+    function tutteEmbed(chart) {
+      const { tris, nVerts, uv, lp } = chart;
+      if (nVerts < 4) return false;
+      const loops = traceBoundaryLoops(chart);
+      if (!loops.length) return false;
+      // Longest loop by 3D length becomes the convex (circular) boundary
+      let best = null, bestLen = -1;
+      for (const loop of loops) {
+        let L = 0;
+        for (let i = 0; i < loop.length; i++) {
+          const a = loop[i], b = loop[(i + 1) % loop.length];
+          L += Math.hypot(lp[a * 3] - lp[b * 3], lp[a * 3 + 1] - lp[b * 3 + 1], lp[a * 3 + 2] - lp[b * 3 + 2]);
+        }
+        if (L > bestLen) { bestLen = L; best = loop; }
+      }
+      if (!best || best.length < 3 || bestLen < EPS) return false;
+      const fixed = new Uint8Array(nVerts);
+      let acc = 0;
+      for (let i = 0; i < best.length; i++) {
+        const ang = (acc / bestLen) * Math.PI * 2;
+        uv[best[i] * 2] = Math.cos(ang) * 0.5;
+        uv[best[i] * 2 + 1] = Math.sin(ang) * 0.5;
+        fixed[best[i]] = 1;
+        const a = best[i], b = best[(i + 1) % best.length];
+        acc += Math.hypot(lp[a * 3] - lp[b * 3], lp[a * 3 + 1] - lp[b * 3 + 1], lp[a * 3 + 2] - lp[b * 3 + 2]);
+      }
+      // Neighbor sets (uniform Floater weights)
+      const nbr = Array.from({ length: nVerts }, () => new Set());
+      for (let t = 0; t < tris.length; t += 3) {
+        const a = tris[t], b = tris[t + 1], c = tris[t + 2];
+        nbr[a].add(b); nbr[a].add(c); nbr[b].add(a); nbr[b].add(c); nbr[c].add(a); nbr[c].add(b);
+      }
+      const interior = [];
+      const idxOf = new Int32Array(nVerts).fill(-1);
+      for (let i = 0; i < nVerts; i++) if (!fixed[i]) { idxOf[i] = interior.length; interior.push(i); }
+      const n = interior.length;
+      if (!n) return true;
+      // Solve L x = b for u and v: L_ii = deg, L_ij = -1 (interior neighbors)
+      const solveAxis = (axis) => {
+        const x = new Float64Array(n), b = new Float64Array(n);
+        for (let k = 0; k < n; k++) {
+          const v = interior[k];
+          x[k] = uv[v * 2 + axis];
+          let rhsV = 0;
+          nbr[v].forEach(w => { if (fixed[w]) rhsV += uv[w * 2 + axis]; });
+          b[k] = rhsV;
+        }
+        const applyL = (vec, out) => {
+          for (let k = 0; k < n; k++) {
+            const v = interior[k];
+            let s = nbr[v].size * vec[k];
+            nbr[v].forEach(w => { if (!fixed[w]) s -= vec[idxOf[w]]; });
+            out[k] = s;
+          }
+        };
+        const r = new Float64Array(n), p = new Float64Array(n), Ap = new Float64Array(n);
+        applyL(x, r);
+        for (let k = 0; k < n; k++) r[k] = b[k] - r[k];
+        p.set(r);
+        let rs = 0;
+        for (let k = 0; k < n; k++) rs += r[k] * r[k];
+        const tol = Math.max(1e-16, rs * 1e-12);
+        const maxIter = Math.min(1500, 60 + n);
+        for (let it = 0; it < maxIter && rs > tol; it++) {
+          applyL(p, Ap);
+          let pAp = 0;
+          for (let k = 0; k < n; k++) pAp += p[k] * Ap[k];
+          if (pAp < EPS) break;
+          const alpha = rs / pAp;
+          let rsNew = 0;
+          for (let k = 0; k < n; k++) {
+            x[k] += alpha * p[k];
+            r[k] -= alpha * Ap[k];
+            rsNew += r[k] * r[k];
+          }
+          const beta = rsNew / rs;
+          rs = rsNew;
+          for (let k = 0; k < n; k++) p[k] = r[k] + beta * p[k];
+        }
+        for (let k = 0; k < n; k++) uv[interior[k] * 2 + axis] = x[k];
+      };
+      solveAxis(0);
+      solveAxis(1);
+      return true;
+    }
+
+    /* --- Shared: flip-blocking line search. Given current UVs and a step
+     *   direction, returns the largest step that keeps every currently
+     *   positively-oriented triangle positive (standard SLIM guard). */
+    function maxFlipFreeStep(uv, dir, tris) {
+      let tMax = Infinity;
+      for (let t = 0; t < tris.length; t += 3) {
+        const a = tris[t] * 2, b = tris[t + 1] * 2, c = tris[t + 2] * 2;
+        const ux = uv[b] - uv[a], uy = uv[b + 1] - uv[a + 1];
+        const vx = uv[c] - uv[a], vy = uv[c + 1] - uv[a + 1];
+        const dux = dir[b] - dir[a], duy = dir[b + 1] - dir[a + 1];
+        const dvx = dir[c] - dir[a], dvy = dir[c + 1] - dir[a + 1];
+        const A0 = ux * vy - uy * vx;
+        if (A0 <= 0) continue; // already degenerate/flipped: let it move freely
+        const B = ux * dvy - uy * dvx + dux * vy - duy * vx;
+        const C = dux * dvy - duy * dvx;
+        // A(s) = A0 + s B + s^2 C ; find smallest positive root
+        let root = Infinity;
+        if (Math.abs(C) < EPS) {
+          if (B < -EPS) root = -A0 / B;
+        } else {
+          const disc = B * B - 4 * C * A0;
+          if (disc >= 0) {
+            const sq = Math.sqrt(disc);
+            const r1 = (-B - sq) / (2 * C);
+            const r2 = (-B + sq) / (2 * C);
+            if (r1 > EPS) root = Math.min(root, r1);
+            if (r2 > EPS) root = Math.min(root, r2);
+          }
+        }
+        if (root < tMax) tMax = root;
+      }
+      return tMax;
+    }
+
+    /* --- Per-triangle rest frames shared by SLIM/ARAP: isometric 2D
+     *   flattening of each triangle plus area and inverse edge matrix. */
+    function buildRestFrames(chart) {
+      const { lp, tris } = chart;
       const triCount = tris.length / 3;
-      if (triCount < 1 || nVerts < 3) return;
-      // Precompute isometric reference shapes + areas
       const refX = new Float64Array(triCount * 3);
       const refY = new Float64Array(triCount * 3);
       const triArea = new Float64Array(triCount);
+      const inv = new Float64Array(triCount * 4); // i00 i01 i10 i11 of rest edge-matrix inverse
       const A3 = new THREE.Vector3(), B3 = new THREE.Vector3(), C3 = new THREE.Vector3();
       const X = new THREE.Vector3(), nrm = new THREE.Vector3(), Y = new THREE.Vector3(), tmp = new THREE.Vector3();
       for (let t = 0; t < triCount; t++) {
@@ -759,28 +986,123 @@
         X.divideScalar(lx);
         nrm.normalize();
         Y.crossVectors(nrm, X);
-        refX[t * 3] = 0;            refY[t * 3] = 0;
-        refX[t * 3 + 1] = lx;       refY[t * 3 + 1] = 0;
-        refX[t * 3 + 2] = tmp.dot(X); refY[t * 3 + 2] = tmp.dot(Y);
+        const x3 = tmp.dot(X), y3 = tmp.dot(Y);
+        refX[t * 3] = 0;      refY[t * 3] = 0;
+        refX[t * 3 + 1] = lx; refY[t * 3 + 1] = 0;
+        refX[t * 3 + 2] = x3; refY[t * 3 + 2] = y3;
+        // Rest edge matrix M = [[lx, x3],[0, y3]]  ->  inverse
+        const det = lx * y3;
+        if (Math.abs(det) < EPS) { triArea[t] = 0; continue; }
+        inv[t * 4] = y3 / det;  inv[t * 4 + 1] = -x3 / det;
+        inv[t * 4 + 2] = 0;     inv[t * 4 + 3] = lx / det;
       }
+      return { refX, refY, triArea, inv, triCount };
+    }
+
+    /* --- 4a. SLIM (Rabinovich, Poranne, Panozzo, Sorkine-Hornung 2017).
+     *   Reweighted local/global proxy for the symmetric Dirichlet energy
+     *   E = sum area * (s1^2 + s2^2 + s1^-2 + s2^-2). Each iteration:
+     *     local — per triangle: Jacobian, closed-form signed 2x2 SVD,
+     *             closest rotation, SLIM weights w_i^2=(s_i - s_i^-3)/(s_i - 1)
+     *     global — weighted Jacobi averaging of rotated rest shapes
+     *     step  — flip-blocking line search so injectivity is preserved. */
+    function slimRefine(chart, iterations) {
+      if (iterations <= 0) return;
+      const { tris, nVerts, uv } = chart;
+      const frames = buildRestFrames(chart);
+      const { refX, refY, triArea, inv, triCount } = frames;
+      if (triCount < 1 || nVerts < 3) return;
       const accU = new Float64Array(nVerts);
       const accV = new Float64Array(nVerts);
       const accW = new Float64Array(nVerts);
+      const dir = new Float64Array(nVerts * 2);
+      const wOf = (s) => {
+        s = clamp(s, 0.02, 50);
+        if (Math.abs(s - 1) < 1e-3) return 4; // limit of (s - s^-3)/(s - 1) at s=1
+        return clamp((s - 1 / (s * s * s)) / (s - 1), 0, 1e4);
+      };
       for (let iter = 0; iter < iterations; iter++) {
         accU.fill(0); accV.fill(0); accW.fill(0);
         for (let t = 0; t < triCount; t++) {
-          const w = triArea[t];
-          if (w <= 0) continue;
+          const area = triArea[t];
+          if (area <= 0) continue;
           const i0 = tris[t * 3], i1 = tris[t * 3 + 1], i2 = tris[t * 3 + 2];
+          const u0 = uv[i0 * 2], v0 = uv[i0 * 2 + 1];
+          const e1u = uv[i1 * 2] - u0, e1v = uv[i1 * 2 + 1] - v0;
+          const e2u = uv[i2 * 2] - u0, e2v = uv[i2 * 2 + 1] - v0;
+          // J = [current edges] * inv(rest edges)
+          const a = e1u * inv[t * 4] + e2u * inv[t * 4 + 2];
+          const b = e1u * inv[t * 4 + 1] + e2u * inv[t * 4 + 3];
+          const c = e1v * inv[t * 4] + e2v * inv[t * 4 + 2];
+          const d = e1v * inv[t * 4 + 1] + e2v * inv[t * 4 + 3];
+          // Closed-form signed 2x2 SVD
+          const E2 = (a + d) / 2, H2 = (c - b) / 2, F2 = (a - d) / 2, G2 = (c + b) / 2;
+          const Q = Math.hypot(E2, H2), Rr = Math.hypot(F2, G2);
+          const s1 = Q + Rr;
+          const s2 = Q - Rr; // negative => flipped
+          // SLIM weight (scalar simplification of the matrix weight)
+          let wT;
+          if (s2 <= 0) wT = 1e3; // flipped: push hard toward rotation
+          else wT = Math.sqrt((wOf(s1) + wOf(Math.max(s2, 0.02))) * 0.5);
+          // Closest rotation (polar) of J
+          const theta = Math.atan2(c - b, a + d);
+          const cos = Math.cos(theta), sin = Math.sin(theta);
+          const W = area * wT;
+          // Rotate rest shape about centroids -> target positions
           const ids = [i0, i1, i2];
-          // Current centroid and reference centroid
           let cu = 0, cv = 0, crx = 0, cry = 0;
           for (let k = 0; k < 3; k++) {
             cu += uv[ids[k] * 2]; cv += uv[ids[k] * 2 + 1];
             crx += refX[t * 3 + k]; cry += refY[t * 3 + k];
           }
           cu /= 3; cv /= 3; crx /= 3; cry /= 3;
-          // Optimal 2D rotation: theta = atan2(sum(cross), sum(dot))
+          for (let k = 0; k < 3; k++) {
+            const rx = refX[t * 3 + k] - crx, ry = refY[t * 3 + k] - cry;
+            const tx = cu + cos * rx - sin * ry;
+            const ty = cv + sin * rx + cos * ry;
+            accU[ids[k]] += tx * W;
+            accV[ids[k]] += ty * W;
+            accW[ids[k]] += W;
+          }
+        }
+        // Proposed update direction
+        for (let i = 0; i < nVerts; i++) {
+          if (accW[i] > EPS) {
+            dir[i * 2] = accU[i] / accW[i] - uv[i * 2];
+            dir[i * 2 + 1] = accV[i] / accW[i] - uv[i * 2 + 1];
+          } else { dir[i * 2] = 0; dir[i * 2 + 1] = 0; }
+        }
+        const alphaMax = maxFlipFreeStep(uv, dir, tris);
+        const alpha = Math.min(0.8, 0.95 * alphaMax);
+        if (alpha <= EPS) break;
+        for (let i = 0; i < nVerts * 2; i++) uv[i] += alpha * dir[i];
+      }
+    }
+
+    /* --- 4b. ARAP refinement (Liu et al. 2008), shape-matching variant,
+     *   now with the same flip-blocking line search. */
+    function arapRefine(chart, iterations) {
+      if (iterations <= 0) return;
+      const { tris, nVerts, uv } = chart;
+      const frames = buildRestFrames(chart);
+      const { refX, refY, triArea, triCount } = frames;
+      if (triCount < 1 || nVerts < 3) return;
+      const accU = new Float64Array(nVerts);
+      const accV = new Float64Array(nVerts);
+      const accW = new Float64Array(nVerts);
+      const dir = new Float64Array(nVerts * 2);
+      for (let iter = 0; iter < iterations; iter++) {
+        accU.fill(0); accV.fill(0); accW.fill(0);
+        for (let t = 0; t < triCount; t++) {
+          const w = triArea[t];
+          if (w <= 0) continue;
+          const ids = [tris[t * 3], tris[t * 3 + 1], tris[t * 3 + 2]];
+          let cu = 0, cv = 0, crx = 0, cry = 0;
+          for (let k = 0; k < 3; k++) {
+            cu += uv[ids[k] * 2]; cv += uv[ids[k] * 2 + 1];
+            crx += refX[t * 3 + k]; cry += refY[t * 3 + k];
+          }
+          cu /= 3; cv /= 3; crx /= 3; cry /= 3;
           let sd = 0, sc = 0;
           for (let k = 0; k < 3; k++) {
             const rx = refX[t * 3 + k] - crx, ry = refY[t * 3 + k] - cry;
@@ -802,30 +1124,73 @@
         }
         for (let i = 0; i < nVerts; i++) {
           if (accW[i] > EPS) {
-            uv[i * 2] = lerp(uv[i * 2], accU[i] / accW[i], 0.75);
-            uv[i * 2 + 1] = lerp(uv[i * 2 + 1], accV[i] / accW[i], 0.75);
-          }
+            dir[i * 2] = accU[i] / accW[i] - uv[i * 2];
+            dir[i * 2 + 1] = accV[i] / accW[i] - uv[i * 2 + 1];
+          } else { dir[i * 2] = 0; dir[i * 2 + 1] = 0; }
         }
+        const alphaMax = maxFlipFreeStep(uv, dir, tris);
+        const alpha = Math.min(0.75, 0.95 * alphaMax);
+        if (alpha <= EPS) break;
+        for (let i = 0; i < nVerts * 2; i++) uv[i] += alpha * dir[i];
       }
     }
 
-    /* --- 4. Packing: orient (PCA), scale (texel density), shelf-pack. */
-    function packCharts(charts, paddingFrac, equalizeDensity) {
-      // Per-chart: signed UV area (flip if negative), 3D area, PCA orientation, bbox
+    /* --- 5. Packing: PCA orient, texel-density scale, skyline bottom-left
+     *   packing with optional 90-degree rotation per chart. The skyline
+     *   heuristic (Jylanki 2010 survey) consistently beats shelf packing
+     *   on coverage, especially with mixed chart sizes. */
+    function skylineFindPosition(skyline, w, h, binW) {
+      let best = null;
+      for (let i = 0; i < skyline.length; i++) {
+        const x = skyline[i].x;
+        if (x + w > binW + 1e-9) continue;
+        let y = 0;
+        const end = x + w;
+        for (let j = i; j < skyline.length && skyline[j].x < end - 1e-12; j++) {
+          y = Math.max(y, skyline[j].y);
+        }
+        if (!best || y + h < best.top - 1e-12 || (Math.abs(y + h - best.top) <= 1e-12 && x < best.x)) {
+          best = { x, y, top: y + h, index: i };
+        }
+      }
+      return best;
+    }
+
+    function skylinePlace(skyline, x, w, top, binW) {
+      const end = Math.min(x + w, binW);
+      const out = [];
+      for (const seg of skyline) {
+        const segEnd = seg.x + seg.w;
+        if (segEnd <= x + 1e-12 || seg.x >= end - 1e-12) { out.push(seg); continue; }
+        if (seg.x < x) out.push({ x: seg.x, y: seg.y, w: x - seg.x });
+        if (segEnd > end) out.push({ x: end, y: seg.y, w: segEnd - end });
+      }
+      out.push({ x, y: top, w: end - x });
+      out.sort((a, b) => a.x - b.x);
+      // Merge adjacent segments with equal height
+      const merged = [];
+      for (const seg of out) {
+        const last = merged[merged.length - 1];
+        if (last && Math.abs(last.y - seg.y) < 1e-12 && Math.abs(last.x + last.w - seg.x) < 1e-9) last.w += seg.w;
+        else merged.push({ x: seg.x, y: seg.y, w: seg.w });
+      }
+      return merged;
+    }
+
+    function packCharts(charts, paddingFrac, equalizeDensity, allowRotate) {
+      // Normalize each chart: un-mirror, PCA orient, landscape, density scale
       for (const ch of charts) {
         const { uv, tris, nVerts } = ch.local;
-        // Signed UV area sum
         let signed = 0;
         for (let t = 0; t < tris.length; t += 3) {
           const a = tris[t] * 2, b = tris[t + 1] * 2, c = tris[t + 2] * 2;
           signed += (uv[b] - uv[a]) * (uv[c + 1] - uv[a + 1]) - (uv[c] - uv[a]) * (uv[b + 1] - uv[a + 1]);
         }
-        if (signed < 0) { // un-mirror the chart
+        if (signed < 0) {
           for (let i = 0; i < nVerts; i++) uv[i * 2 + 1] = -uv[i * 2 + 1];
           signed = -signed;
         }
         ch.areaUV = signed * 0.5;
-        // PCA orientation of UV cloud
         let mx = 0, my = 0;
         for (let i = 0; i < nVerts; i++) { mx += uv[i * 2]; my += uv[i * 2 + 1]; }
         mx /= nVerts; my /= nVerts;
@@ -844,7 +1209,6 @@
           minU = Math.min(minU, ru); maxU = Math.max(maxU, ru);
           minV = Math.min(minV, rv); maxV = Math.max(maxV, rv);
         }
-        // Landscape orientation (width >= height) keeps shelves short
         if (maxV - minV > maxU - minU) {
           for (let i = 0; i < nVerts; i++) {
             const u0 = uv[i * 2], v0 = uv[i * 2 + 1];
@@ -856,7 +1220,6 @@
             minV = Math.min(minV, uv[i * 2 + 1]); maxV = Math.max(maxV, uv[i * 2 + 1]);
           }
         }
-        // Texel-density scale: UV area matches relative 3D area
         let scale = 1;
         if (equalizeDensity && ch.areaUV > EPS && ch.area3D > EPS) {
           scale = Math.sqrt(ch.area3D / ch.areaUV);
@@ -867,26 +1230,33 @@
         }
         ch.w = Math.max(EPS, (maxU - minU) * scale);
         ch.h = Math.max(EPS, (maxV - minV) * scale);
+        ch.rot = false;
       }
-      // Shelf packing (next-fit decreasing height); search a few bin widths
-      // and keep the squarest atlas to maximize coverage.
       const totalArea = charts.reduce((s, c) => s + c.w * c.h, 0);
       const pad = paddingFrac * Math.sqrt(Math.max(EPS, totalArea));
-      const sorted = charts.slice().sort((a, b) => b.h - a.h);
+      const sorted = charts.slice().sort((a, b) => Math.max(b.w, b.h) - Math.max(a.w, a.h));
       const maxItemW = Math.max(...charts.map(c => c.w + 2 * pad));
       const padArea = charts.reduce((s, c) => s + (c.w + 2 * pad) * (c.h + 2 * pad), 0);
       const baseW = Math.sqrt(Math.max(EPS, padArea));
-      const candidates = [...new Set([1.0, 1.15, 1.35, 1.6, 2.0].map(k => Math.max(maxItemW, baseW * k)))];
+      const candidates = [...new Set([1.0, 1.1, 1.25, 1.45, 1.7, 2.0].map(k => Math.max(maxItemW, baseW * k)))];
       const simulate = (binW, commit) => {
-        let cx = 0, cy = 0, shelfH = 0, usedW = 0, usedH = 0;
+        let skyline = [{ x: 0, y: 0, w: binW }];
+        let usedW = 0, usedH = 0;
         for (const ch of sorted) {
           const ew = ch.w + 2 * pad, eh = ch.h + 2 * pad;
-          if (cx + ew > binW && cx > 0) { cy += shelfH; cx = 0; shelfH = 0; }
-          if (commit) { ch.ox = cx + pad; ch.oy = cy + pad; }
-          cx += ew;
-          shelfH = Math.max(shelfH, eh);
-          usedW = Math.max(usedW, cx);
-          usedH = Math.max(usedH, cy + shelfH);
+          const posA = skylineFindPosition(skyline, ew, eh, binW);
+          const posB = allowRotate ? skylineFindPosition(skyline, eh, ew, binW) : null;
+          let pos = posA, rotated = false, w = ew, h = eh;
+          if (posB && (!posA || posB.top < posA.top - 1e-12 || (Math.abs(posB.top - posA.top) <= 1e-12 && posB.x < posA.x))) {
+            pos = posB; rotated = true; w = eh; h = ew;
+          }
+          if (!pos) { // should not happen (binW >= maxItemW); stack on top as fallback
+            pos = { x: 0, y: usedH, top: usedH + h };
+          }
+          if (commit) { ch.ox = pos.x + pad; ch.oy = pos.y + pad; ch.rot = rotated; }
+          skyline = skylinePlace(skyline, pos.x, w, pos.y + h, binW);
+          usedW = Math.max(usedW, pos.x + w);
+          usedH = Math.max(usedH, pos.y + h);
         }
         return Math.max(usedW, usedH);
       };
@@ -900,21 +1270,29 @@
       for (const ch of charts) {
         const { uv, nVerts } = ch.local;
         for (let i = 0; i < nVerts; i++) {
-          uv[i * 2] = (uv[i * 2] + ch.ox) * s;
-          uv[i * 2 + 1] = (uv[i * 2 + 1] + ch.oy) * s;
+          let u = uv[i * 2], v = uv[i * 2 + 1];
+          if (ch.rot) { const u0 = u; u = v; v = ch.w - u0; } // rotate chart 90 degrees
+          uv[i * 2] = (u + ch.ox) * s;
+          uv[i * 2 + 1] = (v + ch.oy) * s;
         }
-        ch.rect = { x: ch.ox * s, y: ch.oy * s, w: ch.w * s, h: ch.h * s };
+        const rw = ch.rot ? ch.h : ch.w;
+        const rh = ch.rot ? ch.w : ch.h;
+        ch.rect = { x: ch.ox * s, y: ch.oy * s, w: rw * s, h: rh * s };
       }
     }
 
-    /* --- 5. Sander stretch metrics (Sander et al. 2001, "Texture Mapping
-     *   Progressive Meshes"). Singular values of the 3D<-UV Jacobian:
-     *   L2 = sqrt((G^2+g^2)/2), Linf = G. 1.0 = isometric.  */
+    /* --- 6. Metrics: Sander 2001 L2/Linf geometric stretch, symmetric
+     *   Dirichlet energy (the quantity SLIM minimizes; 1.00 = isometric),
+     *   angle error, flips, seams, and a rasterized coverage pass that also
+     *   detects chart-on-chart UV overlap. */
     function computeMetrics(geometry, chartInfo) {
       const pos = geometry.attributes.position;
       const uv = geometry.attributes.uv;
       const faceCount = Math.floor(pos.count / 3);
       const faceL2 = new Float32Array(faceCount);
+      const faceG2 = new Float64Array(faceCount);
+      const faceg2 = new Float64Array(faceCount);
+      const faceA3 = new Float64Array(faceCount);
       let flipped = 0, angleErrSum = 0;
       let l2Num = 0, areaSum = 0, linfMax = 0;
       let area3DTotal = 0, areaUVTotal = 0;
@@ -928,11 +1306,11 @@
         const s3 = uv.getX(i + 2), t3 = uv.getY(i + 2);
         const Auv = ((s2 - s1) * (t3 - t1) - (s3 - s1) * (t2 - t1)) / 2;
         const area3D = new THREE.Triangle(q[0], q[1], q[2]).getArea();
+        faceA3[f] = area3D;
         area3DTotal += area3D;
         areaUVTotal += Math.abs(Auv);
         if (Auv < -EPS) flipped++;
-        if (Math.abs(Auv) < EPS || area3D < EPS) { faceL2[f] = 10; continue; }
-        // Jacobian partials
+        if (Math.abs(Auv) < EPS || area3D < EPS) { faceL2[f] = 10; faceG2[f] = 100; faceg2[f] = 0.01; continue; }
         Ss.set(0, 0, 0); St.set(0, 0, 0);
         tv.copy(q[0]).multiplyScalar(t2 - t3); Ss.add(tv);
         tv.copy(q[1]).multiplyScalar(t3 - t1); Ss.add(tv);
@@ -945,33 +1323,44 @@
         const a = Ss.dot(Ss), b = Ss.dot(St), c = St.dot(St);
         const disc = Math.sqrt(Math.max(0, (a - c) * (a - c) + 4 * b * b));
         const G2 = ((a + c) + disc) / 2;
-        const g2 = Math.max(0, ((a + c) - disc) / 2);
+        const g2 = Math.max(EPS, ((a + c) - disc) / 2);
+        faceG2[f] = G2; faceg2[f] = g2;
         const L2 = Math.sqrt((G2 + g2) / 2);
         const Linf = Math.sqrt(G2);
         faceL2[f] = Auv < 0 ? 10 : L2;
         l2Num += L2 * L2 * area3D;
         areaSum += area3D;
         linfMax = Math.max(linfMax, Linf);
-        // Angle error (degrees)
         const a3 = triAngles3D(q[0], q[1], q[2]);
         const a2 = triAngles2D(s1, t1, s2, t2, s3, t3);
         angleErrSum += ((Math.abs(a3[0] - a2[0]) + Math.abs(a3[1] - a2[1]) + Math.abs(a3[2] - a2[2])) / 3) * 180 / Math.PI;
       }
-      // Normalize stretch so 1 = isometric at the atlas's own global scale
       const globalScale = Math.sqrt(safeDiv(area3DTotal, Math.max(EPS, areaUVTotal)));
+      const gs2 = Math.max(EPS, globalScale * globalScale);
       const stretchL2 = areaSum > EPS ? Math.sqrt(l2Num / areaSum) / Math.max(EPS, globalScale) : 0;
       const stretchLinf = linfMax / Math.max(EPS, globalScale);
       for (let f = 0; f < faceCount; f++) faceL2[f] = faceL2[f] / Math.max(EPS, globalScale);
+      // Symmetric Dirichlet at global scale: (s1'^2 + s2'^2 + s1'^-2 + s2'^-2)/4, area-weighted
+      let sdNum = 0;
+      for (let f = 0; f < faceCount; f++) {
+        if (faceA3[f] < EPS) continue;
+        const S1 = clamp(faceG2[f] / gs2, 1e-4, 1e6);
+        const S2 = clamp(faceg2[f] / gs2, 1e-4, 1e6);
+        const e = (S1 + S2 + 1 / S1 + 1 / S2) / 4;
+        sdNum += Math.min(e, 1e4) * faceA3[f];
+      }
+      const sdEnergy = areaSum > EPS ? sdNum / areaSum : 0;
       const seams = computeSeams(geometry, chartInfo);
-      const coverage = rasterCoverage(geometry, 128);
+      const raster = rasterCoverage(geometry, 128, chartInfo);
       const angleMean = angleErrSum / Math.max(1, faceCount);
-      const distortionMetric = Math.abs(stretchL2 - 1) + angleMean / 90 + flipped * 0.01;
+      const distortionMetric = Math.abs(stretchL2 - 1) + angleMean / 90 + flipped * 0.01 + raster.overlap * 2;
       return {
         faces: faceCount, vertices: pos.count,
         chartCount: chartInfo ? chartInfo.chartCount : 1,
-        stretchL2, stretchLinf, angleMean, flipped,
+        stretchL2, stretchLinf, angleMean, flipped, sdEnergy,
         seamLength: seams.length3D, seamSegments: seams.segments,
-        coverage, distortionMetric, faceDistortion: faceL2,
+        coverage: raster.coverage, overlap: raster.overlap,
+        distortionMetric, faceDistortion: faceL2,
         area3DTotal, areaUVTotal
       };
     }
@@ -1036,13 +1425,17 @@
       return { segments, length3D };
     }
 
-    // True atlas coverage: rasterize UV triangles onto a coarse grid
-    function rasterCoverage(geometry, res) {
+    // Atlas coverage + overlap: rasterize UV triangles tagged with chart id.
+    // A cell claimed by two different charts is an overlap — invisible in a
+    // wireframe preview but fatal when baking textures.
+    function rasterCoverage(geometry, res, chartInfo) {
       const uv = geometry.attributes.uv;
       const faceCount = Math.floor(uv.count / 3);
-      const grid = new Uint8Array(res * res);
+      const grid = new Int32Array(res * res); // 0 empty, id+1 owner, -1 conflict
+      const faceChart = chartInfo && chartInfo.faceChart;
       for (let f = 0; f < faceCount; f++) {
         const i = f * 3;
+        const owner = (faceChart ? faceChart[f] : 0) + 1;
         const x1 = uv.getX(i) * res, y1 = uv.getY(i) * res;
         const x2 = uv.getX(i + 1) * res, y2 = uv.getY(i + 1) * res;
         const x3 = uv.getX(i + 2) * res, y3 = uv.getY(i + 2) * res;
@@ -1058,13 +1451,27 @@
             const w1 = ((x2 - x1) * (py - y1) - (px - x1) * (y2 - y1)) / d;
             const w2 = ((px - x1) * (y3 - y1) - (x3 - x1) * (py - y1)) / d;
             const w0 = 1 - w1 - w2;
-            if (w0 >= -0.001 && w1 >= -0.001 && w2 >= -0.001) grid[gy * res + gx] = 1;
+            // Use a strictly-interior test for overlap so shared padding
+            // borders between neighbors don't count as conflicts
+            if (w0 >= -0.001 && w1 >= -0.001 && w2 >= -0.001) {
+              const cell = gy * res + gx;
+              const cur = grid[cell];
+              const interior = w0 > 0.02 && w1 > 0.02 && w2 > 0.02;
+              if (cur === 0) grid[cell] = owner;
+              else if (cur !== owner && cur !== -1 && interior) grid[cell] = -1;
+            }
           }
         }
       }
-      let covered = 0;
-      for (let i = 0; i < grid.length; i++) covered += grid[i];
-      return covered / (res * res);
+      let covered = 0, conflicts = 0;
+      for (let i = 0; i < grid.length; i++) {
+        if (grid[i] !== 0) covered++;
+        if (grid[i] === -1) conflicts++;
+      }
+      return {
+        coverage: covered / (res * res),
+        overlap: covered ? conflicts / covered : 0
+      };
     }
 
     /* ===================================================================== */
@@ -1077,9 +1484,10 @@
         this.frameCount = 0; this.lastFrameTime = performance.now(); this.fps = 0;
         this.turntable = false;
         this.lastMetrics = null;
-        this.chartInfo = null;     // { faceChart, chartCount, charts:[{rect, faces, local}], mode }
+        this.chartInfo = null;
         this.metricHistory = [];
         this.undoStack = [];
+        this.lastPipelineNotes = [];
         this.uvCanvas = document.getElementById('uvCanvas');
         this.uvCtx = this.uvCanvas.getContext('2d');
         this.metricChart = null;
@@ -1120,11 +1528,13 @@
         return {
           mode: document.getElementById('unwrap-mode').value,
           parameterizer: document.getElementById('parameterizer').value,
+          optimizer: document.getElementById('optimizer').value,
           angleDeg: parseFloat(document.getElementById('segmentation-angle-slider').value),
           maxFaces: parseInt(document.getElementById('max-chart-faces-slider').value, 10),
           arapIters: parseInt(document.getElementById('arap-iterations-slider').value, 10),
           padding: parseFloat(document.getElementById('atlas-padding-slider').value) / 100,
-          equalizeDensity: document.getElementById('texel-density').checked
+          equalizeDensity: document.getElementById('texel-density').checked,
+          allowRotate: document.getElementById('rotate-packing').checked
         };
       }
 
@@ -1391,25 +1801,45 @@
       runPipeline(geometry, optsOverride) {
         const opts = Object.assign(this.opts(), optsOverride || {});
         const mode = opts.mode;
+        this.lastPipelineNotes = [];
         if (mode === 'spherical' || mode === 'cylindrical' || mode === 'planar') {
           return this.legacyProjection(geometry, mode);
         }
         const weld = weldMesh(geometry);
         const seg = mode === 'box' ? segmentByAxis(weld) : segmentCharts(weld, opts);
+        // Topology guard: bisect any chart that is a closed surface
+        const beforeSplit = seg.chartFaces.length;
+        const openFaces = ensureOpenCharts(weld, seg.chartFaces);
+        if (openFaces.length !== beforeSplit) {
+          this.lastPipelineNotes.push('Split ' + (openFaces.length - beforeSplit) + ' closed chart(s) for flattenability.');
+        }
+        const faceChart = new Int32Array(weld.faceCount);
+        openFaces.forEach((faces, id) => { for (const f of faces) faceChart[f] = id; });
         const pos = geometry.attributes.position;
         const charts = [];
-        for (let c = 0; c < seg.chartFaces.length; c++) {
-          const faces = seg.chartFaces[c];
+        let tutteFallbacks = 0;
+        for (let c = 0; c < openFaces.length; c++) {
+          const faces = openFaces[c];
           if (!faces.length) continue;
           const local = buildChartLocal(weld, faces, pos);
           let area3D = 0;
           for (const f of faces) area3D += weld.faceAreas[f];
-          if (opts.parameterizer === 'lscm' && mode === 'advanced') solveLSCM(local);
-          if (opts.arapIters > 0) arapRefine(local, opts.arapIters);
+          if (mode === 'advanced') {
+            if (opts.parameterizer === 'tutte') {
+              if (!tutteEmbed(local)) solveLSCM(local);
+            } else if (opts.parameterizer === 'lscm') {
+              solveLSCM(local);
+              // Guaranteed-injective rescue: if LSCM left fold-overs,
+              // restart from a Tutte embedding before optimizing
+              if (countChartFlips(local) > 0 && tutteEmbed(local)) tutteFallbacks++;
+            }
+          }
+          if (opts.optimizer === 'slim') slimRefine(local, opts.arapIters);
+          else if (opts.optimizer === 'arap') arapRefine(local, opts.arapIters);
           charts.push({ id: c, faces, local, area3D });
         }
-        packCharts(charts, opts.padding, opts.equalizeDensity);
-        // Write chart-local UVs back to the per-corner buffer
+        if (tutteFallbacks) this.lastPipelineNotes.push('Tutte rescue on ' + tutteFallbacks + ' chart(s) with LSCM fold-overs.');
+        packCharts(charts, opts.padding, opts.equalizeDensity, opts.allowRotate);
         const uvArr = new Float32Array(pos.count * 2);
         for (const ch of charts) {
           const cl = ch.local.cornerLocal;
@@ -1421,7 +1851,7 @@
         }
         geometry.setAttribute('uv', new THREE.BufferAttribute(uvArr, 2));
         return {
-          faceChart: seg.faceChart,
+          faceChart,
           chartCount: charts.length,
           charts: charts.map(ch => ({ id: ch.id, rect: ch.rect, faces: ch.faces.length, area3D: ch.area3D, local: ch.local, faceList: ch.faces })),
           mode
@@ -1440,7 +1870,8 @@
           this.currentMesh.geometry = newGeometry;
           this.chartInfo = chartInfo;
           const dt = (performance.now() - t0).toFixed(0);
-          this.refreshAfterUV(showLog ? 'UV unwrap complete (' + chartInfo.mode + ', ' + chartInfo.chartCount + ' charts, ' + dt + ' ms).' : null);
+          const notes = this.lastPipelineNotes.length ? ' ' + this.lastPipelineNotes.join(' ') : '';
+          this.refreshAfterUV(showLog ? 'UV unwrap complete (' + chartInfo.mode + ', ' + chartInfo.chartCount + ' charts, ' + dt + ' ms).' + notes : null);
         } catch (err) {
           this.logMessage('Unwrap error: ' + err.message);
           console.error(err);
@@ -1456,10 +1887,10 @@
         this.pushUndo();
         const opts = this.opts();
         const charts = this.chartInfo.charts.map(ch => ({ id: ch.id, faces: ch.faceList, local: ch.local, area3D: ch.area3D }));
-        packCharts(charts, opts.padding, opts.equalizeDensity);
+        packCharts(charts, opts.padding, opts.equalizeDensity, opts.allowRotate);
         this.writeChartsToBuffer(charts);
         this.chartInfo.charts.forEach((ch, i) => { ch.rect = charts[i].rect; });
-        this.refreshAfterUV('Atlas repacked with current padding/density settings.');
+        this.refreshAfterUV('Atlas repacked (skyline' + (opts.allowRotate ? ' + rotation' : '') + ').');
       }
 
       writeChartsToBuffer(charts) {
@@ -1474,20 +1905,24 @@
         uvAttr.needsUpdate = true;
       }
 
-      arapRelax(iterations = 10) {
+      relaxUV(iterations = 10) {
         if (!this.currentMesh || !this.chartInfo || !this.chartInfo.charts || !this.chartInfo.charts[0].local) {
-          this.logMessage('ARAP relax needs a Research Atlas / Box unwrap first.');
+          this.logMessage('Relax needs a Research Atlas / Box unwrap first.');
           return;
         }
         this.progress(true);
         this.pushUndo();
         const opts = this.opts();
+        const useSlim = opts.optimizer !== 'arap';
         const charts = this.chartInfo.charts.map(ch => ({ id: ch.id, faces: ch.faceList, local: ch.local, area3D: ch.area3D }));
-        for (const ch of charts) arapRefine(ch.local, iterations);
-        packCharts(charts, opts.padding, opts.equalizeDensity);
+        for (const ch of charts) {
+          if (useSlim) slimRefine(ch.local, iterations);
+          else arapRefine(ch.local, iterations);
+        }
+        packCharts(charts, opts.padding, opts.equalizeDensity, opts.allowRotate);
         this.writeChartsToBuffer(charts);
         this.chartInfo.charts.forEach((ch, i) => { ch.rect = charts[i].rect; });
-        this.refreshAfterUV('ARAP relaxation complete (' + iterations + ' iterations).');
+        this.refreshAfterUV((useSlim ? 'SLIM' : 'ARAP') + ' relaxation complete (' + iterations + ' iterations).');
         this.progress(false);
       }
 
@@ -1508,7 +1943,8 @@
             const g = this.ensureNonIndexedGeometry(base);
             const ci = this.runPipeline(g, { angleDeg: angle });
             const m = computeMetrics(g, ci);
-            const score = Math.abs(m.stretchL2 - 1) * 2 + m.flipped * 0.05 + m.seamLength * 0.001 + (1 - m.coverage) * 0.4;
+            const score = Math.abs(m.stretchL2 - 1) * 2 + Math.abs(m.sdEnergy - 1) + m.flipped * 0.05
+                        + m.overlap * 3 + m.seamLength * 0.001 + (1 - m.coverage) * 0.4;
             if (!best || score < best.score) best = { score, angle, geometry: g, chartInfo: ci, metrics: m };
             else g.dispose();
           }
@@ -1534,7 +1970,6 @@
         const pos = geometry.attributes.position;
         const colors = new Float32Array(pos.count * 3);
         for (let f = 0; f < metrics.faceDistortion.length; f++) {
-          // L2 of 1.0 = isometric; map [1, 2.5] -> [0, 1] heat
           const t = clamp((metrics.faceDistortion[f] - 1) / 1.5, 0, 1);
           const c = heatColor(t);
           for (let k = 0; k < 3; k++) {
@@ -1577,7 +2012,7 @@
         this.updateInfo(metrics);
         this.drawUVPreview(geometry, this.chartInfo, metrics);
         this.pushMetricHistory(metrics);
-        if (message) this.logMessage(message + ' Stretch L2 ' + metrics.stretchL2.toFixed(3) + '.');
+        if (message) this.logMessage(message + ' Stretch L2 ' + metrics.stretchL2.toFixed(3) + ', SD ' + metrics.sdEnergy.toFixed(3) + '.');
       }
 
       updateInfo(metrics) {
@@ -1593,6 +2028,8 @@
         document.getElementById('metric-faces').textContent = metrics.faces;
         document.getElementById('metric-l2').textContent = metrics.stretchL2.toFixed(3);
         document.getElementById('metric-linf').textContent = metrics.stretchLinf > 99 ? '>99' : metrics.stretchLinf.toFixed(2);
+        document.getElementById('metric-sd').textContent = metrics.sdEnergy > 99 ? '>99' : metrics.sdEnergy.toFixed(3);
+        document.getElementById('metric-overlap').textContent = (metrics.overlap * 100).toFixed(2) + '%';
         document.getElementById('metric-seams').textContent = metrics.seamLength.toFixed(2);
         document.getElementById('metric-utilization').textContent = (metrics.coverage * 100).toFixed(1) + '%';
         document.getElementById('metric-angle').textContent = metrics.angleMean.toFixed(1) + '\u00B0';
@@ -1635,7 +2072,7 @@
         }
         if (chartInfo && chartInfo.charts) {
           ctx.lineWidth = 2;
-          chartInfo.charts.forEach((ch, idx) => {
+          chartInfo.charts.forEach(ch => {
             if (!ch.rect) return;
             ctx.strokeStyle = 'hsla(' + ((ch.id * 47) % 360) + ', 90%, 65%, 0.8)';
             ctx.strokeRect(ch.rect.x * w, (1 - ch.rect.y - ch.rect.h) * h, ch.rect.w * w, ch.rect.h * h);
@@ -1699,6 +2136,7 @@
             labels: [],
             datasets: [
               { label: 'Stretch L2', data: [], borderWidth: 2, tension: 0.35, borderColor: '#76f7d1' },
+              { label: 'Sym. Dirichlet', data: [], borderWidth: 2, tension: 0.35, borderColor: '#e879f9' },
               { label: 'Angle Err / 90', data: [], borderWidth: 2, tension: 0.35, borderColor: '#4a90e2' },
               { label: 'Coverage', data: [], borderWidth: 2, tension: 0.35, borderColor: '#ffcc66' }
             ]
@@ -1718,6 +2156,7 @@
         this.metricHistory.push({
           t: this.metricHistory.length + 1,
           l2: metrics.stretchL2,
+          sd: Math.min(metrics.sdEnergy, 5),
           angle: metrics.angleMean / 90,
           coverage: metrics.coverage
         });
@@ -1725,8 +2164,9 @@
         if (!this.metricChart) return;
         this.metricChart.data.labels = this.metricHistory.map(m => m.t);
         this.metricChart.data.datasets[0].data = this.metricHistory.map(m => m.l2);
-        this.metricChart.data.datasets[1].data = this.metricHistory.map(m => m.angle);
-        this.metricChart.data.datasets[2].data = this.metricHistory.map(m => m.coverage);
+        this.metricChart.data.datasets[1].data = this.metricHistory.map(m => m.sd);
+        this.metricChart.data.datasets[2].data = this.metricHistory.map(m => m.angle);
+        this.metricChart.data.datasets[3].data = this.metricHistory.map(m => m.coverage);
         this.metricChart.update();
       }
 
@@ -1749,6 +2189,7 @@
           generatedAt: new Date().toISOString(),
           mode: document.getElementById('unwrap-mode').value,
           settings: this.opts(),
+          pipelineNotes: this.lastPipelineNotes,
           chartInfo: this.chartInfo ? {
             chartCount: this.chartInfo.chartCount,
             charts: this.chartInfo.charts.map(c => ({ id: c.id, faces: c.faces, rect: c.rect, area3D: c.area3D }))
@@ -1756,16 +2197,18 @@
           metrics: m ? {
             faces: m.faces, vertices: m.vertices, chartCount: m.chartCount,
             stretchL2: m.stretchL2, stretchLinf: m.stretchLinf,
+            symmetricDirichlet: m.sdEnergy,
             angleMeanDeg: m.angleMean, flippedTriangles: m.flipped,
             seamLength3D: m.seamLength, atlasCoverage: m.coverage,
+            uvOverlapFraction: m.overlap,
             distortionMetric: m.distortionMetric
           } : null,
           methods: {
-            segmentation: 'Normal-deviation region growing, area-weighted chart normal (xatlas/UVAtlas style)',
-            flattening: 'LSCM least-squares conformal maps (Levy et al. 2002), CG on normal equations, 2-pin gauge',
-            refinement: 'ARAP local/global shape matching (Liu et al. 2008)',
-            packing: 'PCA orientation + texel-density scaling + shelf packing',
-            stretchMetric: 'Sander et al. 2001 L2/Linf geometric stretch, normalized to global scale'
+            segmentation: 'Normal-deviation region growing, area-weighted chart normal (xatlas/UVAtlas style) + topology guard that bisects closed charts',
+            initialization: 'LSCM least-squares conformal maps (Levy et al. 2002), CG on normal equations, 2-pin gauge; Tutte/Floater harmonic embedding fallback (provably injective) when LSCM leaves fold-overs',
+            optimization: 'SLIM reweighted local/global minimization of symmetric Dirichlet energy with flip-blocking line search (Rabinovich et al. 2017); ARAP local/global (Liu et al. 2008) available',
+            packing: 'PCA orientation + texel-density scaling + skyline bottom-left packing with optional 90-degree rotation',
+            stretchMetric: 'Sander et al. 2001 L2/Linf geometric stretch + symmetric Dirichlet energy, normalized to global scale; rasterized coverage and chart-overlap detection'
           },
           notes: 'Browser-side analysis for iteration. For production baking, validate against an offline packer such as xatlas or UVAtlas.'
         };
@@ -1833,6 +2276,7 @@
           document.getElementById(label).textContent = format(value);
         });
         document.getElementById('parameterizer').value = 'lscm';
+        document.getElementById('optimizer').value = 'slim';
         uvToolkit.logMessage('Advanced options reset.');
       });
 
@@ -1844,7 +2288,7 @@
       document.getElementById('unwrap-button').addEventListener('click', () => uvToolkit.unwrap(true));
       document.getElementById('optimize-unwrap-btn').addEventListener('click', () => uvToolkit.optimizeUnwrap());
       document.getElementById('screenshot-button').addEventListener('click', () => uvToolkit.captureScreenshot());
-      document.getElementById('relax-uv-button').addEventListener('click', () => uvToolkit.arapRelax(10));
+      document.getElementById('relax-uv-button').addEventListener('click', () => uvToolkit.relaxUV(10));
       document.getElementById('repack-button').addEventListener('click', () => uvToolkit.repackAtlas());
       document.getElementById('undo-button').addEventListener('click', () => uvToolkit.undo());
       document.getElementById('export-uv-png-button').addEventListener('click', () => uvToolkit.exportUVLayoutPNG(2048));
@@ -1868,7 +2312,9 @@
       ['checker-preview', 'heatmap-preview', 'seam-preview'].forEach(id => {
         document.getElementById(id).addEventListener('change', () => uvToolkit.refreshAfterUV(id.replace(/-/g, ' ') + ' updated.'));
       });
-      document.getElementById('texel-density').addEventListener('change', () => uvToolkit.repackAtlas());
+      ['texel-density', 'rotate-packing'].forEach(id => {
+        document.getElementById(id).addEventListener('change', () => uvToolkit.repackAtlas());
+      });
 
       // Keyboard shortcuts: U unwrap, O optimize, R relax, Z undo, W wireframe
       window.addEventListener('keydown', e => {
@@ -1876,7 +2322,7 @@
         const k = e.key.toLowerCase();
         if (k === 'u') uvToolkit.unwrap(true);
         else if (k === 'o') uvToolkit.optimizeUnwrap();
-        else if (k === 'r') uvToolkit.arapRelax(10);
+        else if (k === 'r') uvToolkit.relaxUV(10);
         else if (k === 'z') uvToolkit.undo();
         else if (k === 'w') uvToolkit.toggleWireframe();
       });
@@ -1903,17 +2349,21 @@
 
     function answerHelp(input) {
       const q = input.toLowerCase();
-      if (q.includes('lscm')) return 'LSCM (Least Squares Conformal Maps, Levy 2002) flattens each chart so angles are preserved as well as possible, solved here with conjugate gradient and two pinned vertices. It is the same family of method Blender uses for its default unwrap.';
-      if (q.includes('arap')) return 'ARAP (As-Rigid-As-Possible, Liu 2008) alternates a per-triangle best-rotation fit with a vertex averaging step. It trades a little conformality for much better area preservation. Use the slider or the ARAP Relax button (R).';
-      if (q.includes('stretch') || q.includes('l2') || q.includes('distortion')) return 'Stretch L2/Linf are the Sander 2001 geometric-stretch metrics from the UV->3D Jacobian. 1.00 = isometric. Enable the heatmap: blue is near-isometric, red is stretched or flipped. Lower the segmentation angle or add ARAP iterations to improve it.';
-      if (q.includes('seam')) return 'Seams (yellow in 3D) appear on chart boundaries. The segmentation angle controls the trade-off: lower angle = flatter charts = less stretch but more/longer seams. The Optimize button searches that trade-off automatically.';
-      if (q.includes('pack') || q.includes('atlas') || q.includes('coverage')) return 'Packing PCA-orients each chart, scales it for uniform texel density, then shelf-packs by height. Atlas Coverage is measured by actually rasterizing the UV triangles, so it reflects real texture-space usage.';
+      if (q.includes('slim')) return 'SLIM (Scalable Locally Injective Mappings, Rabinovich 2017) minimizes the symmetric Dirichlet energy with a reweighted local/global scheme plus a flip-blocking line search, so triangles never invert during optimization. It is the default optimizer here and what the Relax button runs.';
+      if (q.includes('tutte') || q.includes('harmonic') || q.includes('floater')) return 'Tutte/Floater embedding pins the chart boundary to a circle (spaced by 3D arc length) and solves a Laplace system for the interior. The result is provably fold-over free, which makes it both a safe initializer and the automatic rescue used when LSCM produces flips.';
+      if (q.includes('lscm')) return 'LSCM (Least Squares Conformal Maps, Levy 2002) flattens each chart so angles are preserved as well as possible, solved with conjugate gradient and two pinned vertices. In v3, if LSCM leaves flipped triangles the chart automatically falls back to a Tutte embedding before optimization.';
+      if (q.includes('arap')) return 'ARAP (As-Rigid-As-Possible, Liu 2008) alternates a per-triangle best-rotation fit with area-weighted vertex averaging. It is available as an alternative optimizer, and in v3 it also uses the flip-blocking line search. SLIM usually reaches lower distortion.';
+      if (q.includes('dirichlet')) return 'Symmetric Dirichlet energy measures both stretch and compression of the UV map (it blows up when triangles degenerate or flip). 1.00 means perfectly isometric at the atlas scale. It is the objective SLIM minimizes, shown on the Sym. Dirichlet card and the chart.';
+      if (q.includes('stretch') || q.includes('l2')) return 'Stretch L2/Linf are the Sander 2001 geometric-stretch metrics from the UV->3D Jacobian. 1.00 = isometric. Enable the heatmap: blue is near-isometric, red is stretched or flipped. Lower the segmentation angle or raise optimizer iterations to improve it.';
+      if (q.includes('overlap')) return 'UV Overlap rasterizes the atlas and reports the fraction of covered texels claimed by more than one chart interior. It should read 0.0% — anything above means charts intersect in UV space, which causes texture bleeding when baking. Repack or re-unwrap to fix it.';
+      if (q.includes('seam')) return 'Seams (yellow in 3D) appear on chart boundaries. The segmentation angle controls the trade-off: lower angle = flatter charts = less stretch but more/longer seams. Closed surfaces are automatically cut open (you will see "split N closed charts" in the notes). The Optimize button searches that trade-off automatically.';
+      if (q.includes('pack') || q.includes('atlas') || q.includes('coverage') || q.includes('rotation') || q.includes('skyline')) return 'v3 packs with a skyline bottom-left algorithm: charts are PCA-oriented, density-scaled, then placed at the lowest gap that fits, optionally trying a 90-degree rotation per chart. Several bin widths are tested and the squarest atlas wins. Coverage is measured by rasterizing the actual UV triangles.';
       if (q.includes('texel') || q.includes('density')) return 'Texel density equalization scales every chart so UV area is proportional to its 3D surface area — uniform texture resolution across the model. Toggle it and the atlas repacks automatically.';
       if (q.includes('checker')) return 'The checker preview is the fastest visual test: squares should stay square and uniformly sized everywhere. Long rectangles mean stretch; size jumps between regions mean uneven texel density.';
-      if (q.includes('export') || q.includes('download') || q.includes('png')) return 'Download OBJ exports the mesh with its generated UVs. Export UV PNG saves a 2048px transparent wireframe of the layout for texturing in Photoshop/Krita. Export Report saves all metrics and settings as JSON.';
-      if (q.includes('mode')) return 'Research Atlas is the best general default (segmentation + LSCM + ARAP + packing). Box suits hard-surface objects, Spherical round organic shapes, Cylindrical tubes/bottles, Planar flat panels.';
-      if (q.includes('undo') || q.includes('shortcut') || q.includes('key')) return 'Shortcuts: U unwrap, O optimize, R ARAP relax, Z undo, W wireframe. Undo stores up to 12 UV snapshots.';
-      return 'Workflow: load an OBJ, Auto UV Unwrap (U), check the checker + Stretch L2, then Optimize (O) or ARAP Relax (R). Ask me about: lscm, arap, stretch, seams, packing, texel density, export.';
+      if (q.includes('export') || q.includes('download') || q.includes('png') || q.includes('report')) return 'Download OBJ exports the mesh with its generated UVs. Export UV PNG saves a 2048px transparent wireframe of the layout. Export Report saves all metrics (including symmetric Dirichlet and overlap), settings, and pipeline notes as JSON.';
+      if (q.includes('mode')) return 'Research Atlas is the best general default (segmentation + Tutte/LSCM + SLIM + skyline packing). Box suits hard-surface objects, Spherical round organic shapes, Cylindrical tubes/bottles, Planar flat panels.';
+      if (q.includes('undo') || q.includes('shortcut') || q.includes('key')) return 'Shortcuts: U unwrap, O optimize, R relax (SLIM), Z undo, W wireframe. Undo stores up to 12 UV snapshots.';
+      return 'Workflow: load an OBJ, Auto UV Unwrap (U), check the checker + Stretch L2 + Sym. Dirichlet + Overlap, then Optimize (O) or Relax (R). Ask me about: slim, tutte, lscm, arap, dirichlet, stretch, overlap, seams, packing, texel density, export.';
     }
 
     document.getElementById('send-button').addEventListener('click', () => {
