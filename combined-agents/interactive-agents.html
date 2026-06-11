@@ -1,0 +1,1273 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Advanced Playable Multi-Agent Ecosystem</title>
+  <style>
+    :root {
+      --panel: rgba(6, 10, 22, 0.82);
+      --panel-border: rgba(255, 255, 255, 0.14);
+      --text: #ecf4ff;
+      --muted: #a8b5c7;
+      --accent: #67d6ff;
+      --danger: #ff596d;
+      --good: #60f29e;
+      --warning: #ffd166;
+    }
+
+    * { box-sizing: border-box; }
+
+    html, body {
+      margin: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: #050914;
+      color: var(--text);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
+    }
+
+    canvas {
+      display: block;
+      width: 100vw;
+      height: 100vh;
+      background: radial-gradient(circle at center, #13223d 0%, #060914 70%);
+      cursor: crosshair;
+    }
+
+    #hud {
+      position: absolute;
+      top: 12px;
+      left: 12px;
+      z-index: 10;
+      width: min(390px, calc(100vw - 24px));
+      padding: 14px;
+      border: 1px solid var(--panel-border);
+      border-radius: 16px;
+      background: var(--panel);
+      backdrop-filter: blur(12px);
+      box-shadow: 0 18px 60px rgba(0, 0, 0, 0.3);
+      user-select: none;
+    }
+
+    #hud h1 {
+      margin: 0 0 8px;
+      font-size: 16px;
+      letter-spacing: 0.4px;
+    }
+
+    .row {
+      display: grid;
+      grid-template-columns: 108px 1fr auto;
+      align-items: center;
+      gap: 10px;
+      margin: 8px 0;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    input[type="range"] { width: 100%; }
+
+    .buttons {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 10px;
+    }
+
+    button {
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.08);
+      color: var(--text);
+      padding: 8px 11px;
+      font-size: 12px;
+      cursor: pointer;
+    }
+
+    button:hover { background: rgba(255, 255, 255, 0.16); }
+
+    #stats {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+      margin-top: 10px;
+    }
+
+    .stat {
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 12px;
+      padding: 8px;
+      background: rgba(255, 255, 255, 0.055);
+    }
+
+    .stat b {
+      display: block;
+      font-size: 15px;
+      color: white;
+    }
+
+    .stat span {
+      font-size: 11px;
+      color: var(--muted);
+    }
+
+    #eventBanner {
+      position: absolute;
+      top: 12px;
+      right: 12px;
+      z-index: 11;
+      min-width: 260px;
+      max-width: min(420px, calc(100vw - 24px));
+      border: 1px solid var(--panel-border);
+      border-radius: 16px;
+      background: var(--panel);
+      backdrop-filter: blur(12px);
+      padding: 12px 14px;
+      box-shadow: 0 18px 60px rgba(0, 0, 0, 0.3);
+      transform: translateY(-130%);
+      opacity: 0;
+      transition: 260ms ease;
+      pointer-events: none;
+    }
+
+    #eventBanner.show {
+      transform: translateY(0);
+      opacity: 1;
+    }
+
+    #eventBanner strong { color: var(--warning); }
+    #eventBanner p { margin: 4px 0 0; color: var(--muted); font-size: 12px; line-height: 1.35; }
+
+    #help {
+      position: absolute;
+      left: 12px;
+      bottom: 12px;
+      z-index: 10;
+      max-width: min(520px, calc(100vw - 24px));
+      padding: 11px 13px;
+      border: 1px solid var(--panel-border);
+      border-radius: 14px;
+      background: var(--panel);
+      backdrop-filter: blur(12px);
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.45;
+    }
+
+    .key {
+      display: inline-block;
+      min-width: 22px;
+      padding: 1px 6px;
+      border-radius: 6px;
+      background: rgba(255, 255, 255, 0.12);
+      color: #fff;
+      text-align: center;
+      font-weight: 700;
+    }
+
+    @media (max-width: 720px) {
+      #help { display: none; }
+      #hud { font-size: 12px; }
+      #eventBanner { top: auto; bottom: 12px; right: 12px; }
+    }
+  </style>
+</head>
+<body>
+  <canvas id="canvas"></canvas>
+
+  <section id="hud">
+    <h1>Playable Multi-Agent Ecosystem</h1>
+    <div class="row">
+      <label for="speedSlider">Agent Speed</label>
+      <input type="range" id="speedSlider" min="0.5" max="3" step="0.1" value="1.2" />
+      <output id="speedOutput">1.2x</output>
+    </div>
+    <div class="row">
+      <label for="eventSlider">Event Rate</label>
+      <input type="range" id="eventSlider" min="6" max="30" step="1" value="14" />
+      <output id="eventOutput">14s</output>
+    </div>
+    <div class="buttons">
+      <button id="resetBtn">Reset</button>
+      <button id="pauseBtn">Pause</button>
+      <button id="eventBtn">Trigger Event</button>
+      <button id="allyBtn">Spawn Allies</button>
+    </div>
+    <div id="stats">
+      <div class="stat"><b id="agentStat">0</b><span>AI agents</span></div>
+      <div class="stat"><b id="threatStat">0</b><span>threats</span></div>
+      <div class="stat"><b id="foodStat">0</b><span>food</span></div>
+      <div class="stat"><b id="healthStat">100</b><span>player HP</span></div>
+      <div class="stat"><b id="energyStat">100</b><span>energy</span></div>
+      <div class="stat"><b id="scoreStat">0</b><span>score</span></div>
+    </div>
+  </section>
+
+  <aside id="eventBanner">
+    <strong id="eventTitle">Event</strong>
+    <p id="eventText">Something changed in the environment.</p>
+  </aside>
+
+  <aside id="help">
+    <span class="key">WASD</span>/<span class="key">Arrows</span> move player · <span class="key">Mouse</span> aim · <span class="key">Click</span> shoot · <span class="key">Space</span> shield pulse · <span class="key">E</span> rally nearby agents · <span class="key">F</span> drop beacon · Touch: drag to move, tap to shoot.
+  </aside>
+
+  <script>
+    const canvas = document.getElementById("canvas");
+    const ctx = canvas.getContext("2d");
+
+    const ui = {
+      speedSlider: document.getElementById("speedSlider"),
+      speedOutput: document.getElementById("speedOutput"),
+      eventSlider: document.getElementById("eventSlider"),
+      eventOutput: document.getElementById("eventOutput"),
+      resetBtn: document.getElementById("resetBtn"),
+      pauseBtn: document.getElementById("pauseBtn"),
+      eventBtn: document.getElementById("eventBtn"),
+      allyBtn: document.getElementById("allyBtn"),
+      agentStat: document.getElementById("agentStat"),
+      threatStat: document.getElementById("threatStat"),
+      foodStat: document.getElementById("foodStat"),
+      healthStat: document.getElementById("healthStat"),
+      energyStat: document.getElementById("energyStat"),
+      scoreStat: document.getElementById("scoreStat"),
+      eventBanner: document.getElementById("eventBanner"),
+      eventTitle: document.getElementById("eventTitle"),
+      eventText: document.getElementById("eventText")
+    };
+
+    const TAU = Math.PI * 2;
+    const rand = (min, max) => Math.random() * (max - min) + min;
+    const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
+    const lerp = (a, b, t) => a + (b - a) * t;
+    const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+
+    function resize() {
+      canvas.width = Math.floor(window.innerWidth * devicePixelRatio);
+      canvas.height = Math.floor(window.innerHeight * devicePixelRatio);
+      canvas.style.width = window.innerWidth + "px";
+      canvas.style.height = window.innerHeight + "px";
+      ctx.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0);
+      world.w = window.innerWidth;
+      world.h = window.innerHeight;
+    }
+
+    const keys = new Set();
+    const pointer = { x: window.innerWidth / 2, y: window.innerHeight / 2, down: false, touchMove: false };
+
+    const world = {
+      w: window.innerWidth,
+      h: window.innerHeight,
+      t: 0,
+      paused: false,
+      score: 0,
+      speedScale: 1.2,
+      eventInterval: 14,
+      nextEventAt: 8,
+      wind: { x: 0, y: 0 },
+      visibility: 1,
+      gravityWell: null,
+      activeEvent: { name: "Stable", description: "The ecosystem is balanced.", time: 0, duration: 0 },
+      dayCycle: 0,
+      shake: 0
+    };
+
+    let agents = [];
+    let threats = [];
+    let foods = [];
+    let obstacles = [];
+    let projectiles = [];
+    let particles = [];
+    let zones = [];
+    let beacons = [];
+    let player;
+
+    class Vec {
+      constructor(x = 0, y = 0) { this.x = x; this.y = y; }
+      add(v) { this.x += v.x; this.y += v.y; return this; }
+      sub(v) { this.x -= v.x; this.y -= v.y; return this; }
+      mul(n) { this.x *= n; this.y *= n; return this; }
+      len() { return Math.hypot(this.x, this.y); }
+      norm() { const l = this.len() || 1; this.x /= l; this.y /= l; return this; }
+      limit(n) { const l = this.len(); if (l > n) this.mul(n / l); return this; }
+      clone() { return new Vec(this.x, this.y); }
+      static fromAngle(a, m = 1) { return new Vec(Math.cos(a) * m, Math.sin(a) * m); }
+    }
+
+    class Particle {
+      constructor(x, y, color, life = 0.5, size = 3, vx = rand(-1, 1), vy = rand(-1, 1)) {
+        this.x = x; this.y = y; this.vx = vx; this.vy = vy;
+        this.color = color; this.life = life; this.maxLife = life; this.size = size;
+      }
+      update(dt) {
+        this.x += this.vx * dt * 60;
+        this.y += this.vy * dt * 60;
+        this.vx *= 0.985;
+        this.vy *= 0.985;
+        this.life -= dt;
+      }
+      draw() {
+        const a = clamp(this.life / this.maxLife, 0, 1);
+        ctx.globalAlpha = a;
+        ctx.fillStyle = this.color;
+        ctx.beginPath();
+        ctx.arc(this.x, this.y, this.size * a, 0, TAU);
+        ctx.fill();
+        ctx.globalAlpha = 1;
+      }
+    }
+
+    class Zone {
+      constructor(type) {
+        this.type = type;
+        this.x = rand(80, world.w - 80);
+        this.y = rand(80, world.h - 80);
+        this.r = rand(70, 150);
+        this.phase = rand(0, TAU);
+      }
+      contains(e) { return Math.hypot(e.x - this.x, e.y - this.y) < this.r; }
+      apply(entity, dt) {
+        if (!this.contains(entity)) return;
+        if (this.type === "water") entity.zoneSpeed = Math.min(entity.zoneSpeed, 0.62);
+        if (this.type === "forest") {
+          entity.zoneSpeed = Math.min(entity.zoneSpeed, 0.85);
+          if (entity.health !== undefined) entity.health = Math.min(entity.maxHealth, entity.health + dt * 2.3);
+        }
+        if (this.type === "radiation" && entity.health !== undefined) entity.health -= dt * 4.5;
+        if (this.type === "thermal") {
+          const dx = entity.x - this.x, dy = entity.y - this.y;
+          const d = Math.hypot(dx, dy) || 1;
+          entity.vx += (dx / d) * dt * 38;
+          entity.vy += (dy / d) * dt * 38;
+        }
+      }
+      draw() {
+        let fill = "rgba(69, 156, 255, 0.12)";
+        let stroke = "rgba(117, 193, 255, 0.26)";
+        if (this.type === "forest") { fill = "rgba(62, 255, 138, 0.10)"; stroke = "rgba(96, 242, 158, 0.24)"; }
+        if (this.type === "radiation") { fill = "rgba(255, 217, 82, 0.09)"; stroke = "rgba(255, 217, 82, 0.30)"; }
+        if (this.type === "thermal") { fill = "rgba(255, 101, 89, 0.08)"; stroke = "rgba(255, 101, 89, 0.25)"; }
+        ctx.fillStyle = fill;
+        ctx.strokeStyle = stroke;
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(this.x, this.y, this.r + Math.sin(world.t * 2 + this.phase) * 4, 0, TAU);
+        ctx.fill();
+        ctx.stroke();
+      }
+    }
+
+    class ComplexObstacle {
+      constructor(x, y) {
+        this.x = x; this.y = y;
+        this.radius = rand(18, 58);
+        this.points = [];
+        this.rotation = rand(0, TAU);
+        this.spin = rand(-0.35, 0.35);
+        this.health = rand(40, 110);
+        const sides = Math.floor(rand(5, 11));
+        for (let i = 0; i < sides; i++) {
+          const a = (i / sides) * TAU;
+          const r = this.radius * rand(0.55, 1.15);
+          this.points.push({ x: Math.cos(a) * r, y: Math.sin(a) * r });
+        }
+      }
+      verts() {
+        const s = Math.sin(this.rotation), c = Math.cos(this.rotation);
+        return this.points.map(p => ({ x: this.x + p.x * c - p.y * s, y: this.y + p.x * s + p.y * c }));
+      }
+      update(dt) { this.rotation += this.spin * dt; }
+      draw() {
+        const verts = this.verts();
+        ctx.beginPath();
+        ctx.moveTo(verts[0].x, verts[0].y);
+        for (let i = 1; i < verts.length; i++) ctx.lineTo(verts[i].x, verts[i].y);
+        ctx.closePath();
+        const g = ctx.createRadialGradient(this.x - this.radius / 3, this.y - this.radius / 3, 4, this.x, this.y, this.radius * 1.2);
+        g.addColorStop(0, "rgba(210, 222, 255, 0.26)");
+        g.addColorStop(1, "rgba(88, 103, 130, 0.56)");
+        ctx.fillStyle = g;
+        ctx.strokeStyle = "rgba(235, 245, 255, 0.28)";
+        ctx.lineWidth = 1.5;
+        ctx.fill();
+        ctx.stroke();
+      }
+    }
+
+    function pointInPoly(point, verts) {
+      let inside = false;
+      for (let i = 0, j = verts.length - 1; i < verts.length; j = i++) {
+        const xi = verts[i].x, yi = verts[i].y;
+        const xj = verts[j].x, yj = verts[j].y;
+        const intersect = ((yi > point.y) !== (yj > point.y)) &&
+          (point.x < (xj - xi) * (point.y - yi) / ((yj - yi) || 0.0001) + xi);
+        if (intersect) inside = !inside;
+      }
+      return inside;
+    }
+
+    function closestPointOnSegment(p, a, b) {
+      const abx = b.x - a.x, aby = b.y - a.y;
+      const t = clamp(((p.x - a.x) * abx + (p.y - a.y) * aby) / ((abx * abx + aby * aby) || 1), 0, 1);
+      return { x: a.x + abx * t, y: a.y + aby * t };
+    }
+
+    function resolveObstacleCollision(entity, obstacle, bounce = 0.45) {
+      const d = Math.hypot(entity.x - obstacle.x, entity.y - obstacle.y);
+      if (d > obstacle.radius + entity.size + 8) return false;
+      const verts = obstacle.verts();
+      let closest = null;
+      let closestD = Infinity;
+      for (let i = 0; i < verts.length; i++) {
+        const a = verts[i], b = verts[(i + 1) % verts.length];
+        const p = closestPointOnSegment(entity, a, b);
+        const dd = Math.hypot(entity.x - p.x, entity.y - p.y);
+        if (dd < closestD) { closestD = dd; closest = p; }
+      }
+      const inside = pointInPoly(entity, verts);
+      if (inside || closestD < entity.size) {
+        let nx = entity.x - closest.x;
+        let ny = entity.y - closest.y;
+        let n = Math.hypot(nx, ny);
+        if (inside || n < 0.001) {
+          nx = entity.x - obstacle.x;
+          ny = entity.y - obstacle.y;
+          n = Math.hypot(nx, ny) || 1;
+        }
+        nx /= n; ny /= n;
+        const push = inside ? entity.size + 4 : entity.size - closestD + 1;
+        entity.x += nx * push;
+        entity.y += ny * push;
+        entity.vx = (entity.vx || 0) * -bounce + nx * 1.5;
+        entity.vy = (entity.vy || 0) * -bounce + ny * 1.5;
+        return true;
+      }
+      return false;
+    }
+
+    class Food {
+      constructor(x = rand(20, world.w - 20), y = rand(20, world.h - 20), rich = false) {
+        this.x = x; this.y = y; this.size = rich ? 8 : 5;
+        this.energy = rich ? 42 : 18;
+        this.life = rich ? 26 : 17;
+        this.rich = rich;
+      }
+      update(dt) { this.life -= dt; }
+      draw() {
+        ctx.shadowBlur = this.rich ? 18 : 8;
+        ctx.shadowColor = this.rich ? "#b1ff66" : "#60f29e";
+        ctx.fillStyle = this.rich ? "#caff68" : "#60f29e";
+        ctx.beginPath();
+        ctx.arc(this.x, this.y, this.size + Math.sin(world.t * 6) * 0.7, 0, TAU);
+        ctx.fill();
+        ctx.shadowBlur = 0;
+      }
+    }
+
+    class Projectile {
+      constructor(x, y, angle, owner = "player") {
+        this.x = x; this.y = y;
+        this.vx = Math.cos(angle) * 620;
+        this.vy = Math.sin(angle) * 620;
+        this.size = owner === "player" ? 4 : 3;
+        this.life = 0.95;
+        this.owner = owner;
+      }
+      update(dt) {
+        this.vx += world.wind.x * dt * 32;
+        this.vy += world.wind.y * dt * 32;
+        this.x += this.vx * dt;
+        this.y += this.vy * dt;
+        this.life -= dt;
+        for (const o of obstacles) {
+          if (resolveObstacleCollision(this, o, 0.1)) {
+            this.life = 0;
+            o.health -= 14;
+            burst(this.x, this.y, "rgba(180,220,255,0.9)", 8);
+            break;
+          }
+        }
+      }
+      draw() {
+        ctx.strokeStyle = this.owner === "player" ? "rgba(103,214,255,0.95)" : "rgba(255,209,102,0.85)";
+        ctx.lineWidth = this.owner === "player" ? 3 : 2;
+        ctx.beginPath();
+        ctx.moveTo(this.x, this.y);
+        ctx.lineTo(this.x - this.vx * 0.025, this.y - this.vy * 0.025);
+        ctx.stroke();
+      }
+    }
+
+    class Agent {
+      constructor(x, y, elite = false) {
+        this.x = x; this.y = y;
+        this.vx = rand(-1, 1); this.vy = rand(-1, 1);
+        this.size = elite ? 7 : rand(4, 6.2);
+        this.maxHealth = elite ? 150 : 100;
+        this.health = this.maxHealth;
+        this.energy = rand(45, 100);
+        this.maxSpeed = elite ? rand(82, 112) : rand(48, 84);
+        this.turn = rand(0.75, 1.25);
+        this.reproCooldown = rand(4, 13);
+        this.fireCooldown = rand(1, 3);
+        this.zoneSpeed = 1;
+        this.color = elite ? "#8fd3ff" : `hsl(${rand(190, 225)}, 85%, ${rand(48, 64)}%)`;
+        this.intent = "wander";
+        this.elite = elite;
+      }
+
+      steerTowards(target, strength) {
+        const desired = new Vec(target.x - this.x, target.y - this.y).norm().mul(strength);
+        this.vx += desired.x;
+        this.vy += desired.y;
+      }
+
+      update(dt) {
+        this.zoneSpeed = 1;
+        for (const z of zones) z.apply(this, dt);
+
+        const nearestThreat = findNearest(this, threats, 220);
+        const nearestFood = findNearest(this, foods, 260);
+        const nearestBeacon = findNearest(this, beacons, 360);
+
+        if (nearestThreat && this.health < 55) {
+          this.intent = "evade";
+          this.steerTowards({ x: this.x - (nearestThreat.x - this.x), y: this.y - (nearestThreat.y - this.y) }, 82 * dt);
+        } else if (nearestBeacon) {
+          this.intent = "rally";
+          this.steerTowards(nearestBeacon, 48 * dt);
+        } else if (nearestFood && this.energy < 90) {
+          this.intent = "forage";
+          this.steerTowards(nearestFood, 54 * dt);
+        } else if (nearestThreat && this.health > 40) {
+          this.intent = "combat";
+          this.steerTowards(nearestThreat, 33 * dt);
+        } else {
+          this.intent = "wander";
+          this.vx += Math.cos(world.t * this.turn + this.x * 0.01) * 12 * dt;
+          this.vy += Math.sin(world.t * this.turn + this.y * 0.01) * 12 * dt;
+        }
+
+        // Light flocking: separation from close allies.
+        let sx = 0, sy = 0, count = 0;
+        for (const other of agents) {
+          if (other === this) continue;
+          const d = Math.hypot(this.x - other.x, this.y - other.y);
+          if (d > 0 && d < 32) {
+            sx += (this.x - other.x) / d;
+            sy += (this.y - other.y) / d;
+            count++;
+          }
+        }
+        if (count) { this.vx += sx * 18 * dt; this.vy += sy * 18 * dt; }
+
+        if (world.gravityWell) {
+          const dx = world.gravityWell.x - this.x, dy = world.gravityWell.y - this.y;
+          const d = Math.hypot(dx, dy) || 1;
+          this.vx += (dx / d) * world.gravityWell.power * dt;
+          this.vy += (dy / d) * world.gravityWell.power * dt;
+        }
+
+        const max = this.maxSpeed * world.speedScale * this.zoneSpeed;
+        const v = new Vec(this.vx, this.vy).limit(max);
+        this.vx = v.x; this.vy = v.y;
+        this.x += this.vx * dt;
+        this.y += this.vy * dt;
+        this.vx *= 0.965;
+        this.vy *= 0.965;
+        this.energy -= dt * (0.9 + Math.hypot(this.vx, this.vy) / 180);
+        this.health -= this.energy <= 0 ? dt * 7 : 0;
+
+        keepInside(this);
+        for (const o of obstacles) resolveObstacleCollision(this, o);
+        eatFood(this);
+        this.combat(dt, nearestThreat);
+        this.reproduce(dt);
+      }
+
+      combat(dt, nearestThreat) {
+        this.fireCooldown -= dt;
+        if (!nearestThreat || nearestThreat.dead) return;
+        const d = dist(this, nearestThreat);
+        if (d < this.size + nearestThreat.size + 4) {
+          nearestThreat.health -= 18 * dt;
+          this.health -= 5 * dt;
+        }
+        if (this.fireCooldown <= 0 && d < 190 && this.energy > 15) {
+          const a = Math.atan2(nearestThreat.y - this.y, nearestThreat.x - this.x);
+          projectiles.push(new Projectile(this.x, this.y, a, "ally"));
+          this.energy -= 4;
+          this.fireCooldown = rand(1.1, 2.6);
+        }
+      }
+
+      reproduce(dt) {
+        this.reproCooldown -= dt;
+        if (this.reproCooldown <= 0 && this.energy > 82 && this.health > 70 && agents.length < 90) {
+          this.energy *= 0.58;
+          this.reproCooldown = rand(8, 18);
+          agents.push(new Agent(this.x + rand(-15, 15), this.y + rand(-15, 15), Math.random() < 0.08));
+          burst(this.x, this.y, "rgba(103,214,255,0.9)", 12);
+        }
+      }
+
+      draw() {
+        const angle = Math.atan2(this.vy, this.vx);
+        ctx.save();
+        ctx.translate(this.x, this.y);
+        ctx.rotate(angle);
+        ctx.shadowBlur = this.elite ? 14 : 0;
+        ctx.shadowColor = "#67d6ff";
+        ctx.fillStyle = this.color;
+        ctx.beginPath();
+        ctx.moveTo(this.size + 4, 0);
+        ctx.lineTo(-this.size, -this.size * 0.75);
+        ctx.lineTo(-this.size * 0.55, 0);
+        ctx.lineTo(-this.size, this.size * 0.75);
+        ctx.closePath();
+        ctx.fill();
+        ctx.restore();
+        ctx.shadowBlur = 0;
+        drawBar(this.x, this.y - this.size - 8, this.health / this.maxHealth, 20, "#60f29e");
+      }
+    }
+
+    class Player extends Agent {
+      constructor(x, y) {
+        super(x, y, true);
+        this.size = 9;
+        this.maxHealth = 180;
+        this.health = this.maxHealth;
+        this.energy = 100;
+        this.maxSpeed = 175;
+        this.fireCooldown = 0;
+        this.shieldCooldown = 0;
+        this.beaconCooldown = 0;
+        this.rallyTimer = 0;
+      }
+      update(dt) {
+        this.zoneSpeed = 1;
+        for (const z of zones) z.apply(this, dt);
+        let mx = 0, my = 0;
+        if (keys.has("w") || keys.has("arrowup")) my -= 1;
+        if (keys.has("s") || keys.has("arrowdown")) my += 1;
+        if (keys.has("a") || keys.has("arrowleft")) mx -= 1;
+        if (keys.has("d") || keys.has("arrowright")) mx += 1;
+        if (pointer.touchMove) {
+          const dx = pointer.x - this.x;
+          const dy = pointer.y - this.y;
+          const d = Math.hypot(dx, dy);
+          if (d > 20) { mx += dx / d; my += dy / d; }
+        }
+        const m = Math.hypot(mx, my) || 1;
+        this.vx += (mx / m) * this.maxSpeed * 5.5 * dt;
+        this.vy += (my / m) * this.maxSpeed * 5.5 * dt;
+
+        if (world.gravityWell) {
+          const dx = world.gravityWell.x - this.x, dy = world.gravityWell.y - this.y;
+          const d = Math.hypot(dx, dy) || 1;
+          this.vx += (dx / d) * world.gravityWell.power * dt;
+          this.vy += (dy / d) * world.gravityWell.power * dt;
+        }
+
+        const max = this.maxSpeed * this.zoneSpeed;
+        const v = new Vec(this.vx, this.vy).limit(max);
+        this.vx = v.x; this.vy = v.y;
+        this.x += this.vx * dt;
+        this.y += this.vy * dt;
+        this.vx *= 0.88;
+        this.vy *= 0.88;
+        this.energy = clamp(this.energy + dt * 12, 0, 100);
+        this.fireCooldown -= dt;
+        this.shieldCooldown -= dt;
+        this.beaconCooldown -= dt;
+        this.rallyTimer -= dt;
+
+        if (pointer.down) this.shoot();
+        if (keys.has(" ")) this.shieldPulse();
+        if (keys.has("e")) this.rally();
+        if (keys.has("f")) this.dropBeacon();
+
+        keepInside(this);
+        for (const o of obstacles) resolveObstacleCollision(this, o);
+        eatFood(this);
+      }
+      shoot() {
+        if (this.fireCooldown > 0 || this.energy < 6) return;
+        const a = Math.atan2(pointer.y - this.y, pointer.x - this.x);
+        projectiles.push(new Projectile(this.x + Math.cos(a) * this.size, this.y + Math.sin(a) * this.size, a, "player"));
+        this.fireCooldown = 0.14;
+        this.energy -= 3.2;
+      }
+      shieldPulse() {
+        if (this.shieldCooldown > 0 || this.energy < 28) return;
+        this.energy -= 28;
+        this.shieldCooldown = 2.4;
+        world.shake = Math.max(world.shake, 5);
+        for (const t of threats) {
+          const dx = t.x - this.x, dy = t.y - this.y;
+          const d = Math.hypot(dx, dy) || 1;
+          if (d < 120) {
+            t.vx += (dx / d) * 280;
+            t.vy += (dy / d) * 280;
+            t.health -= 18;
+          }
+        }
+        burst(this.x, this.y, "rgba(103,214,255,0.88)", 55, 6);
+      }
+      rally() {
+        if (this.rallyTimer > 0 || this.energy < 12) return;
+        this.energy -= 12;
+        this.rallyTimer = 1.4;
+        for (const a of agents) {
+          if (dist(this, a) < 260) {
+            a.health = Math.min(a.maxHealth, a.health + 10);
+            a.energy = Math.min(100, a.energy + 16);
+            a.steerTowards(this, 15);
+          }
+        }
+        burst(this.x, this.y, "rgba(141, 211, 255, 0.8)", 24, 3);
+      }
+      dropBeacon() {
+        if (this.beaconCooldown > 0 || this.energy < 18) return;
+        this.energy -= 18;
+        this.beaconCooldown = 4;
+        beacons.push({ x: this.x, y: this.y, life: 9, size: 13 });
+      }
+      draw() {
+        const angle = Math.atan2(pointer.y - this.y, pointer.x - this.x);
+        ctx.save();
+        ctx.translate(this.x, this.y);
+        ctx.rotate(angle);
+        ctx.shadowBlur = 22;
+        ctx.shadowColor = "#67d6ff";
+        ctx.fillStyle = "#67d6ff";
+        ctx.beginPath();
+        ctx.moveTo(this.size + 9, 0);
+        ctx.lineTo(-this.size, -this.size);
+        ctx.lineTo(-this.size * 0.45, 0);
+        ctx.lineTo(-this.size, this.size);
+        ctx.closePath();
+        ctx.fill();
+        ctx.fillStyle = "rgba(255,255,255,0.9)";
+        ctx.fillRect(0, -2, this.size + 10, 4);
+        ctx.restore();
+        ctx.shadowBlur = 0;
+
+        if (this.shieldCooldown > 1.9) {
+          ctx.strokeStyle = "rgba(103,214,255,0.55)";
+          ctx.lineWidth = 3;
+          ctx.beginPath();
+          ctx.arc(this.x, this.y, 120 * (2.4 - this.shieldCooldown) / 0.5, 0, TAU);
+          ctx.stroke();
+        }
+        drawBar(this.x, this.y - this.size - 15, this.health / this.maxHealth, 36, "#60f29e");
+        drawBar(this.x, this.y - this.size - 9, this.energy / 100, 36, "#67d6ff");
+      }
+    }
+
+    class Threat {
+      constructor(x = rand(20, world.w - 20), y = rand(20, world.h - 20), boss = false) {
+        this.x = x; this.y = y;
+        this.vx = rand(-30, 30); this.vy = rand(-30, 30);
+        this.size = boss ? 16 : rand(7, 11);
+        this.maxHealth = boss ? 180 : 52;
+        this.health = this.maxHealth;
+        this.speed = boss ? 72 : rand(58, 94);
+        this.attackCooldown = rand(0.2, 1.2);
+        this.boss = boss;
+        this.dead = false;
+      }
+      update(dt) {
+        const targets = [player, ...agents];
+        const target = findNearest(this, targets, this.boss ? 620 : 420) || player;
+        const dx = target.x - this.x, dy = target.y - this.y;
+        const d = Math.hypot(dx, dy) || 1;
+        this.vx += (dx / d) * this.speed * 2.4 * dt;
+        this.vy += (dy / d) * this.speed * 2.4 * dt;
+
+        // Avoid obstacle centers so threats do not get stuck.
+        for (const o of obstacles) {
+          const od = Math.hypot(this.x - o.x, this.y - o.y);
+          if (od < o.radius + 70) {
+            this.vx += ((this.x - o.x) / (od || 1)) * 80 * dt;
+            this.vy += ((this.y - o.y) / (od || 1)) * 80 * dt;
+          }
+        }
+
+        if (world.activeEvent.name === "Blood Moon") {
+          this.vx *= 1.005;
+          this.vy *= 1.005;
+        }
+
+        const max = this.speed * (this.boss ? 1.05 : 1);
+        const v = new Vec(this.vx, this.vy).limit(max);
+        this.vx = v.x; this.vy = v.y;
+        this.x += this.vx * dt;
+        this.y += this.vy * dt;
+        this.vx *= 0.94; this.vy *= 0.94;
+        keepInside(this);
+        for (const o of obstacles) resolveObstacleCollision(this, o, 0.3);
+        this.attackCooldown -= dt;
+        if (d < this.size + target.size + 9 && this.attackCooldown <= 0) {
+          target.health -= this.boss ? 24 : 14;
+          this.attackCooldown = this.boss ? 0.55 : 0.8;
+          burst(target.x, target.y, "rgba(255,89,109,0.9)", 10);
+        }
+      }
+      draw() {
+        const a = Math.atan2(this.vy, this.vx);
+        ctx.save();
+        ctx.translate(this.x, this.y);
+        ctx.rotate(a);
+        ctx.shadowBlur = this.boss ? 28 : 12;
+        ctx.shadowColor = "#ff596d";
+        ctx.fillStyle = this.boss ? "#ff2950" : "#ff596d";
+        ctx.beginPath();
+        ctx.moveTo(this.size + 5, 0);
+        for (let i = 1; i < 8; i++) {
+          const ang = (i / 8) * TAU;
+          const r = i % 2 ? this.size * 0.8 : this.size * 1.2;
+          ctx.lineTo(Math.cos(ang) * r, Math.sin(ang) * r);
+        }
+        ctx.closePath();
+        ctx.fill();
+        ctx.restore();
+        ctx.shadowBlur = 0;
+        drawBar(this.x, this.y - this.size - 9, this.health / this.maxHealth, this.boss ? 44 : 24, "#ff596d");
+      }
+    }
+
+    function drawBar(x, y, pct, width, color) {
+      pct = clamp(pct, 0, 1);
+      ctx.fillStyle = "rgba(0,0,0,0.42)";
+      ctx.fillRect(x - width / 2, y, width, 3.5);
+      ctx.fillStyle = color;
+      ctx.fillRect(x - width / 2, y, width * pct, 3.5);
+    }
+
+    function keepInside(e) {
+      if (e.x < e.size) { e.x = e.size; e.vx = Math.abs(e.vx || 0) * 0.5; }
+      if (e.x > world.w - e.size) { e.x = world.w - e.size; e.vx = -Math.abs(e.vx || 0) * 0.5; }
+      if (e.y < e.size) { e.y = e.size; e.vy = Math.abs(e.vy || 0) * 0.5; }
+      if (e.y > world.h - e.size) { e.y = world.h - e.size; e.vy = -Math.abs(e.vy || 0) * 0.5; }
+    }
+
+    function findNearest(origin, list, range = Infinity) {
+      let best = null, bestD = range;
+      for (const item of list) {
+        if (!item || item.dead || item.health <= 0) continue;
+        const d = Math.hypot(origin.x - item.x, origin.y - item.y);
+        if (d < bestD) { bestD = d; best = item; }
+      }
+      return best;
+    }
+
+    function eatFood(entity) {
+      for (let i = foods.length - 1; i >= 0; i--) {
+        const f = foods[i];
+        if (Math.hypot(entity.x - f.x, entity.y - f.y) < entity.size + f.size) {
+          entity.energy = Math.min(100, (entity.energy || 0) + f.energy);
+          entity.health = Math.min(entity.maxHealth, entity.health + f.energy * 0.55);
+          foods.splice(i, 1);
+          if (entity === player) world.score += f.rich ? 8 : 3;
+          burst(f.x, f.y, f.rich ? "rgba(202,255,104,0.9)" : "rgba(96,242,158,0.8)", 14);
+        }
+      }
+    }
+
+    function burst(x, y, color, count = 12, size = 3) {
+      for (let i = 0; i < count; i++) {
+        const a = rand(0, TAU);
+        const s = rand(0.4, 4.5);
+        particles.push(new Particle(x, y, color, rand(0.25, 0.8), rand(1.2, size), Math.cos(a) * s, Math.sin(a) * s));
+      }
+    }
+
+    function resetSimulation() {
+      agents = [];
+      threats = [];
+      foods = [];
+      obstacles = [];
+      projectiles = [];
+      particles = [];
+      zones = [];
+      beacons = [];
+      world.score = 0;
+      world.wind.x = 0;
+      world.wind.y = 0;
+      world.visibility = 1;
+      world.gravityWell = null;
+      world.activeEvent = { name: "Stable", description: "The ecosystem is balanced.", time: 0, duration: 0 };
+      player = new Player(world.w / 2, world.h / 2);
+
+      for (let i = 0; i < 32; i++) agents.push(new Agent(rand(40, world.w - 40), rand(40, world.h - 40), Math.random() < 0.07));
+      for (let i = 0; i < 13; i++) threats.push(new Threat(rand(40, world.w - 40), rand(40, world.h - 40)));
+      for (let i = 0; i < 44; i++) foods.push(new Food());
+      for (let i = 0; i < 26; i++) obstacles.push(new ComplexObstacle(rand(70, world.w - 70), rand(70, world.h - 70)));
+      const zoneTypes = ["water", "forest", "radiation", "thermal", "water", "forest"];
+      for (const type of zoneTypes) zones.push(new Zone(type));
+    }
+
+    const eventLibrary = [
+      {
+        name: "Meteor Shower",
+        description: "Falling meteors break terrain and scatter rich food.",
+        duration: 7,
+        start() { world.shake = 9; },
+        tick(dt) {
+          if (Math.random() < dt * 4.2) {
+            const x = rand(20, world.w - 20), y = rand(20, world.h - 20);
+            burst(x, y, "rgba(255,209,102,0.95)", 34, 6);
+            foods.push(new Food(x + rand(-35, 35), y + rand(-35, 35), true));
+            if (Math.random() < 0.34 && obstacles.length < 45) obstacles.push(new ComplexObstacle(x, y));
+            for (const e of [player, ...agents, ...threats]) {
+              const d = Math.hypot(e.x - x, e.y - y);
+              if (d < 80) e.health -= (80 - d) * 0.38;
+            }
+          }
+        },
+        end() {}
+      },
+      {
+        name: "Electric Storm",
+        description: "Wind pushes projectiles and movement. Agents lose energy faster.",
+        duration: 12,
+        start() { world.wind.x = rand(-3, 3); world.wind.y = rand(-3, 3); },
+        tick(dt) {
+          for (const a of agents) a.energy -= dt * 1.5;
+          player.energy = Math.max(0, player.energy - dt * 2.2);
+          if (Math.random() < dt * 11) particles.push(new Particle(rand(0, world.w), rand(0, world.h), "rgba(160,210,255,0.55)", 0.32, 2, world.wind.x * 3, world.wind.y * 3));
+        },
+        end() { world.wind.x = 0; world.wind.y = 0; }
+      },
+      {
+        name: "Resource Bloom",
+        description: "Food grows across the map and agents reproduce more easily.",
+        duration: 10,
+        start() {
+          for (let i = 0; i < 30; i++) foods.push(new Food(rand(30, world.w - 30), rand(30, world.h - 30), Math.random() < 0.25));
+        },
+        tick(dt) { if (Math.random() < dt * 4) foods.push(new Food(undefined, undefined, true)); },
+        end() {}
+      },
+      {
+        name: "Blood Moon",
+        description: "Threats become aggressive. A boss may enter the simulation.",
+        duration: 13,
+        start() {
+          threats.push(new Threat(rand(40, world.w - 40), rand(40, world.h - 40), true));
+          for (let i = 0; i < 6; i++) threats.push(new Threat());
+        },
+        tick(dt) { if (Math.random() < dt * 1.5 && threats.length < 34) threats.push(new Threat()); },
+        end() {}
+      },
+      {
+        name: "Healing Rain",
+        description: "Living agents regenerate health, but visibility drops.",
+        duration: 11,
+        start() { world.visibility = 0.68; },
+        tick(dt) {
+          player.health = Math.min(player.maxHealth, player.health + dt * 6);
+          for (const a of agents) a.health = Math.min(a.maxHealth, a.health + dt * 5);
+          if (Math.random() < dt * 30) particles.push(new Particle(rand(0, world.w), rand(0, world.h), "rgba(103,214,255,0.5)", 0.55, 1.6, -0.3, 5));
+        },
+        end() { world.visibility = 1; }
+      },
+      {
+        name: "Gravity Rift",
+        description: "A temporary gravity well pulls every creature toward it.",
+        duration: 9,
+        start() { world.gravityWell = { x: rand(120, world.w - 120), y: rand(120, world.h - 120), power: 75 }; },
+        tick(dt) {
+          if (!world.gravityWell) return;
+          burst(world.gravityWell.x, world.gravityWell.y, "rgba(190,120,255,0.45)", 1, 8);
+        },
+        end() { world.gravityWell = null; }
+      }
+    ];
+
+    function triggerRandomEvent() {
+      if (world.activeEvent.time > 0) world.activeEvent.end?.();
+      const event = eventLibrary[Math.floor(Math.random() * eventLibrary.length)];
+      world.activeEvent = { ...event, time: event.duration };
+      event.start?.();
+      ui.eventTitle.textContent = event.name;
+      ui.eventText.textContent = event.description;
+      ui.eventBanner.classList.add("show");
+      clearTimeout(triggerRandomEvent.hideTimer);
+      triggerRandomEvent.hideTimer = setTimeout(() => ui.eventBanner.classList.remove("show"), 4200);
+    }
+
+    function updateEntities(dt) {
+      world.t += dt;
+      world.dayCycle = (Math.sin(world.t * 0.035) + 1) / 2;
+      world.nextEventAt -= dt;
+      if (world.nextEventAt <= 0) {
+        triggerRandomEvent();
+        world.nextEventAt = world.eventInterval + rand(-3, 6);
+      }
+
+      if (world.activeEvent.time > 0) {
+        world.activeEvent.time -= dt;
+        world.activeEvent.tick?.(dt);
+        if (world.activeEvent.time <= 0) {
+          world.activeEvent.end?.();
+          world.activeEvent = { name: "Stable", description: "The ecosystem is balanced.", time: 0, duration: 0 };
+        }
+      }
+
+      player.update(dt);
+      for (const a of agents) a.update(dt);
+      for (const t of threats) t.update(dt);
+      for (const o of obstacles) o.update(dt);
+      for (const f of foods) f.update(dt);
+      for (const p of projectiles) p.update(dt);
+      for (const p of particles) p.update(dt);
+      for (const b of beacons) b.life -= dt;
+
+      handleProjectileHits();
+
+      agents = agents.filter(a => a.health > 0 && a.energy > -30);
+      threats = threats.filter(t => t.health > 0 && !t.dead);
+      foods = foods.filter(f => f.life > 0);
+      obstacles = obstacles.filter(o => o.health > 0);
+      projectiles = projectiles.filter(p => p.life > 0 && p.x > -50 && p.y > -50 && p.x < world.w + 50 && p.y < world.h + 50);
+      particles = particles.filter(p => p.life > 0);
+      beacons = beacons.filter(b => b.life > 0);
+
+      while (foods.length < 35) foods.push(new Food());
+      while (threats.length < 10 + Math.floor(world.t / 60) && threats.length < 30) threats.push(new Threat());
+      while (agents.length < 14) agents.push(new Agent(rand(40, world.w - 40), rand(40, world.h - 40)));
+
+      if (player.health <= 0) {
+        ui.eventTitle.textContent = "Player Down";
+        ui.eventText.textContent = "The simulation reset because your commander agent was destroyed.";
+        ui.eventBanner.classList.add("show");
+        resetSimulation();
+      }
+    }
+
+    function handleProjectileHits() {
+      for (const p of projectiles) {
+        if (p.owner === "player" || p.owner === "ally") {
+          for (const t of threats) {
+            if (Math.hypot(p.x - t.x, p.y - t.y) < p.size + t.size) {
+              t.health -= p.owner === "player" ? 24 : 13;
+              p.life = 0;
+              burst(t.x, t.y, "rgba(255,89,109,0.95)", 12);
+              if (t.health <= 0) {
+                world.score += t.boss ? 60 : 10;
+                burst(t.x, t.y, "rgba(255,209,102,0.95)", t.boss ? 55 : 20, t.boss ? 7 : 4);
+              }
+              break;
+            }
+          }
+        }
+      }
+    }
+
+    function renderBackground() {
+      const night = 1 - world.dayCycle;
+      const g = ctx.createRadialGradient(world.w * 0.5, world.h * 0.45, 40, world.w * 0.5, world.h * 0.5, Math.max(world.w, world.h));
+      g.addColorStop(0, `rgba(${20 + world.dayCycle * 18}, ${34 + world.dayCycle * 20}, ${68 + world.dayCycle * 26}, 1)`);
+      g.addColorStop(1, `rgba(${4 + night * 2}, ${8 + night * 3}, ${19 + night * 9}, 1)`);
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, world.w, world.h);
+
+      ctx.globalAlpha = 0.16;
+      ctx.strokeStyle = "rgba(255,255,255,0.24)";
+      ctx.lineWidth = 1;
+      const grid = 64;
+      const off = (world.t * 8) % grid;
+      for (let x = -off; x < world.w; x += grid) {
+        ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, world.h); ctx.stroke();
+      }
+      for (let y = -off; y < world.h; y += grid) {
+        ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(world.w, y); ctx.stroke();
+      }
+      ctx.globalAlpha = 1;
+    }
+
+    function render() {
+      ctx.save();
+      if (world.shake > 0) {
+        ctx.translate(rand(-world.shake, world.shake), rand(-world.shake, world.shake));
+        world.shake *= 0.88;
+        if (world.shake < 0.2) world.shake = 0;
+      }
+
+      renderBackground();
+      zones.forEach(z => z.draw());
+
+      if (world.gravityWell) {
+        const r = 70 + Math.sin(world.t * 6) * 8;
+        ctx.strokeStyle = "rgba(190,120,255,0.48)";
+        ctx.lineWidth = 4;
+        ctx.beginPath();
+        ctx.arc(world.gravityWell.x, world.gravityWell.y, r, 0, TAU);
+        ctx.stroke();
+        ctx.fillStyle = "rgba(190,120,255,0.12)";
+        ctx.beginPath();
+        ctx.arc(world.gravityWell.x, world.gravityWell.y, r * 0.72, 0, TAU);
+        ctx.fill();
+      }
+
+      foods.forEach(f => f.draw());
+      beacons.forEach(drawBeacon);
+      obstacles.forEach(o => o.draw());
+      agents.forEach(a => a.draw());
+      threats.forEach(t => t.draw());
+      player.draw();
+      projectiles.forEach(p => p.draw());
+      particles.forEach(p => p.draw());
+      drawConnections();
+      ctx.restore();
+
+      if (world.visibility < 1) {
+        ctx.fillStyle = `rgba(180, 210, 235, ${0.20 * (1 - world.visibility)})`;
+        ctx.fillRect(0, 0, world.w, world.h);
+      }
+      drawMinimap();
+    }
+
+    function drawBeacon(b) {
+      const r = b.size + Math.sin(world.t * 5) * 4;
+      ctx.strokeStyle = "rgba(255,209,102,0.7)";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(b.x, b.y, r, 0, TAU);
+      ctx.stroke();
+      ctx.fillStyle = "rgba(255,209,102,0.24)";
+      ctx.beginPath();
+      ctx.arc(b.x, b.y, 5, 0, TAU);
+      ctx.fill();
+    }
+
+    function drawConnections() {
+      ctx.lineWidth = 1;
+      for (const a of agents) {
+        const d = dist(a, player);
+        if (d < 140) {
+          ctx.globalAlpha = (1 - d / 140) * 0.35;
+          ctx.strokeStyle = "#67d6ff";
+          ctx.beginPath();
+          ctx.moveTo(a.x, a.y);
+          ctx.lineTo(player.x, player.y);
+          ctx.stroke();
+        }
+      }
+      ctx.globalAlpha = 1;
+    }
+
+    function drawMinimap() {
+      const w = 152, h = 96, pad = 13;
+      const x = world.w - w - pad, y = world.h - h - pad;
+      ctx.fillStyle = "rgba(6,10,22,0.72)";
+      ctx.strokeStyle = "rgba(255,255,255,0.15)";
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.roundRect(x, y, w, h, 12);
+      ctx.fill(); ctx.stroke();
+      const sx = w / world.w, sy = h / world.h;
+      function dot(e, color, r = 2) {
+        ctx.fillStyle = color;
+        ctx.beginPath();
+        ctx.arc(x + e.x * sx, y + e.y * sy, r, 0, TAU);
+        ctx.fill();
+      }
+      zones.forEach(z => {
+        ctx.strokeStyle = "rgba(255,255,255,0.10)";
+        ctx.beginPath();
+        ctx.arc(x + z.x * sx, y + z.y * sy, z.r * sx, 0, TAU);
+        ctx.stroke();
+      });
+      foods.slice(0, 80).forEach(f => dot(f, "#60f29e", 1.2));
+      agents.forEach(a => dot(a, "#67d6ff", 1.7));
+      threats.forEach(t => dot(t, "#ff596d", t.boss ? 3 : 2));
+      dot(player, "#ffffff", 3.2);
+    }
+
+    function updateUI() {
+      ui.agentStat.textContent = agents.length;
+      ui.threatStat.textContent = threats.length;
+      ui.foodStat.textContent = foods.length;
+      ui.healthStat.textContent = Math.round(player.health);
+      ui.energyStat.textContent = Math.round(player.energy);
+      ui.scoreStat.textContent = world.score;
+    }
+
+    let last = performance.now();
+    function loop(now) {
+      const dt = Math.min((now - last) / 1000, 0.033);
+      last = now;
+      if (!world.paused) updateEntities(dt);
+      render();
+      updateUI();
+      requestAnimationFrame(loop);
+    }
+
+    window.addEventListener("resize", resize);
+    window.addEventListener("keydown", e => {
+      keys.add(e.key.toLowerCase());
+      if ([" ", "arrowup", "arrowdown", "arrowleft", "arrowright"].includes(e.key.toLowerCase())) e.preventDefault();
+    });
+    window.addEventListener("keyup", e => keys.delete(e.key.toLowerCase()));
+    canvas.addEventListener("pointermove", e => {
+      const r = canvas.getBoundingClientRect();
+      pointer.x = e.clientX - r.left;
+      pointer.y = e.clientY - r.top;
+    });
+    canvas.addEventListener("pointerdown", e => {
+      pointer.down = true;
+      pointer.touchMove = e.pointerType === "touch";
+      const r = canvas.getBoundingClientRect();
+      pointer.x = e.clientX - r.left;
+      pointer.y = e.clientY - r.top;
+      player?.shoot();
+    });
+    window.addEventListener("pointerup", () => {
+      pointer.down = false;
+      pointer.touchMove = false;
+    });
+
+    ui.speedSlider.addEventListener("input", e => {
+      world.speedScale = Number(e.target.value);
+      ui.speedOutput.textContent = `${world.speedScale.toFixed(1)}x`;
+    });
+    ui.eventSlider.addEventListener("input", e => {
+      world.eventInterval = Number(e.target.value);
+      ui.eventOutput.textContent = `${world.eventInterval}s`;
+    });
+    ui.resetBtn.addEventListener("click", resetSimulation);
+    ui.pauseBtn.addEventListener("click", () => {
+      world.paused = !world.paused;
+      ui.pauseBtn.textContent = world.paused ? "Resume" : "Pause";
+    });
+    ui.eventBtn.addEventListener("click", triggerRandomEvent);
+    ui.allyBtn.addEventListener("click", () => {
+      for (let i = 0; i < 6; i++) agents.push(new Agent(player.x + rand(-55, 55), player.y + rand(-55, 55), Math.random() < 0.2));
+      burst(player.x, player.y, "rgba(103,214,255,0.9)", 26);
+    });
+
+    // Polyfill for older browser builds that lack roundRect.
+    if (!CanvasRenderingContext2D.prototype.roundRect) {
+      CanvasRenderingContext2D.prototype.roundRect = function(x, y, w, h, r) {
+        r = Math.min(r, w / 2, h / 2);
+        this.moveTo(x + r, y);
+        this.arcTo(x + w, y, x + w, y + h, r);
+        this.arcTo(x + w, y + h, x, y + h, r);
+        this.arcTo(x, y + h, x, y, r);
+        this.arcTo(x, y, x + w, y, r);
+        return this;
+      };
+    }
+
+    resize();
+    resetSimulation();
+    requestAnimationFrame(loop);
+  </script>
+</body>
+</html>
