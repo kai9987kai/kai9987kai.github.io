@@ -3221,6 +3221,575 @@ window.addEventListener('DOMContentLoaded', () => {
     submitProtein();
   }, 500);
 });
+
+</script>
+<script>
+/* ==== NeuroFold Pro: exact biophysics & amphipathicity engine ==== */
+/* =====================================================================
+   NeuroFold Pro - Exact Biophysics & Amphipathicity layer
+   ---------------------------------------------------------------------
+   Layers scientifically grounded, deterministic sequence analysis onto
+   the existing educational simulator, and cleanly separates what is
+   EXACT (citable closed-form calculations) from what is APPROXIMATION.
+
+   EXACT (deterministic functions of the sequence; standard methods):
+     - Molecular weight (ExPASy average residue masses)
+     - Theoretical pI + full charge-vs-pH titration
+       (Henderson-Hasselbalch, EMBOSS pKa set)
+     - Molar extinction coefficient at 280 nm (Pace / Gill-von Hippel)
+     - GRAVY (Kyte & Doolittle 1982) and aliphatic index (Ikai 1980)
+     - Amino-acid composition
+     - Kyte-Doolittle hydropathy profile
+     - Eisenberg hydrophobic moment uH, helical wheel and moment plot
+       (Eisenberg, Schwarz, Komaromy & Wall 1984)
+
+   APPROXIMATIONS (real literature methods, but NOT a structure predictor):
+     - Secondary structure: Chou-Fasman 1978 nucleation/extension
+     - Disorder propensity: TOP-IDP scale (Campen et al. 2008)
+     - Ramachandran favoured-region rendering
+   This does NOT run AlphaFold / ESMFold / Boltz / RoseTTAFold / MD / wet-lab.
+   ===================================================================== */
+(function () {
+  'use strict';
+
+  /* ---- reference scales ------------------------------------------------ */
+  const EISENBERG = { A: 0.62, R: -2.53, N: -0.78, D: -0.90, C: 0.29, Q: -0.85, E: -0.74, G: 0.48, H: -0.40, I: 1.38, L: 1.06, K: -1.50, M: 0.64, F: 1.19, P: 0.12, S: -0.18, T: -0.05, W: 0.81, Y: 0.26, V: 1.08 };
+  const TOPIDP = { A: 0.06, R: 0.180, N: 0.007, D: 0.192, C: 0.02, Q: 0.318, E: 0.736, G: 0.166, H: 0.303, I: -0.486, L: -0.326, K: 0.586, M: -0.397, F: -0.697, P: 0.987, S: 0.341, T: 0.059, W: -0.884, Y: -0.510, V: -0.121 };
+  const RES_MASS = { G: 57.0519, A: 71.0788, S: 87.0782, P: 97.1167, V: 99.1326, T: 101.1051, C: 103.1388, L: 113.1594, I: 113.1594, N: 114.1038, D: 115.0886, Q: 128.1307, K: 128.1741, E: 129.1155, M: 131.1926, H: 137.1411, F: 147.1766, R: 156.1875, Y: 163.1760, W: 186.2132 };
+  const WATER = 18.01524;
+  const PKA = { Nterm: 8.6, Cterm: 3.6, C: 8.5, D: 3.9, E: 4.1, H: 6.5, K: 10.8, R: 12.5, Y: 10.1 };
+  const PT = { N: 1.56, G: 1.56, P: 1.52, D: 1.46, S: 1.43, C: 1.19, Y: 1.14, K: 1.01, Q: 0.98, T: 0.96, W: 0.96, R: 0.95, H: 0.95, E: 0.74, A: 0.66, M: 0.60, F: 0.60, L: 0.59, V: 0.50, I: 0.47 };
+
+  const AA_ORDER = 'ARNDCQEGHILKMFPSTWYV'.split('');
+  const CLASS = { nonpolar: 'GAVLIPM'.split(''), aromatic: 'FWY'.split(''), polar: 'STCNQ'.split(''), pos: 'KRH'.split(''), neg: 'DE'.split('') };
+  const CLASS_COLOR = { nonpolar: '#06d6a0', aromatic: '#8338ec', polar: '#ffd166', pos: '#118ab2', neg: '#ef476f' };
+  const classOf = aa => CLASS.pos.includes(aa) ? 'pos' : CLASS.neg.includes(aa) ? 'neg' : CLASS.aromatic.includes(aa) ? 'aromatic' : CLASS.polar.includes(aa) ? 'polar' : 'nonpolar';
+
+  // The host page declares AA_PROPERTIES / proteinAtoms / currentSequence with
+  // const/let, so they are lexical globals (shared as bare identifiers across
+  // classic scripts) and are NOT on window. Access them via guarded lookups.
+  const AAP = () => (typeof AA_PROPERTIES !== 'undefined' && AA_PROPERTIES) ? AA_PROPERTIES : {};
+  const ATOMS = () => (typeof proteinAtoms !== 'undefined' && proteinAtoms) ? proteinAtoms : [];
+  const CURSEQ = () => (typeof currentSequence !== 'undefined' && currentSequence) ? currentSequence : '';
+
+  const clean = s => (s || '').toUpperCase().replace(/[^ACDEFGHIKLMNPQRSTVWY]/g, '');
+  const countOf = (s, aa) => { let c = 0; for (const x of s) if (x === aa) c++; return c; };
+  const KD = aa => { const p = AAP()[aa]; return p ? p.hydro : 0; };
+  const rand = a => (Math.random() - 0.5) * 2 * a;
+
+  /* ===================================================================
+     EXACT calculations
+     =================================================================== */
+  function mw(seq) { let m = WATER; for (const a of seq) m += RES_MASS[a] || 0; return m; }
+  function gravy(seq) { if (!seq.length) return 0; let s = 0; for (const a of seq) s += KD(a); return s / seq.length; }
+  function aliphaticIndex(seq) { const n = seq.length || 1; const f = a => countOf(seq, a) / n * 100; return f('A') + 2.9 * f('V') + 3.9 * (f('I') + f('L')); }
+  function extinction(seq) {
+    const W = countOf(seq, 'W'), Y = countOf(seq, 'Y'), C = countOf(seq, 'C');
+    const cystines = Math.floor(C / 2);
+    const reduced = 5500 * W + 1490 * Y;
+    const oxidized = reduced + 125 * cystines;
+    const M = mw(seq);
+    return { reduced, oxidized, cystines, a280red: M ? reduced / M : 0, a280ox: M ? oxidized / M : 0 };
+  }
+  function netCharge(seq, pH) {
+    let pos = 1 / (1 + Math.pow(10, pH - PKA.Nterm));
+    let neg = 1 / (1 + Math.pow(10, PKA.Cterm - pH));
+    for (const a of seq) {
+      if (a === 'K') pos += 1 / (1 + Math.pow(10, pH - PKA.K));
+      else if (a === 'R') pos += 1 / (1 + Math.pow(10, pH - PKA.R));
+      else if (a === 'H') pos += 1 / (1 + Math.pow(10, pH - PKA.H));
+      else if (a === 'D') neg += 1 / (1 + Math.pow(10, PKA.D - pH));
+      else if (a === 'E') neg += 1 / (1 + Math.pow(10, PKA.E - pH));
+      else if (a === 'C') neg += 1 / (1 + Math.pow(10, PKA.C - pH));
+      else if (a === 'Y') neg += 1 / (1 + Math.pow(10, PKA.Y - pH));
+    }
+    return pos - neg;
+  }
+  function isoelectric(seq) {
+    if (!seq.length) return 7;
+    let lo = 0, hi = 14;
+    for (let i = 0; i < 80; i++) { const mid = (lo + hi) / 2; (netCharge(seq, mid) > 0) ? (lo = mid) : (hi = mid); }
+    return (lo + hi) / 2;
+  }
+  // Eisenberg hydrophobic moment, window centred at index c (helix angle 100 deg)
+  function moment(seq, c, win, deg) {
+    win = win || 11; deg = deg || 100;
+    const half = Math.floor(win / 2), d = deg * Math.PI / 180;
+    let sumSin = 0, sumCos = 0, h = 0, n = 0;
+    for (let k = -half; k <= half; k++) {
+      const i = c + k; if (i < 0 || i >= seq.length) continue;
+      const H = EISENBERG[seq[i]]; if (H === undefined) continue;
+      sumSin += H * Math.sin(i * d); sumCos += H * Math.cos(i * d); h += H; n++;
+    }
+    if (!n) return { muH: 0, meanH: 0, dir: 0, n: 0 };
+    return { muH: Math.sqrt(sumSin * sumSin + sumCos * sumCos) / n, meanH: h / n, dir: Math.atan2(sumSin, sumCos), n };
+  }
+  function composition(seq) { const c = {}; AA_ORDER.forEach(a => c[a] = 0); for (const a of seq) if (c[a] !== undefined) c[a]++; return c; }
+  function classBreakdown(seq) {
+    const out = { nonpolar: 0, aromatic: 0, polar: 0, pos: 0, neg: 0 };
+    for (const a of seq) out[classOf(a)]++;
+    const n = seq.length || 1, pct = {}; for (const k in out) pct[k] = out[k] / n * 100;
+    return { counts: out, pct };
+  }
+
+  /* ===================================================================
+     APPROXIMATIONS (literature methods, clearly labelled in the UI)
+     =================================================================== */
+  // Chou-Fasman with helix/strand nucleation + simplified turns -> H/E/T/C
+  function chouFasman(rawSeq) {
+    const seq = (rawSeq || '').toUpperCase();
+    const n = seq.length;
+    const P = AAP();
+    const pa = i => (P[seq[i]] ? P[seq[i]].helix : 1) || 1;
+    const pb = i => (P[seq[i]] ? P[seq[i]].sheet : 1) || 1;
+    const ss = new Array(n).fill('C');
+    const isH = new Array(n).fill(false), isE = new Array(n).fill(false);
+
+    for (let i = 0; i + 6 <= n; i++) {                  // helix nucleation
+      let c = 0; for (let j = i; j < i + 6; j++) if (pa(j) >= 1.0) c++;
+      if (c >= 4) {
+        let s = i, e = i + 5;
+        while (s - 1 >= 0 && seq[s - 1] !== 'P' && (pa(s - 1) + pa(s) + pa(Math.min(s + 1, n - 1))) / 3 >= 1.0) s--;
+        while (e + 1 < n && seq[e + 1] !== 'P' && (pa(e - 1) + pa(e) + pa(e + 1)) / 3 >= 1.0) e++;
+        for (let j = s; j <= e; j++) isH[j] = true;
+      }
+    }
+    for (let i = 0; i + 5 <= n; i++) {                  // strand nucleation
+      let c = 0; for (let j = i; j < i + 5; j++) if (pb(j) >= 1.0) c++;
+      if (c >= 3) {
+        let s = i, e = i + 4;
+        while (s - 1 >= 0 && (pb(s - 1) + pb(s) + pb(Math.min(s + 1, n - 1))) / 3 >= 1.0) s--;
+        while (e + 1 < n && (pb(e - 1) + pb(e) + pb(e + 1)) / 3 >= 1.0) e++;
+        for (let j = s; j <= e; j++) isE[j] = true;
+      }
+    }
+    for (let i = 0; i < n; i++) {                        // resolve overlaps
+      if (isH[i] && isE[i]) {
+        let sa = 0, sb = 0;
+        for (let k = -2; k <= 2; k++) { const j = i + k; if (j < 0 || j >= n) continue; sa += pa(j); sb += pb(j); }
+        (sa >= sb) ? (isE[i] = false) : (isH[i] = false);
+      }
+    }
+    for (let i = 0; i < n; i++) { if (isH[i]) ss[i] = 'H'; else if (isE[i]) ss[i] = 'E'; }
+    for (let i = 0; i + 4 <= n; i++) {                   // simplified turns
+      let mean = 0, former = false;
+      for (let j = i; j < i + 4; j++) { mean += (PT[seq[j]] || 0.7); if ('NGPDS'.includes(seq[j])) former = true; }
+      if (mean / 4 > 1.0 && former) for (let j = i; j < i + 4; j++) if (ss[j] === 'C') ss[j] = 'T';
+    }
+    return ss;
+  }
+
+  function disorderTrack(seq, win) {
+    win = win || 21; const half = Math.floor(win / 2), out = [];
+    for (let i = 0; i < seq.length; i++) {
+      let s = 0, n = 0;
+      for (let k = -half; k <= half; k++) { const j = i + k; if (j < 0 || j >= seq.length) continue; const v = TOPIDP[seq[j]]; if (v !== undefined) { s += v; n++; } }
+      out.push(n ? s / n : 0);
+    }
+    return out;
+  }
+
+  /* ===================================================================
+     small DOM utils
+     =================================================================== */
+  const $ = id => document.getElementById(id);
+  const el = (t, c, h) => { const e = document.createElement(t); if (c) e.className = c; if (h != null) e.innerHTML = h; return e; };
+  function fitCanvas(cv, cssH) {
+    const dpr = window.devicePixelRatio || 1;
+    const w = cv.clientWidth || (cv.parentElement ? cv.parentElement.clientWidth : 300);
+    const h = cssH || cv.clientHeight || 160;
+    cv.width = Math.max(1, Math.floor(w * dpr));
+    cv.height = Math.max(1, Math.floor(h * dpr));
+    const ctx = cv.getContext('2d'); ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    return { ctx, w, h };
+  }
+  function currentSeq() {
+    const cs = CURSEQ(); if (cs && cs.length) return cs;
+    return clean($('sequenceInput') ? $('sequenceInput').value : '');
+  }
+
+  /* ===================================================================
+     UI injection
+     =================================================================== */
+  function injectUI() {
+    const nav = document.querySelector('nav');
+    if (nav && !$('bioNav')) { const a = el('a'); a.id = 'bioNav'; a.textContent = 'Biophysics'; a.onclick = openLab; nav.appendChild(a); }
+
+    const right = $('rightPanel');
+    const realTag = '<span style="font-size:.6rem;color:var(--accent);border:1px solid rgba(6,214,160,.4);border-radius:999px;padding:1px 6px;margin-left:4px">exact</span>';
+
+    if (right && !$('exactCard')) {
+      const card = el('div', 'research-card'); card.id = 'exactCard';
+      card.innerHTML =
+        '<h4>\uD83D\uDCD0 Exact sequence properties' + realTag + '</h4>' +
+        '<div class="sequence-badges" style="grid-template-columns:repeat(2,1fr)">' +
+        '<div class="seq-badge"><b id="bxMW">--</b><span>MW (Da)</span></div>' +
+        '<div class="seq-badge"><b id="bxPI">--</b><span>Theoretical pI</span></div>' +
+        '<div class="seq-badge"><b id="bxCharge">--</b><span>Net charge @ pH 7.4</span></div>' +
+        '<div class="seq-badge"><b id="bxGravy">--</b><span>GRAVY</span></div>' +
+        '<div class="seq-badge"><b id="bxAliph">--</b><span>Aliphatic index</span></div>' +
+        '<div class="seq-badge"><b id="bxExt">--</b><span>e280 (M-1 cm-1)</span></div>' +
+        '</div>' +
+        '<div class="microcopy" id="bxNote"></div>' +
+        '<button class="btn btn-primary btn-sm" style="width:100%;margin-top:8px" onclick="window.BIO.openLab()">Open Biophysics Lab &rarr;</button>';
+      const title = right.querySelector('.panel-title');
+      (title && title.nextSibling) ? right.insertBefore(card, title.nextSibling) : right.appendChild(card);
+    }
+
+    if (right && !$('ampCard')) {
+      const card = el('div', 'research-card'); card.id = 'ampCard';
+      card.innerHTML =
+        '<h4>\uD83C\uDF00 Amphipathicity' + realTag + '</h4>' +
+        '<canvas id="wheelMini" style="width:100%;height:150px"></canvas>' +
+        '<div class="microcopy" id="ampNote">Most amphipathic helical window (Eisenberg uH).</div>';
+      const ec = $('exactCard'); (ec && ec.nextSibling) ? right.insertBefore(card, ec.nextSibling) : right.appendChild(card);
+    }
+
+    const ps = $('priorityScore');
+    if (ps && !$('nnHonest')) {
+      const cap = el('div', 'microcopy'); cap.id = 'nnHonest'; cap.style.marginTop = '4px';
+      cap.textContent = 'Illustrative untrained network - visualises a feed-forward pass, not a validated score.';
+      ps.parentElement.appendChild(cap);
+    }
+
+    buildLab();
+  }
+
+  /* ---- Biophysics Lab modal -------------------------------------------- */
+  let LAB_OPEN = false;
+  function buildLab() {
+    if ($('bioLab')) return;
+    const back = el('div'); back.id = 'bioLab';
+    back.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.66);z-index:2500;display:none;align-items:center;justify-content:center;padding:24px;backdrop-filter:blur(4px)';
+    back.onclick = e => { if (e.target === back) closeLab(); };
+    const cvStyle = 'width:100%;background:var(--bg-card);border:1px solid var(--border);border-radius:8px';
+    back.innerHTML =
+      '<div class="modal-panel" style="width:min(1060px,97vw)">' +
+      '<h2>\uD83D\uDD2C Biophysics Lab <span style="font-size:.7rem;color:var(--text-dim)">exact, sequence-based analysis</span></h2>' +
+      '<div class="microcopy" id="labHeader"></div>' +
+
+      '<div class="canvas-pair" style="margin-top:10px">' +
+        '<div>' +
+          '<div class="microcopy"><strong style="color:var(--text)">Charge vs pH (titration)</strong> &mdash; Henderson-Hasselbalch, EMBOSS pKa</div>' +
+          '<canvas id="titrationCv" style="' + cvStyle + ';height:170px"></canvas>' +
+          '<div style="display:flex;align-items:center;gap:8px;margin-top:6px">' +
+            '<span class="microcopy" style="white-space:nowrap">pH <span id="phLabel">7.4</span></span>' +
+            '<input id="phSlider" type="range" min="0" max="14" step="0.1" value="7.4" style="flex:1">' +
+            '<span class="microcopy" style="white-space:nowrap">charge <b id="phCharge" style="color:var(--accent)">--</b></span>' +
+          '</div>' +
+        '</div>' +
+        '<div>' +
+          '<div class="microcopy"><strong style="color:var(--text)">Kyte-Doolittle hydropathy</strong> &mdash; window <span id="kdWinLabel">9</span>; dashed = +1.6 TM guide</div>' +
+          '<canvas id="hydroCv" style="' + cvStyle + ';height:170px"></canvas>' +
+          '<input id="kdWin" type="range" min="5" max="21" step="2" value="9" style="width:100%;margin-top:6px">' +
+        '</div>' +
+      '</div>' +
+
+      '<div class="canvas-pair" style="margin-top:12px">' +
+        '<div>' +
+          '<div class="microcopy"><strong style="color:var(--text)">Hydrophobic moment uH</strong> &mdash; Eisenberg, 11-res window, 100 deg/res</div>' +
+          '<canvas id="momentCv" style="' + cvStyle + ';height:150px"></canvas>' +
+        '</div>' +
+        '<div>' +
+          '<div class="microcopy"><strong style="color:var(--text)">Helical wheel</strong> ' +
+            '<button class="btn btn-secondary btn-sm" onclick="window.BIO.wheelStep(-1)">&#9664;</button> ' +
+            '<button class="btn btn-secondary btn-sm" onclick="window.BIO.wheelStep(1)">&#9654;</button> <span id="wheelInfo"></span></div>' +
+          '<canvas id="wheelCv" style="' + cvStyle + ';height:230px"></canvas>' +
+        '</div>' +
+      '</div>' +
+
+      '<div class="canvas-pair" style="margin-top:12px">' +
+        '<div>' +
+          '<div class="microcopy"><strong style="color:var(--text)">Eisenberg moment plot</strong> &mdash; mean uH vs mean H per window (regions are a guide)</div>' +
+          '<canvas id="emPlotCv" style="' + cvStyle + ';height:200px"></canvas>' +
+        '</div>' +
+        '<div>' +
+          '<div class="microcopy"><strong style="color:var(--text)">Amino-acid composition</strong></div>' +
+          '<canvas id="compCv" style="' + cvStyle + ';height:200px"></canvas>' +
+          '<div class="microcopy" id="classNote" style="margin-top:6px"></div>' +
+        '</div>' +
+      '</div>' +
+
+      '<div class="analysis-card" style="margin-top:14px">' +
+        '<strong>What is exact vs illustrative here</strong>' +
+        '<p class="microcopy" style="margin-top:6px"><span style="color:var(--accent)">Exact &amp; citable:</span> molecular weight, theoretical pI &amp; titration curve, extinction coefficient, GRAVY, aliphatic index, composition, Kyte-Doolittle hydropathy, and the Eisenberg hydrophobic moment / helical wheel. These are deterministic functions of the sequence (ExPASy ProtParam; Kyte &amp; Doolittle 1982; Eisenberg et al. 1984; Ikai 1980).</p>' +
+        '<p class="microcopy"><span style="color:#ffd166">Approximate predictions:</span> secondary structure (Chou-Fasman 1978), disorder (TOP-IDP, Campen et al. 2008), Ramachandran regions, the pLDDT/contact/PAE-style panels, and the 3-D fold. They illustrate real ideas but are <em>not</em> a structure predictor. For a real 3-D model, fold the sequence with ESMFold/ColabFold or look it up in the AlphaFold DB.</p>' +
+      '</div>' +
+      '<button class="btn btn-primary" style="margin-top:10px" onclick="window.BIO.closeLab()">Close</button>' +
+      '</div>';
+    document.body.appendChild(back);
+
+    const ph = $('phSlider'); if (ph) ph.addEventListener('input', () => { $('phLabel').textContent = (+ph.value).toFixed(1); drawTitration(currentSeq()); });
+    const kd = $('kdWin'); if (kd) kd.addEventListener('input', () => { $('kdWinLabel').textContent = kd.value; drawHydro(currentSeq()); });
+  }
+  function openLab() { buildLab(); const b = $('bioLab'); if (!b) return; b.style.display = 'flex'; LAB_OPEN = true; renderLab(currentSeq()); }
+  function closeLab() { const b = $('bioLab'); if (b) b.style.display = 'none'; LAB_OPEN = false; }
+
+  /* ===================================================================
+     rendering
+     =================================================================== */
+  function refreshCompact(seq) {
+    if (!$('bxMW')) return;
+    if (!seq.length) { ['bxMW', 'bxPI', 'bxCharge', 'bxGravy', 'bxAliph', 'bxExt'].forEach(id => $(id).textContent = '--'); if ($('bxNote')) $('bxNote').textContent = ''; drawWheelMini(seq); return; }
+    const M = mw(seq), pI = isoelectric(seq), q = netCharge(seq, 7.4), g = gravy(seq), ai = aliphaticIndex(seq), ext = extinction(seq);
+    $('bxMW').textContent = M.toLocaleString(undefined, { maximumFractionDigits: 0 });
+    $('bxPI').textContent = pI.toFixed(2);
+    $('bxCharge').textContent = (q >= 0 ? '+' : '') + q.toFixed(1);
+    $('bxGravy').textContent = g.toFixed(2);
+    $('bxAliph').textContent = ai.toFixed(1);
+    $('bxExt').textContent = ext.oxidized.toLocaleString();
+    if ($('bxNote')) $('bxNote').innerHTML = '~ ' + (M / 1000).toFixed(1) + ' kDa &middot; ' + seq.length + ' aa &middot; A280(0.1%) ' + ext.a280ox.toFixed(2) + ' (cystines) / ' + ext.a280red.toFixed(2) + ' (reduced) &middot; ' + (g > 0 ? 'hydrophobic-leaning' : 'hydrophilic-leaning');
+    drawWheelMini(seq);
+  }
+
+  function helicalWindows(seq, ss, win) {
+    win = win || 11; const out = [];
+    for (let i = 0; i + win <= seq.length; i++) {
+      let h = 0; for (let j = i; j < i + win; j++) if (ss[j] === 'H') h++;
+      const m = moment(seq, i + Math.floor(win / 2), win, 100);
+      out.push({ start: i, end: i + win - 1, center: i + Math.floor(win / 2), helixFrac: h / win, muH: m.muH, meanH: m.meanH, dir: m.dir });
+    }
+    return out;
+  }
+  function bestAmphipathic(seq, ss) {
+    const all = helicalWindows(seq, ss, 11);
+    if (!all.length) return null;
+    let pool = all.filter(w => w.helixFrac >= 0.5); if (!pool.length) pool = all;
+    pool.sort((a, b) => b.muH - a.muH);
+    return pool[0];
+  }
+  function interpretHelix(w) {
+    if (!w) return '';
+    if (w.muH > 0.45 && w.meanH < 0.4) return 'strongly amphipathic (surface/interfacial-like)';
+    if (w.meanH > 0.6 && w.muH < 0.35) return 'hydrophobic, low moment (membrane-spanning-like)';
+    if (w.muH > 0.35) return 'moderately amphipathic';
+    return 'low amphipathicity (globular-like)';
+  }
+
+  let wheelIdx = 0, wheelPool = [];
+  function setupWheelPool(seq, ss) {
+    wheelPool = helicalWindows(seq, ss, 11).filter(w => w.muH > 0).sort((a, b) => b.muH - a.muH);
+    wheelIdx = 0;
+  }
+  function wheelStep(d) { if (!wheelPool.length) return; wheelIdx = (wheelIdx + d + wheelPool.length) % wheelPool.length; drawWheel(currentSeq()); }
+
+  function drawWheelInto(ctx, w, h, seq, win, compact) {
+    if (!win) { ctx.fillStyle = 'rgba(107,127,163,.6)'; ctx.font = '12px system-ui'; ctx.textAlign = 'center'; ctx.fillText('No helical window (need 11+ aa)', w / 2, h / 2); return; }
+    const cx = w / 2, cy = h / 2, R = Math.min(w, h) * 0.36, d = 100 * Math.PI / 180;
+    ctx.strokeStyle = 'rgba(42,58,85,.8)'; ctx.lineWidth = 1; ctx.beginPath(); ctx.arc(cx, cy, R, 0, Math.PI * 2); ctx.stroke();
+    const len = Math.min(1, win.muH * 1.8);
+    ctx.strokeStyle = 'rgba(6,214,160,.85)'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(cx + Math.cos(win.dir) * R * len, cy + Math.sin(win.dir) * R * len); ctx.stroke();
+    for (let k = 0; k <= (win.end - win.start); k++) {
+      const i = win.start + k, aa = seq[i]; if (!aa) continue;
+      const ang = i * d, x = cx + Math.cos(ang) * R, y = cy + Math.sin(ang) * R;
+      ctx.beginPath(); ctx.arc(x, y, compact ? 9 : 12, 0, Math.PI * 2); ctx.fillStyle = CLASS_COLOR[classOf(aa)]; ctx.globalAlpha = 0.92; ctx.fill(); ctx.globalAlpha = 1;
+      ctx.fillStyle = '#0a0e17'; ctx.font = (compact ? '10px' : '12px') + ' system-ui'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(aa, x, y);
+      ctx.fillStyle = 'rgba(107,127,163,.7)'; ctx.font = '8px system-ui'; ctx.fillText(String(i + 1), x, y + (compact ? 14 : 18));
+    }
+    ctx.textBaseline = 'alphabetic';
+  }
+  function drawWheelMini(seq) {
+    const cv = $('wheelMini'); if (!cv) return; const { ctx, w, h } = fitCanvas(cv, 150); ctx.clearRect(0, 0, w, h);
+    const ss = chouFasman(seq), win = bestAmphipathic(seq, ss);
+    drawWheelInto(ctx, w, h, seq, win, true);
+    const note = $('ampNote');
+    if (note) note.innerHTML = win ? ('Window <b>' + (win.start + 1) + '-' + (win.end + 1) + '</b> &middot; uH <b style="color:var(--accent)">' + win.muH.toFixed(2) + '</b> &middot; meanH ' + win.meanH.toFixed(2) + ' - ' + interpretHelix(win)) : 'Sequence too short for an 11-residue helical window.';
+  }
+  function drawWheel(seq) {
+    const cv = $('wheelCv'); if (!cv) return; const { ctx, w, h } = fitCanvas(cv, 230); ctx.clearRect(0, 0, w, h);
+    const win = wheelPool[wheelIdx];
+    drawWheelInto(ctx, w, h, seq, win, false);
+    const info = $('wheelInfo');
+    if (info) info.innerHTML = win ? '<span class="microcopy">' + (win.start + 1) + '-' + (win.end + 1) + ' &middot; uH ' + win.muH.toFixed(2) + ' &middot; meanH ' + win.meanH.toFixed(2) + ' &middot; ' + interpretHelix(win) + ' (' + (wheelIdx + 1) + '/' + wheelPool.length + ')</span>' : '';
+  }
+
+  function drawTitration(seq) {
+    const cv = $('titrationCv'); if (!cv) return; const { ctx, w, h } = fitCanvas(cv, 170); ctx.clearRect(0, 0, w, h);
+    const padL = 34, padR = 10, padT = 10, padB = 20, W = w - padL - padR, H = h - padT - padB;
+    let maxC = 1; const pts = [];
+    for (let p = 0; p <= 140; p++) { const pH = p / 10, c = seq.length ? netCharge(seq, pH) : 0; pts.push([pH, c]); maxC = Math.max(maxC, Math.abs(c)); }
+    maxC = Math.ceil(maxC);
+    const X = pH => padL + pH / 14 * W, Y = c => padT + H / 2 - (c / maxC) * (H / 2);
+    ctx.strokeStyle = 'rgba(42,58,85,.6)'; ctx.lineWidth = 1;
+    for (let pH = 0; pH <= 14; pH += 2) { ctx.beginPath(); ctx.moveTo(X(pH), padT); ctx.lineTo(X(pH), padT + H); ctx.stroke(); }
+    ctx.strokeStyle = 'rgba(224,231,255,.4)'; ctx.beginPath(); ctx.moveTo(padL, Y(0)); ctx.lineTo(padL + W, Y(0)); ctx.stroke();
+    ctx.strokeStyle = '#06d6a0'; ctx.lineWidth = 2; ctx.beginPath();
+    pts.forEach((p, i) => { const x = X(p[0]), y = Y(p[1]); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }); ctx.stroke();
+    const pI = isoelectric(seq);
+    ctx.strokeStyle = 'rgba(255,209,102,.9)'; ctx.setLineDash([4, 3]); ctx.beginPath(); ctx.moveTo(X(pI), padT); ctx.lineTo(X(pI), padT + H); ctx.stroke(); ctx.setLineDash([]);
+    ctx.fillStyle = '#ffd166'; ctx.font = '10px system-ui'; ctx.textAlign = 'center'; ctx.fillText('pI ' + pI.toFixed(2), X(pI), padT + 9);
+    const ph = $('phSlider') ? +$('phSlider').value : 7.4, c = seq.length ? netCharge(seq, ph) : 0;
+    ctx.fillStyle = '#ef476f'; ctx.beginPath(); ctx.arc(X(ph), Y(c), 4, 0, Math.PI * 2); ctx.fill();
+    if ($('phCharge')) $('phCharge').textContent = (c >= 0 ? '+' : '') + c.toFixed(2);
+    ctx.fillStyle = 'rgba(107,127,163,.8)'; ctx.font = '9px system-ui'; ctx.textAlign = 'center';
+    for (let pH = 0; pH <= 14; pH += 7) ctx.fillText('pH ' + pH, X(pH), h - 6);
+    ctx.textAlign = 'right'; ctx.fillText('+' + maxC, padL - 4, Y(maxC) + 3); ctx.fillText('0', padL - 4, Y(0) + 3); ctx.fillText('-' + maxC, padL - 4, Y(-maxC) + 3);
+  }
+
+  function drawHydro(seq) {
+    const cv = $('hydroCv'); if (!cv) return; const { ctx, w, h } = fitCanvas(cv, 170); ctx.clearRect(0, 0, w, h);
+    const padL = 28, padR = 8, padT = 10, padB = 16, W = w - padL - padR, H = h - padT - padB;
+    const win = $('kdWin') ? +$('kdWin').value : 9, half = Math.floor(win / 2), vals = [];
+    for (let i = 0; i < seq.length; i++) { let s = 0, n = 0; for (let k = -half; k <= half; k++) { const j = i + k; if (j < 0 || j >= seq.length) continue; s += KD(seq[j]); n++; } vals.push(n ? s / n : 0); }
+    const lo = -4.6, hi = 4.6, X = i => padL + (seq.length <= 1 ? 0 : i / (seq.length - 1)) * W, Y = v => padT + H - ((v - lo) / (hi - lo)) * H;
+    ctx.strokeStyle = 'rgba(224,231,255,.35)'; ctx.beginPath(); ctx.moveTo(padL, Y(0)); ctx.lineTo(padL + W, Y(0)); ctx.stroke();
+    ctx.strokeStyle = 'rgba(239,71,111,.55)'; ctx.setLineDash([4, 3]); ctx.beginPath(); ctx.moveTo(padL, Y(1.6)); ctx.lineTo(padL + W, Y(1.6)); ctx.stroke(); ctx.setLineDash([]);
+    if (vals.length) {
+      ctx.beginPath(); vals.forEach((v, i) => { const x = X(i), y = Y(v); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); });
+      ctx.lineTo(X(seq.length - 1), Y(0)); ctx.lineTo(X(0), Y(0)); ctx.closePath();
+      ctx.fillStyle = 'rgba(17,138,178,.16)'; ctx.fill();
+      ctx.beginPath(); vals.forEach((v, i) => { const x = X(i), y = Y(v); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }); ctx.strokeStyle = '#118ab2'; ctx.lineWidth = 1.8; ctx.stroke();
+    }
+    ctx.fillStyle = 'rgba(107,127,163,.8)'; ctx.font = '9px system-ui'; ctx.textAlign = 'right';
+    ctx.fillText('+4.5', padL - 3, Y(4.5) + 3); ctx.fillText('0', padL - 3, Y(0) + 3); ctx.fillText('-4.5', padL - 3, Y(-4.5) + 3);
+    ctx.textAlign = 'left'; ctx.fillStyle = 'rgba(239,71,111,.85)'; ctx.fillText('hydrophobic up', padL + 2, Y(4.15));
+  }
+
+  function drawMomentTrack(seq) {
+    const cv = $('momentCv'); if (!cv) return; const { ctx, w, h } = fitCanvas(cv, 150); ctx.clearRect(0, 0, w, h);
+    const padL = 26, padR = 8, padT = 12, padB = 14, W = w - padL - padR, H = h - padT - padB;
+    const vals = []; let mx = 0.1, argmax = 0;
+    for (let i = 0; i < seq.length; i++) { const m = moment(seq, i, 11, 100).muH; vals.push(m); if (m > mx) { mx = m; argmax = i; } }
+    const top = Math.max(mx, 0.4);
+    const X = i => padL + (seq.length <= 1 ? 0 : i / (seq.length - 1)) * W, Y = v => padT + H - (v / top) * H;
+    ctx.strokeStyle = 'rgba(42,58,85,.6)'; for (let g = 0; g <= 2; g++) { const y = padT + H * g / 2; ctx.beginPath(); ctx.moveTo(padL, y); ctx.lineTo(padL + W, y); ctx.stroke(); }
+    if (vals.length) {
+      ctx.beginPath(); vals.forEach((v, i) => { const x = X(i), y = Y(v); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); });
+      ctx.lineTo(X(seq.length - 1), padT + H); ctx.lineTo(X(0), padT + H); ctx.closePath();
+      const grad = ctx.createLinearGradient(0, padT, 0, padT + H); grad.addColorStop(0, 'rgba(131,56,236,.35)'); grad.addColorStop(1, 'rgba(131,56,236,0)'); ctx.fillStyle = grad; ctx.fill();
+      ctx.beginPath(); vals.forEach((v, i) => { const x = X(i), y = Y(v); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }); ctx.strokeStyle = '#8338ec'; ctx.lineWidth = 1.8; ctx.stroke();
+      ctx.fillStyle = '#06d6a0'; ctx.beginPath(); ctx.arc(X(argmax), Y(mx), 4, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = 'rgba(6,214,160,.95)'; ctx.font = '9px system-ui'; ctx.textAlign = 'center'; ctx.fillText('max uH ' + mx.toFixed(2) + ' @' + (argmax + 1), X(argmax), Y(mx) - 6);
+    }
+    ctx.fillStyle = 'rgba(107,127,163,.8)'; ctx.font = '9px system-ui'; ctx.textAlign = 'right'; ctx.fillText(top.toFixed(2), padL - 3, padT + 6); ctx.fillText('0', padL - 3, padT + H);
+  }
+
+  function drawMomentPlot(seq, ss) {
+    const cv = $('emPlotCv'); if (!cv) return; const { ctx, w, h } = fitCanvas(cv, 200); ctx.clearRect(0, 0, w, h);
+    const padL = 34, padR = 10, padT = 12, padB = 24, W = w - padL - padR, H = h - padT - padB;
+    const xLo = -1.5, xHi = 1.6, yLo = 0, yHi = 1.0;
+    const clampX = v => Math.max(xLo, Math.min(xHi, v)), clampY = v => Math.max(yLo, Math.min(yHi, v));
+    const X = v => padL + ((clampX(v) - xLo) / (xHi - xLo)) * W, Y = v => padT + H - ((clampY(v) - yLo) / (yHi - yLo)) * H;
+    ctx.fillStyle = 'rgba(6,214,160,.06)'; ctx.fillRect(padL, padT, W, Y(0.45) - padT);
+    ctx.fillStyle = 'rgba(17,138,178,.06)'; ctx.fillRect(X(0.45), Y(0.45), padL + W - X(0.45), padT + H - Y(0.45));
+    ctx.fillStyle = 'rgba(107,127,163,.06)'; ctx.fillRect(padL, Y(0.45), X(0.45) - padL, padT + H - Y(0.45));
+    ctx.strokeStyle = 'rgba(224,231,255,.18)'; ctx.setLineDash([4, 3]);
+    ctx.beginPath(); ctx.moveTo(padL, Y(0.45)); ctx.lineTo(padL + W, Y(0.45)); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(X(0.45), Y(0.45)); ctx.lineTo(X(0.45), padT + H); ctx.stroke(); ctx.setLineDash([]);
+    ctx.fillStyle = 'rgba(107,127,163,.7)'; ctx.font = '9px system-ui'; ctx.textAlign = 'left';
+    ctx.fillText('surface-seeking', X(-1.4), Y(0.92)); ctx.fillText('globular', X(-1.4), Y(0.12)); ctx.fillText('transmembrane', X(0.55), Y(0.1));
+    const wins = helicalWindows(seq, ss, 11); let best = null;
+    wins.forEach(wn => { if (!best || wn.muH > best.muH) best = wn; const hel = wn.helixFrac >= 0.5; ctx.fillStyle = hel ? 'rgba(239,71,111,.8)' : 'rgba(107,127,163,.5)'; ctx.beginPath(); ctx.arc(X(wn.meanH), Y(wn.muH), hel ? 3.5 : 2.5, 0, Math.PI * 2); ctx.fill(); });
+    if (best) { ctx.strokeStyle = '#06d6a0'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(X(best.meanH), Y(best.muH), 6, 0, Math.PI * 2); ctx.stroke(); }
+    ctx.fillStyle = 'rgba(107,127,163,.8)'; ctx.font = '9px system-ui'; ctx.textAlign = 'center'; ctx.fillText('mean H (hydrophobicity)', padL + W / 2, h - 6);
+    ctx.save(); ctx.translate(11, padT + H / 2); ctx.rotate(-Math.PI / 2); ctx.fillText('mean uH', 0, 0); ctx.restore();
+    ctx.textAlign = 'right'; ctx.fillText('1.0', padL - 3, Y(1.0) + 3); ctx.fillText('0', padL - 3, Y(0) + 3);
+  }
+
+  function drawComposition(seq) {
+    const cv = $('compCv'); if (!cv) return; const { ctx, w, h } = fitCanvas(cv, 200); ctx.clearRect(0, 0, w, h);
+    const padT = 10, padB = 22, padL = 8, padR = 8, W = w - padL - padR, H = h - padT - padB;
+    const counts = composition(seq), n = seq.length || 1; let mx = 5;
+    AA_ORDER.forEach(a => mx = Math.max(mx, counts[a] / n * 100));
+    const bw = W / AA_ORDER.length;
+    AA_ORDER.forEach((a, i) => {
+      const pct = counts[a] / n * 100, bh = pct / mx * H, x = padL + i * bw, y = padT + H - bh;
+      ctx.fillStyle = CLASS_COLOR[classOf(a)]; ctx.globalAlpha = 0.9; ctx.fillRect(x + 1, y, bw - 2, bh); ctx.globalAlpha = 1;
+      ctx.fillStyle = 'rgba(224,231,255,.8)'; ctx.font = '8px system-ui'; ctx.textAlign = 'center'; ctx.fillText(a, x + bw / 2, padT + H + 10);
+      if (pct > 0) { ctx.fillStyle = 'rgba(107,127,163,.85)'; ctx.font = '7px system-ui'; ctx.fillText(pct.toFixed(0), x + bw / 2, y - 2); }
+    });
+    const cb = classBreakdown(seq), note = $('classNote');
+    if (note) note.innerHTML =
+      '<span style="color:' + CLASS_COLOR.nonpolar + '">&#9632;</span> nonpolar ' + cb.pct.nonpolar.toFixed(0) + '% &middot; ' +
+      '<span style="color:' + CLASS_COLOR.aromatic + '">&#9632;</span> aromatic ' + cb.pct.aromatic.toFixed(0) + '% &middot; ' +
+      '<span style="color:' + CLASS_COLOR.polar + '">&#9632;</span> polar ' + cb.pct.polar.toFixed(0) + '% &middot; ' +
+      '<span style="color:' + CLASS_COLOR.pos + '">&#9632;</span> + charged ' + cb.pct.pos.toFixed(0) + '% &middot; ' +
+      '<span style="color:' + CLASS_COLOR.neg + '">&#9632;</span> - charged ' + cb.pct.neg.toFixed(0) + '%';
+  }
+
+  function renderLab(seq) {
+    const head = $('labHeader');
+    if (head) {
+      if (seq.length) {
+        const M = mw(seq), pI = isoelectric(seq), q = netCharge(seq, 7.4);
+        const dt = disorderTrack(seq, 21);
+        const meanD = dt.length ? dt.reduce((a, b) => a + b, 0) / dt.length : 0;
+        const fracD = dt.length ? dt.filter(v => v > 0.1).length / dt.length * 100 : 0;
+        head.innerHTML = '<b style="color:var(--text)">' + (($('viewerProteinName') && $('viewerProteinName').textContent) || 'Protein') + '</b> &middot; ' + seq.length + ' aa &middot; ' + (M / 1000).toFixed(1) + ' kDa &middot; pI ' + pI.toFixed(2) + ' &middot; net charge @7.4 ' + (q >= 0 ? '+' : '') + q.toFixed(1) + ' &middot; TOP-IDP disorder mean ' + meanD.toFixed(2) + ' (' + fracD.toFixed(0) + '% leaning disordered)';
+      } else head.textContent = 'Enter a sequence to populate the lab.';
+    }
+    const ss = chouFasman(seq);
+    setupWheelPool(seq, ss);
+    drawTitration(seq); drawHydro(seq); drawMomentTrack(seq); drawWheel(seq); drawMomentPlot(seq, ss); drawComposition(seq);
+  }
+
+  /* improved Ramachandran rendering (overrides the original) */
+  function drawRamaImproved() {
+    const canvas = $('ramaChart'); if (!canvas) return; const ctx = canvas.getContext('2d');
+    const w = canvas.width = canvas.parentElement.clientWidth - 24, h = canvas.height = 150;
+    ctx.clearRect(0, 0, w, h);
+    ctx.fillStyle = 'rgba(26,34,53,.6)'; ctx.fillRect(0, 0, w, h);
+    const X = phi => ((phi + 180) / 360) * w, Y = psi => ((180 - psi) / 360) * h;
+    const regions = [
+      { phi: -63, psi: -43, rx: 34, ry: 30, c: 'rgba(239,71,111,.16)', l: 'aR' },
+      { phi: -120, psi: 130, rx: 42, ry: 34, c: 'rgba(17,138,178,.16)', l: 'b' },
+      { phi: -75, psi: 150, rx: 24, ry: 20, c: 'rgba(6,214,160,.13)', l: 'PPII' },
+      { phi: 57, psi: 47, rx: 22, ry: 20, c: 'rgba(255,209,102,.13)', l: 'aL' }
+    ];
+    regions.forEach(r => {
+      const cx = X(r.phi), cy = Y(r.psi), rxp = r.rx * w / 360, ryp = r.ry * h / 360;
+      ctx.fillStyle = r.c; ctx.beginPath(); ctx.ellipse(cx, cy, rxp, ryp, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = 'rgba(224,231,255,.22)'; ctx.lineWidth = 1; ctx.beginPath(); ctx.ellipse(cx, cy, rxp, ryp, 0, 0, Math.PI * 2); ctx.stroke();
+      ctx.fillStyle = 'rgba(224,231,255,.45)'; ctx.font = '9px system-ui'; ctx.textAlign = 'center'; ctx.fillText(r.l, cx, cy + 3);
+    });
+    ctx.strokeStyle = 'rgba(42,58,85,.7)'; ctx.beginPath(); ctx.moveTo(X(0), 0); ctx.lineTo(X(0), h); ctx.moveTo(0, Y(0)); ctx.lineTo(w, Y(0)); ctx.stroke();
+    ctx.fillStyle = 'rgba(107,127,163,.7)'; ctx.font = '9px system-ui'; ctx.textAlign = 'center';
+    ctx.fillText('phi', w - 10, Y(0) - 3); ctx.fillText('psi', X(0) + 10, 9);
+    const atoms = ATOMS();
+    for (let i = 0; i < atoms.length; i++) {
+      const ss = atoms[i].ss; let phi, psi;
+      if (ss === 'H') { phi = -63 + rand(16); psi = -43 + rand(16); }
+      else if (ss === 'E') { phi = -120 + rand(28); psi = 130 + rand(28); }
+      else if (ss === 'T') { phi = -70 + rand(45); psi = 140 + rand(45); }
+      else { if (Math.random() < 0.5) { phi = -75 + rand(30); psi = 150 + rand(30); } else { phi = -100 + rand(60); psi = rand(120); } }
+      const col = ss === 'H' ? 'rgba(239,71,111,.8)' : ss === 'E' ? 'rgba(17,138,178,.8)' : ss === 'T' ? 'rgba(255,209,102,.8)' : 'rgba(107,127,163,.6)';
+      ctx.fillStyle = col; ctx.beginPath(); ctx.arc(X(phi), Y(psi), 2.3, 0, Math.PI * 2); ctx.fill();
+    }
+  }
+
+  /* ===================================================================
+     expose + overrides + hooks + init
+     =================================================================== */
+  window.BIO = {
+    openLab: openLab, closeLab: closeLab, wheelStep: wheelStep, render: renderLab,
+    onSequence: function () { const s = currentSeq(); refreshCompact(s); if (LAB_OPEN) renderLab(s); },
+    calc: { mw: mw, isoelectric: isoelectric, netCharge: netCharge, extinction: extinction, gravy: gravy, aliphaticIndex: aliphaticIndex, moment: moment, chouFasman: chouFasman, disorderTrack: disorderTrack }
+  };
+
+  try { window.predictSecondaryStructure = chouFasman; } catch (e) {}
+  try { window.drawRamachandranPlot = drawRamaImproved; } catch (e) {}
+
+  function hook() {
+    if (typeof window.submitProtein === 'function' && !window.submitProtein.__bioHook) {
+      const orig = window.submitProtein;
+      window.submitProtein = function () { const r = orig.apply(this, arguments); try { window.BIO.onSequence(); } catch (e) {} return r; };
+      window.submitProtein.__bioHook = true;
+    }
+    if (typeof window.startFolding === 'function' && !window.startFolding.__bioHook) {
+      const origS = window.startFolding;
+      window.startFolding = function (item) { const r = origS.apply(this, arguments); try { const s = (item && item.sequence) ? item.sequence : currentSeq(); refreshCompact(s); if (LAB_OPEN) renderLab(s); } catch (e) {} return r; };
+      window.startFolding.__bioHook = true;
+    }
+  }
+
+  let rt; window.addEventListener('resize', function () { clearTimeout(rt); rt = setTimeout(function () { const s = currentSeq(); if ($('wheelMini')) drawWheelMini(s); if (LAB_OPEN) renderLab(s); }, 200); });
+
+  function start() { injectUI(); hook(); refreshCompact(currentSeq()); }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start, { once: true });
+  else start();
+})();
+
 </script>
 </body>
 </html>
