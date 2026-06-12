@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Ultra Rotary Generator MK-II Advanced</title>
+  <title>Ultra Rotary Generator MK-III Research Edition</title>
 
   <!-- Core libraries -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -93,9 +93,9 @@
       background: radial-gradient(circle at center, #1e293b 0%, #0f172a 100%);
     }
 
-    .tabs { display: grid; grid-template-columns: repeat(5, 1fr); background-color: var(--panel-2); position: sticky; top: 0; z-index: 20; }
+    .tabs { display: grid; grid-template-columns: repeat(6, 1fr); background-color: var(--panel-2); position: sticky; top: 0; z-index: 20; }
     .tab-btn {
-      padding: 13px 8px;
+      padding: 13px 4px;
       background: none;
       border: none;
       color: var(--text-muted);
@@ -103,7 +103,7 @@
       border-bottom: 3px solid transparent;
       transition: 0.2s;
       font-weight: 700;
-      font-size: 0.78rem;
+      font-size: 0.72rem;
     }
     .tab-btn.active { color: var(--primary); border-bottom-color: var(--primary); background-color: var(--panel-bg); }
     .tab-content { padding: 18px; display: none; animation: fadeIn 0.25s; }
@@ -216,6 +216,13 @@
     .insight-title { color:var(--text-muted); font-size:0.72rem; text-transform:uppercase; letter-spacing:0.04em; }
     .insight-value { color:var(--primary); font-size:1.05rem; font-weight:900; margin-top:3px; }
 
+    .mission-head { display:grid; grid-template-columns:1fr 1fr 1fr 1fr 30px; gap:6px; font-size:0.7rem; color:var(--text-muted); margin-bottom:4px; }
+    .mission-row { display:grid; grid-template-columns:1fr 1fr 1fr 1fr 30px; gap:6px; margin-bottom:6px; align-items:center; }
+    .mission-row input { padding:6px 7px; font-size:0.8rem; }
+    .mission-del { background:#334155; color:#fb7185; border:none; border-radius:6px; cursor:pointer; height:30px; }
+    .analysis-canvas { width:100%; background:#020617; border:1px solid var(--border); border-radius:6px; display:block; }
+    select.status-pill { width:auto; cursor:pointer; }
+
     #loadingOverlay {
       position: fixed;
       top: 0; left: 0; width: 100%; height: 100%;
@@ -247,11 +254,15 @@
 
 <header>
   <div>
-    <h1>Ultra Rotary Generator <span style="font-size: 0.78em; color: var(--text-muted);">MK-II Advanced</span></h1>
-    <div class="mini-note" style="margin: 3px 0 0 0;">2D schematic • 3D simulation • telemetry • safety diagnostics • CAD/media exports</div>
+    <h1>Ultra Rotary Generator <span style="font-size: 0.78em; color: var(--text-muted);">MK-III Research</span></h1>
+    <div class="mini-note" style="margin: 3px 0 0 0;">2D schematic • 3D simulation • FFT spectrum • gear stress • mission profiles • CAD/media exports</div>
   </div>
   <div class="header-actions">
     <span class="status-pill">Mode: <strong id="modeLabel">Live</strong></span>
+    <select id="unitSystem" class="status-pill" title="Display unit system">
+      <option value="metric">SI Units</option>
+      <option value="imperial">Imperial</option>
+    </select>
     <button class="btn btn-success btn-small" id="quickStartBtn">Quick Start</button>
     <button class="btn btn-muted btn-small" id="pauseBtn">Pause</button>
     <button class="btn btn-primary btn-small" id="resetCameraBtn">Reset Camera</button>
@@ -262,9 +273,10 @@
   <aside class="sidebar">
     <div class="tabs">
       <button class="tab-btn active" onclick="openTab(event, 'design')">Design</button>
-      <button class="tab-btn" onclick="openTab(event, 'sim')">Environment</button>
-      <button class="tab-btn" onclick="openTab(event, 'diagnostics')">Diagnostics</button>
-      <button class="tab-btn" onclick="openTab(event, 'research')">R&D Lab</button>
+      <button class="tab-btn" onclick="openTab(event, 'sim')">Enviro</button>
+      <button class="tab-btn" onclick="openTab(event, 'diagnostics')">Diag</button>
+      <button class="tab-btn" onclick="openTab(event, 'research')">R&D</button>
+      <button class="tab-btn" onclick="openTab(event, 'analysis')">Analysis</button>
       <button class="tab-btn" onclick="openTab(event, 'export')">Export</button>
     </div>
 
@@ -448,7 +460,56 @@
       <textarea id="researchOutput" readonly style="height:185px; font-size:0.78rem; resize:vertical;"></textarea>
     </div>
 
+    <div id="analysis" class="tab-content">
+      <h3>Vibration Spectrum (FFT)</h3>
+      <p class="mini-note">Synthesized accelerometer signal: shaft 1×/2×, gear-mesh harmonics with sidebands, and bearing defect tones (BPFO / BPFI / BSF). Hann-windowed 2048-pt radix-2 FFT @ 8192 Hz.</p>
+      <canvas id="fftCanvas" class="analysis-canvas" style="height:150px;"></canvas>
+      <div class="badge-row" id="spectrumBadges" style="margin-top:8px;"></div>
+      <div class="mini-note" id="spectrumDiagnosis">Spectral diagnosis pending…</div>
+
+      <h3>Gear Stress & Lubrication</h3>
+      <p class="mini-note">Lewis bending stress with Barth dynamic factor, Hertzian contact stress, and EHL film λ-ratio from Vogel viscosity-temperature behaviour.</p>
+      <div class="insight-grid">
+        <div class="insight-card"><div class="insight-title">Bending Stress (Lewis)</div><div class="insight-value" id="bendStress">--</div></div>
+        <div class="insight-card"><div class="insight-title">Bending Safety Factor</div><div class="insight-value" id="bendSF">--</div></div>
+        <div class="insight-card"><div class="insight-title">Contact Stress (Hertz)</div><div class="insight-value" id="contactStress">--</div></div>
+        <div class="insight-card"><div class="insight-title">Contact Safety Factor</div><div class="insight-value" id="contactSF">--</div></div>
+        <div class="insight-card"><div class="insight-title">Oil Viscosity @ Temp</div><div class="insight-value" id="oilViscosityOp">--</div></div>
+        <div class="insight-card"><div class="insight-title">Film λ / Regime</div><div class="insight-value" id="lambdaRegime">--</div></div>
+      </div>
+
+      <h3>Efficiency Map</h3>
+      <p class="mini-note">Efficiency islands across RPM × load. The crosshair tracks the live operating point.</p>
+      <canvas id="effMapCanvas" class="analysis-canvas" style="height:190px;"></canvas>
+      <button class="btn btn-muted" id="redrawEffMap" style="margin-top:8px;">Redraw Efficiency Map</button>
+
+      <h3>Mission Profile</h3>
+      <p class="mini-note">Define operating phases, then simulate the full mission with thermal integration and Miner's-rule fatigue accumulation.</p>
+      <div id="missionRows"></div>
+      <div class="button-row">
+        <button class="btn btn-muted" id="addMissionPhase">+ Add Phase</button>
+        <button class="btn btn-primary" id="runMission">Run Mission</button>
+      </div>
+
+      <h3>Cost & Validation</h3>
+      <div class="button-row">
+        <button class="btn btn-success" id="buildBOM">BOM + Cost Estimate</button>
+        <button class="btn btn-warn" id="runSelfTests">Run Self-Tests</button>
+      </div>
+      <button class="btn btn-success" id="exportBOMCSV">Download BOM (.CSV)</button>
+      <textarea id="analysisOutput" readonly style="height:200px; font-size:0.78rem; resize:vertical;"></textarea>
+    </div>
+
     <div id="export" class="tab-content">
+      <h3>Design Library</h3>
+      <div class="form-group"><input type="text" id="designName" placeholder="Design name (e.g. quiet-rig-v2)"></div>
+      <button class="btn btn-primary" id="saveDesignBtn">Save Current Design</button>
+      <div class="form-group"><select id="designLibrary"></select></div>
+      <div class="button-row">
+        <button class="btn btn-success" id="loadDesignBtn">Load</button>
+        <button class="btn btn-danger" id="deleteDesignBtn">Delete</button>
+      </div>
+
       <h3>Data & Configuration</h3>
       <button class="btn btn-success" id="exportCSV">Download Telemetry (.CSV)</button>
       <button class="btn btn-success" id="exportJSON">Download Specs + Snapshot (.JSON)</button>
@@ -462,6 +523,7 @@
       <button class="btn btn-primary" id="exportSVG">Download Blueprint (.SVG)</button>
 
       <h3>Media</h3>
+      <button class="btn btn-primary" id="exportPNG">Snapshot 3D View (.PNG)</button>
       <button class="btn btn-primary" id="exportGIF">Render Animation (.GIF)</button>
       <p class="mini-note">Exports include the generated gear layout and current simulation snapshot. STL/GLB exclude lights and stars where possible.</p>
     </div>
@@ -533,7 +595,19 @@
     frame: 0,
     lastTime: 0,
     telemetry: [],
-    savedThrottle: 100
+    savedThrottle: 100,
+    filmLambda: 0,
+    oilViscosityOp: 0,
+    bendingStressMPa: 0,
+    contactStressMPa: 0,
+    bendingSF: 0,
+    contactSF: 0,
+    fatigueDamage: 0,
+    mission: { phases: [
+      { dur: 120, throttle: 60, load: 50, cooling: 50 },
+      { dur: 300, throttle: 100, load: 90, cooling: 60 },
+      { dur: 90, throttle: 130, load: 120, cooling: 85 }
+    ] }
   };
 
   const settings = {
@@ -568,6 +642,7 @@
     init2D();
     initChart();
     initPhysics();
+    initAnalysisFeatures();
     restoreLastConfig();
     generateSystem();
     requestAnimationFrame(animateLoop);
@@ -698,17 +773,7 @@
       throttle: safeFloat('throttleControl', 100) / 100,
       load: safeFloat('loadControl', 75) / 100,
       cooling: safeFloat('coolingControl', 50) / 100,
-      ambient: safeFloat('ambientTemp', 25),
-      bearingType: document.getElementById('bearingType').value,
-      bearingC: clamp(safeFloat('bearingC', 12), 1, 200),
-      viscosity: clamp(safeFloat('lubricantViscosity', 46), 5, 320),
-      flux: clamp(safeFloat('fluxDensity', 0.75), 0.05, 2),
-      coils: clamp(safeFloat('coilTurns', 180), 10, 2000),
-      phases: clamp(safeFloat('phaseCount', 3), 1, 6),
-      dtFidelity: clamp(safeFloat('dtFidelity', 72) / 100, 0.1, 1),
-      aiSupervisor: !!document.getElementById('aiSupervisor')?.checked,
-      monteCarloRuns: clamp(safeFloat('monteCarloRuns', 250), 25, 5000),
-      uncertaintyBand: clamp(safeFloat('uncertaintyBand', 12) / 100, 0.01, 0.5)
+      ambient: safeFloat('ambientTemp', 25)
     };
   }
 
@@ -1125,7 +1190,7 @@
 
   function addBlueprintFrame() {
     svgDraw.rect(196, 196).move(-98, -98).fill('none').stroke({ color: '#334155', width: 0.7 });
-    svgDraw.text('ULTRA ROTARY GENERATOR MK-II ADVANCED BLUEPRINT')
+    svgDraw.text('ULTRA ROTARY GENERATOR MK-III RESEARCH BLUEPRINT')
       .font({ size: 4, family: 'monospace', fill: '#94a3b8' }).move(-94, 90);
     svgDraw.line(-95, 84, 95, 84).stroke({ color: '#334155', width: 0.5 });
   }
@@ -1164,6 +1229,7 @@
     applyCameraTracking();
     if (document.getElementById('physicsSim').checked && physicsWorld) physicsWorld.step(1/60, dt, 3);
     updateTelemetryUI();
+    if (state.frame % 6 === 0) updateAnalysis();
     if (state.frame % 10 === 0) updateChartData(time / 1000);
 
     controls.update();
@@ -1264,7 +1330,10 @@
       resonanceMargin: state.resonanceMargin,
       rul: state.remainingUsefulLifeHours,
       risk: state.riskIndex,
-      survival: state.survivalProbability
+      survival: state.survivalProbability,
+      lambda: state.filmLambda,
+      bendSF: state.bendingSF,
+      contactSF: state.contactSF
     });
     if (state.telemetry.length > 2000) state.telemetry.shift();
   }
@@ -1278,7 +1347,6 @@
     const heatRatio = clamp((state.temp - state.specs.ambient) / 180, 0, 1);
 
     machineRoot.traverse(obj => {
-      if (obj.userData.kind === 'carrier') obj.rotation.z += speedRad * obj.userData.baseSpeed;
       if (obj.userData.baseSpeed && obj.userData.kind !== 'rack') obj.rotation.z += speedRad * obj.userData.baseSpeed;
       if (obj.userData.kind === 'rack') obj.position.x = Math.sin(state.frame * 0.025) * 8;
       if (obj.isMesh && obj.material && thermalMap) {
@@ -1340,8 +1408,8 @@
 
   function updateTelemetryUI() {
     setText('liveRPM', Math.round(state.rpm));
-    setText('liveTorque', `${state.torque.toFixed(1)} Nm`);
-    setText('liveTemp', `${state.temp.toFixed(1)}°C`);
+    setText('liveTorque', fmtTorque(state.torque));
+    setText('liveTemp', fmtTemp(state.temp));
     setText('liveEff', `${state.efficiency.toFixed(1)}%`);
     setText('livePower', `${state.powerOut.toFixed(0)} W`);
     setText('liveVibe', state.vibration.toFixed(2));
@@ -1477,12 +1545,18 @@
     const l10MillionRevs = Math.pow(dynamicRatingN / equivalentLoadN, bearingExponent);
     state.bearingLifeHours = l10MillionRevs * 1_000_000 / (60 * Math.max(1, state.rpm));
 
-    const viscosityTarget = state.temp > 110 ? 68 : state.rpm > 2500 ? 32 : 46;
-    const viscosityPenalty = Math.abs(specs.viscosity - viscosityTarget) * 0.45;
-    const tempPenalty = Math.max(0, state.temp - 75) * 0.34;
-    const rpmPenalty = Math.max(0, state.rpm - 3000) * 0.006;
+    state.oilViscosityOp = viscosityAtTemp(specs.viscosity, state.temp);
+    state.filmLambda = filmLambda(state.oilViscosityOp, state.rpm, specs);
+    const lambdaScore = clamp(state.filmLambda / 3, 0, 1) * 88;
+    const tempPenalty = Math.max(0, state.temp - 95) * 0.4;
     const faultPenalty = fault === 'BearingWear' ? severity * 26 : fault === 'CoolingFailure' ? severity * 18 : 0;
-    state.lubricationIndex = clamp(100 - viscosityPenalty - tempPenalty - rpmPenalty - faultPenalty, 0, 100);
+    state.lubricationIndex = clamp(12 + lambdaScore - tempPenalty - faultPenalty, 0, 100);
+
+    const gearStress = computeGearStress(state.torque, specs, state.rpm);
+    state.bendingStressMPa = gearStress.bending;
+    state.contactStressMPa = gearStress.contact;
+    state.bendingSF = gearStress.bendingSF;
+    state.contactSF = gearStress.contactSF;
 
     const phaseFactor = Math.sqrt(Math.max(1, specs.phases) / 3);
     const idealVoltage = specs.flux * specs.coils * Math.max(0, state.rpm) * 0.032 * phaseFactor;
@@ -1507,7 +1581,8 @@
       Math.max(0, 100 - state.lubricationIndex) * 0.22 +
       Math.max(0, 100 - state.resonanceMargin) * 0.18 +
       Math.max(0, 100 - state.health) * 0.20 +
-      Math.max(0, 500 - state.bearingLifeHours) * 0.016,
+      Math.max(0, 500 - state.bearingLifeHours) * 0.016 +
+      Math.max(0, 1 - Math.min(state.bendingSF || 99, state.contactSF || 99)) * 25,
       0,
       100
     );
@@ -1521,12 +1596,16 @@
     if (!badgeEl || !out) return;
     const maybeSetText = (id, value) => { const el = document.getElementById(id); if (el) el.innerText = value; };
 
-    badgeEl.innerHTML = `
+    const badgeHtml = `
       <span class="badge ${state.anomalyScore > 45 ? 'hot' : state.anomalyScore > 20 ? 'warn' : 'ok'}">Anomaly ${state.anomalyScore.toFixed(1)}</span>
       <span class="badge ${state.lubricationIndex < 55 ? 'hot' : state.lubricationIndex < 75 ? 'warn' : 'ok'}">Lube ${state.lubricationIndex.toFixed(0)}%</span>
       <span class="badge ${state.resonanceMargin < 25 ? 'hot' : state.resonanceMargin < 50 ? 'warn' : 'ok'}">Resonance ${state.resonanceMargin.toFixed(0)}%</span>
       <span class="badge ok">L10 ${formatHours(state.bearingLifeHours)}</span>
       <span class="badge ${state.riskIndex > 60 ? 'hot' : state.riskIndex > 35 ? 'warn' : 'ok'}">Risk ${state.riskIndex.toFixed(0)}</span>`;
+    if (badgeEl.dataset.last !== badgeHtml) {
+      badgeEl.innerHTML = badgeHtml;
+      badgeEl.dataset.last = badgeHtml;
+    }
 
     maybeSetText('survivalProb', `${state.survivalProbability.toFixed(0)}%`);
     maybeSetText('supervisorAction', state.supervisorAction || 'Hold');
@@ -1548,7 +1627,7 @@
       `Resonance safety margin: ${state.resonanceMargin.toFixed(1)}%`,
       `Supervisor action: ${state.supervisorAction}`,
       `Recommendation: ${getResearchRecommendation()}`
-    ].join('\\n');
+    ].join('\n');
   }
 
   function formatHours(hours) {
@@ -1617,7 +1696,7 @@ Predicted L10: ${formatHours(best.estLife)}`;
 
   function generateResearchReport() {
     const payload = getConfigPayload();
-    const report = `# Ultra Rotary Generator MK-II Advanced R&D Report
+    const report = `# Ultra Rotary Generator MK-III Research R&D Report
 
 Generated: ${new Date().toISOString()}
 
@@ -1795,10 +1874,10 @@ ${getResearchRecommendation()}
     const el = document.getElementById('designBadges');
     const specs = getSpecs();
     const pitchDiameter = specs.teeth * specs.module;
-    const estMass = (specs.count * pitchDiameter * 0.018 * (settings.materialProps[specs.material]?.density || 7.85)).toFixed(1);
+    const estMass = specs.count * pitchDiameter * 0.018 * (settings.materialProps[specs.material]?.density || 7.85);
     el.innerHTML = `
-      <span class="badge ok">Pitch Ø ${pitchDiameter.toFixed(1)}</span>
-      <span class="badge">Est. mass ${estMass} kg</span>
+      <span class="badge ok">Pitch Ø ${fmtLen(pitchDiameter)}</span>
+      <span class="badge">Est. mass ${fmtMass(estMass)}</span>
       <span class="badge ${specs.rpm > 3500 ? 'warn' : 'ok'}">${specs.rpm > 3500 ? 'High RPM' : 'RPM nominal'}</span>
       <span class="badge ${specs.clearance > 0.7 ? 'warn' : 'ok'}">Backlash ${(specs.clearance*100).toFixed(0)}%</span>`;
   }
@@ -1844,7 +1923,7 @@ ${getResearchRecommendation()}
 
   function getConfigPayload() {
     return {
-      name: 'Ultra Rotary Generator MK-II Advanced',
+      name: 'Ultra Rotary Generator MK-III Research Edition',
       exportedAt: new Date().toISOString(),
       specs: getSpecs(),
       snapshot: {
@@ -1866,7 +1945,14 @@ ${getResearchRecommendation()}
         remainingUsefulLifeHours: state.remainingUsefulLifeHours,
         riskIndex: state.riskIndex,
         survivalProbability: state.survivalProbability,
-        supervisorAction: state.supervisorAction
+        supervisorAction: state.supervisorAction,
+        filmLambda: state.filmLambda,
+        oilViscosityOp: state.oilViscosityOp,
+        bendingStressMPa: state.bendingStressMPa,
+        contactStressMPa: state.contactStressMPa,
+        bendingSF: state.bendingSF,
+        contactSF: state.contactSF,
+        fatigueDamage: state.fatigueDamage
       },
       telemetry: state.telemetry.slice(-300)
     };
@@ -1887,10 +1973,11 @@ ${getResearchRecommendation()}
   }
 
   function exportCSV() {
-    const rows = ['Time,RPM,Temp,Power,Torque,Efficiency,Vibration,Health,Anomaly,LubricationIndex,BearingLifeHours,RULHours,RiskIndex,SurvivalProbability,Voltage,Current,PowerFactor,ResonanceMargin'];
+    const rows = ['Time,RPM,Temp,Power,Torque,Efficiency,Vibration,Health,Anomaly,LubricationIndex,BearingLifeHours,RULHours,RiskIndex,SurvivalProbability,Voltage,Current,PowerFactor,ResonanceMargin,FilmLambda,BendingSF,ContactSF'];
     state.telemetry.forEach(r => rows.push([
       r.t.toFixed(3), r.rpm.toFixed(2), r.temp.toFixed(2), r.power.toFixed(2), r.torque.toFixed(3), r.eff.toFixed(2), r.vibe.toFixed(3), r.health.toFixed(2),
-      (r.anomaly || 0).toFixed(2), (r.lube || 0).toFixed(2), (r.bearingLifeHours || 0).toFixed(2), (r.rul || 0).toFixed(2), (r.risk || 0).toFixed(2), (r.survival || 0).toFixed(2), (r.voltage || 0).toFixed(2), (r.current || 0).toFixed(3), (r.powerFactor || 0).toFixed(3), (r.resonanceMargin || 0).toFixed(2)
+      (r.anomaly || 0).toFixed(2), (r.lube || 0).toFixed(2), (r.bearingLifeHours || 0).toFixed(2), (r.rul || 0).toFixed(2), (r.risk || 0).toFixed(2), (r.survival || 0).toFixed(2), (r.voltage || 0).toFixed(2), (r.current || 0).toFixed(3), (r.powerFactor || 0).toFixed(3), (r.resonanceMargin || 0).toFixed(2),
+      (r.lambda || 0).toFixed(3), (r.bendSF || 0).toFixed(2), (r.contactSF || 0).toFixed(2)
     ].join(',')));
     downloadBlob(new Blob([rows.join('\n')], { type: 'text/csv' }), 'telemetry_data_advanced.csv');
   }
@@ -1933,7 +2020,7 @@ ${getResearchRecommendation()}
     const addCircle = (x, y, r) => lines.push('0','CIRCLE','8','GEARS','10',x.toFixed(3),'20',y.toFixed(3),'30','0','40',r.toFixed(3));
     const addText = (x, y, txt) => lines.push('0','TEXT','8','NOTES','10',x.toFixed(3),'20',y.toFixed(3),'30','0','40','2.5','1',txt);
     svgGearGroups.forEach(g => addCircle(g.x, g.y, g.radius));
-    addText(-45, -45, 'ULTRA ROTARY GENERATOR MK-II ADVANCED');
+    addText(-45, -45, 'ULTRA ROTARY GENERATOR MK-III RESEARCH');
     lines.push('0','ENDSEC','0','EOF');
     return lines.join('\n');
   }
@@ -1973,6 +2060,655 @@ ${getResearchRecommendation()}
       URL.revokeObjectURL(link.href);
       document.body.removeChild(link);
     }, 150);
+  }
+
+  /* ================================================================
+     MK-III Research Extensions
+     Unit system, FFT vibration spectrum, gear stress (Lewis + Hertz),
+     EHL lubrication, efficiency map, mission profiles, BOM, design
+     library, PNG snapshot, keyboard shortcuts, self-test suite.
+     ================================================================ */
+
+  let unitSystem = localStorage.getItem('urg_units') || 'metric';
+  function fmtTemp(c) { return unitSystem === 'imperial' ? `${(c * 9 / 5 + 32).toFixed(1)}°F` : `${c.toFixed(1)}°C`; }
+  function fmtTorque(nm) { return unitSystem === 'imperial' ? `${(nm * 0.7376).toFixed(1)} lb·ft` : `${nm.toFixed(1)} Nm`; }
+  function fmtLen(mm) { return unitSystem === 'imperial' ? `${(mm / 25.4).toFixed(2)} in` : `${mm.toFixed(1)} mm`; }
+  function fmtMass(kg) { return unitSystem === 'imperial' ? `${(kg * 2.2046).toFixed(2)} lb` : `${kg.toFixed(2)} kg`; }
+  function fmtStress(mpa) { return unitSystem === 'imperial' ? `${(mpa * 0.145038).toFixed(1)} ksi` : `${mpa.toFixed(0)} MPa`; }
+
+  // Strength/elasticity/cost data per gear material (bend/contact allowables in MPa, E in GPa, cost in $/kg)
+  const materialStrength = {
+    Steel:       { bendAllow: 310, contactAllow: 1300, E: 210, cost: 4.5 },
+    Titanium:    { bendAllow: 280, contactAllow: 900,  E: 114, cost: 35 },
+    CarbonFiber: { bendAllow: 150, contactAllow: 420,  E: 70,  cost: 48 },
+    Brass:       { bendAllow: 115, contactAllow: 520,  E: 97,  cost: 9.5 },
+    Polymer:     { bendAllow: 34,  contactAllow: 110,  E: 3.1, cost: 6.5 }
+  };
+
+  // Lewis form factor table for 20° full-depth involute teeth (tooth count → Y)
+  const LEWIS_Y = [[12,0.245],[13,0.261],[14,0.277],[15,0.290],[16,0.296],[17,0.303],[18,0.309],[19,0.314],[20,0.322],[22,0.331],[24,0.337],[26,0.346],[28,0.353],[30,0.359],[34,0.371],[38,0.384],[43,0.397],[50,0.409],[60,0.422],[75,0.435],[100,0.447],[150,0.460],[300,0.472]];
+  function lewisFormFactor(z) {
+    if (z <= LEWIS_Y[0][0]) return LEWIS_Y[0][1];
+    for (let i = 1; i < LEWIS_Y.length; i++) {
+      if (z <= LEWIS_Y[i][0]) {
+        const [z0, y0] = LEWIS_Y[i - 1], [z1, y1] = LEWIS_Y[i];
+        return y0 + (y1 - y0) * (z - z0) / (z1 - z0);
+      }
+    }
+    return LEWIS_Y[LEWIS_Y.length - 1][1];
+  }
+
+  function computeGearStress(torqueNm, specs, rpm) {
+    const mat = materialStrength[specs.material] || materialStrength.Steel;
+    const z = Math.max(8, Math.round(specs.teeth));
+    const m = Math.max(0.25, specs.module);
+    const d = z * m;                                          // pitch diameter, mm
+    const b = clamp(m * 10, 4, 60);                           // face width, mm
+    const Ft = d > 0 ? (2000 * Math.max(0, torqueNm)) / d : 0; // tangential force, N
+    const v = Math.PI * (d / 1000) * Math.max(0, rpm) / 60;   // pitch-line velocity, m/s
+    const Kv = (6.1 + v) / 6.1;                               // Barth dynamic factor (milled profile)
+    const Y = lewisFormFactor(z);
+    const bending = (Ft * Kv) / (b * m * Y);                  // MPa
+    const u = Math.max(1.01, specs.ratio);
+    const Cp = Math.sqrt((mat.E * 1000) / (2 * Math.PI * (1 - 0.09))); // elastic coefficient, √MPa (ν = 0.3)
+    const contact = Cp * Math.sqrt(Math.max(0, (Ft * Kv) / (b * d)) * (u + 1) / u);
+    return {
+      bending, contact, Ft, v, Kv, Y, faceWidth: b, pitchDiameter: d,
+      bendingSF: clamp(bending > 0.01 ? mat.bendAllow / bending : 99, 0.01, 99),
+      contactSF: clamp(contact > 0.01 ? mat.contactAllow / contact : 99, 0.01, 99)
+    };
+  }
+
+  // Vogel-type viscosity-temperature relation, calibrated to ISO VG mineral oils (cSt at 40°C reference)
+  function viscosityAtTemp(nu40, tempC) {
+    const beta = 838;
+    return clamp(nu40 * Math.exp(beta * (1 / (tempC + 95) - 1 / 135)), 1.5, 2000);
+  }
+
+  // Simplified Hamrock-Dowson EHL film thickness → λ ratio vs composite surface roughness
+  function filmLambda(nuOp, rpm, specs) {
+    const d = Math.max(10, specs.teeth * specs.module);
+    const v = Math.PI * (d / 1000) * Math.max(0, rpm) / 60;   // entrainment velocity, m/s
+    const loadN = Math.max(80, state.torque * 125 + specs.load * 420);
+    const filmUm = 0.16 * Math.pow(Math.max(0.01, nuOp * v), 0.68) / Math.pow(loadN, 0.073);
+    const roughnessUm = 0.4;
+    return clamp(filmUm / roughnessUm, 0.02, 12);
+  }
+
+  /* ---------------- FFT vibration spectrum ---------------- */
+  const FFT_N = 2048, FFT_FS = 8192;
+
+  function fftMagnitude(signal) {
+    const n = signal.length;
+    const re = Float64Array.from(signal), im = new Float64Array(n);
+    for (let i = 1, j = 0; i < n; i++) {
+      let bit = n >> 1;
+      for (; j & bit; bit >>= 1) j ^= bit;
+      j ^= bit;
+      if (i < j) { [re[i], re[j]] = [re[j], re[i]]; [im[i], im[j]] = [im[j], im[i]]; }
+    }
+    for (let len = 2; len <= n; len <<= 1) {
+      const ang = -2 * Math.PI / len;
+      const wRe = Math.cos(ang), wIm = Math.sin(ang);
+      for (let i = 0; i < n; i += len) {
+        let curRe = 1, curIm = 0;
+        for (let k = 0; k < len / 2; k++) {
+          const a = i + k, c = i + k + len / 2;
+          const vRe = re[c] * curRe - im[c] * curIm;
+          const vIm = re[c] * curIm + im[c] * curRe;
+          re[c] = re[a] - vRe; im[c] = im[a] - vIm;
+          re[a] += vRe; im[a] += vIm;
+          const nRe = curRe * wRe - curIm * wIm;
+          curIm = curRe * wIm + curIm * wRe;
+          curRe = nRe;
+        }
+      }
+    }
+    const mags = new Float64Array(n / 2);
+    for (let i = 0; i < n / 2; i++) mags[i] = Math.sqrt(re[i] * re[i] + im[i] * im[i]) / (n / 2);
+    return mags;
+  }
+
+  // Rolling-element bearing defect frequencies (9 balls, d/D = 0.18, 0° contact angle)
+  function bearingDefectFrequencies(fShaft) {
+    const n = 9, ratio = 0.18;
+    return {
+      FTF: 0.5 * fShaft * (1 - ratio),
+      BPFO: (n / 2) * fShaft * (1 - ratio),
+      BPFI: (n / 2) * fShaft * (1 + ratio),
+      BSF: (fShaft / (2 * ratio)) * (1 - ratio * ratio)
+    };
+  }
+
+  function synthesizeVibrationSignal() {
+    const fShaft = Math.max(0.5, state.rpm / 60);
+    const z = Math.round(state.specs.teeth || 24);
+    const gmf = fShaft * z;
+    const fault = document.getElementById('faultMode').value;
+    const sev = safeFloat('faultSeverity', 25) / 100;
+    const brg = bearingDefectFrequencies(fShaft);
+    const base = clamp(state.vibration, 0.05, 30);
+    const comps = [
+      { f: fShaft,        a: 0.32 * base + (fault === 'Unbalance' ? sev * 2.6 * base : 0) },
+      { f: 2 * fShaft,    a: 0.10 * base + (fault === 'Unbalance' ? sev * 0.7 * base : 0) },
+      { f: gmf,           a: 0.50 * base },
+      { f: 2 * gmf,       a: 0.22 * base },
+      { f: 3 * gmf,       a: 0.09 * base },
+      { f: gmf - fShaft,  a: 0.05 * base + (fault === 'ToothChip' ? sev * 1.5 * base : 0) },
+      { f: gmf + fShaft,  a: 0.05 * base + (fault === 'ToothChip' ? sev * 1.5 * base : 0) },
+      { f: brg.BPFO,      a: 0.035 * base + (fault === 'BearingWear' ? sev * 1.5 * base : 0) },
+      { f: brg.BPFI,      a: 0.03 * base + (fault === 'BearingWear' ? sev * 1.1 * base : 0) },
+      { f: brg.BSF,       a: 0.02 * base + (fault === 'BearingWear' ? sev * 0.6 * base : 0) }
+    ].filter(c => c.f > 0 && c.f < FFT_FS * 0.45);
+    const noiseAmp = base * (0.05 + (fault !== 'None' ? sev * 0.1 : 0));
+    const sig = new Float64Array(FFT_N);
+    for (let i = 0; i < FFT_N; i++) {
+      const t = i / FFT_FS;
+      let s = 0;
+      for (const c of comps) s += c.a * Math.sin(2 * Math.PI * c.f * t);
+      s += noiseAmp * (Math.random() + Math.random() + Math.random() + Math.random() - 2) * 0.7;
+      sig[i] = s;
+    }
+    return sig;
+  }
+
+  function fitCanvas(c) {
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const w = Math.max(50, c.clientWidth), h = Math.max(40, c.clientHeight);
+    if (c.width !== Math.round(w * dpr) || c.height !== Math.round(h * dpr)) {
+      c.width = Math.round(w * dpr);
+      c.height = Math.round(h * dpr);
+    }
+    const ctx = c.getContext('2d');
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    return ctx;
+  }
+
+  let spectrumPeakSmooth = 1e-6;
+  function drawSpectrum() {
+    const canvas = document.getElementById('fftCanvas');
+    if (!canvas) return;
+    const ctx = fitCanvas(canvas);
+    const W = canvas.clientWidth, H = canvas.clientHeight;
+    const sig = synthesizeVibrationSignal();
+    for (let i = 0; i < sig.length; i++) sig[i] *= 0.5 * (1 - Math.cos(2 * Math.PI * i / (sig.length - 1)));
+    const mags = fftMagnitude(sig);
+    const binHz = FFT_FS / FFT_N;
+    const fShaft = Math.max(0.5, state.rpm / 60);
+    const gmf = fShaft * Math.round(state.specs.teeth || 24);
+    const brg = bearingDefectFrequencies(fShaft);
+    const maxF = clamp(Math.max(250, gmf * 2.7, brg.BPFI * 1.6), 250, FFT_FS / 2);
+    const binMax = Math.min(mags.length - 1, Math.floor(maxF / binHz));
+
+    let peak = 1e-6;
+    for (let i = 1; i <= binMax; i++) peak = Math.max(peak, mags[i]);
+    spectrumPeakSmooth = spectrumPeakSmooth * 0.75 + peak * 0.25;
+
+    ctx.fillStyle = '#020617';
+    ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = 'rgba(0,212,255,0.85)';
+    for (let i = 1; i <= binMax; i++) {
+      const x = (i / binMax) * W;
+      const h = clamp(mags[i] / (spectrumPeakSmooth * 1.15), 0, 1) * (H - 22);
+      ctx.fillRect(x, H - 14 - h, Math.max(1, W / binMax - 0.4), h);
+    }
+
+    const marker = (f, color, label) => {
+      if (f <= 0 || f > maxF) return;
+      const x = (f / maxF) * W;
+      ctx.strokeStyle = color;
+      ctx.setLineDash([3, 3]);
+      ctx.beginPath();
+      ctx.moveTo(x, 4);
+      ctx.lineTo(x, H - 14);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle = color;
+      ctx.font = '9px monospace';
+      ctx.fillText(label, Math.min(W - 32, x + 2), 11);
+    };
+    marker(fShaft, '#22d3ee', '1×');
+    marker(gmf, '#fbbf24', 'GMF');
+    marker(2 * gmf, '#fbbf2488', '2×GMF');
+    marker(brg.BPFO, '#fb7185', 'BPFO');
+    marker(brg.BPFI, '#f472b6', 'BPFI');
+
+    ctx.fillStyle = '#94a3b8';
+    ctx.font = '9px monospace';
+    ctx.fillText('0 Hz', 3, H - 3);
+    ctx.fillText(`${Math.round(maxF)} Hz`, W - 50, H - 3);
+
+    const bandEnergy = f => {
+      if (f <= 0 || f > maxF) return 0;
+      const bin = Math.round(f / binHz);
+      let e = 0;
+      for (let i = Math.max(1, bin - 2); i <= Math.min(binMax, bin + 2); i++) e += mags[i];
+      return e;
+    };
+    let total = 1e-9;
+    for (let i = 1; i <= binMax; i++) total += mags[i];
+    const e1x = bandEnergy(fShaft) + bandEnergy(2 * fShaft);
+    const eGmf = bandEnergy(gmf) + bandEnergy(2 * gmf) + bandEnergy(3 * gmf);
+    const eSide = bandEnergy(gmf - fShaft) + bandEnergy(gmf + fShaft);
+    const eBrg = bandEnergy(brg.BPFO) + bandEnergy(brg.BPFI) + bandEnergy(brg.BSF);
+    const msgs = [];
+    if (e1x / total > 0.30) msgs.push('elevated 1× shaft energy → check unbalance / misalignment');
+    if (eSide > 0.55 * Math.max(eGmf, 1e-9)) msgs.push('strong GMF sidebands → suspect tooth damage or eccentricity');
+    if (eBrg / total > 0.16) msgs.push('bearing defect tones rising (BPFO/BPFI) → schedule bearing inspection');
+    if (!msgs.length) msgs.push('spectrum dominated by normal gear-mesh content — no fault signature detected');
+    setText('spectrumDiagnosis', `Diagnosis: ${msgs.join('; ')}.`);
+
+    const badges = document.getElementById('spectrumBadges');
+    if (badges) {
+      badges.innerHTML = `
+        <span class="badge">1× ${fShaft.toFixed(1)} Hz</span>
+        <span class="badge">GMF ${gmf.toFixed(0)} Hz</span>
+        <span class="badge">BPFO ${brg.BPFO.toFixed(1)} Hz</span>
+        <span class="badge">BPFI ${brg.BPFI.toFixed(1)} Hz</span>
+        <span class="badge">BSF ${brg.BSF.toFixed(1)} Hz</span>`;
+    }
+  }
+
+  /* ---------------- Efficiency map ---------------- */
+  let effMapCache = null;
+
+  function hslToRgb(h, s, l) {
+    const k = n => (n + h * 12) % 12;
+    const a = s * Math.min(l, 1 - l);
+    const f = n => l - a * Math.max(-1, Math.min(k(n) - 3, Math.min(9 - k(n), 1)));
+    return [Math.round(f(0) * 255), Math.round(f(8) * 255), Math.round(f(4) * 255)];
+  }
+
+  function effColor(eff) {
+    const t = clamp(eff / 98, 0, 1);
+    return hslToRgb(t * 120 / 360, 0.78, 0.28 + t * 0.22);
+  }
+
+  function drawEffMap() {
+    const canvas = document.getElementById('effMapCanvas');
+    if (!canvas) return;
+    const base = getSpecs();
+    const cols = 56, rowsN = 40;
+    const rpmMin = Math.max(100, base.rpm * 0.2), rpmMax = Math.max(rpmMin + 100, base.rpm * 1.6);
+    const loadMin = 0.1, loadMax = 2.0;
+    const off = document.createElement('canvas');
+    off.width = cols; off.height = rowsN;
+    const octx = off.getContext('2d');
+    const img = octx.createImageData(cols, rowsN);
+    for (let yi = 0; yi < rowsN; yi++) {
+      const load = loadMax - (yi / (rowsN - 1)) * (loadMax - loadMin);
+      for (let xi = 0; xi < cols; xi++) {
+        const rpm = rpmMin + (xi / (cols - 1)) * (rpmMax - rpmMin);
+        const r = evaluateVariant({ ...base, rpm, load, throttle: 1 });
+        const [cr, cg, cb] = effColor(r.estEff);
+        const idx = (yi * cols + xi) * 4;
+        img.data[idx] = cr; img.data[idx + 1] = cg; img.data[idx + 2] = cb; img.data[idx + 3] = 255;
+      }
+    }
+    octx.putImageData(img, 0, 0);
+    effMapCache = { off, rpmMin, rpmMax, loadMin, loadMax };
+    drawEffMapOverlay();
+  }
+
+  function drawEffMapOverlay() {
+    const canvas = document.getElementById('effMapCanvas');
+    if (!canvas || !effMapCache) return;
+    const ctx = fitCanvas(canvas);
+    const W = canvas.clientWidth, H = canvas.clientHeight;
+    const plotH = H - 16;
+    ctx.imageSmoothingEnabled = true;
+    ctx.clearRect(0, 0, W, H);
+    ctx.drawImage(effMapCache.off, 0, 0, W, plotH);
+    ctx.fillStyle = '#cbd5e1';
+    ctx.font = '9px monospace';
+    ctx.fillText(`${Math.round(effMapCache.rpmMin)} RPM`, 3, H - 4);
+    ctx.fillText(`${Math.round(effMapCache.rpmMax)} RPM`, W - 62, H - 4);
+    ctx.fillText('load 200%', 3, 10);
+    ctx.fillText('load 10%', 3, plotH - 4);
+    const { rpmMin, rpmMax, loadMin, loadMax } = effMapCache;
+    const liveLoad = state.specs.load || 0.75;
+    if (state.rpm >= rpmMin && state.rpm <= rpmMax && liveLoad >= loadMin && liveLoad <= loadMax) {
+      const x = ((state.rpm - rpmMin) / (rpmMax - rpmMin)) * W;
+      const y = ((loadMax - liveLoad) / (loadMax - loadMin)) * plotH;
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 1.2;
+      ctx.beginPath();
+      ctx.moveTo(x - 7, y); ctx.lineTo(x + 7, y);
+      ctx.moveTo(x, y - 7); ctx.lineTo(x, y + 7);
+      ctx.stroke();
+      ctx.strokeStyle = '#0f172a';
+      ctx.strokeRect(x - 1.5, y - 1.5, 3, 3);
+      ctx.fillStyle = '#ffffff';
+      ctx.fillText(`${state.efficiency.toFixed(0)}%`, x + 9, y - 4);
+    }
+  }
+
+  /* ---------------- Live analysis panel ---------------- */
+  let analysisTick = 0;
+  function updateAnalysis() {
+    const panel = document.getElementById('analysis');
+    if (!panel || !panel.classList.contains('active')) return;
+    analysisTick++;
+    setText('bendStress', fmtStress(state.bendingStressMPa));
+    setText('contactStress', fmtStress(state.contactStressMPa));
+    setText('bendSF', state.bendingSF ? state.bendingSF.toFixed(2) : '--');
+    setText('contactSF', state.contactSF ? state.contactSF.toFixed(2) : '--');
+    setText('oilViscosityOp', `${state.oilViscosityOp.toFixed(1)} cSt`);
+    const regime = state.filmLambda >= 3 ? 'Full film' : state.filmLambda >= 1 ? 'Mixed' : 'Boundary';
+    setText('lambdaRegime', `λ ${state.filmLambda.toFixed(2)} · ${regime}`);
+    const sfColor = sf => sf < 1 ? '#ff0055' : sf < 1.5 ? '#f59e0b' : '#10b981';
+    const bendEl = document.getElementById('bendSF');
+    const contEl = document.getElementById('contactSF');
+    if (bendEl) bendEl.style.color = sfColor(state.bendingSF);
+    if (contEl) contEl.style.color = sfColor(state.contactSF);
+    if (!effMapCache) drawEffMap();
+    else drawEffMapOverlay();
+    if (analysisTick % 3 === 0) drawSpectrum();
+  }
+
+  /* ---------------- Mission profile ---------------- */
+  function renderMissionRows() {
+    const wrap = document.getElementById('missionRows');
+    if (!wrap) return;
+    wrap.innerHTML = '<div class="mission-head"><span>Duration s</span><span>Throttle %</span><span>Load %</span><span>Cooling %</span><span></span></div>';
+    state.mission.phases.forEach((p, idx) => {
+      const row = document.createElement('div');
+      row.className = 'mission-row';
+      [['dur', 1, 36000], ['throttle', 0, 150], ['load', 0, 200], ['cooling', 0, 100]].forEach(([key, min, max]) => {
+        const inp = document.createElement('input');
+        inp.type = 'number'; inp.min = min; inp.max = max; inp.value = p[key];
+        inp.addEventListener('input', () => {
+          const v = parseFloat(inp.value);
+          if (Number.isFinite(v)) p[key] = clamp(v, min, max);
+        });
+        row.appendChild(inp);
+      });
+      const del = document.createElement('button');
+      del.className = 'mission-del';
+      del.textContent = '✕';
+      del.title = 'Remove phase';
+      del.addEventListener('click', () => { state.mission.phases.splice(idx, 1); renderMissionRows(); });
+      row.appendChild(del);
+      wrap.appendChild(row);
+    });
+  }
+
+  function runMission() {
+    const base = getSpecs();
+    const phases = state.mission.phases.filter(p => p.dur > 0);
+    const out = document.getElementById('analysisOutput');
+    if (!phases.length) { out.value = 'MISSION: no phases defined. Add at least one phase.'; return; }
+    const props = settings.materialProps[base.material] || settings.materialProps.Steel;
+    const countFactor = 1 + base.count * 0.085;
+    let T = base.ambient, energyWh = 0, damage = 0, peakT = base.ambient, totalSec = 0;
+    const lines = [];
+    phases.forEach((p, idx) => {
+      const thr = p.throttle / 100, load = p.load / 100, cool = p.cooling / 100;
+      const rpm = base.rpm * thr;
+      const dur = Math.min(36000, Math.round(p.dur));
+      for (let s = 0; s < dur; s++) {
+        const frictionHeat = (rpm * 0.0048) * countFactor * props.friction * (0.6 + load * 0.7);
+        const cooling = cool * (T - base.ambient) * 0.07;
+        T = Math.max(base.ambient, T + (frictionHeat - cooling));
+      }
+      peakT = Math.max(peakT, T);
+      const eff = clamp(96 - Math.max(0, T - 55) * 0.32 - Math.max(0, load - 1) * 18 - base.clearance * 5, 0, 98);
+      const power = Math.max(0, base.power * thr * load * (eff / 100));
+      energyWh += power * dur / 3600;
+      const torque = rpm > 1 ? power / ((rpm / 60) * 2 * Math.PI) : 0;
+      const eqLoad = Math.max(80, torque * 125 + load * 420 + Math.max(0, T - base.ambient) * 2.2);
+      const exp = base.bearingType === 'Roller' ? 10 / 3 : 3;
+      const lifeH = Math.pow(base.bearingC * 1000 / eqLoad, exp) * 1e6 / (60 * Math.max(1, rpm));
+      damage += (dur / 3600) / Math.max(1e-6, lifeH);
+      totalSec += dur;
+      lines.push(`Phase ${idx + 1}: ${dur}s @ throttle ${p.throttle}% / load ${p.load}% / cooling ${p.cooling}% → end temp ${fmtTemp(T)}, eff ${eff.toFixed(1)}%, power ${power.toFixed(0)} W, L10 ${formatHours(lifeH)}`);
+    });
+    state.fatigueDamage = damage;
+    const missions = damage > 1e-9 ? 1 / damage : Infinity;
+    out.value = [
+      'MISSION PROFILE RESULT',
+      `Phases: ${phases.length} · total duration ${(totalSec / 60).toFixed(1)} min`,
+      ...lines,
+      `Energy produced: ${energyWh >= 1000 ? (energyWh / 1000).toFixed(2) + ' kWh' : energyWh.toFixed(1) + ' Wh'}`,
+      `Peak temperature: ${fmtTemp(peakT)}`,
+      `Miner fatigue damage per mission: ${damage.toExponential(2)} (D < 1 is safe)`,
+      `Estimated missions to bearing L10 limit: ${Number.isFinite(missions) ? Math.floor(missions).toLocaleString() : '∞'}`,
+      `Verdict: ${peakT > safeFloat('tempLimit', 180) ? 'THERMAL LIMIT EXCEEDED — add cooling or shorten high-load phases.' : damage > 0.001 ? 'High fatigue duty — consider larger bearings.' : 'Mission within simulated safe envelope.'}`
+    ].join('\n');
+    logEvent(`Mission simulated: ${phases.length} phases, peak ${fmtTemp(peakT)}, damage ${damage.toExponential(1)}.`);
+  }
+
+  /* ---------------- BOM + cost estimator ---------------- */
+  function buildBOMRows() {
+    const s = getSpecs();
+    const props = settings.materialProps[s.material] || settings.materialProps.Steel;
+    const mat = materialStrength[s.material] || materialStrength.Steel;
+    const d = s.teeth * s.module, b = clamp(s.module * 10, 4, 60);
+    const count = Math.round(s.count);
+    const gearMass = Math.PI / 4 * Math.pow(d / 1000, 2) * (b / 1000) * props.density * 1000 * 0.72;
+    const shaftLen = clamp(count * d * 1.2 + 60, 80, 1200);
+    const shaftMass = Math.PI / 4 * Math.pow(s.shaft / 1000, 2) * (shaftLen / 1000) * 7850;
+    const windingMass = s.coils * 0.0012 * s.phases;
+    return [
+      { item: `${s.material} gear z=${Math.round(s.teeth)} m=${s.module}`, qty: count, massKg: gearMass, unitCost: gearMass * mat.cost + s.teeth * 0.18 + (s.type === 'Helical' ? 14 : s.type === 'Planetary' ? 9 : 0) },
+      { item: `Steel shaft Ø${s.shaft} × ${shaftLen.toFixed(0)} mm`, qty: 1, massKg: shaftMass, unitCost: shaftMass * 4.5 + 12 },
+      { item: `${s.bearingType} bearing C=${s.bearingC} kN`, qty: count + 1, massKg: 0.08 + s.bearingC * 0.004, unitCost: 6 + s.bearingC * 1.15 },
+      { item: 'NdFeB magnet rotor', qty: 1, massKg: 0.4 + s.flux * 0.8, unitCost: 18 + s.flux * 60 },
+      { item: `Copper winding (${Math.round(s.coils)} turns × ${s.phases}ph)`, qty: 1, massKg: windingMass, unitCost: windingMass * 12 + 8 },
+      { item: 'Housing + frame', qty: 1, massKg: gearMass * count * 0.6 + 1.4, unitCost: (gearMass * count * 0.6 + 1.4) * 3.2 },
+      { item: 'Fastener / seal kit', qty: 1, massKg: 0.2, unitCost: 7.5 },
+      { item: `Lubricant ISO VG ${Math.round(s.viscosity)} (0.4 L)`, qty: 1, massKg: 0.36, unitCost: 9 },
+      { item: 'Machining + assembly labour', qty: 1, massKg: 0, unitCost: 15 + count * s.teeth * 0.22 + (s.type === 'Helical' ? 30 : s.type === 'Planetary' ? 45 : 0) }
+    ];
+  }
+
+  function showBOM() {
+    const rows = buildBOMRows();
+    const totalCost = rows.reduce((sum, r) => sum + r.unitCost * r.qty, 0);
+    const totalMass = rows.reduce((sum, r) => sum + r.massKg * r.qty, 0);
+    const out = document.getElementById('analysisOutput');
+    out.value = [
+      'BILL OF MATERIALS + COST ESTIMATE (indicative, prototype quantities)',
+      '',
+      ...rows.map(r => `${r.qty}× ${r.item} — ${fmtMass(r.massKg)} ea — $${r.unitCost.toFixed(2)} ea — $${(r.unitCost * r.qty).toFixed(2)}`),
+      '',
+      `TOTAL DRY MASS: ${fmtMass(totalMass)}`,
+      `TOTAL ESTIMATED COST: $${totalCost.toFixed(2)}`,
+      `COST PER TARGET WATT: $${(totalCost / Math.max(1, getSpecs().power)).toFixed(3)} / W`
+    ].join('\n');
+    logEvent(`BOM estimated: ${fmtMass(totalMass)}, $${totalCost.toFixed(0)} total.`);
+  }
+
+  function exportBOMCSV() {
+    const rows = buildBOMRows();
+    const csv = ['Item,Qty,UnitMassKg,UnitCostUSD,LineCostUSD'];
+    rows.forEach(r => csv.push(`"${r.item}",${r.qty},${r.massKg.toFixed(3)},${r.unitCost.toFixed(2)},${(r.unitCost * r.qty).toFixed(2)}`));
+    const total = rows.reduce((sum, r) => sum + r.unitCost * r.qty, 0);
+    csv.push(`"TOTAL",,,,${total.toFixed(2)}`);
+    downloadBlob(new Blob([csv.join('\n')], { type: 'text/csv' }), 'generator_bom_estimate.csv');
+  }
+
+  /* ---------------- Design library ---------------- */
+  function getDesignStore() {
+    try { return JSON.parse(localStorage.getItem('urg_design_library') || '{}'); } catch (e) { return {}; }
+  }
+
+  function refreshDesignLibrary(selectName) {
+    const sel = document.getElementById('designLibrary');
+    if (!sel) return;
+    const store = getDesignStore();
+    const names = Object.keys(store).sort();
+    sel.innerHTML = names.length
+      ? names.map(n => `<option value="${n.replace(/"/g, '&quot;')}">${n}</option>`).join('')
+      : '<option value="">(library empty)</option>';
+    if (selectName && names.includes(selectName)) sel.value = selectName;
+  }
+
+  function applySpecsToUI(specs) {
+    const map = {
+      power: 'powerOutput', rpm: 'rpm', material: 'material', type: 'gearType', count: 'gears',
+      teeth: 'toothCount', ratio: 'gearRatio', module: 'gearModule', shaft: 'shaftDiameter',
+      helix: 'helixAngle', ambient: 'ambientTemp', bearingType: 'bearingType', bearingC: 'bearingC',
+      viscosity: 'lubricantViscosity', flux: 'fluxDensity', coils: 'coilTurns', phases: 'phaseCount'
+    };
+    Object.entries(map).forEach(([k, id]) => { if (specs[k] !== undefined) setValue(id, specs[k]); });
+    if (specs.clearance !== undefined) setValue('clearance', Math.round(specs.clearance * 100));
+    if (specs.throttle !== undefined) setValue('throttleControl', Math.round(specs.throttle * 100));
+    if (specs.load !== undefined) setValue('loadControl', Math.round(specs.load * 100));
+    if (specs.cooling !== undefined) setValue('coolingControl', Math.round(specs.cooling * 100));
+  }
+
+  function saveDesign() {
+    const nameInput = document.getElementById('designName');
+    const name = (nameInput.value || '').trim() || `design-${new Date().toISOString().slice(0, 16).replace('T', '-')}`;
+    const store = getDesignStore();
+    store[name] = getSpecs();
+    localStorage.setItem('urg_design_library', JSON.stringify(store));
+    refreshDesignLibrary(name);
+    logEvent(`Design "${name}" saved to library (${Object.keys(store).length} total).`);
+  }
+
+  function loadDesign() {
+    const name = document.getElementById('designLibrary').value;
+    const store = getDesignStore();
+    if (!name || !store[name]) return;
+    applySpecsToUI(store[name]);
+    generateSystem();
+    effMapCache = null;
+    logEvent(`Design "${name}" loaded from library.`);
+  }
+
+  function deleteDesign() {
+    const name = document.getElementById('designLibrary').value;
+    const store = getDesignStore();
+    if (!name || !store[name]) return;
+    delete store[name];
+    localStorage.setItem('urg_design_library', JSON.stringify(store));
+    refreshDesignLibrary();
+    logEvent(`Design "${name}" deleted from library.`);
+  }
+
+  /* ---------------- PNG snapshot ---------------- */
+  function exportPNG() {
+    renderer.render(scene, camera);
+    renderer.domElement.toBlob(blob => {
+      if (blob) downloadBlob(blob, 'generator_snapshot.png');
+    }, 'image/png');
+  }
+
+  /* ---------------- Self-test suite ---------------- */
+  function runSelfTests() {
+    const tests = [
+      ['clamp respects bounds', () => clamp(5, 0, 3) === 3 && clamp(-1, 0, 3) === 0 && clamp(2, 0, 3) === 2],
+      ['Lewis form factor matches table and is monotonic', () => Math.abs(lewisFormFactor(24) - 0.337) < 0.01 && lewisFormFactor(100) > lewisFormFactor(20)],
+      ['FFT locates a pure 512 Hz tone in bin 128', () => {
+        const sig = new Float64Array(FFT_N);
+        for (let i = 0; i < FFT_N; i++) sig[i] = Math.sin(2 * Math.PI * 512 * i / FFT_FS);
+        const mags = fftMagnitude(sig);
+        let argmax = 1;
+        for (let i = 1; i < mags.length; i++) if (mags[i] > mags[argmax]) argmax = i;
+        return argmax === Math.round(512 / (FFT_FS / FFT_N));
+      }],
+      ['Bending stress falls when module increases', () => {
+        const specs = { material: 'Steel', teeth: 24, module: 1, ratio: 1.5 };
+        const s1 = computeGearStress(5, specs, 1200).bending;
+        const s2 = computeGearStress(5, { ...specs, module: 2 }, 1200).bending;
+        return s2 < s1 && s1 > 0;
+      }],
+      ['Viscosity model: ν(40°C) ≈ ν40 and decreases with temperature', () => {
+        const v40 = viscosityAtTemp(46, 40);
+        return Math.abs(v40 - 46) < 1.5 && viscosityAtTemp(46, 100) < v40;
+      }],
+      ['Film λ increases with viscosity', () => {
+        const specs = { teeth: 24, module: 1, load: 0.75 };
+        return filmLambda(60, 1200, specs) > filmLambda(15, 1200, specs);
+      }],
+      ['Bearing defect frequency ordering BPFI > BPFO > FTF', () => {
+        const b = bearingDefectFrequencies(20);
+        return b.BPFI > b.BPFO && b.BPFO > b.FTF && b.BSF > 0;
+      }],
+      ['DXF export contains ENTITIES and EOF markers', () => {
+        const dxf = simpleDXF();
+        return dxf.includes('ENTITIES') && dxf.includes('EOF');
+      }],
+      ['formatHours converts 48 h to days', () => formatHours(48) === '2.0 d'],
+      ['evaluateVariant stays within physical bounds', () => {
+        const r = evaluateVariant(getSpecs());
+        return r.estEff >= 0 && r.estEff <= 98 && r.risk >= 0 && r.risk <= 100 && r.life > 0;
+      }],
+      ['Imperial temperature conversion 100°C → 212.0°F', () => {
+        const prev = unitSystem;
+        unitSystem = 'imperial';
+        const ok = fmtTemp(100) === '212.0°F';
+        unitSystem = prev;
+        return ok;
+      }],
+      ['Efficiency map colours are valid RGB', () => {
+        const lo = effColor(0), hi = effColor(98);
+        return [...lo, ...hi].every(c => Number.isInteger(c) && c >= 0 && c <= 255);
+      }]
+    ];
+    const results = tests.map(([name, fn]) => {
+      try { return `${fn() ? 'PASS' : 'FAIL'}  ${name}`; }
+      catch (err) { return `ERROR ${name} → ${err.message}`; }
+    });
+    const failures = results.filter(r => !r.startsWith('PASS')).length;
+    const out = document.getElementById('analysisOutput');
+    out.value = [
+      `SELF-TEST SUITE — ${tests.length - failures}/${tests.length} passed`,
+      '',
+      ...results
+    ].join('\n');
+    logEvent(`Self-tests: ${tests.length - failures}/${tests.length} passed${failures ? ' — REVIEW FAILURES' : ''}.`);
+  }
+
+  /* ---------------- Wiring ---------------- */
+  function initAnalysisFeatures() {
+    const onClick = (id, fn) => { const el = document.getElementById(id); if (el) el.addEventListener('click', fn); };
+
+    const unitSel = document.getElementById('unitSystem');
+    if (unitSel) {
+      unitSel.value = unitSystem;
+      unitSel.addEventListener('change', () => {
+        unitSystem = unitSel.value;
+        localStorage.setItem('urg_units', unitSystem);
+        updateDesignBadges();
+        logEvent(`Display units switched to ${unitSystem === 'imperial' ? 'imperial' : 'SI'}.`);
+      });
+    }
+
+    onClick('redrawEffMap', drawEffMap);
+    onClick('addMissionPhase', () => { state.mission.phases.push({ dur: 120, throttle: 100, load: 75, cooling: 50 }); renderMissionRows(); });
+    onClick('runMission', runMission);
+    onClick('buildBOM', showBOM);
+    onClick('exportBOMCSV', exportBOMCSV);
+    onClick('runSelfTests', runSelfTests);
+    onClick('exportPNG', exportPNG);
+    onClick('saveDesignBtn', saveDesign);
+    onClick('loadDesignBtn', loadDesign);
+    onClick('deleteDesignBtn', deleteDesign);
+    refreshDesignLibrary();
+    renderMissionRows();
+
+    const origOpenTab = window.openTab;
+    window.openTab = function (evt, tab) {
+      origOpenTab(evt, tab);
+      if (tab === 'analysis') { drawEffMap(); drawSpectrum(); }
+    };
+
+    document.addEventListener('keydown', e => {
+      const tag = (e.target && e.target.tagName) || '';
+      if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return;
+      if (e.code === 'Space') { e.preventDefault(); togglePause(); }
+      else if (e.key === 'g' || e.key === 'G') generateSystem();
+      else if (e.key === 'r' || e.key === 'R') resetCamera();
+      else if (e.key >= '1' && e.key <= '6') {
+        const btn = document.querySelectorAll('.tab-btn')[Number(e.key) - 1];
+        if (btn) btn.click();
+      }
+    });
+
+    logEvent('MK-III analysis lab online: FFT spectrum, gear stress, efficiency map, missions, BOM, self-tests. Keys: Space pause, G regenerate, R camera, 1-6 tabs.');
   }
 </script>
 </body>
