@@ -1,77 +1,871 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Resistor Animation</title>
-    <style>
-        canvas {
-            border: 1px solid #000;
-        }
-    </style>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Advanced Resistor Simulation</title>
+  <style>
+    :root {
+      --bg: #0b1020;
+      --panel: rgba(20, 28, 50, 0.78);
+      --panel-border: rgba(255,255,255,0.10);
+      --text: #e9eefc;
+      --muted: #a8b3d6;
+      --accent: #63d2ff;
+      --accent2: #ff8a4c;
+      --good: #7CFF9B;
+      --warn: #ffcc66;
+    }
+
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      font-family: Inter, system-ui, Arial, sans-serif;
+      background:
+        radial-gradient(circle at top, #182041 0%, var(--bg) 55%, #05070f 100%);
+      color: var(--text);
+    }
+
+    #wrap {
+      position: relative;
+      width: 100vw;
+      height: 100vh;
+    }
+
+    canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+    }
+
+    .hud {
+      position: absolute;
+      top: 16px;
+      left: 16px;
+      width: min(420px, calc(100vw - 32px));
+      padding: 14px 14px 12px;
+      border: 1px solid var(--panel-border);
+      border-radius: 18px;
+      background: var(--panel);
+      backdrop-filter: blur(12px);
+      box-shadow: 0 10px 35px rgba(0,0,0,0.35);
+    }
+
+    .hud h1 {
+      margin: 0 0 8px;
+      font-size: 18px;
+      letter-spacing: 0.2px;
+    }
+
+    .sub {
+      color: var(--muted);
+      font-size: 12px;
+      margin-bottom: 12px;
+      line-height: 1.35;
+    }
+
+    .row {
+      display: grid;
+      grid-template-columns: 1fr 110px;
+      gap: 10px;
+      align-items: center;
+      margin: 8px 0;
+    }
+
+    .row label {
+      font-size: 12px;
+      color: var(--muted);
+      display: block;
+      margin-bottom: 4px;
+    }
+
+    .value {
+      font-size: 12px;
+      color: var(--text);
+      text-align: right;
+      font-variant-numeric: tabular-nums;
+    }
+
+    input[type="range"], select, button {
+      width: 100%;
+      accent-color: var(--accent);
+    }
+
+    select, button {
+      background: rgba(255,255,255,0.06);
+      color: var(--text);
+      border: 1px solid var(--panel-border);
+      border-radius: 12px;
+      padding: 9px 10px;
+      font-size: 13px;
+      outline: none;
+    }
+
+    button {
+      cursor: pointer;
+      transition: transform 0.08s ease, background 0.15s ease;
+    }
+
+    button:hover { background: rgba(255,255,255,0.10); }
+    button:active { transform: translateY(1px); }
+
+    .btnrow {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 8px;
+      margin-top: 10px;
+    }
+
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 8px;
+      margin-top: 12px;
+    }
+
+    .card {
+      background: rgba(255,255,255,0.05);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 14px;
+      padding: 10px 8px;
+      text-align: center;
+    }
+
+    .card .k {
+      display: block;
+      font-size: 11px;
+      color: var(--muted);
+      margin-bottom: 4px;
+    }
+
+    .card .v {
+      font-size: 15px;
+      font-weight: 700;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .corner {
+      position: absolute;
+      right: 16px;
+      bottom: 16px;
+      width: min(380px, calc(100vw - 32px));
+      padding: 12px;
+      border-radius: 18px;
+      background: rgba(10, 14, 26, 0.70);
+      border: 1px solid var(--panel-border);
+      backdrop-filter: blur(10px);
+      box-shadow: 0 10px 35px rgba(0,0,0,0.28);
+    }
+
+    .corner h2 {
+      margin: 0 0 8px;
+      font-size: 14px;
+      color: #dbe6ff;
+    }
+
+    .legend {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    .dot {
+      display: inline-block;
+      width: 9px;
+      height: 9px;
+      border-radius: 50%;
+      margin-right: 6px;
+      vertical-align: middle;
+    }
+
+    .dot.e { background: var(--accent); }
+    .dot.h { background: var(--accent2); }
+    .dot.a { background: #9aa7c7; }
+    .dot.f { background: #82ffb8; }
+  </style>
 </head>
 <body>
-    <canvas id="resistor-animation" width="800" height="200"></canvas>
-    <script>
-        const canvas = document.getElementById('resistor-animation');
-        const ctx = canvas.getContext('2d');
+<div id="wrap">
+  <canvas id="sim"></canvas>
 
-        const electronCount = 100;
-        const resistorStart = 200;
-        const resistorEnd = 600;
-        const resistorHeight = 50;
-        const electronRadius = 2;
+  <div class="hud">
+    <h1>Advanced Resistor Simulation</h1>
+    <div class="sub">
+      Electron drift, lattice collisions, heat buildup, AC/DC switching, and a live current graph.
+    </div>
 
-        const electrons = [];
+    <div class="row">
+      <div>
+        <label for="voltage">Voltage</label>
+        <input id="voltage" type="range" min="0" max="240" value="48" />
+      </div>
+      <div class="value" id="voltageVal">48 V</div>
+    </div>
 
-        for (let i = 0; i < electronCount; i++) {
-            electrons.push({
-                x: Math.random() * canvas.width,
-                y: Math.random() * canvas.height,
-                speed: Math.random() * 2 + 1,
-            });
+    <div class="row">
+      <div>
+        <label for="resistance">Resistance</label>
+        <input id="resistance" type="range" min="1" max="1000" value="120" />
+      </div>
+      <div class="value" id="resistanceVal">120 Ω</div>
+    </div>
+
+    <div class="row">
+      <div>
+        <label for="material">Material</label>
+        <select id="material">
+          <option value="copper">Copper</option>
+          <option value="aluminum">Aluminum</option>
+          <option value="nichrome">Nichrome</option>
+          <option value="graphite">Graphite</option>
+        </select>
+      </div>
+      <div class="value" id="modeVal">DC</div>
+    </div>
+
+    <div class="row">
+      <div>
+        <label for="mode">Mode</label>
+        <select id="mode">
+          <option value="dc">DC</option>
+          <option value="ac">AC</option>
+        </select>
+      </div>
+      <div class="value" id="collisionsVal">0 hits/s</div>
+    </div>
+
+    <div class="btnrow">
+      <button id="pauseBtn">Pause</button>
+      <button id="resetBtn">Reset</button>
+      <button id="boostBtn">Boost</button>
+    </div>
+
+    <div class="stats">
+      <div class="card">
+        <span class="k">Current</span>
+        <span class="v" id="currentVal">0.00 A</span>
+      </div>
+      <div class="card">
+        <span class="k">Temperature</span>
+        <span class="v" id="tempVal">20°C</span>
+      </div>
+      <div class="card">
+        <span class="k">Drift</span>
+        <span class="v" id="driftVal">0.0</span>
+      </div>
+      <div class="card">
+        <span class="k">Power</span>
+        <span class="v" id="powerVal">0 W</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="corner">
+    <h2>Legend</h2>
+    <div class="legend">
+      <span><i class="dot e"></i>Electrons</span>
+      <span><i class="dot h"></i>Heat</span>
+      <span><i class="dot a"></i>Atoms</span>
+      <span><i class="dot f"></i>Field</span>
+    </div>
+  </div>
+</div>
+
+<script>
+(() => {
+  const canvas = document.getElementById('sim');
+  const ctx = canvas.getContext('2d');
+
+  const ui = {
+    voltage: document.getElementById('voltage'),
+    resistance: document.getElementById('resistance'),
+    material: document.getElementById('material'),
+    mode: document.getElementById('mode'),
+    pauseBtn: document.getElementById('pauseBtn'),
+    resetBtn: document.getElementById('resetBtn'),
+    boostBtn: document.getElementById('boostBtn'),
+    voltageVal: document.getElementById('voltageVal'),
+    resistanceVal: document.getElementById('resistanceVal'),
+    modeVal: document.getElementById('modeVal'),
+    collisionsVal: document.getElementById('collisionsVal'),
+    currentVal: document.getElementById('currentVal'),
+    tempVal: document.getElementById('tempVal'),
+    driftVal: document.getElementById('driftVal'),
+    powerVal: document.getElementById('powerVal')
+  };
+
+  const state = {
+    w: 0,
+    h: 0,
+    running: true,
+    t: 0,
+    temp: 20,
+    collisionsThisSecond: 0,
+    collisionTimer: 0,
+    boost: 1,
+    graph: [],
+    maxGraph: 220,
+    lastCurrent: 0,
+    fieldPhase: 0
+  };
+
+  const sim = {
+    wireY: 0,
+    wireH: 92,
+    resistorX: 0,
+    resistorW: 0,
+    atoms: [],
+    electrons: [],
+    heat: []
+  };
+
+  const materials = {
+    copper:   { baseR: 0.3, drift: 1.35, collision: 0.45, heat: 0.18, density: 0.28 },
+    aluminum: { baseR: 0.8, drift: 1.00, collision: 0.75, heat: 0.28, density: 0.42 },
+    nichrome: { baseR: 6.0, drift: 0.60, collision: 1.30, heat: 0.55, density: 0.65 },
+    graphite: { baseR: 12.0, drift: 0.45, collision: 1.10, heat: 0.42, density: 0.56 }
+  };
+
+  function clamp(v, a, b) { return Math.max(a, Math.min(b, v)); }
+  function lerp(a, b, t) { return a + (b - a) * t; }
+
+  function resize() {
+    const dpr = Math.max(1, window.devicePixelRatio || 1);
+    state.w = canvas.clientWidth = window.innerWidth;
+    state.h = canvas.clientHeight = window.innerHeight;
+    canvas.width = Math.floor(state.w * dpr);
+    canvas.height = Math.floor(state.h * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+    sim.wireY = state.h * 0.52;
+    sim.wireH = clamp(state.h * 0.12, 72, 120);
+    sim.resistorX = state.w * 0.26;
+    sim.resistorW = state.w * 0.48;
+
+    buildAtoms();
+    resetElectrons();
+  }
+
+  function buildAtoms() {
+    sim.atoms = [];
+    const density = materials[ui.material.value].density;
+    const spacingX = 18 - density * 5;
+    const spacingY = 18 - density * 4;
+    for (let x = sim.resistorX + 14; x < sim.resistorX + sim.resistorW - 14; x += spacingX) {
+      for (let y = sim.wireY - sim.wireH * 0.33; y < sim.wireY + sim.wireH * 0.33; y += spacingY) {
+        const jitter = (Math.random() - 0.5) * 4;
+        sim.atoms.push({
+          x: x + jitter,
+          y: y + jitter * 0.6,
+          r: 2.3 + Math.random() * 1.8,
+          phase: Math.random() * Math.PI * 2
+        });
+      }
+    }
+  }
+
+  function resetElectrons() {
+    sim.electrons = [];
+    const count = Math.floor(clamp(state.w * 0.25, 90, 180));
+    for (let i = 0; i < count; i++) {
+      sim.electrons.push(makeElectron(true));
+    }
+    sim.heat = [];
+    state.temp = 20;
+    state.graph = [];
+    state.collisionTimer = 0;
+    state.collisionsThisSecond = 0;
+  }
+
+  function makeElectron(randomX = false) {
+    const x = randomX ? Math.random() * state.w : 0;
+    return {
+      x,
+      y: sim.wireY + (Math.random() - 0.5) * (sim.wireH * 0.55),
+      vx: 0.6 + Math.random() * 0.8,
+      vy: (Math.random() - 0.5) * 0.4,
+      trail: [],
+      spin: Math.random() * Math.PI * 2,
+      charge: -1,
+      size: 1.8 + Math.random() * 1.4
+    };
+  }
+
+  function wireBounds() {
+    return {
+      top: sim.wireY - sim.wireH / 2,
+      bottom: sim.wireY + sim.wireH / 2
+    };
+  }
+
+  function effectiveVoltage() {
+    let v = +ui.voltage.value;
+    if (ui.mode.value === 'ac') {
+      const freq = 1.8;
+      v = (Math.sin(state.t * freq) * 0.5 + 0.5) * (+ui.voltage.value);
+    }
+    return v * state.boost;
+  }
+
+  function effectiveResistance() {
+    const material = materials[ui.material.value];
+    const userR = +ui.resistance.value;
+    const tempFactor = 1 + Math.max(0, state.temp - 20) * 0.004;
+    return (userR * material.baseR) * tempFactor;
+  }
+
+  function currentFromOhms(v, r) {
+    if (r <= 0.0001) return 0;
+    return v / r;
+  }
+
+  function drawBackground() {
+    const g = ctx.createRadialGradient(state.w * 0.45, state.h * 0.45, 20, state.w * 0.5, state.h * 0.5, Math.max(state.w, state.h));
+    g.addColorStop(0, '#1b254b');
+    g.addColorStop(0.45, '#0b1020');
+    g.addColorStop(1, '#05070f');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, state.w, state.h);
+  }
+
+  function drawField(vEff) {
+    const top = sim.wireY - sim.wireH * 0.75;
+    const bottom = sim.wireY + sim.wireH * 0.75;
+    const spacing = 52;
+    const amplitude = 10 + Math.min(24, Math.abs(vEff) * 0.25);
+
+    ctx.save();
+    ctx.globalAlpha = 0.28;
+    ctx.strokeStyle = 'rgba(99, 210, 255, 0.35)';
+    ctx.lineWidth = 1.2;
+
+    for (let x = 40; x < state.w - 40; x += spacing) {
+      ctx.beginPath();
+      const phase = state.t * 2 + x * 0.03;
+      ctx.moveTo(x, top);
+      for (let y = top; y <= bottom; y += 10) {
+        const sway = Math.sin(phase + y * 0.05) * amplitude;
+        ctx.lineTo(x + sway, y);
+      }
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  function drawWires() {
+    const b = wireBounds();
+    ctx.save();
+
+    const grad = ctx.createLinearGradient(0, 0, state.w, 0);
+    grad.addColorStop(0, 'rgba(180, 195, 255, 0.1)');
+    grad.addColorStop(0.5, 'rgba(255, 255, 255, 0.30)');
+    grad.addColorStop(1, 'rgba(180, 195, 255, 0.1)');
+
+    ctx.strokeStyle = grad;
+    ctx.lineWidth = 5;
+    ctx.lineCap = 'round';
+
+    ctx.beginPath();
+    ctx.moveTo(40, sim.wireY);
+    ctx.lineTo(sim.resistorX - 10, sim.wireY);
+    ctx.moveTo(sim.resistorX + sim.resistorW + 10, sim.wireY);
+    ctx.lineTo(state.w - 40, sim.wireY);
+    ctx.stroke();
+
+    // Wire glow
+    ctx.shadowBlur = 18;
+    ctx.shadowColor = 'rgba(99, 210, 255, 0.22)';
+    ctx.strokeStyle = 'rgba(99, 210, 255, 0.10)';
+    ctx.lineWidth = 10;
+    ctx.beginPath();
+    ctx.moveTo(40, sim.wireY);
+    ctx.lineTo(sim.resistorX - 10, sim.wireY);
+    ctx.moveTo(sim.resistorX + sim.resistorW + 10, sim.wireY);
+    ctx.lineTo(state.w - 40, sim.wireY);
+    ctx.stroke();
+
+    // resistor body
+    const bodyX = sim.resistorX;
+    const bodyY = b.top;
+    const bodyH = sim.wireH;
+    const bodyW = sim.resistorW;
+    const heat = clamp((state.temp - 20) / 80, 0, 1);
+
+    const bodyGrad = ctx.createLinearGradient(bodyX, 0, bodyX + bodyW, 0);
+    bodyGrad.addColorStop(0, `rgba(70, 73, 88, 0.92)`);
+    bodyGrad.addColorStop(0.5, `rgba(${lerp(85, 255, heat)}, ${lerp(88, 130, heat)}, ${lerp(100, 70, heat)}, 0.92)`);
+    bodyGrad.addColorStop(1, `rgba(70, 73, 88, 0.92)`);
+
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = bodyGrad;
+    roundRect(bodyX, bodyY, bodyW, bodyH, 20);
+    ctx.fill();
+
+    // resistor outline
+    ctx.strokeStyle = 'rgba(255,255,255,0.10)';
+    ctx.lineWidth = 1.2;
+    ctx.stroke();
+
+    // zigzag
+    ctx.beginPath();
+    const zY = sim.wireY;
+    const start = bodyX + 24;
+    const end = bodyX + bodyW - 24;
+    const zigCount = 9;
+    const step = (end - start) / zigCount;
+    ctx.moveTo(start, zY);
+    for (let i = 0; i < zigCount; i++) {
+      const x1 = start + step * i;
+      const x2 = x1 + step / 2;
+      const x3 = x1 + step;
+      ctx.lineTo(x2, zY + (i % 2 === 0 ? -24 : 24));
+      ctx.lineTo(x3, zY);
+    }
+    ctx.strokeStyle = 'rgba(255, 220, 180, 0.95)';
+    ctx.lineWidth = 3.4;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.stroke();
+
+    // terminal caps
+    ctx.fillStyle = 'rgba(255,255,255,0.18)';
+    roundRect(bodyX - 9, zY - 13, 18, 26, 9); ctx.fill();
+    roundRect(bodyX + bodyW - 9, zY - 13, 18, 26, 9); ctx.fill();
+
+    ctx.restore();
+  }
+
+  function drawAtoms(time) {
+    ctx.save();
+    for (const a of sim.atoms) {
+      const wobble = Math.sin(time * 2.3 + a.phase) * 0.6;
+      ctx.beginPath();
+      ctx.arc(a.x, a.y + wobble, a.r, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(170, 180, 210, 0.65)';
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  function drawHeat() {
+    ctx.save();
+    for (const p of sim.heat) {
+      const alpha = clamp(p.life / p.maxLife, 0, 1);
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(255, 120, 50, ${0.42 * alpha})`;
+      ctx.fill();
+
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.r * 0.55, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(255, 210, 120, ${0.34 * alpha})`;
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  function drawElectrons() {
+    ctx.save();
+    for (const e of sim.electrons) {
+      // trail
+      for (let i = 0; i < e.trail.length; i++) {
+        const t = e.trail[i];
+        const alpha = i / e.trail.length;
+        ctx.beginPath();
+        ctx.arc(t.x, t.y, e.size * (0.8 - alpha * 0.45), 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(99, 210, 255, ${0.05 * alpha})`;
+        ctx.fill();
+      }
+
+      // body
+      const glow = state.temp > 100 ? 0.8 : 0.35;
+      ctx.shadowBlur = 18;
+      ctx.shadowColor = `rgba(99, 210, 255, ${glow})`;
+      ctx.beginPath();
+      ctx.arc(e.x, e.y, e.size + 0.9, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(99, 210, 255, 0.9)';
+      ctx.fill();
+
+      // highlight
+      ctx.shadowBlur = 0;
+      ctx.beginPath();
+      ctx.arc(e.x - 0.5, e.y - 0.5, e.size * 0.42, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(255,255,255,0.75)';
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  function drawHUDText(vEff, rEff, iEff, pEff) {
+    const drift = iEff * 0.9;
+    ui.voltageVal.textContent = `${vEff.toFixed(1)} V`;
+    ui.resistanceVal.textContent = `${rEff.toFixed(1)} Ω`;
+    ui.modeVal.textContent = ui.mode.value.toUpperCase();
+    ui.currentVal.textContent = `${iEff.toFixed(2)} A`;
+    ui.tempVal.textContent = `${state.temp.toFixed(1)}°C`;
+    ui.driftVal.textContent = `${drift.toFixed(2)}`;
+    ui.powerVal.textContent = `${pEff.toFixed(1)} W`;
+    ui.collisionsVal.textContent = `${state.collisionsThisSecond} hits/s`;
+  }
+
+  function drawGraph() {
+    const boxW = Math.min(360, state.w * 0.28);
+    const boxH = 120;
+    const x = state.w - boxW - 18;
+    const y = 16;
+
+    ctx.save();
+    ctx.fillStyle = 'rgba(8, 12, 22, 0.58)';
+    roundRect(x, y, boxW, boxH, 16);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(255,255,255,0.08)';
+    ctx.stroke();
+
+    ctx.fillStyle = 'rgba(233, 238, 252, 0.9)';
+    ctx.font = '12px sans-serif';
+    ctx.fillText('Current over time', x + 12, y + 18);
+
+    // grid
+    ctx.strokeStyle = 'rgba(255,255,255,0.06)';
+    ctx.lineWidth = 1;
+    for (let i = 0; i < 4; i++) {
+      const gy = y + 30 + i * 20;
+      ctx.beginPath();
+      ctx.moveTo(x + 10, gy);
+      ctx.lineTo(x + boxW - 10, gy);
+      ctx.stroke();
+    }
+
+    const maxV = Math.max(0.1, ...state.graph.map(d => Math.abs(d)));
+    ctx.beginPath();
+    state.graph.forEach((v, i) => {
+      const gx = x + 10 + (i / (state.maxGraph - 1)) * (boxW - 20);
+      const gy = y + 30 + 65 - (v / maxV) * 45;
+      if (i === 0) ctx.moveTo(gx, gy);
+      else ctx.lineTo(gx, gy);
+    });
+    ctx.strokeStyle = 'rgba(99, 210, 255, 0.95)';
+    ctx.lineWidth = 2.2;
+    ctx.stroke();
+
+    ctx.fillStyle = 'rgba(99, 210, 255, 0.12)';
+    ctx.lineTo(x + boxW - 10, y + 95);
+    ctx.lineTo(x + 10, y + 95);
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.restore();
+  }
+
+  function updateElectrons(dt, vEff, rEff) {
+    const material = materials[ui.material.value];
+    const b = wireBounds();
+    const top = b.top + 8;
+    const bottom = b.bottom - 8;
+
+    const driftSpeed = clamp((vEff / Math.max(1, rEff)) * 18 * material.drift * state.boost, 0.2, 8);
+    const thermal = 0.9 + clamp(state.temp / 120, 0, 1.8);
+    const inResistor = (x) => x >= sim.resistorX && x <= sim.resistorX + sim.resistorW;
+
+    let collisions = 0;
+
+    for (const e of sim.electrons) {
+      e.trail.push({ x: e.x, y: e.y });
+      if (e.trail.length > 12) e.trail.shift();
+
+      // drift
+      const inside = inResistor(e.x);
+      e.vx = lerp(e.vx, inside ? driftSpeed * 0.45 : driftSpeed * 0.8, 0.05);
+
+      // thermal motion
+      e.vy += (Math.random() - 0.5) * 0.18 * thermal;
+      e.y += e.vy * dt * 60;
+
+      // advance
+      e.x += e.vx * dt * 60 * (ui.mode.value === 'ac' ? Math.sign(Math.sin(state.t * 1.8) || 1) : 1);
+
+      // wrap-around
+      if (e.x > state.w + 20) {
+        e.x = -20;
+        e.y = sim.wireY + (Math.random() - 0.5) * (sim.wireH * 0.55);
+        e.trail.length = 0;
+      }
+      if (e.x < -20) {
+        e.x = state.w + 20;
+        e.y = sim.wireY + (Math.random() - 0.5) * (sim.wireH * 0.55);
+        e.trail.length = 0;
+      }
+
+      // keep in conductor
+      if (e.y < top) { e.y = top; e.vy *= -0.7; }
+      if (e.y > bottom) { e.y = bottom; e.vy *= -0.7; }
+
+      // resistor collisions
+      if (inside) {
+        for (let k = 0; k < 2; k++) {
+          const a = sim.atoms[(Math.random() * sim.atoms.length) | 0];
+          const dx = e.x - a.x;
+          const dy = e.y - a.y;
+          const d2 = dx * dx + dy * dy;
+          const rr = 10 + a.r * 2.1;
+          if (d2 < rr * rr) {
+            const d = Math.max(0.001, Math.sqrt(d2));
+            const nx = dx / d;
+            const ny = dy / d;
+            const push = (rr - d) * 0.28;
+
+            e.x += nx * push;
+            e.y += ny * push;
+            e.vx *= 0.88 - material.collision * 0.03;
+            e.vy += (Math.random() - 0.5) * (0.9 + material.collision * 0.5);
+
+            spawnHeat(e.x, e.y, material.heat);
+            collisions++;
+          }
         }
+      }
 
-        function drawElectron(electron) {
-            ctx.beginPath();
-            ctx.arc(electron.x, electron.y, electronRadius, 0, Math.PI * 2);
-            ctx.fillStyle = 'blue';
-            ctx.fill();
-        }
+      // tiny oscillation
+      e.spin += dt * 8;
+    }
 
-        function drawResistor() {
-            ctx.fillStyle = 'black';
-            ctx.fillRect(resistorStart, canvas.height / 2 - resistorHeight / 2, resistorEnd - resistorStart, resistorHeight);
-        }
+    state.collisionsThisSecond += collisions;
+    state.temp += collisions * 0.035 * material.heat;
+    state.temp += Math.abs(vEff) * 0.0007;
+    state.temp -= (state.temp - 20) * 0.012 * dt * 60;
+    state.temp = clamp(state.temp, 20, 260);
+  }
 
-        function update() {
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
+  function spawnHeat(x, y, intensity = 1) {
+    const count = 1 + (Math.random() * 2 | 0);
+    for (let i = 0; i < count; i++) {
+      sim.heat.push({
+        x: x + (Math.random() - 0.5) * 8,
+        y: y + (Math.random() - 0.5) * 8,
+        vx: (Math.random() - 0.5) * 1.1 * intensity,
+        vy: -Math.random() * 1.6 - 0.4,
+        r: 2 + Math.random() * 3.5 * intensity,
+        life: 60,
+        maxLife: 60
+      });
+    }
+  }
 
-            drawResistor();
+  function updateHeat(dt) {
+    for (let i = sim.heat.length - 1; i >= 0; i--) {
+      const p = sim.heat[i];
+      p.life -= dt * 60;
+      p.x += p.vx * dt * 60;
+      p.y += p.vy * dt * 60;
+      p.vy += 0.015 * dt * 60;
+      p.r *= 0.998;
+      if (p.life <= 0) sim.heat.splice(i, 1);
+    }
+    if (sim.heat.length > 250) sim.heat.splice(0, sim.heat.length - 250);
+  }
 
-            for (let electron of electrons) {
-                drawElectron(electron);
-                electron.x += electron.speed;
+  function updateGraph(iEff) {
+    state.graph.push(iEff);
+    if (state.graph.length > state.maxGraph) state.graph.shift();
+  }
 
-                if (electron.x > canvas.width) {
-                    electron.x = 0;
-                }
+  function roundRect(x, y, w, h, r) {
+    const rr = Math.min(r, w / 2, h / 2);
+    ctx.beginPath();
+    ctx.moveTo(x + rr, y);
+    ctx.arcTo(x + w, y, x + w, y + h, rr);
+    ctx.arcTo(x + w, y + h, x, y + h, rr);
+    ctx.arcTo(x, y + h, x, y, rr);
+    ctx.arcTo(x, y, x + w, y, rr);
+    ctx.closePath();
+  }
 
-                if (electron.x > resistorStart - electronRadius && electron.x < resistorEnd + electronRadius) {
-                    electron.y += Math.random() * 4 - 2;
+  let last = performance.now();
 
-                    if (electron.y > canvas.height) {
-                        electron.y = 0;
-                    } else if (electron.y < 0) {
-                        electron.y = canvas.height;
-                    }
-                }
-            }
+  function frame(now) {
+    const dt = Math.min(0.033, (now - last) / 1000);
+    last = now;
+    state.t += dt;
 
-            requestAnimationFrame(update);
-        }
+    const vEff = effectiveVoltage();
+    const rEff = effectiveResistance();
+    const iEff = currentFromOhms(vEff, rEff);
+    const pEff = vEff * iEff;
 
-        update();
-    </script>
+    if (state.running) {
+      updateElectrons(dt, Math.abs(vEff), rEff);
+      updateHeat(dt);
+      updateGraph(Math.abs(iEff));
+      state.collisionTimer += dt;
+      if (state.collisionTimer >= 1) {
+        state.collisionTimer = 0;
+        state.collisionsThisSecond = 0;
+      }
+    }
+
+    drawBackground();
+    drawField(vEff);
+    drawWires();
+    drawAtoms(state.t);
+    drawHeat();
+    drawElectrons();
+    drawGraph();
+
+    // subtle info text
+    ctx.save();
+    ctx.fillStyle = 'rgba(255,255,255,0.80)';
+    ctx.font = '13px sans-serif';
+    ctx.fillText(`E-field strength: ${(Math.abs(vEff) * 0.08).toFixed(1)} a.u.`, 18, state.h - 20);
+    ctx.restore();
+
+    drawHUDText(vEff, rEff, iEff, pEff);
+
+    requestAnimationFrame(frame);
+  }
+
+  ui.mode.addEventListener('change', () => {
+    ui.modeVal.textContent = ui.mode.value.toUpperCase();
+  });
+
+  ui.material.addEventListener('change', () => {
+    buildAtoms();
+    resetElectrons();
+  });
+
+  ui.resetBtn.addEventListener('click', () => {
+    state.temp = 20;
+    state.graph = [];
+    state.boost = 1;
+    ui.voltage.value = 48;
+    ui.resistance.value = 120;
+    ui.mode.value = 'dc';
+    ui.material.value = 'copper';
+    ui.pauseBtn.textContent = 'Pause';
+    state.running = true;
+    buildAtoms();
+    resetElectrons();
+  });
+
+  ui.pauseBtn.addEventListener('click', () => {
+    state.running = !state.running;
+    ui.pauseBtn.textContent = state.running ? 'Pause' : 'Resume';
+  });
+
+  ui.boostBtn.addEventListener('click', () => {
+    state.boost = state.boost === 1 ? 2.2 : 1;
+    ui.boostBtn.textContent = state.boost === 1 ? 'Boost' : 'Normal';
+  });
+
+  window.addEventListener('resize', resize);
+
+  resize();
+  requestAnimationFrame(frame);
+})();
+</script>
 </body>
 </html>
