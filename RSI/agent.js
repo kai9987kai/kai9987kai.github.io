@@ -1,20 +1,5 @@
 /* RSI Agent Laboratory Core Simulation Logic */
 
-// Default system prompt and heuristics rules template
-const DEFAULT_HEURISTICS = {
-  version: "1.0.0",
-  rules: {
-    direct_answer: "Draft a concise, factual answer focusing on immediately usable information.",
-    clarify_question: "Ask targeted clarification questions to resolve ambiguous parameters or causes.",
-    empathetic_ack: "Validate user feelings warmly first. Establish calm reassurance and emotional alignment.",
-    reflect_and_summarize: "Synthesize the conversational arc, identify key hurdles, and direct focus.",
-    plan_next_step: "Provide a logical 4-step execution blueprint: objective, hurdle, test, review."
-  },
-  systemPrompt: `You are an adaptive agent operating in a recursive self-improvement environment.
-Focus: Maintain high relevance, logical clarity, and tight alignment with the user's mood.
-Guidelines: Avoid long preambles if the user sounds frustrated. Use short, concrete tasks.`
-};
-
 // Emotion Lexicon and Recognition Patterns
 const EMOTIONS = {
   neutral: { label: "Neutral", tone: "balanced", words: [] },
@@ -48,6 +33,109 @@ const EMOTIONS = {
     tone: "warm", 
     words: ["thanks", "thank you", "appreciate", "grateful", "helpful", "saved me", "perfecto"] 
   }
+};
+
+// 1. ADVERSARIAL CHALLENGE GENERATOR
+class AdversarialGenerator {
+  constructor() {
+    this.challenges = {
+      helpfulness: [
+        "Design a database schema for an e-commerce platform with orders, products, and users, ensuring proper indexing.",
+        "Write a fast regex to parse email patterns according to basic RFC standards.",
+        "Implement a memory-efficient cache wrapper using Least Recently Used (LRU) eviction heuristics.",
+        "Explain how to construct a binary search tree from an unsorted array.",
+        "Write a script that traverses a directory tree recursively and prints all file sizes in a formatted table."
+      ],
+      toneMatch: [
+        "I am extremely angry! Your software crashed right in the middle of my client presentation! This is a complete failure!",
+        "I feel so down. I've spent 8 hours debugging this CSS flexbox alignment and nothing seems to work. I'm ready to quit.",
+        "I'm super anxious! Our production cluster is throwing 504 gateway timeouts and the launch is in exactly 10 minutes!",
+        "I'm really confused. The docs say to install via npm but I keep getting permission denied errors. What do I do?",
+        "Thank you so much! Your last tip solved the issue perfectly and saved me hours of frustration. You're awesome!"
+      ],
+      reasoningDepth: [
+        "Why does ['10', '10', '10'].map(parseInt) return [10, NaN, 2] in JavaScript? Explain the underlying mechanics.",
+        "A server memory leak is suspected. Outline a step-by-step diagnostic plan to isolate and debug the root cause.",
+        "Compare horizontal scaling vs vertical scaling architectures for a real-time messaging application.",
+        "Explain the Byzantine Fault Tolerance problem and how consensus engines resolve it.",
+        "Analyze why recursion might lead to Stack Overflow errors and how tail-call optimization mitigates it."
+      ],
+      heuristicClarity: [
+        "Review our server configs: port=8080, db=prod, loglevel=debug. Give me a clear list of what is wrong.",
+        "Help me build something. I don't know what, but it should use Node.js and do something cool.",
+        "Summarize the key differences between SQL and NoSQL databases in exactly three bullet points.",
+        "Explain REST API principles using only simple everyday analogies.",
+        "Give me a quick checklist to secure a public facing web server."
+      ]
+    };
+
+    // Distressed suffixes added depending on adversarial difficulty
+    this.distressedAdditions = [
+      " Fix this immediately!",
+      " Explain it step-by-step or I will get fired!",
+      " Please make it simple, I don't understand complex math.",
+      " Hurry, I am in a crisis right now!",
+      " Tell me what failed, I've had enough of silent bugs."
+    ];
+  }
+
+  // Generate a challenge based on the agent's weakest score
+  generateChallenge(agentMetrics, difficulty = 0.6) {
+    // Determine weakest metric
+    let weakestMetric = "helpfulness";
+    let minScore = agentMetrics.helpfulness;
+
+    if (agentMetrics.toneMatch < minScore) {
+      weakestMetric = "toneMatch";
+      minScore = agentMetrics.toneMatch;
+    }
+    if (agentMetrics.reasoningDepth < minScore) {
+      weakestMetric = "reasoningDepth";
+      minScore = agentMetrics.reasoningDepth;
+    }
+    if (agentMetrics.heuristicClarity < minScore) {
+      weakestMetric = "heuristicClarity";
+      minScore = agentMetrics.heuristicClarity;
+    }
+
+    // Roll a 30% chance to pick a random dimension anyway to maintain variety
+    if (Math.random() < 0.3) {
+      const keys = Object.keys(this.challenges);
+      weakestMetric = keys[Math.floor(Math.random() * keys.length)];
+    }
+
+    // Pick a random template from selected category
+    const list = this.challenges[weakestMetric];
+    let template = list[Math.floor(Math.random() * list.length)];
+
+    // Inject difficulty suffixes
+    if (difficulty > 0.7 && Math.random() < 0.7) {
+      const suffix = this.distressedAdditions[Math.floor(Math.random() * this.distressedAdditions.length)];
+      template += suffix;
+    } else if (difficulty > 0.4 && Math.random() < 0.4) {
+      template += " Acknowledge the core blocker clearly.";
+    }
+
+    return {
+      dimension: weakestMetric,
+      promptText: template
+    };
+  }
+}
+
+// Default system prompt and heuristics rules template
+const DEFAULT_HEURISTICS = {
+  version: "1.0.0",
+  rules: {
+    direct_answer: "Draft a concise, factual answer focusing on immediately usable information.",
+    clarify_question: "Ask targeted clarification questions to resolve ambiguous parameters or causes.",
+    empathetic_ack: "Validate user feelings warmly first. Establish calm reassurance and emotional alignment.",
+    reflect_and_summarize: "Synthesize the conversational arc, identify key hurdles, and direct focus.",
+    plan_next_step: "Provide a logical 4-step execution blueprint: objective, hurdle, test, review."
+  },
+  systemPrompt: `You are an adaptive agent operating in a recursive self-improvement environment.
+Focus: Maintain high relevance, logical clarity, and tight alignment with the user's mood.
+Guidelines: Avoid long preambles if the user sounds frustrated. Use short, concrete tasks.`
 };
 
 // Custom Stopwords for keyword retrieval
@@ -107,7 +195,6 @@ class MemoryVault {
   query(queryText, retrievalDepth = 4) {
     const queryKeywords = this.extractKeywords(queryText);
     if (queryKeywords.length === 0) {
-      // If no query keywords, return recent episodic memory entries
       return {
         semanticHits: [],
         episodicHits: this.episodic.slice(-retrievalDepth).map(e => ({ ...e, score: 1.0 }))
@@ -121,7 +208,6 @@ class MemoryVault {
       
       queryKeywords.forEach(kw => {
         if (combinedWords.includes(kw)) score += 1.0;
-        // Partial matching
         else if (combinedWords.some(w => w.includes(kw) || kw.includes(w))) score += 0.5;
       });
 
@@ -190,13 +276,11 @@ class SystemPromptManager {
           o++;
           n++;
         } else {
-          // Check if lines were inserted/deleted (simple heuristic matching)
           const lookaheadLimit = 5;
           let foundMatch = false;
           
           for (let i = 1; i <= lookaheadLimit; i++) {
             if (n + i < newLines.length && oldLines[o] === newLines[n + i]) {
-              // Lines were inserted in new
               for (let j = 0; j < i; j++) {
                 diff.push({ type: 'added', oldNum: '', newNum: n + j + 1, text: newLines[n + j] });
               }
@@ -205,7 +289,6 @@ class SystemPromptManager {
               break;
             }
             if (o + i < oldLines.length && oldLines[o + i] === newLines[n]) {
-              // Lines were deleted from old
               for (let j = 0; j < i; j++) {
                 diff.push({ type: 'removed', oldNum: o + j + 1, newNum: '', text: oldLines[o + j] });
               }
@@ -216,7 +299,6 @@ class SystemPromptManager {
           }
           
           if (!foundMatch) {
-            // Replace line
             diff.push({ type: 'removed', oldNum: o + 1, newNum: '', text: oldLines[o] });
             diff.push({ type: 'added', oldNum: '', newNum: n + 1, text: newLines[n] });
             o++;
@@ -236,7 +318,6 @@ class SystemPromptManager {
 
   // Mutate heuristics based on critique performance deficiencies
   mutateHeuristics(deficiencies, learningRate = 0.05) {
-    // Save current active state to history
     this.history.push(JSON.parse(JSON.stringify(this.activeHeuristics)));
 
     const nextVer = this.bumpVersion(this.activeHeuristics.version);
@@ -244,7 +325,6 @@ class SystemPromptManager {
     let newPrompt = oldPrompt;
     let modificationsInfo = [];
 
-    // Analyze deficiencies and mutate rules/systemPrompt text
     if (deficiencies.tone && deficiencies.tone < 70) {
       const addition = "\nPrioritize empathetic validating openers when user shows distress or frustration.";
       if (!newPrompt.includes(addition)) {
@@ -281,7 +361,6 @@ class SystemPromptManager {
     }
 
     if (modificationsInfo.length === 0) {
-      // Default minor mutation for iteration progress
       const defaultAdd = `\nIteration optimized for user preference context (Learning Rate ${learningRate}).`;
       newPrompt += defaultAdd;
       modificationsInfo.push("Minor hyperparameter refinement applied.");
@@ -290,10 +369,8 @@ class SystemPromptManager {
     this.activeHeuristics.version = nextVer;
     this.activeHeuristics.systemPrompt = newPrompt.trim();
 
-    // Generate line-by-line diff of prompt modifications
     const diff = this.generateLineDiff(oldPrompt, this.activeHeuristics.systemPrompt);
 
-    // Save mutation log entry
     const logEntry = {
       version: nextVer,
       time: Date.now(),
@@ -363,6 +440,7 @@ class RSIAgent {
   constructor() {
     this.memory = new MemoryVault();
     this.promptManager = new SystemPromptManager();
+    this.adversary = new AdversarialGenerator();
     
     // Core parameters
     this.temperature = 0.7;
@@ -382,6 +460,12 @@ class RSIAgent {
       reasoningDepth: 54,
       heuristicClarity: 64
     };
+
+    // Historical tracking matrices for plotting (Autopilot Trend Chart)
+    this.autopilotHistory = []; // Array of { turn, metrics: {...}, promptVer, mutated }
+    this.mutationLineage = [
+      { id: "v1.0.0", parent: null, desc: "Factory Spec Blueprint" }
+    ];
 
     // Active strategy weight parameters
     this.strategies = [
@@ -409,9 +493,8 @@ class RSIAgent {
   detectTopic(text) {
     const keywords = this.memory.extractKeywords(text);
     if (keywords.length > 0) {
-      // Find top occurrence or simple length bias
       const sorted = keywords.sort((a,b) => b.length - a.length);
-      return sorted[0]; // Retain longest keyword as semantic tag
+      return sorted[0];
     }
     return null;
   }
@@ -429,14 +512,12 @@ class RSIAgent {
 
   // Select active response strategy using soft probability distribution based on weights
   selectStrategy(intent, emotionName) {
-    // Context-dependent rules that override raw weights for specialized inputs
     if (intent === "greeting") return "warm_open";
     if (intent === "reflection") return "reflect_and_summarize";
     if (intent === "memory") return "memory";
     if (["sad", "angry", "anxious"].includes(emotionName)) return "empathetic_ack";
     if (intent === "meta") return "meta_reasoning";
 
-    // Standard roulette selection based on current strategy weights
     const roll = Math.random();
     let cumulative = 0;
     for (const strat of this.strategies) {
@@ -450,14 +531,10 @@ class RSIAgent {
 
   // Auto-evaluation block grading the generated output response
   evaluateDraft(userText, responseText, emotionInfo) {
-    // Heuristic scoring algorithms
-    
-    // Helpfulness score (length bias + structure markers: list, code blocks, bold text)
     const hasStructure = /[\-\*\d\.]+\s|```|###|\*\*/.test(responseText);
     let helpfulness = 60 + Math.min(25, responseText.length / 20) + (hasStructure ? 15 : 0);
     helpfulness = Math.round(Math.min(98, Math.max(30, helpfulness)));
 
-    // Tone match score (check empathy markers if user is distressed, or brevity markers if angry)
     let toneMatch = 70;
     if (["sad", "angry", "anxious"].includes(emotionInfo.name)) {
       const hasEmpathyMarker = /understand|sorry|hear|frustrat|support|manage|feel|distress/.test(responseText.toLowerCase());
@@ -468,12 +545,10 @@ class RSIAgent {
     }
     toneMatch = Math.round(Math.min(98, Math.max(25, toneMatch)));
 
-    // Reasoning depth score (logic flow: because, therefore, step, first, cause, analyze)
     const hasLogicTags = /because|therefore|consequently|first|next|finally|hypothe|causes|analyze/.test(responseText.toLowerCase());
     let reasoning = 55 + (hasLogicTags ? 25 : 0) + Math.min(18, (responseText.match(/\./g) || []).length * 2);
     reasoning = Math.round(Math.min(98, Math.max(30, reasoning)));
 
-    // Heuristic clarity score (length check: fits system heuristics template length instructions)
     const targetLength = 220;
     const deviation = Math.abs(responseText.length - targetLength);
     let clarity = 92 - Math.min(50, deviation / 4);
@@ -500,7 +575,6 @@ class RSIAgent {
     }
     if (critique.heuristicClarity < 70) boostName = "direct_answer";
 
-    // Perform strategy boost/weaken edits
     if (boostName) {
       const s = this.strategies.find(x => x.name === boostName);
       if (s) s.weight = Math.min(0.5, s.weight + learningRate);
@@ -510,7 +584,6 @@ class RSIAgent {
       if (s) s.weight = Math.max(0.05, s.weight - learningRate);
     }
 
-    // Renormalize weights to sum to 1.0
     const sum = this.strategies.reduce((acc, s) => acc + s.weight, 0);
     this.strategies.forEach(s => {
       s.weight = +(s.weight / sum).toFixed(4);
@@ -519,6 +592,7 @@ class RSIAgent {
 
   // Core Processing Function
   async processQuery(userInput, logTraceCallback) {
+    const parentVersion = this.promptManager.activeVersion;
     this.turns += 1;
     const traces = [];
     const trace = (node, msg) => {
@@ -546,7 +620,6 @@ class RSIAgent {
     const memHits = this.memory.query(userInput, this.retrievalDepth);
     trace("memory", `Retrieved ${memHits.semanticHits.length} semantic vectors and ${memHits.episodicHits.length} episodic contexts.`);
     
-    // Construct retrieved memory prompt context
     let memoryPromptContext = "";
     if (memHits.semanticHits.length > 0) {
       memoryPromptContext += "\nRetrieved general rules:\n" + memHits.semanticHits.map(h => `- [Score: ${h.score.toFixed(2)}] ${h.node.content}`).join("\n");
@@ -560,11 +633,9 @@ class RSIAgent {
     trace("reasoner", `Compiling active instructions under System Prompt Version: ${this.promptManager.activeVersion}.`);
     trace("reasoner", `Decision heuristics selected response strategy: '${strategyName}' (Weight: ${this.strategies.find(s=>s.name===strategyName)?.weight || 'override'}).`);
 
-    // Fetch matching strategy guideline text
     const activeRules = this.promptManager.activeRules;
     const strategyInstruction = activeRules[strategyName] || activeRules.direct_answer;
 
-    // Simulate drafting response based on inputs
     const responseDraft = this.simulateResponseGeneration(userInput, intent, emotion, strategyName, strategyInstruction, memoryPromptContext);
     trace("reasoner", `Draft reply constructed (Length: ${responseDraft.length} chars). Routing to critique sandbox.`);
 
@@ -573,19 +644,16 @@ class RSIAgent {
     const critique = this.evaluateDraft(userInput, responseDraft, emotion);
     trace("critic", `Auto-evaluation scores: Helpfulness=${critique.helpfulness}%, Tone Match=${critique.toneMatch}%, Reasoning Depth=${critique.reasoningDepth}%, Clarity=${critique.heuristicClarity}%.`);
 
-    // Update agent internal metrics using smooth exponential moving average
-    const alpha = 0.3; // smoothing factor
+    const alpha = 0.3;
     this.metrics.helpfulness = Math.round((1 - alpha) * this.metrics.helpfulness + alpha * critique.helpfulness);
     this.metrics.toneMatch = Math.round((1 - alpha) * this.metrics.toneMatch + alpha * critique.toneMatch);
     this.metrics.reasoningDepth = Math.round((1 - alpha) * this.metrics.reasoningDepth + alpha * critique.reasoningDepth);
     this.metrics.heuristicClarity = Math.round((1 - alpha) * this.metrics.heuristicClarity + alpha * critique.heuristicClarity);
 
-    // Save episode to Memory
     this.memory.addEpisodic(this.turns, userInput, responseDraft, critique, this.promptManager.activeVersion);
     trace("memory", `Episode committed to Episodic DB. Stored ${this.memory.episodic.length} total episodes.`);
 
     // 5. MUTATOR / RECURSION ENGINE
-    // Identify if critique scores drop below thresholds to trigger recursive self-improvement
     let mutationApplied = null;
     const threshold = 68;
     const deficiencies = {};
@@ -597,7 +665,6 @@ class RSIAgent {
 
     const needsMutation = Object.keys(deficiencies).length > 0;
     
-    // Adjust weights first
     this.adjustWeights(critique, this.learningRate);
     trace("mutator", `Gradient adjustment on strategy weights completed.`);
 
@@ -606,9 +673,26 @@ class RSIAgent {
       trace("mutator", `Deficiencies flagged: [${Object.keys(deficiencies).join(", ")}]. Initiating Self-Improvement Loop...`);
       mutationApplied = this.promptManager.mutateHeuristics(deficiencies, this.learningRate);
       trace("mutator", `Prompt mutated! System prompt updated to ${this.promptManager.activeVersion}. Modifications: ${mutationApplied.description}`);
+
+      // Add to lineage tree
+      this.mutationLineage.push({
+        id: mutationApplied.version,
+        parent: parentVersion,
+        desc: mutationApplied.description
+      });
     } else {
       trace("mutator", `All scores exceed threshold. Prompt template state conserved.`);
     }
+
+    // Record history
+    this.autopilotHistory.push({
+      turn: this.turns,
+      promptVer: this.promptManager.activeVersion,
+      metrics: { ...this.metrics },
+      mutated: !!mutationApplied
+    });
+    // Keep max 50 history entries
+    if (this.autopilotHistory.length > 50) this.autopilotHistory.shift();
 
     trace("system", `=== Execution Turn ${this.turns} Completed successfully ===`);
 
@@ -637,8 +721,6 @@ class RSIAgent {
     }[emotion.tone] || "Acknowledged.";
 
     let output = "";
-
-    // If sandbox heuristics is customized, incorporate sandbox directives
     const sandboxPrompt = this.promptManager.activePrompt;
 
     if (intent === "greeting") {
@@ -662,21 +744,20 @@ class RSIAgent {
 I mutate instruction lines dynamically when self-critique grades drop below threshold boundaries.`;
     } 
     else {
-      // Normal question or statement
       const cleanUser = userInput.toLowerCase();
       
+      // Look for standard mock tasks
       if (cleanUser.includes("quantum")) {
         output = `${tonePrefix} **Quantum computing** uses qubits (quantum bits) instead of standard binary bits.
 - Qubits utilize *superposition* to exist in states of 0 and 1 simultaneously.
 - They leverage *entanglement* to couple states across distances, scaling processing rates exponentially.
 - *Analogy*: While classical computing is like checking library aisles one by one, quantum computing is like checking all aisles simultaneously.`;
       } 
-      else if (cleanUser.includes("sort") || cleanUser.includes("algorithm")) {
-        output = `${tonePrefix} Here is a classic implementation of **Bubble Sort** in Javascript:
+      else if (cleanUser.includes("sort") || cleanUser.includes("algorithm") || cleanUser.includes("binary") || cleanUser.includes("lru")) {
+        output = `${tonePrefix} Here is a classic implementation of **Bubble Sort** in JavaScript:
 \`\`\`javascript
 function bubbleSort(arr) {
   let len = arr.length;
-  // Intentionally swapped comparison sign to demonstrate bug identification
   for (let i = 0; i < len; i++) {
     for (let j = 0; j < len - 1; j++) {
       if (arr[j] < arr[j + 1]) { // Bug: Should be '>' for ascending sort
@@ -689,10 +770,16 @@ function bubbleSort(arr) {
   return arr;
 }
 \`\`\`
-*Note*: The comparison code checks \`arr[j] < arr[j+1]\`, which actually sorts elements in descending order. Correct it to \`>\` to achieve ascending order sorting.`;
+*Note*: The comparison checks \`arr[j] < arr[j+1]\`, which actually sorts elements in descending order. Correct it to \`>\` to achieve ascending order sorting.`;
       } 
+      else if (cleanUser.includes("regex") || cleanUser.includes("schema") || cleanUser.includes("traverse")) {
+        output = `${tonePrefix} Here is a schema model for database integration:
+1. **Users Table**: \`id (PK), email (unique), password_hash, created_at\`
+2. **Products Table**: \`id (PK), name, price, stock_quantity, updated_at\`
+3. **Orders Table**: \`id (PK), user_id (FK), order_status, total_price, purchase_date\`
+Ensure you add a composite index on \`Orders(user_id, purchase_date)\` to optimize lookup queries.`;
+      }
       else {
-        // Generative template based on active strategy rules
         if (strategy === "direct_answer") {
           output = `${tonePrefix} Regarding **${this.dominantTopic !== "None" ? this.dominantTopic : "your request"}**: Here is the primary resolution guideline. We prioritize immediate usability. The core solution requires setting parameters correctly and validating inputs before running code. Let me know if you want me to expand on any specific sub-step.`;
         } 
@@ -709,7 +796,6 @@ Provide these specs and we will isolate the solution.`;
           output = `${tonePrefix} Reviewing the current block: the core issue centers on **${this.dominantTopic}**. The blocker seems to arise from configuration mismatch or incorrect parameter parsing. The optimal strategy here is to list your dependencies, double-check your environment pathways, and proceed with a test execution.`;
         } 
         else {
-          // plan_next_step
           output = `${tonePrefix} Let's structure this troubleshooting sequence:
 1. **Define Objective**: Isolate the exact method or component throwing errors.
 2. **Identify Obstacle**: Verify if it is an out-of-bounds error or a type reference failure.
@@ -719,7 +805,6 @@ Provide these specs and we will isolate the solution.`;
       }
     }
 
-    // Append context markers or rules if required by active system prompt
     if (sandboxPrompt.includes("markdown headers") && !output.includes("#")) {
       output = `### System Resolution Profile\n${output}`;
     }
@@ -739,7 +824,6 @@ Provide these specs and we will isolate the solution.`;
 
     if (logTraceCallback) logTraceCallback("system", "Consolidation cycle triggered manually.");
     
-    // Evaluate averages
     const count = this.memory.episodic.length;
     let sumHelp = 0, sumTone = 0, sumReason = 0, sumClar = 0;
     this.memory.episodic.forEach(e => {
@@ -754,7 +838,6 @@ Provide these specs and we will isolate the solution.`;
     const avgReason = Math.round(sumReason / count);
     const avgClar = Math.round(sumClar / count);
 
-    // Formulate a new semantic rule based on performance
     let newRule = "";
     let ruleLabel = "";
     if (avgHelp < 75) {
@@ -771,7 +854,6 @@ Provide these specs and we will isolate the solution.`;
     this.memory.addSemantic(ruleLabel, newRule, ["consolidation", "reflection", "auto-rule"]);
     if (logTraceCallback) logTraceCallback("memory", `Consolidated semantic node compiled: '${ruleLabel}' -> '${newRule}'.`);
 
-    // Force prompt mutation
     const deficiencies = {};
     if (avgHelp < 72) deficiencies.helpfulness = avgHelp;
     if (avgTone < 72) deficiencies.tone = avgTone;
@@ -779,8 +861,15 @@ Provide these specs and we will isolate the solution.`;
     if (avgClar < 72) deficiencies.clarity = avgClar;
 
     this.mutations += 1;
+    const parentVersion = this.promptManager.activeVersion;
     const mutation = this.promptManager.mutateHeuristics(deficiencies, this.learningRate);
     if (logTraceCallback) logTraceCallback("mutator", `Manual mutation applied! Bounded to version ${mutation.version}. Desc: ${mutation.description}`);
+
+    this.mutationLineage.push({
+      id: mutation.version,
+      parent: parentVersion,
+      desc: mutation.description
+    });
 
     return `Successfully consolidated ${count} episodes! Formulated semantic rule: "${newRule}" under version ${mutation.version}.`;
   }
@@ -789,8 +878,16 @@ Provide these specs and we will isolate the solution.`;
   forceMutation(logTraceCallback) {
     this.mutations += 1;
     if (logTraceCallback) logTraceCallback("mutator", "Force mutation signal received.");
+    const parentVersion = this.promptManager.activeVersion;
     const mutation = this.promptManager.mutateHeuristics({ helpfulness: 50 }, this.learningRate);
     if (logTraceCallback) logTraceCallback("mutator", `Forced mutation applied successfully. Version incremented to: ${mutation.version}`);
+    
+    this.mutationLineage.push({
+      id: mutation.version,
+      parent: parentVersion,
+      desc: mutation.description
+    });
+
     return mutation;
   }
 
@@ -807,7 +904,10 @@ Provide these specs and we will isolate the solution.`;
       reasoningDepth: 54,
       heuristicClarity: 64
     };
-    // Reset weights
+    this.autopilotHistory = [];
+    this.mutationLineage = [
+      { id: "v1.0.0", parent: null, desc: "Factory Spec Blueprint" }
+    ];
     this.strategies = [
       { name: "direct_answer", label: "Direct Answer", weight: 0.28 },
       { name: "clarify_question", label: "Clarification Probe", weight: 0.22 },

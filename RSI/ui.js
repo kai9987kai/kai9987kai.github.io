@@ -6,6 +6,28 @@ document.addEventListener("DOMContentLoaded", () => {
   const radarChart = new CritiqueRadarChart("radarCanvas");
   const flowVisualizer = new NeuralFlowVisualizer("networkCanvas");
 
+  // Telemetry trend and mutation tree charts
+  const trendChart = new TrendLineChart("trendCanvas");
+  
+  // Lineage tree: clicking a node automatically loads that historical prompt state into the sandbox code editor
+  const lineageTree = new MutationLineageTree("lineageCanvas", (versionId) => {
+    playSound("click");
+    switchTab("sandbox-tab");
+    
+    if (versionId === "v1.0.0") {
+      el.codeTextarea.value = JSON.stringify(DEFAULT_HEURISTICS, null, 2);
+    } else {
+      const idx = agent.promptManager.mutationsLog.findIndex(m => m.version === versionId);
+      if (idx !== -1) {
+        // Load that historical heuristics config state
+        const historyState = agent.promptManager.history[idx];
+        el.codeTextarea.value = JSON.stringify(historyState, null, 2);
+      }
+    }
+    updateLineNumbers();
+    logTrace("system", `Loaded prompt configuration state for version ${versionId} into sandbox editor.`);
+  });
+
   // Start continuous rendering loops
   radarChart.startAnimateLoop();
   flowVisualizer.startAnimateLoop();
@@ -87,13 +109,28 @@ document.addEventListener("DOMContentLoaded", () => {
     overrideHelpfulness: document.getElementById("overrideHelpfulness"),
     overrideTone: document.getElementById("overrideTone"),
     overrideReasoning: document.getElementById("overrideReasoning"),
-    overrideClarity: document.getElementById("overrideClarity")
+    overrideClarity: document.getElementById("overrideClarity"),
+
+    // Autopilot elements
+    autopilotPlayBtn: document.getElementById("autopilotPlayBtn"),
+    autopilotDelay: document.getElementById("autopilotDelay"),
+    autoDelayVal: document.getElementById("autoDelayVal"),
+    adversarialDiff: document.getElementById("adversarialDiff"),
+    autoDiffVal: document.getElementById("autoDiffVal"),
+    autoStatusLabel: document.getElementById("autoStatusLabel"),
+    autoGenerationsLabel: document.getElementById("autoGenerationsLabel")
   };
 
   // State Management
   let isProcessing = false;
   let activeMemoryTab = "semantic"; // semantic or episodic
   let lastEvaluatedTurnIndex = null; // tracking turn for manual override
+
+  // Autopilot loop parameters
+  let isAutopilotRunning = false;
+  let autopilotDelayMs = 2000;
+  let adversarialDiffVal = 0.6;
+  let autopilotTimeout = null;
 
   // AUDIO ENGINE: Web Audio API synthesized retro tech clicks
   const playSound = (type) => {
@@ -153,6 +190,10 @@ document.addEventListener("DOMContentLoaded", () => {
     updateStrategyWeightsUI();
     renderMemoryList();
 
+    // Draw initial charts
+    trendChart.draw(agent.autopilotHistory);
+    lineageTree.draw(agent.mutationLineage, agent.promptManager.activeVersion);
+
     // Welcome Messages
     addChatMessage("System online. Recursive self-improvement simulation ready.", "system");
     addChatMessage("Agent initialization success. Dynamic weights loaded, vector db semantic arrays initialized.\nTry feeding a test scenario to start iteration loops.", "agent");
@@ -178,10 +219,16 @@ document.addEventListener("DOMContentLoaded", () => {
     el.depthVal.textContent = agent.retrievalDepth;
     el.learningRate.value = agent.learningRate;
     el.lrVal.textContent = agent.learningRate.toFixed(2);
+
+    // Autopilot values
+    el.autoGenerationsLabel.textContent = String(agent.turns);
+    el.autopilotDelay.value = (autopilotDelayMs / 1000).toFixed(1);
+    el.autoDelayVal.textContent = `${(autopilotDelayMs / 1000).toFixed(1)}s`;
+    el.adversarialDiff.value = adversarialDiffVal;
+    el.autoDiffVal.textContent = adversarialDiffVal.toFixed(1);
   };
 
   const updateCritiqueBars = (values) => {
-    // values = [helpfulness, toneMatch, reasoningDepth, heuristicClarity]
     el.barHelpfulness.style.width = `${values[0]}%`;
     el.barTone.style.width = `${values[1]}%`;
     el.barReasoning.style.width = `${values[2]}%`;
@@ -192,7 +239,6 @@ document.addEventListener("DOMContentLoaded", () => {
     el.lblReasoning.textContent = `${values[2]}%`;
     el.lblClarity.textContent = `${values[3]}%`;
 
-    // Redraw Radar Chart with target coordinates
     radarChart.draw(values);
   };
 
@@ -215,7 +261,6 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   };
 
-  // Helper: Append lines to step-by-step thinking trace logger
   const logTrace = (node, msg) => {
     const line = document.createElement("div");
     line.className = `trace-line ${node}`;
@@ -224,13 +269,11 @@ document.addEventListener("DOMContentLoaded", () => {
     el.thoughtLog.scrollTop = el.thoughtLog.scrollHeight;
   };
 
-  // Helper: Render Chat Message Node
   const addChatMessage = (text, role, critiqueScores = null, turnIdx = null) => {
     const msgNode = document.createElement("div");
     msgNode.className = `message ${role}`;
     msgNode.textContent = text;
 
-    // If assistant reply contains critique metrics, render a manual tuning selector link
     if (role === "agent" && critiqueScores && turnIdx !== null) {
       const tag = document.createElement("div");
       tag.className = "message-critique-tag";
@@ -250,9 +293,13 @@ document.addEventListener("DOMContentLoaded", () => {
 
     el.messagesContainer.appendChild(msgNode);
     el.messagesContainer.scrollTop = el.messagesContainer.scrollHeight;
+    
+    // Auto-prune messages window to prevent browser memory leaks in infinite loops
+    if (el.messagesContainer.childNodes.length > 60) {
+      el.messagesContainer.removeChild(el.messagesContainer.firstChild);
+    }
   };
 
-  // Custom typing delay node
   let typingBubble = null;
   const showTyping = () => {
     typingBubble = document.createElement("div");
@@ -275,14 +322,17 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   };
 
-  // EXECUTE USER PROMPT PIPELINE
-  const handleSendPrompt = async () => {
-    const rawText = el.composerInput.value.trim();
+  // EXECUTE PROMPT PIPELINE (Accepts custom text for autopilot loops)
+  const handleSendPrompt = async (customPromptText = null) => {
+    const rawText = customPromptText !== null ? customPromptText.trim() : el.composerInput.value.trim();
     if (!rawText || isProcessing) return;
 
     isProcessing = true;
     playSound("click");
-    el.composerInput.value = "";
+    
+    if (customPromptText === null) {
+      el.composerInput.value = "";
+    }
     el.sendPromptBtn.disabled = true;
 
     // Add user question to layout
@@ -290,7 +340,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     // Show loading indicators
     showTyping();
-    el.thoughtLog.innerHTML = ""; // Clear trace terminal
+    el.thoughtLog.innerHTML = "";
     el.thoughtLogContainer.classList.add("expanded");
 
     // Execute synchronous processing backend to fetch logs and scores immediately
@@ -301,19 +351,17 @@ document.addEventListener("DOMContentLoaded", () => {
     const isMutationExpected = !!execution.mutation;
 
     await flowVisualizer.runPipelineTrace(isMutationExpected, (activeNode) => {
-      // Coordinate corresponding step logs into terminal when visual nodes light up
       while (currentTraceIdx < execution.traces.length) {
         const item = execution.traces[currentTraceIdx];
         if (item.node === activeNode || (activeNode === "memory" && item.node === "system") || (activeNode === "perception" && item.node === "system")) {
           logTrace(item.node, item.msg);
           currentTraceIdx++;
         } else {
-          break; // Let other segments coordinate arrivals
+          break;
         }
       }
     });
 
-    // Clean remaining traces
     while (currentTraceIdx < execution.traces.length) {
       const item = execution.traces[currentTraceIdx];
       logTrace(item.node, item.msg);
@@ -338,6 +386,10 @@ document.addEventListener("DOMContentLoaded", () => {
     updateStrategyWeightsUI();
     renderMemoryList();
 
+    // Redraw diagnostics trend chart and lineage tree
+    trendChart.draw(agent.autopilotHistory);
+    lineageTree.draw(agent.mutationLineage, agent.promptManager.activeVersion);
+
     // If a prompt mutation occurred, render diff template in Prompt Diff tab
     if (execution.mutation) {
       addChatMessage(`System mutation logged under version ${execution.mutation.version}: ${execution.mutation.description}`, "reflection");
@@ -347,6 +399,48 @@ document.addEventListener("DOMContentLoaded", () => {
 
     el.sendPromptBtn.disabled = false;
     isProcessing = false;
+  };
+
+  // AUTOPILOT LOOP ORCHESTRATION
+  const runAutopilotStep = async () => {
+    if (!isAutopilotRunning) return;
+
+    // Scan agent's current metrics and synthesize a challenge matching the weak dimensions
+    const challenge = agent.adversary.generateChallenge(agent.metrics, adversarialDiffVal);
+    
+    // Inject challenge message to console trace logs
+    logTrace("system", `Adversary generated challenge for dimension '${challenge.dimension.toUpperCase()}': "${challenge.promptText}"`);
+
+    // Process challenge prompt
+    await handleSendPrompt(challenge.promptText);
+
+    // If autopilot is still active, schedule next generation cycle
+    if (isAutopilotRunning) {
+      autopilotTimeout = setTimeout(runAutopilotStep, autopilotDelayMs);
+    }
+  };
+
+  const startAutopilot = () => {
+    isAutopilotRunning = true;
+    el.autopilotPlayBtn.classList.add("running");
+    el.autopilotPlayBtn.querySelector(".icon").textContent = "⏸";
+    el.autopilotPlayBtn.querySelector(".text").textContent = "Pause Autopilot";
+    el.autoStatusLabel.textContent = "RUNNING";
+    el.autoStatusLabel.style.color = "var(--accent-emerald)";
+    
+    logTrace("system", "Autopilot Loop initialized. Autonomous self-play feedback activated.");
+    runAutopilotStep();
+  };
+
+  const stopAutopilot = () => {
+    isAutopilotRunning = false;
+    if (autopilotTimeout) clearTimeout(autopilotTimeout);
+    el.autopilotPlayBtn.classList.remove("running");
+    el.autopilotPlayBtn.querySelector(".icon").textContent = "▶";
+    el.autopilotPlayBtn.querySelector(".text").textContent = "Start Autopilot";
+    el.autoStatusLabel.textContent = "PAUSED";
+    el.autoStatusLabel.style.color = "var(--accent-amber)";
+    logTrace("system", "Autopilot Loop paused.");
   };
 
   // OVERRIDE METRICS OVERLAY INTERACTION
@@ -382,7 +476,6 @@ document.addEventListener("DOMContentLoaded", () => {
       heuristicClarity: parseInt(el.overrideClarity.value)
     };
 
-    // Inject manual override critique scores back to specific episodic node
     const episode = agent.memory.episodic.find(ep => ep.turn === lastEvaluatedTurnIndex);
     if (episode) {
       episode.critique = overriddenScores;
@@ -392,11 +485,9 @@ document.addEventListener("DOMContentLoaded", () => {
     logTrace("critic", `Manual critique override received for Turn ${lastEvaluatedTurnIndex}.`);
     logTrace("critic", `Injecting scores: Helpfulness=${overriddenScores.helpfulness}%, Tone Match=${overriddenScores.toneMatch}%, Reasoning Depth=${overriddenScores.reasoningDepth}%, Clarity=${overriddenScores.heuristicClarity}%`);
 
-    // Force agent adjustments
     agent.adjustWeights(overriddenScores, agent.learningRate);
     updateStrategyWeightsUI();
 
-    // Check if mutation threshold triggered
     const threshold = 68;
     const deficiencies = {};
     if (overriddenScores.helpfulness < threshold) deficiencies.helpfulness = overriddenScores.helpfulness;
@@ -411,10 +502,16 @@ document.addEventListener("DOMContentLoaded", () => {
       logTrace("mutator", `Manual override triggered mutation: ${mutation.version} - ${mutation.description}`);
 
       addChatMessage(`Manual override triggered prompt mutation ${mutation.version}: ${mutation.description}`, "reflection");
+      
+      // Update historical logs
+      const historyItem = agent.autopilotHistory.find(h => h.turn === lastEvaluatedTurnIndex);
+      if (historyItem) {
+        historyItem.mutated = true;
+        historyItem.promptVer = mutation.version;
+      }
+      
       renderDiffViewer(mutation);
       populateMutationSelector();
-      
-      // Focus Prompt Diff tab to show user the changes
       switchTab("diff-tab");
     } else {
       logTrace("mutator", "Scores remain above mutation threshold. Weights adjusted, prompt unchanged.");
@@ -427,6 +524,9 @@ document.addEventListener("DOMContentLoaded", () => {
       overriddenScores.reasoningDepth,
       overriddenScores.heuristicClarity
     ]);
+    
+    trendChart.draw(agent.autopilotHistory);
+    lineageTree.draw(agent.mutationLineage, agent.promptManager.activeVersion);
   };
 
   // TAB PANES NAVIGATOR
@@ -448,7 +548,6 @@ document.addEventListener("DOMContentLoaded", () => {
 
     el.diffViewer.innerHTML = "";
     
-    // Add header line
     const headerNode = document.createElement("div");
     headerNode.className = "diff-line header";
     headerNode.innerHTML = `
@@ -473,13 +572,11 @@ document.addEventListener("DOMContentLoaded", () => {
   const populateMutationSelector = () => {
     el.diffVerSelector.innerHTML = "";
     
-    // Default base state option
     const baseOpt = document.createElement("option");
     baseOpt.value = "base";
     baseOpt.textContent = "v1.0.0 (Base Prompt System)";
     el.diffVerSelector.appendChild(baseOpt);
 
-    // List historical mutations
     agent.promptManager.mutationsLog.forEach((m, idx) => {
       const opt = document.createElement("option");
       opt.value = String(idx);
@@ -487,7 +584,6 @@ document.addEventListener("DOMContentLoaded", () => {
       el.diffVerSelector.appendChild(opt);
     });
 
-    // Select latest
     if (agent.promptManager.mutationsLog.length > 0) {
       el.diffVerSelector.value = String(agent.promptManager.mutationsLog.length - 1);
     }
@@ -556,7 +652,6 @@ document.addEventListener("DOMContentLoaded", () => {
     el.codeLineNumbers.innerHTML = html;
   };
 
-  // Sync scroll line numbers and editor box
   el.codeTextarea.addEventListener("scroll", () => {
     el.codeLineNumbers.scrollTop = el.codeTextarea.scrollTop;
   });
@@ -577,10 +672,20 @@ document.addEventListener("DOMContentLoaded", () => {
       logTrace("mutator", `Compilation success! Version incremented to: ${result.logEntry.version}`);
       addChatMessage(`User injected new heuristics block under version ${result.logEntry.version}`, "reflection");
       
+      // Add node to mutation lineage tree
+      const prevVer = agent.promptManager.history.length > 0 ? agent.promptManager.history[agent.promptManager.history.length - 1].version : "v1.0.0";
+      agent.mutationLineage.push({
+        id: result.logEntry.version,
+        parent: prevVer,
+        desc: result.logEntry.description
+      });
+
       renderDiffViewer(result.logEntry);
       populateMutationSelector();
       updateTelemetry();
       
+      trendChart.draw(agent.autopilotHistory);
+      lineageTree.draw(agent.mutationLineage, agent.promptManager.activeVersion);
       switchTab("diff-tab");
     } else {
       playSound("error");
@@ -612,6 +717,9 @@ document.addEventListener("DOMContentLoaded", () => {
       populateMutationSelector();
       switchTab("diff-tab");
     }
+
+    trendChart.draw(agent.autopilotHistory);
+    lineageTree.draw(agent.mutationLineage, agent.promptManager.activeVersion);
   });
 
   // Seed turns script to instantly demonstrate loop mutations
@@ -655,6 +763,10 @@ document.addEventListener("DOMContentLoaded", () => {
     updateTelemetry();
     updateStrategyWeightsUI();
     renderMemoryList();
+    
+    trendChart.draw(agent.autopilotHistory);
+    lineageTree.draw(agent.mutationLineage, agent.promptManager.activeVersion);
+
     isProcessing = false;
     playSound("complete");
   });
@@ -663,6 +775,7 @@ document.addEventListener("DOMContentLoaded", () => {
   el.hardResetBtn.addEventListener("click", () => {
     if (confirm("Are you sure you want to restore factory defaults? This clears memory vaults, prompt versions, and strategies weights.")) {
       playSound("click");
+      stopAutopilot();
       agent.reset();
       el.messagesContainer.innerHTML = "";
       el.thoughtLog.innerHTML = "";
@@ -670,7 +783,32 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   });
 
-  // Sidebar controls
+  // Autopilot play/pause toggle
+  el.autopilotPlayBtn.addEventListener("click", () => {
+    playSound("click");
+    if (isAutopilotRunning) {
+      stopAutopilot();
+    } else {
+      startAutopilot();
+    }
+  });
+
+  // Autopilot loop parameters sliders
+  el.autopilotDelay.addEventListener("input", (e) => {
+    const val = parseFloat(e.target.value);
+    autopilotDelayMs = val * 1000;
+    el.autoDelayVal.textContent = `${val.toFixed(1)}s`;
+    logTrace("system", `Autopilot loop delay updated to ${autopilotDelayMs}ms.`);
+  });
+
+  el.adversarialDiff.addEventListener("input", (e) => {
+    const val = parseFloat(e.target.value);
+    adversarialDiffVal = val;
+    el.autoDiffVal.textContent = val.toFixed(1);
+    logTrace("system", `Adversary challenge intensity updated to ${adversarialDiffVal}.`);
+  });
+
+  // Sidebar parameters sliders
   el.tempSlider.addEventListener("input", (e) => {
     const val = parseFloat(e.target.value);
     agent.temperature = val;
@@ -753,7 +891,7 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   });
 
-  // Heuristics editor buttons
+  // Heuristics sandbox controls
   el.restoreDefaultCodeBtn.addEventListener("click", () => {
     if (confirm("Restore code sandbox configuration to initial templates?")) {
       playSound("click");
@@ -784,10 +922,13 @@ document.addEventListener("DOMContentLoaded", () => {
       logTrace(node, msg);
     });
 
-    addChatMessage(`Forced prompt mutation applied under version ${mut.version}: ${mut.description}`, "reflection");
+    addChatMessage(`Forced prompt mutation applied under version ${mut.version}: ${mut.desc || mut.description}`, "reflection");
     renderDiffViewer(mut);
     populateMutationSelector();
     updateTelemetry();
+    
+    trendChart.draw(agent.autopilotHistory);
+    lineageTree.draw(agent.mutationLineage, agent.promptManager.activeVersion);
     switchTab("diff-tab");
   });
 
@@ -796,7 +937,6 @@ document.addEventListener("DOMContentLoaded", () => {
     playSound("click");
     const val = e.target.value;
     if (val === "base") {
-      // Create a dummy base diff representing original prompt
       const diff = agent.promptManager.generateLineDiff(DEFAULT_HEURISTICS.systemPrompt, DEFAULT_HEURISTICS.systemPrompt);
       renderDiffViewer({ version: "v1.0.0", description: "Initial factory system specifications", diff });
     } else {
@@ -829,7 +969,7 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   });
 
-  el.sendPromptBtn.addEventListener("click", handleSendPrompt);
+  el.sendPromptBtn.addEventListener("click", () => handleSendPrompt());
 
   // RUN MAIN SETUP INITIALIZATIONS
   initUI();
