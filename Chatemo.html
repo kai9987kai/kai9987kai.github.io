@@ -1,0 +1,811 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Normal Conversation Chat</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #0f172a;
+      --panel: rgba(15, 23, 42, 0.88);
+      --panel-2: rgba(30, 41, 59, 0.9);
+      --border: rgba(148, 163, 184, 0.2);
+      --text: #e2e8f0;
+      --muted: #94a3b8;
+      --accent: #7c3aed;
+      --accent-2: #4f46e5;
+      --user: #6d28d9;
+      --bot: rgba(51, 65, 85, 0.95);
+      --system: rgba(15, 118, 110, 0.18);
+      --error: rgba(185, 28, 28, 0.22);
+      --shadow: 0 20px 50px rgba(0, 0, 0, 0.35);
+      --radius: 20px;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+      background:
+        radial-gradient(circle at top left, rgba(124, 58, 237, 0.20), transparent 30%),
+        radial-gradient(circle at top right, rgba(79, 70, 229, 0.16), transparent 25%),
+        linear-gradient(160deg, #020617 0%, var(--bg) 100%);
+      color: var(--text);
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      padding: 20px;
+    }
+
+    .app {
+      width: min(1100px, 100%);
+      height: min(92vh, 980px);
+      display: grid;
+      grid-template-columns: 290px 1fr;
+      gap: 18px;
+    }
+
+    .sidebar,
+    .chat {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(14px);
+      border-radius: var(--radius);
+      overflow: hidden;
+    }
+
+    .sidebar {
+      padding: 18px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .brand {
+      padding: 14px;
+      border-radius: 16px;
+      background: linear-gradient(135deg, rgba(124, 58, 237, 0.18), rgba(79, 70, 229, 0.16));
+      border: 1px solid rgba(255, 255, 255, 0.08);
+    }
+
+    .brand h1 {
+      font-size: 1.15rem;
+      margin: 0 0 6px;
+    }
+
+    .brand p,
+    .panel p,
+    .hint {
+      margin: 0;
+      color: var(--muted);
+      line-height: 1.45;
+      font-size: 0.95rem;
+    }
+
+    .panel {
+      padding: 14px;
+      border-radius: 16px;
+      background: var(--panel-2);
+      border: 1px solid rgba(255, 255, 255, 0.06);
+    }
+
+    .panel h2 {
+      margin: 0 0 10px;
+      font-size: 0.98rem;
+    }
+
+    .chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .chip {
+      border: 1px solid rgba(255, 255, 255, 0.10);
+      color: var(--text);
+      background: rgba(255, 255, 255, 0.05);
+      padding: 8px 10px;
+      border-radius: 999px;
+      cursor: pointer;
+      font-size: 0.88rem;
+      transition: transform 0.15s ease, background 0.15s ease;
+    }
+
+    .chip:hover { transform: translateY(-1px); background: rgba(255, 255, 255, 0.09); }
+
+    .conversation-meta {
+      display: grid;
+      gap: 8px;
+      margin-top: auto;
+    }
+
+    .meta-row {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      font-size: 0.9rem;
+      color: var(--muted);
+    }
+
+    .meta-row strong { color: var(--text); font-weight: 600; }
+
+    .chat {
+      display: grid;
+      grid-template-rows: auto 1fr auto;
+      min-width: 0;
+    }
+
+    .chat-header {
+      padding: 18px 20px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      background: rgba(2, 6, 23, 0.25);
+    }
+
+    .chat-header .title {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .chat-header h2 {
+      margin: 0;
+      font-size: 1.05rem;
+    }
+
+    .chat-header span {
+      color: var(--muted);
+      font-size: 0.92rem;
+    }
+
+    .toolbar {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+
+    .btn {
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      background: rgba(255, 255, 255, 0.06);
+      color: var(--text);
+      border-radius: 12px;
+      padding: 9px 12px;
+      font: inherit;
+      cursor: pointer;
+      transition: transform 0.15s ease, background 0.15s ease;
+    }
+
+    .btn:hover { transform: translateY(-1px); background: rgba(255, 255, 255, 0.10); }
+    .btn.primary { background: linear-gradient(135deg, var(--accent), var(--accent-2)); border-color: transparent; }
+
+    .messages {
+      padding: 18px;
+      overflow-y: auto;
+      scroll-behavior: smooth;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .message {
+      max-width: min(78ch, 92%);
+      padding: 12px 14px;
+      border-radius: 16px;
+      line-height: 1.55;
+      white-space: pre-wrap;
+      word-wrap: break-word;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      animation: appear 0.16s ease-out;
+    }
+
+    .message.user {
+      align-self: flex-end;
+      background: linear-gradient(135deg, rgba(109, 40, 217, 0.95), rgba(124, 58, 237, 0.9));
+      border-bottom-right-radius: 6px;
+    }
+
+    .message.assistant {
+      align-self: flex-start;
+      background: var(--bot);
+      border-bottom-left-radius: 6px;
+    }
+
+    .message.system {
+      align-self: center;
+      background: var(--system);
+      color: #d1fae5;
+      border-color: rgba(16, 185, 129, 0.22);
+      max-width: 92%;
+      text-align: center;
+    }
+
+    .message.error {
+      align-self: center;
+      background: var(--error);
+      border-color: rgba(248, 113, 113, 0.35);
+      max-width: 92%;
+      text-align: center;
+    }
+
+    .typing {
+      display: inline-flex;
+      gap: 6px;
+      align-items: center;
+      padding: 2px 0;
+    }
+
+    .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 999px;
+      background: var(--muted);
+      opacity: 0.55;
+      animation: pulse 1.2s infinite ease-in-out;
+    }
+
+    .dot:nth-child(2) { animation-delay: 0.15s; }
+    .dot:nth-child(3) { animation-delay: 0.3s; }
+
+    .composer {
+      border-top: 1px solid var(--border);
+      padding: 14px;
+      background: rgba(2, 6, 23, 0.24);
+    }
+
+    .composer-row {
+      display: flex;
+      gap: 10px;
+      align-items: flex-end;
+    }
+
+    textarea {
+      flex: 1;
+      min-height: 52px;
+      max-height: 180px;
+      resize: vertical;
+      border-radius: 16px;
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      background: rgba(15, 23, 42, 0.92);
+      color: var(--text);
+      padding: 14px 16px;
+      font: inherit;
+      outline: none;
+    }
+
+    textarea:focus { border-color: rgba(124, 58, 237, 0.75); box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.18); }
+
+    .helper {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      margin-top: 10px;
+      color: var(--muted);
+      font-size: 0.88rem;
+    }
+
+    .links {
+      display: inline-flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .link {
+      color: #c4b5fd;
+      cursor: pointer;
+      text-decoration: underline;
+      text-underline-offset: 2px;
+    }
+
+    @keyframes appear {
+      from { opacity: 0; transform: translateY(8px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    @keyframes pulse {
+      0%, 100% { transform: translateY(0); opacity: 0.35; }
+      50% { transform: translateY(-3px); opacity: 0.85; }
+    }
+
+    @media (max-width: 900px) {
+      .app { grid-template-columns: 1fr; height: auto; min-height: 100vh; }
+      .sidebar { order: 2; }
+      .chat { min-height: 70vh; }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <aside class="sidebar">
+      <div class="brand">
+        <h1>Normal Conversation Chat</h1>
+        <p>A simpler assistant that keeps context, asks follow-up questions, and replies like a person instead of a template machine.</p>
+      </div>
+
+      <div class="panel">
+        <h2>Conversation starter</h2>
+        <div class="chips" id="starterChips">
+          <button class="chip" data-text="Hey, how’s your day going?">Greeting</button>
+          <button class="chip" data-text="I need help thinking through a problem.">Help me think</button>
+          <button class="chip" data-text="Tell me something interesting about space.">Topic chat</button>
+          <button class="chip" data-text="Can you remember what I just said?">Memory test</button>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h2>What it can do</h2>
+        <p>It tracks the last few turns, understands basic follow-ups, keeps topics alive, and responds with plain language. Add a real model backend later and this UI already fits it.</p>
+      </div>
+
+      <div class="conversation-meta">
+        <div class="meta-row"><span>Topic</span><strong id="topicLabel">None</strong></div>
+        <div class="meta-row"><span>Emotion</span><strong id="emotionLabel">Neutral</strong></div>
+        <div class="meta-row"><span>Turns</span><strong id="turnCount">0</strong></div>
+        <div class="meta-row"><span>Mode</span><strong>Natural chat</strong></div>
+      </div>
+    </aside>
+
+    <main class="chat">
+      <div class="chat-header">
+        <div class="title">
+          <h2>Chat</h2>
+          <span>Try asking a normal question, then follow up naturally.</span>
+        </div>
+        <div class="toolbar">
+          <button class="btn" id="clearBtn">Clear</button>
+          <button class="btn primary" id="seedBtn">Add example reply</button>
+        </div>
+      </div>
+
+      <div class="messages" id="messages" aria-live="polite" role="log"></div>
+
+      <div class="composer">
+        <div class="composer-row">
+          <textarea id="input" placeholder="Type a message and press Enter..." aria-label="Message input"></textarea>
+          <button class="btn primary" id="sendBtn">Send</button>
+        </div>
+        <div class="helper">
+          <span>Enter sends. Shift+Enter adds a new line.</span>
+          <span class="links">
+            <span class="link" id="followUpHint">Ask a follow-up</span>
+            <span class="link" id="resetHint">Reset memory</span>
+          </span>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <script>
+    const messagesEl = document.getElementById("messages");
+    const inputEl = document.getElementById("input");
+    const sendBtn = document.getElementById("sendBtn");
+    const clearBtn = document.getElementById("clearBtn");
+    const seedBtn = document.getElementById("seedBtn");
+    const topicLabel = document.getElementById("topicLabel");
+    const emotionLabel = document.getElementById("emotionLabel");
+    const turnCountEl = document.getElementById("turnCount");
+    const starterChips = document.getElementById("starterChips");
+    const followUpHint = document.getElementById("followUpHint");
+    const resetHint = document.getElementById("resetHint");
+
+    const state = {
+      turns: 0,
+      topic: null,
+      emotion: { label: "neutral", confidence: 0 },
+      history: [],
+      lastUserText: "",
+      lastAssistantText: ""
+    };
+
+    const GREETINGS = ["hi", "hello", "hey", "yo", "good morning", "good afternoon", "good evening"];
+    const THANKS = ["thanks", "thank you", "cheers", "appreciate it"];
+
+    const EMOTION_LEXICON = {
+      joy: ["happy", "glad", "excited", "awesome", "great", "nice", "love", "wonderful", "amazing", "fantastic", "brilliant", "yay"],
+      sadness: ["sad", "down", "upset", "hurt", "lonely", "depressed", "disappointed", "gloomy", "miserable", "blue", "bad"],
+      anger: ["angry", "mad", "furious", "frustrated", "annoyed", "pissed", "irritated", "outraged", "fed up", "hate"],
+      fear: ["scared", "afraid", "worried", "anxious", "nervous", "panicked", "stressed", "tense", "uneasy", "afraid"],
+      confusion: ["confused", "unsure", "lost", "unclear", "puzzled", "stuck", "don't understand", "dont understand", "what do you mean", "help me understand"],
+      gratitude: ["thanks", "thank you", "appreciate", "grateful", "cheers"],
+      surprise: ["wow", "really", "surprised", "unexpected", "wait", "no way"],
+      calm: ["fine", "okay", "okay", "alright", "calm", "relaxed", "peaceful"]
+    };
+
+    const EMOTION_RESPONSES = {
+      joy: [
+        "That sounds positive. I’m glad this is going well.",
+        "Nice — that carries a good vibe.",
+        "That’s genuinely good to hear."
+      ],
+      sadness: [
+        "I’m sorry, that sounds heavy.",
+        "That sounds painful. I’m here with you.",
+        "That’s a lot to carry. Take your time."
+      ],
+      anger: [
+        "That sounds really frustrating.",
+        "I can see why that would annoy you.",
+        "That’s understandably irritating."
+      ],
+      fear: [
+        "That sounds stressful.",
+        "I can see why that would make you uneasy.",
+        "That feels tense. We can slow it down."
+      ],
+      confusion: [
+        "That sounds a bit unclear.",
+        "I get that — let’s make it simpler.",
+        "No problem, we can break it down."
+      ],
+      gratitude: [
+        "You’re welcome.",
+        "Glad to help.",
+        "I appreciate that."
+      ],
+      surprise: [
+        "That’s interesting.",
+        "I see why that caught your attention.",
+        "That is a bit unexpected."
+      ],
+      calm: [
+        "Got it.",
+        "Okay, that makes sense.",
+        "Understood."
+      ],
+      neutral: [
+        "Got it.",
+        "Okay.",
+        "I’m with you."
+      ]
+    };
+
+    const CLARIFIERS = [
+      "Could you say a bit more about that?",
+      "What part matters most to you?",
+      "Do you mean the idea, the example, or the result?",
+      "What would a good answer look like for you?"
+    ];
+
+    const BRIDGES = [
+      "That connects to what you said earlier.",
+      "That feels related to the last thing you mentioned.",
+      "I think this is part of the same thread.",
+      "That sounds like the same topic from a different angle."
+    ];
+
+    function addMessage(text, role = "assistant") {
+      const el = document.createElement("div");
+      el.className = `message ${role}`;
+      el.textContent = text;
+      messagesEl.appendChild(el);
+      messagesEl.scrollTop = messagesEl.scrollHeight;
+      return el;
+    }
+
+    function addTyping() {
+      const el = document.createElement("div");
+      el.className = "message assistant";
+      el.dataset.typing = "1";
+      el.innerHTML = `
+        <span class="typing" aria-label="Assistant typing">
+          <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+        </span>`;
+      messagesEl.appendChild(el);
+      messagesEl.scrollTop = messagesEl.scrollHeight;
+      return el;
+    }
+
+    function removeTyping() {
+      const typing = messagesEl.querySelector('[data-typing="1"]');
+      if (typing) typing.remove();
+    }
+
+    function normalize(text) {
+      return text.toLowerCase().trim().replace(/[^\w\s'’-]/g, "");
+    }
+
+    function splitSentences(text) {
+      return text.split(/(?<=[.!?])\s+/).filter(Boolean);
+    }
+
+    function detectTopic(text) {
+      const cleaned = normalize(text);
+      const words = cleaned.split(/\s+/).filter(w => w.length > 3);
+      if (!words.length) return null;
+
+      const stop = new Set([
+        "what","when","where","which","would","could","should","there","their","about","please",
+        "help","need","like","that","this","with","have","from","your","just","been","more",
+        "tell","into","make","going","know","think","want","says","said","well","really","very"
+      ]);
+
+      const filtered = words.filter(w => !stop.has(w));
+      return filtered.slice(0, 3).join(" ") || null;
+    }
+
+    function isFollowUp(text) {
+      const cleaned = normalize(text);
+      return /^(and|also|what about|how about|why|can you explain|tell me more|what do you mean|follow up)/.test(cleaned)
+        || cleaned.includes("that")
+        || cleaned.includes("it")
+        || cleaned.includes("this");
+    }
+
+    function matchesAny(text, list) {
+      const cleaned = normalize(text);
+      return list.some(item => cleaned.startsWith(item) || cleaned.includes(` ${item} `) || cleaned === item);
+    }
+
+    function countOccurrences(text, phrase) {
+      const source = normalize(text);
+      const target = normalize(phrase);
+      if (!target) return 0;
+      let count = 0;
+      let index = 0;
+      while ((index = source.indexOf(target, index)) !== -1) {
+        count += 1;
+        index += target.length;
+      }
+      return count;
+    }
+
+    function detectEmotion(text) {
+      const raw = text.trim();
+      const cleaned = normalize(raw);
+      const scores = {
+        joy: 0,
+        sadness: 0,
+        anger: 0,
+        fear: 0,
+        confusion: 0,
+        gratitude: 0,
+        surprise: 0,
+        calm: 0
+      };
+
+      for (const [emotion, terms] of Object.entries(EMOTION_LEXICON)) {
+        for (const term of terms) {
+          scores[emotion] += countOccurrences(cleaned, term) * 2;
+        }
+      }
+
+      if (raw.includes("!!!")) scores.joy += 1.5;
+      if (raw.includes("?")) scores.confusion += 0.4;
+      if ((raw.match(/\?/g) || []).length >= 2) scores.fear += 0.8;
+      if ((raw.match(/!/g) || []).length >= 2) scores.anger += 0.5;
+
+      const capsWords = raw.split(/\s+/).filter(w => w.length > 2 && w === w.toUpperCase());
+      if (capsWords.length >= 2) scores.anger += 1.0;
+
+      const emojiMap = [
+        { emotion: "joy", chars: ["😀", "😄", "😊", "😁", "🙂", "🥳", "😍"] },
+        { emotion: "sadness", chars: ["😢", "😭", "☹", "🙁", "💔"] },
+        { emotion: "anger", chars: ["😡", "😠"] },
+        { emotion: "fear", chars: ["😟", "😰", "😨"] },
+        { emotion: "confusion", chars: ["😕", "🤔"] },
+        { emotion: "gratitude", chars: ["🙏", "💙"] }
+      ];
+
+      for (const entry of emojiMap) {
+        for (const ch of entry.chars) {
+          if (raw.includes(ch)) scores[entry.emotion] += 1.5;
+        }
+      }
+
+      if (!cleaned) {
+        return { label: "neutral", confidence: 0.2 };
+      }
+
+      const sorted = Object.entries(scores).sort((a, b) => b[1] - a[1]);
+      const [label, score] = sorted[0];
+      const total = Object.values(scores).reduce((sum, n) => sum + n, 0);
+
+      if (score <= 0) {
+        return { label: "neutral", confidence: 0.35 };
+      }
+
+      const confidence = Math.max(0.35, Math.min(0.95, score / Math.max(total, 1) + 0.2));
+      return { label, confidence };
+    }
+
+    function emotionIntro(emotion) {
+      const options = EMOTION_RESPONSES[emotion?.label] || EMOTION_RESPONSES.neutral;
+      return options[Math.floor(Math.random() * options.length)];
+    }
+
+    function emotionSupport(emotion) {
+      switch (emotion?.label) {
+        case "sadness":
+          return "If you want, keep it simple and tell me what part feels hardest.";
+        case "anger":
+          return "Tell me what happened, and I’ll help you sort through it calmly.";
+        case "fear":
+          return "We can slow this down and take it one piece at a time.";
+        case "confusion":
+          return "Give me the part that feels unclear, and I’ll make it easier to follow.";
+        case "joy":
+          return "That energy is nice to work with.";
+        case "gratitude":
+          return "I’m glad it helped.";
+        default:
+          return "";
+      }
+    }
+
+    function memorySummary() {
+      if (!state.history.length) return "I do not have any conversation history yet.";
+      const recent = state.history.slice(-4).filter(m => m.role === "user").map(m => m.text);
+      return recent.length ? `So far you’ve been talking about: ${recent.join(" | ")}` : "I’m tracking the conversation, but I do not have much user history yet.";
+    }
+
+    function updateEmotionUI(emotion) {
+      const label = emotion?.label || "neutral";
+      const pretty = label.charAt(0).toUpperCase() + label.slice(1);
+      emotionLabel.textContent = `${pretty}${emotion?.confidence ? ` (${Math.round(emotion.confidence * 100)}%)` : ""}`;
+    }
+
+    function craftReply(text) {
+      const raw = text.trim();
+      const cleaned = normalize(raw);
+      const topic = detectTopic(raw);
+      const emotion = detectEmotion(raw);
+
+      state.emotion = emotion;
+      updateEmotionUI(emotion);
+
+      if (topic) {
+        state.topic = topic;
+        topicLabel.textContent = topic;
+      }
+
+      const intro = emotionIntro(emotion);
+      const support = emotionSupport(emotion);
+
+      if (matchesAny(cleaned, GREETINGS)) {
+        return `Hey — nice to meet you. What’s on your mind today?`;
+      }
+
+      if (matchesAny(cleaned, THANKS)) {
+        return `${intro} You’re welcome. Want to keep going with this or switch topics?`;
+      }
+
+      if (cleaned.includes("remember") || cleaned.includes("memory")) {
+        return `Right now I’m only remembering this conversation. ${memorySummary()}`;
+      }
+
+      if (cleaned.includes("who are you") || cleaned.includes("what are you")) {
+        return `I’m a chat assistant designed to keep a normal conversation going: I track context, notice follow-ups, and answer in plain language.`;
+      }
+
+      if (cleaned.includes("help")) {
+        return `${intro} I can help with that. Tell me the goal, and I’ll help you think it through step by step.`;
+      }
+
+      if (emotion.label === "sadness") {
+        return `${intro} ${support} ${state.topic ? `If this is about ${state.topic}, ` : ""}what happened?`;
+      }
+
+      if (emotion.label === "anger") {
+        return `${intro} ${support} ${state.topic ? `Staying on ${state.topic}, ` : ""}what part is causing the biggest problem?`;
+      }
+
+      if (emotion.label === "fear") {
+        return `${intro} ${support} ${state.topic ? `With ${state.topic}, ` : ""}what is making this feel risky or stressful?`;
+      }
+
+      if (emotion.label === "confusion") {
+        return `${intro} ${support} ${state.topic ? `On ${state.topic}, ` : ""}what part do you want me to unpack first?`;
+      }
+
+      if (emotion.label === "joy") {
+        return `${intro} ${state.topic ? `About ${state.topic}, ` : ""}that sounds good. What’s making it feel that way?`;
+      }
+
+      if (cleaned.includes("?")) {
+        if (cleaned.startsWith("why") || cleaned.startsWith("how")) {
+          return `${intro} ${state.topic ? `On ${state.topic}, ` : ""}the answer depends on the context, so give me a little more detail and I’ll make it specific.`;
+        }
+        if (isFollowUp(raw) && state.lastUserText) {
+          return `${intro} ${BRIDGES[Math.floor(Math.random() * BRIDGES.length)]} ${state.topic ? `If we stay on ${state.topic}, ` : ""}I’d focus on the exact part you want to unpack.`;
+        }
+        return `${intro} ${topic ? `On ${topic}, ` : ""}what part do you want to drill into first?`;
+      }
+
+      if (isFollowUp(raw) && state.lastUserText) {
+        const lastTopic = state.topic || detectTopic(state.lastUserText) || "that";
+        return `${intro} Got it — staying with ${lastTopic} makes sense. What changed, or what part feels stuck?`;
+      }
+
+      const sentences = splitSentences(raw);
+      if (sentences.length > 1) {
+        return `${intro} That gives me enough to work with. The main thread I’m seeing is ${state.topic || "your topic"}, and I’d start by separating the key point from the extra details.`;
+      }
+
+      if (raw.length < 25) {
+        return `${intro} Tell me a little more about ${state.topic || "that"}, and I’ll keep the thread going.`;
+      }
+
+      return `${intro} ${state.topic ? `On ${state.topic}, ` : ""}my read is that you’re pointing at a real issue. What outcome do you want from it?`;
+    }
+
+    async function sendMessage(text) {
+      const trimmed = text.trim();
+      if (!trimmed) return;
+
+      addMessage(trimmed, "user");
+      state.turns += 1;
+      state.lastUserText = trimmed;
+      state.history.push({ role: "user", text: trimmed, at: Date.now() });
+      turnCountEl.textContent = String(state.turns);
+
+      inputEl.value = "";
+      const typing = addTyping();
+
+      const delay = Math.min(650, 180 + Math.round(trimmed.length * 4));
+      await new Promise(r => setTimeout(r, delay));
+
+      removeTyping();
+
+      const reply = craftReply(trimmed);
+      state.lastAssistantText = reply;
+      state.history.push({ role: "assistant", text: reply, at: Date.now() });
+      addMessage(reply, "assistant");
+    }
+
+    function seedExample() {
+      const reply = [
+        "I can keep up with the conversation, but I work best when you give me something specific to react to.",
+        "For example, ask something like: “I’m trying to choose between two options” or “Can you explain this in simpler terms?”",
+        "Then I’ll follow the thread instead of spitting out a canned line."
+      ].join(" ");
+      addMessage(reply, "assistant");
+    }
+
+    function clearConversation() {
+      messagesEl.innerHTML = "";
+      state.turns = 0;
+      state.topic = null;
+      state.emotion = { label: "neutral", confidence: 0 };
+      state.history = [];
+      state.lastUserText = "";
+      state.lastAssistantText = "";
+      topicLabel.textContent = "None";
+      emotionLabel.textContent = "Neutral";
+      turnCountEl.textContent = "0";
+      addMessage("Conversation cleared. Start with a greeting or a question.", "system");
+    }
+
+    sendBtn.addEventListener("click", () => sendMessage(inputEl.value));
+    inputEl.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" && !e.shiftKey) {
+        e.preventDefault();
+        sendMessage(inputEl.value);
+      }
+    });
+
+    starterChips.addEventListener("click", (e) => {
+      const btn = e.target.closest("button[data-text]");
+      if (!btn) return;
+      inputEl.value = btn.dataset.text;
+      inputEl.focus();
+    });
+
+    clearBtn.addEventListener("click", clearConversation);
+    seedBtn.addEventListener("click", seedExample);
+    followUpHint.addEventListener("click", () => {
+      inputEl.value = "Can you explain that in a more natural way?";
+      inputEl.focus();
+    });
+    resetHint.addEventListener("click", clearConversation);
+
+    addMessage("Hi — I’m ready for a normal conversation. Ask me something, then follow up naturally.", "system");
+    inputEl.focus();
+  </script>
+</body>
+</html>
