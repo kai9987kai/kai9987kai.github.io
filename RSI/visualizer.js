@@ -13,10 +13,10 @@ class CritiqueRadarChart {
     this.radius = Math.min(this.width, this.height) / 2 - 12;
 
     this.axes = [
-      { name: "Helpfulness", x: 0, y: -1 },       // Top
-      { name: "Tone Match", x: 1, y: 0 },        // Right
-      { name: "Reasoning", x: 0, y: 1 },         // Bottom
-      { name: "Clarity", x: -1, y: 0 }           // Left
+      { name: "Helpfulness", x: 0, y: -1 },       
+      { name: "Tone Match", x: 1, y: 0 },        
+      { name: "Reasoning", x: 0, y: 1 },         
+      { name: "Clarity", x: -1, y: 0 }           
     ];
 
     this.currentValues = [60, 60, 60, 60];
@@ -300,23 +300,19 @@ class TrendLineChart {
     this.width = this.canvas.width;
     this.height = this.canvas.height;
     
-    // Internal margins
     this.margin = { top: 15, right: 15, bottom: 20, left: 32 };
     this.chartWidth = this.width - this.margin.left - this.margin.right;
     this.chartHeight = this.height - this.margin.top - this.margin.bottom;
   }
 
-  // Draw lines comparing averages
   draw(history = []) {
     if (!this.ctx) return;
     const ctx = this.ctx;
     ctx.clearRect(0, 0, this.width, this.height);
 
-    // 1. Draw Grid Frame & Boundaries
     ctx.strokeStyle = "rgba(255, 255, 255, 0.05)";
     ctx.lineWidth = 1;
     
-    // Y-Axis grid lines
     const yLevels = 4;
     for (let i = 0; i <= yLevels; i++) {
       const y = this.margin.top + (this.chartHeight * (i / yLevels));
@@ -325,7 +321,6 @@ class TrendLineChart {
       ctx.lineTo(this.width - this.margin.right, y);
       ctx.stroke();
 
-      // Labels (100, 75, 50, 25, 0)
       ctx.fillStyle = "#6b7280";
       ctx.font = "8px 'Outfit', sans-serif";
       ctx.textAlign = "right";
@@ -334,7 +329,6 @@ class TrendLineChart {
     }
 
     if (history.length === 0) {
-      // Empty state prompt
       ctx.fillStyle = "#9ca3af";
       ctx.font = "10px 'Outfit', sans-serif";
       ctx.textAlign = "center";
@@ -343,27 +337,23 @@ class TrendLineChart {
       return;
     }
 
-    // Graph plotting logic
     const count = history.length;
-    const maxEntries = 50; // Rolling viewport window
+    const maxEntries = 50; 
     const dataWindow = history.slice(-maxEntries);
     const visibleCount = dataWindow.length;
 
-    // Helper: Map data point (0-100) and index to coordinate
     const getCoords = (index, val) => {
       const x = this.margin.left + (this.chartWidth * (index / Math.max(1, visibleCount - 1)));
       const y = this.margin.top + this.chartHeight * (1 - (val / 100));
       return { x, y };
     };
 
-    // Metrics keys to draw
     const lines = [
-      { key: "helpfulness", color: "#8b5cf6" }, // purple
-      { key: "toneMatch", color: "#10b981" },   // emerald
-      { key: "reasoningDepth", color: "#06b6d4" } // cyan
+      { key: "helpfulness", color: "#8b5cf6" }, 
+      { key: "toneMatch", color: "#10b981" },   
+      { key: "reasoningDepth", color: "#06b6d4" } 
     ];
 
-    // 2. Draw line trajectories
     lines.forEach(lineConfig => {
       ctx.beginPath();
       ctx.lineWidth = 1.8;
@@ -381,21 +371,18 @@ class TrendLineChart {
       ctx.stroke();
     });
 
-    // 3. Draw vertical orange indicators for mutation triggers
     dataWindow.forEach((entry, idx) => {
       if (entry.mutated) {
-        const pt = getCoords(idx, 50); // Center point reference
-        
-        ctx.strokeStyle = "rgba(245, 158, 11, 0.45)"; // amber
+        const pt = getCoords(idx, 50); 
+        ctx.strokeStyle = "rgba(245, 158, 11, 0.45)"; 
         ctx.lineWidth = 1.2;
         ctx.setLineDash([3, 3]);
         ctx.beginPath();
         ctx.moveTo(pt.x, this.margin.top);
         ctx.lineTo(pt.x, this.height - this.margin.bottom);
         ctx.stroke();
-        ctx.setLineDash([]); // reset
+        ctx.setLineDash([]); 
 
-        // Mutation mark circle
         ctx.fillStyle = "#f59e0b";
         ctx.beginPath();
         ctx.arc(pt.x, this.margin.top, 3, 0, Math.PI * 2);
@@ -403,13 +390,11 @@ class TrendLineChart {
       }
     });
 
-    // Draw bottom X labels (Generations count)
     ctx.fillStyle = "#6b7280";
     ctx.font = "8px 'Outfit', sans-serif";
     ctx.textAlign = "left";
     ctx.textBaseline = "top";
     
-    // Render start/end generation index labels
     const startGen = dataWindow[0].turn;
     const endGen = dataWindow[visibleCount - 1].turn;
     ctx.fillText(`Gen #${startGen}`, this.margin.left, this.height - this.margin.bottom + 4);
@@ -429,16 +414,14 @@ class MutationLineageTree {
     this.width = this.canvas.width;
     this.height = this.canvas.height;
     
-    this.nodesList = []; // coordinates cache for mouse clicks
+    this.nodesList = []; 
     this.onNodeClick = onNodeClickCallback;
 
-    // Listen to mouse click overrides
     this.canvas.addEventListener("click", (e) => {
       const rect = this.canvas.getBoundingClientRect();
       const x = e.clientX - rect.left;
       const y = e.clientY - rect.top;
 
-      // Check if a node was clicked
       this.nodesList.forEach(n => {
         const dist = Math.hypot(n.x - x, n.y - y);
         if (dist <= 8) {
@@ -448,7 +431,6 @@ class MutationLineageTree {
     });
   }
 
-  // Draw hierarchical nodes list
   draw(lineage = [], activeVersion = "v1.0.0") {
     if (!this.ctx) return;
     const ctx = this.ctx;
@@ -457,7 +439,6 @@ class MutationLineageTree {
 
     if (lineage.length === 0) return;
 
-    // 1. Build tree depth arrays
     const nodes = {};
     lineage.forEach(node => {
       nodes[node.id] = {
@@ -471,14 +452,12 @@ class MutationLineageTree {
       };
     });
 
-    // Populate children & calculate depth
     lineage.forEach(node => {
       if (node.parent && nodes[node.parent]) {
         nodes[node.parent].children.push(node.id);
       }
     });
 
-    // Recursive depth assignment
     const assignDepth = (id, currentDepth) => {
       const node = nodes[id];
       if (!node) return;
@@ -486,10 +465,8 @@ class MutationLineageTree {
       node.children.forEach(childId => assignDepth(childId, currentDepth + 1));
     };
     
-    // Root node is always v1.0.0
     assignDepth("v1.0.0", 0);
 
-    // Group nodes by depth levels to calculate positions
     const depthGroups = {};
     let maxDepth = 0;
     for (const [id, node] of Object.entries(nodes)) {
@@ -498,13 +475,11 @@ class MutationLineageTree {
       maxDepth = Math.max(maxDepth, node.depth);
     }
 
-    // Set layout parameters
     const startX = 40;
     const endX = this.width - 40;
     const stepX = maxDepth > 0 ? (endX - startX) / maxDepth : 0;
     const centerY = this.height / 2;
 
-    // 2. Assign coordinates
     for (let d = 0; d <= maxDepth; d++) {
       const group = depthGroups[d] || [];
       const len = group.length;
@@ -512,20 +487,16 @@ class MutationLineageTree {
       group.forEach((node, idx) => {
         node.x = startX + d * Math.min(65, stepX || 50);
         
-        // Vertical offsets centered on centerY
         if (len === 1) {
           node.y = centerY;
         } else {
           const spacing = 35;
           node.y = centerY + (idx - (len - 1) / 2) * spacing;
         }
-
-        // Cache coordinates for click detection
         this.nodesList.push(node);
       });
     }
 
-    // 3. Draw connection paths
     ctx.lineWidth = 1.2;
     ctx.strokeStyle = "rgba(255, 255, 255, 0.12)";
     for (const [id, node] of Object.entries(nodes)) {
@@ -538,7 +509,6 @@ class MutationLineageTree {
       }
     }
 
-    // 4. Draw node dots
     for (const [id, node] of Object.entries(nodes)) {
       const isActive = node.id === activeVersion;
 
@@ -560,12 +530,246 @@ class MutationLineageTree {
       ctx.stroke();
       ctx.shadowBlur = 0;
 
-      // Label text
       ctx.fillStyle = isActive ? "#ffffff" : "#9ca3af";
       ctx.font = isActive ? "bold 8px 'Outfit', sans-serif" : "8px 'Outfit', sans-serif";
       ctx.textAlign = "center";
       ctx.textBaseline = "bottom";
       ctx.fillText(node.id, node.x, node.y - 8);
+    }
+  }
+}
+
+
+// 5. LMM LATENT EMBEDDING VECTOR SPACE VISUALIZER
+class LatentNetView {
+  constructor(canvasId) {
+    this.canvas = document.getElementById(canvasId);
+    if (!this.canvas) return;
+    this.ctx = this.canvas.getContext("2d");
+    this.width = this.canvas.width;
+    this.height = this.canvas.height;
+    this.lerpedVector = Array(64).fill(0.0);
+  }
+
+  // Draw 64D spectrum layout and feedforward link lines
+  draw(latentVector = null, lastActionIdx = -1) {
+    if (!this.ctx) return;
+    const ctx = this.ctx;
+    ctx.clearRect(0, 0, this.width, this.height);
+
+    // Smoothly transition weights spectrum
+    if (latentVector) {
+      const lerpSpeed = 0.1;
+      for (let i = 0; i < 64; i++) {
+        if (i < latentVector.length) {
+          this.lerpedVector[i] += (latentVector[i] - this.lerpedVector[i]) * lerpSpeed;
+        }
+      }
+    }
+
+    // Coordinates layout mapping
+    // Left: Input nodes (glowing dots)
+    const inputY = [15, 30, 45, 60, 75];
+    const inputX = 30;
+
+    // Middle: 64D Spectrum bar group bounds
+    const specX = 75;
+    const specW = 210;
+    const barSpacing = specW / 64;
+    const centerY = this.height / 2;
+
+    // Right: 5 strategy nodes
+    const actionY = [15, 30, 45, 60, 75];
+    const actionX = 330;
+
+    // 1. Draw Feedforward background lines (input -> middle, middle -> output)
+    ctx.lineWidth = 0.5;
+    ctx.strokeStyle = "rgba(255, 255, 255, 0.02)";
+    inputY.forEach(iy => {
+      ctx.beginPath();
+      ctx.moveTo(inputX, iy);
+      ctx.lineTo(specX + specW / 2, centerY);
+      ctx.stroke();
+    });
+
+    actionY.forEach((ay, aIdx) => {
+      ctx.strokeStyle = aIdx === lastActionIdx ? "rgba(99, 102, 241, 0.15)" : "rgba(255,255,255,0.02)";
+      ctx.lineWidth = aIdx === lastActionIdx ? 1.0 : 0.5;
+      ctx.beginPath();
+      ctx.moveTo(specX + specW / 2, centerY);
+      ctx.lineTo(actionX, ay);
+      ctx.stroke();
+    });
+
+    // 2. Draw Left Input Nodes
+    inputY.forEach((iy, idx) => {
+      ctx.fillStyle = idx === 0 || idx === 2 ? "rgba(139, 92, 246, 0.65)" : "rgba(99, 102, 241, 0.4)";
+      ctx.beginPath();
+      ctx.arc(inputX, iy, 3.5, 0, Math.PI * 2);
+      ctx.fill();
+    });
+
+    // 3. Draw Middle 64D Embedding Spectrum
+    this.lerpedVector.forEach((val, idx) => {
+      const bx = specX + idx * barSpacing;
+      const bHeight = Math.abs(val) * 32;
+      const isPositive = val >= 0;
+
+      // Color scheme matches valence (emerald if positive, indigo/purple if negative)
+      ctx.fillStyle = isPositive ? `rgba(16, 185, 129, ${0.25 + Math.abs(val) * 0.7})` : `rgba(99, 102, 241, ${0.25 + Math.abs(val) * 0.7})`;
+      ctx.fillRect(bx, isPositive ? centerY - bHeight : centerY, Math.max(1.5, barSpacing - 0.5), bHeight || 2);
+    });
+
+    // Draw spectrum container borders
+    ctx.strokeStyle = "rgba(255, 255, 255, 0.08)";
+    ctx.lineWidth = 1;
+    ctx.strokeRect(specX - 4, centerY - 35, specW + 8, 70);
+
+    // 4. Draw Right Action Nodes
+    actionY.forEach((ay, idx) => {
+      const isActive = idx === lastActionIdx;
+      if (isActive) {
+        ctx.shadowColor = "#818cf8";
+        ctx.shadowBlur = 6;
+        ctx.fillStyle = "#818cf8";
+        ctx.strokeStyle = "#ffffff";
+        ctx.lineWidth = 1.2;
+      } else {
+        ctx.fillStyle = "#374151";
+        ctx.strokeStyle = "rgba(255,255,255,0.3)";
+        ctx.lineWidth = 1;
+      }
+      ctx.beginPath();
+      ctx.arc(actionX, ay, 4, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+    });
+  }
+}
+
+
+// 6. MULTI-RESOLUTION HASH GRID MAP VISUALIZER (NVIDIA Instant NGP concept mapping)
+class HashGridView {
+  constructor(canvasId) {
+    this.canvas = document.getElementById(canvasId);
+    if (!this.canvas) return;
+    this.ctx = this.canvas.getContext("2d");
+    this.width = this.canvas.width;
+    this.height = this.canvas.height;
+  }
+
+  // Draw three resolution grid cells
+  draw(hashResult = null) {
+    if (!this.ctx) return;
+    const ctx = this.ctx;
+    ctx.clearRect(0, 0, this.width, this.height);
+
+    const levels = 3;
+    const panelSize = 82;
+    const panelSpacing = 22;
+    const startX = (this.width - (levels * panelSize + (levels - 1) * panelSpacing)) / 2;
+    const startY = 15;
+
+    const levelColors = ["#8b5cf6", "#6366f1", "#06b6d4"]; // purple, indigo, cyan
+    const labels = ["COARSE (4x4)", "MEDIUM (8x8)", "FINE (16x16)"];
+
+    for (let l = 0; l < levels; l++) {
+      const px = startX + l * (panelSize + panelSpacing);
+      const py = startY;
+
+      // 1. Draw Panel Frame Background
+      ctx.fillStyle = "rgba(0, 0, 0, 0.25)";
+      ctx.fillRect(px, py, panelSize, panelSize);
+      ctx.strokeStyle = "rgba(255, 255, 255, 0.08)";
+      ctx.lineWidth = 1;
+      ctx.strokeRect(px, py, panelSize, panelSize);
+
+      // Draw level header labels
+      ctx.fillStyle = "#9ca3af";
+      ctx.font = "bold 8px 'Outfit', sans-serif";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "bottom";
+      ctx.fillText(labels[l], px + panelSize / 2, py - 4);
+
+      if (!hashResult || !hashResult.activations) {
+        // Draw standard empty grid mesh lines
+        ctx.strokeStyle = "rgba(255, 255, 255, 0.02)";
+        const N = l === 0 ? 4 : l === 1 ? 8 : 16;
+        for (let i = 1; i < N; i++) {
+          const offset = (i / N) * panelSize;
+          // horizontal lines
+          ctx.beginPath();
+          ctx.moveTo(px, py + offset);
+          ctx.lineTo(px + panelSize, py + offset);
+          ctx.stroke();
+          // vertical lines
+          ctx.beginPath();
+          ctx.moveTo(px + offset, py);
+          ctx.lineTo(px + offset, py + panelSize);
+          ctx.stroke();
+        }
+        continue;
+      }
+
+      // 2. Fetch specific grid resolution activations
+      const act = hashResult.activations[l];
+      const N = act.resolution;
+      const step = panelSize / (N - 1);
+
+      // Draw grid mesh lines for active resolution
+      ctx.strokeStyle = "rgba(255, 255, 255, 0.025)";
+      for (let i = 0; i < N; i++) {
+        const offset = i * step;
+        ctx.beginPath();
+        ctx.moveTo(px, py + offset);
+        ctx.lineTo(px + panelSize, py + offset);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(px + offset, py);
+        ctx.lineTo(px + offset, py + panelSize);
+        ctx.stroke();
+      }
+
+      // 3. Highlight the specific activated cell bounds containing query coords
+      const x0 = act.corners[0].cx;
+      const y0 = act.corners[0].cy;
+      
+      const cx = px + x0 * step;
+      const cy = py + y0 * step;
+
+      // Draw semitransparent active cell box
+      ctx.fillStyle = "rgba(139, 92, 246, 0.08)";
+      ctx.fillRect(cx, cy, step, step);
+      ctx.strokeStyle = levelColors[l];
+      ctx.lineWidth = 1.2;
+      ctx.strokeRect(cx, cy, step, step);
+
+      // 4. Draw corner coordinate dots (weights representation)
+      act.corners.forEach(corner => {
+        const dotX = px + corner.cx * step;
+        const dotY = py + corner.cy * step;
+
+        ctx.fillStyle = corner.weight >= 0 ? "#10b981" : "#ef4444"; // green for pos, red for neg weight
+        ctx.beginPath();
+        ctx.arc(dotX, dotY, 2.5, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = "#ffffff";
+        ctx.lineWidth = 0.5;
+        ctx.stroke();
+      });
+
+      // 5. Draw active target query coordinates dot
+      const qx = px + hashResult.x * panelSize;
+      const qy = py + hashResult.y * panelSize;
+
+      ctx.shadowColor = "#ffffff";
+      ctx.shadowBlur = 4;
+      ctx.fillStyle = "#ffffff";
+      ctx.beginPath();
+      ctx.arc(qx, qy, 3, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.shadowBlur = 0;
     }
   }
 }

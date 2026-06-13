@@ -6,10 +6,11 @@ document.addEventListener("DOMContentLoaded", () => {
   const radarChart = new CritiqueRadarChart("radarCanvas");
   const flowVisualizer = new NeuralFlowVisualizer("networkCanvas");
 
-  // Telemetry trend and mutation tree charts
+  // Telemetry trend, mutation tree, and neural core charts
   const trendChart = new TrendLineChart("trendCanvas");
+  const latentView = new LatentNetView("latentCanvas");
+  const hashGridView = new HashGridView("hashCanvas");
   
-  // Lineage tree: clicking a node automatically loads that historical prompt state into the sandbox code editor
   const lineageTree = new MutationLineageTree("lineageCanvas", (versionId) => {
     playSound("click");
     switchTab("sandbox-tab");
@@ -19,7 +20,6 @@ document.addEventListener("DOMContentLoaded", () => {
     } else {
       const idx = agent.promptManager.mutationsLog.findIndex(m => m.version === versionId);
       if (idx !== -1) {
-        // Load that historical heuristics config state
         const historyState = agent.promptManager.history[idx];
         el.codeTextarea.value = JSON.stringify(historyState, null, 2);
       }
@@ -31,6 +31,14 @@ document.addEventListener("DOMContentLoaded", () => {
   // Start continuous rendering loops
   radarChart.startAnimateLoop();
   flowVisualizer.startAnimateLoop();
+  
+  // Continuous neural core canvases update loop
+  const tickNeuralCore = () => {
+    latentView.draw(agent.lastLatentVector, agent.lastActionIdx);
+    hashGridView.draw(agent.lastHashResult);
+    requestAnimationFrame(tickNeuralCore);
+  };
+  requestAnimationFrame(tickNeuralCore);
 
   // Elements Caching
   const el = {
@@ -118,7 +126,11 @@ document.addEventListener("DOMContentLoaded", () => {
     adversarialDiff: document.getElementById("adversarialDiff"),
     autoDiffVal: document.getElementById("autoDiffVal"),
     autoStatusLabel: document.getElementById("autoStatusLabel"),
-    autoGenerationsLabel: document.getElementById("autoGenerationsLabel")
+    autoGenerationsLabel: document.getElementById("autoGenerationsLabel"),
+
+    // Neural Core elements
+    qStateGroupSelector: document.getElementById("qStateGroupSelector"),
+    qTableMatrix: document.getElementById("qTableMatrix")
   };
 
   // State Management
@@ -180,21 +192,18 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // INITIAL SETUP
   const initUI = () => {
-    // Populate code editor with DEFAULT HEURISTICS
     el.codeTextarea.value = JSON.stringify(agent.promptManager.activeHeuristics, null, 2);
     updateLineNumbers();
 
-    // Reset components UI
     updateTelemetry();
     updateCritiqueBars([60, 60, 60, 60]);
     updateStrategyWeightsUI();
     renderMemoryList();
+    renderQTableMatrix();
 
-    // Draw initial charts
     trendChart.draw(agent.autopilotHistory);
     lineageTree.draw(agent.mutationLineage, agent.promptManager.activeVersion);
 
-    // Welcome Messages
     addChatMessage("System online. Recursive self-improvement simulation ready.", "system");
     addChatMessage("Agent initialization success. Dynamic weights loaded, vector db semantic arrays initialized.\nTry feeding a test scenario to start iteration loops.", "agent");
   };
@@ -212,7 +221,6 @@ document.addEventListener("DOMContentLoaded", () => {
     el.dominantTopic.textContent = agent.dominantTopic;
     el.agentMood.textContent = agent.mood;
 
-    // Update settings sliders to match backend variables
     el.tempSlider.value = agent.temperature;
     el.tempVal.textContent = agent.temperature.toFixed(1);
     el.retrievalDepth.value = agent.retrievalDepth;
@@ -220,7 +228,6 @@ document.addEventListener("DOMContentLoaded", () => {
     el.learningRate.value = agent.learningRate;
     el.lrVal.textContent = agent.learningRate.toFixed(2);
 
-    // Autopilot values
     el.autoGenerationsLabel.textContent = String(agent.turns);
     el.autopilotDelay.value = (autopilotDelayMs / 1000).toFixed(1);
     el.autoDelayVal.textContent = `${(autopilotDelayMs / 1000).toFixed(1)}s`;
@@ -294,7 +301,6 @@ document.addEventListener("DOMContentLoaded", () => {
     el.messagesContainer.appendChild(msgNode);
     el.messagesContainer.scrollTop = el.messagesContainer.scrollHeight;
     
-    // Auto-prune messages window to prevent browser memory leaks in infinite loops
     if (el.messagesContainer.childNodes.length > 60) {
       el.messagesContainer.removeChild(el.messagesContainer.firstChild);
     }
@@ -335,18 +341,14 @@ document.addEventListener("DOMContentLoaded", () => {
     }
     el.sendPromptBtn.disabled = true;
 
-    // Add user question to layout
     addChatMessage(rawText, "user");
 
-    // Show loading indicators
     showTyping();
     el.thoughtLog.innerHTML = "";
     el.thoughtLogContainer.classList.add("expanded");
 
-    // Execute synchronous processing backend to fetch logs and scores immediately
     const execution = await agent.processQuery(rawText);
 
-    // Coordinate the visualizer node highlight sequence according to traces
     let currentTraceIdx = 0;
     const isMutationExpected = !!execution.mutation;
 
@@ -368,14 +370,11 @@ document.addEventListener("DOMContentLoaded", () => {
       currentTraceIdx++;
     }
 
-    // Process Complete: Update Telemetry and Chart Values
     removeTyping();
     playSound(isMutationExpected ? "mutate" : "complete");
 
-    // Output answer bubble
     addChatMessage(execution.response, "agent", execution.critique, agent.turns);
 
-    // Update Telemetry stats
     updateTelemetry();
     updateCritiqueBars([
       execution.critique.helpfulness,
@@ -385,12 +384,11 @@ document.addEventListener("DOMContentLoaded", () => {
     ]);
     updateStrategyWeightsUI();
     renderMemoryList();
+    renderQTableMatrix(); // Redraw Q-Learning heatmap cells
 
-    // Redraw diagnostics trend chart and lineage tree
     trendChart.draw(agent.autopilotHistory);
     lineageTree.draw(agent.mutationLineage, agent.promptManager.activeVersion);
 
-    // If a prompt mutation occurred, render diff template in Prompt Diff tab
     if (execution.mutation) {
       addChatMessage(`System mutation logged under version ${execution.mutation.version}: ${execution.mutation.description}`, "reflection");
       renderDiffViewer(execution.mutation);
@@ -405,16 +403,11 @@ document.addEventListener("DOMContentLoaded", () => {
   const runAutopilotStep = async () => {
     if (!isAutopilotRunning) return;
 
-    // Scan agent's current metrics and synthesize a challenge matching the weak dimensions
     const challenge = agent.adversary.generateChallenge(agent.metrics, adversarialDiffVal);
-    
-    // Inject challenge message to console trace logs
     logTrace("system", `Adversary generated challenge for dimension '${challenge.dimension.toUpperCase()}': "${challenge.promptText}"`);
 
-    // Process challenge prompt
     await handleSendPrompt(challenge.promptText);
 
-    // If autopilot is still active, schedule next generation cycle
     if (isAutopilotRunning) {
       autopilotTimeout = setTimeout(runAutopilotStep, autopilotDelayMs);
     }
@@ -485,8 +478,15 @@ document.addEventListener("DOMContentLoaded", () => {
     logTrace("critic", `Manual critique override received for Turn ${lastEvaluatedTurnIndex}.`);
     logTrace("critic", `Injecting scores: Helpfulness=${overriddenScores.helpfulness}%, Tone Match=${overriddenScores.toneMatch}%, Reasoning Depth=${overriddenScores.reasoningDepth}%, Clarity=${overriddenScores.heuristicClarity}%`);
 
-    agent.adjustWeights(overriddenScores, agent.learningRate);
+    // Force Q-learning policy update
+    const reward = +(0.3 * overriddenScores.helpfulness + 0.3 * overriddenScores.toneMatch + 0.2 * overriddenScores.reasoningDepth + 0.2 * overriddenScores.heuristicClarity) / 10.0;
+    const qUpdate = agent.qEngine.updateQValue(agent.lastStateIdx, agent.lastActionIdx, reward, agent.lastStateIdx);
+    logTrace("critic", `Q-learning overridden. State-Action (${agent.lastStateIdx}, ${agent.lastActionIdx}) Q-value updated: ${qUpdate.oldVal} -> ${qUpdate.newVal} (Delta: ${qUpdate.delta > 0 ? '+' : ''}${qUpdate.delta})`);
+
+    // Synchronize biases
+    agent.syncStrategyWeightsFromQ(agent.lastStateIdx);
     updateStrategyWeightsUI();
+    renderQTableMatrix();
 
     const threshold = 68;
     const deficiencies = {};
@@ -503,7 +503,6 @@ document.addEventListener("DOMContentLoaded", () => {
 
       addChatMessage(`Manual override triggered prompt mutation ${mutation.version}: ${mutation.description}`, "reflection");
       
-      // Update historical logs
       const historyItem = agent.autopilotHistory.find(h => h.turn === lastEvaluatedTurnIndex);
       if (historyItem) {
         historyItem.mutated = true;
@@ -641,6 +640,99 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   };
 
+  // RENDER Q-LEARNING Heatmap Matrix cells
+  const renderQTableMatrix = () => {
+    el.qTableMatrix.innerHTML = "";
+    
+    const viewType = el.qStateGroupSelector.value;
+    const actions = agent.qEngine.actions;
+
+    // Build Table Header
+    const headerRow = document.createElement("tr");
+    headerRow.innerHTML = "<th>State Variable</th>";
+    actions.forEach(a => {
+      headerRow.innerHTML += `<th>${a.label}</th>`;
+    });
+    el.qTableMatrix.appendChild(headerRow);
+
+    // Get current active state indices to highlight active cell
+    const activeStateIdx = agent.lastStateIdx;
+    const activeActionIdx = agent.lastActionIdx;
+
+    if (viewType === "emotion") {
+      // Group Q-values by Emotion states
+      const emotions = agent.qEngine.emotions;
+      const intentsCount = agent.qEngine.intents.length;
+      
+      emotions.forEach((emName, emIdx) => {
+        const row = document.createElement("tr");
+        row.innerHTML = `<th>${emName.toUpperCase()}</th>`;
+
+        // Check if this row represents the active state's emotion
+        const isActiveEmotionRow = Math.floor(activeStateIdx / intentsCount) === emIdx;
+
+        actions.forEach((_, aIdx) => {
+          // Average Q values across the 6 intents of this emotion
+          let sumVal = 0.0;
+          for (let iIdx = 0; iIdx < intentsCount; iIdx++) {
+            sumVal += agent.qEngine.qTable[emIdx * intentsCount + iIdx][aIdx];
+          }
+          const avgVal = +(sumVal / intentsCount).toFixed(2);
+
+          // Calculate cell color representation (Green for positive reward, Red for negative)
+          let bgColor = "transparent";
+          if (avgVal > 0) {
+            bgColor = `rgba(16, 185, 129, ${Math.min(0.85, avgVal / 2.0)})`;
+          } else if (avgVal < 0) {
+            bgColor = `rgba(239, 68, 68, ${Math.min(0.85, Math.abs(avgVal) / 2.0)})`;
+          }
+
+          // Highlight cell if it is active
+          const isCellHighlighted = isActiveEmotionRow && aIdx === activeActionIdx;
+          const hlClass = isCellHighlighted ? "class='q-cell-active'" : "";
+
+          row.innerHTML += `<td ${hlClass} style="background-color: ${bgColor}">${avgVal.toFixed(2)}</td>`;
+        });
+
+        el.qTableMatrix.appendChild(row);
+      });
+    } else {
+      // Group Q-values by Intent states
+      const intents = agent.qEngine.intents;
+      const emotionsCount = agent.qEngine.emotions.length;
+
+      intents.forEach((intentName, iIdx) => {
+        const row = document.createElement("tr");
+        row.innerHTML = `<th>${intentName.toUpperCase()}</th>`;
+
+        const isActiveIntentRow = (activeStateIdx % intents.length) === iIdx;
+
+        actions.forEach((_, aIdx) => {
+          // Average Q values across the 7 emotions for this intent
+          let sumVal = 0.0;
+          for (let emIdx = 0; emIdx < emotionsCount; emIdx++) {
+            sumVal += agent.qEngine.qTable[emIdx * intents.length + iIdx][aIdx];
+          }
+          const avgVal = +(sumVal / emotionsCount).toFixed(2);
+
+          let bgColor = "transparent";
+          if (avgVal > 0) {
+            bgColor = `rgba(16, 185, 129, ${Math.min(0.85, avgVal / 2.0)})`;
+          } else if (avgVal < 0) {
+            bgColor = `rgba(239, 68, 68, ${Math.min(0.85, Math.abs(avgVal) / 2.0)})`;
+          }
+
+          const isCellHighlighted = isActiveIntentRow && aIdx === activeActionIdx;
+          const hlClass = isCellHighlighted ? "class='q-cell-active'" : "";
+
+          row.innerHTML += `<td ${hlClass} style="background-color: ${bgColor}">${avgVal.toFixed(2)}</td>`;
+        });
+
+        el.qTableMatrix.appendChild(row);
+      });
+    }
+  };
+
   // HEURISTICS SANDBOX CODE EDITOR UTILITIES
   const updateLineNumbers = () => {
     const text = el.codeTextarea.value;
@@ -672,7 +764,6 @@ document.addEventListener("DOMContentLoaded", () => {
       logTrace("mutator", `Compilation success! Version incremented to: ${result.logEntry.version}`);
       addChatMessage(`User injected new heuristics block under version ${result.logEntry.version}`, "reflection");
       
-      // Add node to mutation lineage tree
       const prevVer = agent.promptManager.history.length > 0 ? agent.promptManager.history[agent.promptManager.history.length - 1].version : "v1.0.0";
       agent.mutationLineage.push({
         id: result.logEntry.version,
@@ -763,6 +854,7 @@ document.addEventListener("DOMContentLoaded", () => {
     updateTelemetry();
     updateStrategyWeightsUI();
     renderMemoryList();
+    renderQTableMatrix();
     
     trendChart.draw(agent.autopilotHistory);
     lineageTree.draw(agent.mutationLineage, agent.promptManager.activeVersion);
@@ -806,6 +898,12 @@ document.addEventListener("DOMContentLoaded", () => {
     adversarialDiffVal = val;
     el.autoDiffVal.textContent = val.toFixed(1);
     logTrace("system", `Adversary challenge intensity updated to ${adversarialDiffVal}.`);
+  });
+
+  // Neural Core table filters
+  el.qStateGroupSelector.addEventListener("change", () => {
+    playSound("click");
+    renderQTableMatrix();
   });
 
   // Sidebar parameters sliders

@@ -2,40 +2,266 @@
 
 // Emotion Lexicon and Recognition Patterns
 const EMOTIONS = {
-  neutral: { label: "Neutral", tone: "balanced", words: [] },
+  neutral: { label: "Neutral", tone: "balanced", valence: 0.5, words: [] },
   angry: { 
     label: "Angry", 
     tone: "careful", 
+    valence: 0.15,
     words: ["angry", "mad", "furious", "annoyed", "pissed", "rage", "frustrated", "broken", "useless", "fail", "garbage", "trash"] 
   },
   sad: { 
     label: "Sad", 
     tone: "gentle", 
+    valence: 0.3,
     words: ["sad", "down", "depressed", "upset", "lonely", "hurt", "crushed", "disappointed", "sorrow", "gloom", "sigh"] 
   },
   anxious: { 
     label: "Anxious", 
     tone: "reassuring", 
+    valence: 0.4,
     words: ["anxious", "worried", "nervous", "scared", "afraid", "stressed", "panic", "overwhelmed", "dread", "pressure"] 
   },
   confused: { 
     label: "Confused", 
     tone: "clarifying", 
+    valence: 0.45,
     words: ["confused", "lost", "unclear", "stuck", "what", "don't understand", "unsure", "puzzled", "explain", "why"] 
   },
   joy: { 
     label: "Positive", 
     tone: "upbeat", 
+    valence: 0.8,
     words: ["happy", "excited", "great", "awesome", "love", "amazing", "good", "cool", "wonderful", "perfect", "yes"] 
   },
   grateful: { 
     label: "Grateful", 
     tone: "warm", 
+    valence: 0.9,
     words: ["thanks", "thank you", "appreciate", "grateful", "helpful", "saved me", "perfecto"] 
   }
 };
 
-// 1. ADVERSARIAL CHALLENGE GENERATOR
+// Default system prompt and heuristics rules template
+const DEFAULT_HEURISTICS = {
+  version: "1.0.0",
+  rules: {
+    direct_answer: "Draft a concise, factual answer focusing on immediately usable information.",
+    clarify_question: "Ask targeted clarification questions to resolve ambiguous parameters or causes.",
+    empathetic_ack: "Validate user feelings warmly first. Establish calm reassurance and emotional alignment.",
+    reflect_and_summarize: "Synthesize the conversational arc, identify key hurdles, and direct focus.",
+    plan_next_step: "Provide a logical 4-step execution blueprint: objective, hurdle, test, review."
+  },
+  systemPrompt: `You are an adaptive agent operating in a recursive self-improvement environment.
+Focus: Maintain high relevance, logical clarity, and tight alignment with the user's mood.
+Guidelines: Avoid long preambles if the user sounds frustrated. Use short, concrete tasks.`
+};
+
+// 1. MULTI-RESOLUTION SEMANTIC HASH GRID (Simulating Instant NGP Spatial Encoding)
+class MultiResolutionHashGrid {
+  constructor() {
+    this.levels = 3; // L=3 grid resolution levels
+    this.resolutions = [4, 8, 16]; // N_l resolutions for coarse, medium, fine grids
+    this.tableSize = 32; // Hash Table size T
+    
+    // Large prime constants for spatial hash indexing
+    this.pi1 = 2654435761;
+    this.pi2 = 805459861;
+
+    // Initialize hash tables with small randomized feature weights
+    this.hashTables = [];
+    for (let l = 0; l < this.levels; l++) {
+      const table = [];
+      for (let i = 0; i < this.tableSize; i++) {
+        table.push(+(Math.random() * 0.2 - 0.1).toFixed(4));
+      }
+      this.hashTables.push(table);
+    }
+  }
+
+  // Hash coordinates into a single table index
+  hashIndex(cx, cy) {
+    return Math.abs((cx * this.pi1) ^ (cy * this.pi2)) % this.tableSize;
+  }
+
+  // Query coordinate mapping (x, y between 0 and 1)
+  query(x, y) {
+    const coords = { x: Math.max(0.01, Math.min(0.99, x)), y: Math.max(0.01, Math.min(0.99, y)) };
+    const gridActivation = []; // Store active grid data for visualizer
+    let totalFeatureValue = 0;
+
+    for (let l = 0; l < this.levels; l++) {
+      const N = this.resolutions[l];
+      
+      // Calculate float grid coordinates
+      const gx = coords.x * (N - 1);
+      const gy = coords.y * (N - 1);
+
+      // Determine corner integer grid coordinates
+      const x0 = Math.floor(gx);
+      const x1 = Math.min(N - 1, x0 + 1);
+      const y0 = Math.floor(gy);
+      const y1 = Math.min(N - 1, y0 + 1);
+
+      // Compute fractional distance for interpolation
+      const fx = gx - x0;
+      const fy = gy - y0;
+
+      // Hash indexes for the four corners
+      const h00 = this.hashIndex(x0, y0);
+      const h10 = this.hashIndex(x1, y0);
+      const h01 = this.hashIndex(x0, y1);
+      const h11 = this.hashIndex(x1, y1);
+
+      // Retrieve corner parameter weights
+      const table = this.hashTables[l];
+      const w00 = table[h00];
+      const w10 = table[h10];
+      const w01 = table[h01];
+      const w11 = table[h11];
+
+      // Perform bilinear interpolation
+      const w0 = w00 * (1 - fx) + w10 * fx;
+      const w1 = w01 * (1 - fx) + w11 * fx;
+      const interpolatedVal = w0 * (1 - fy) + w1 * fy;
+
+      totalFeatureValue += interpolatedVal;
+
+      // Log activation coordinates for canvas rendering
+      gridActivation.push({
+        level: l,
+        resolution: N,
+        gx, gy,
+        corners: [
+          { cx: x0, cy: y0, hash: h00, weight: w00 },
+          { cx: x1, cy: y0, hash: h10, weight: w10 },
+          { cx: x0, cy: y1, hash: h01, weight: w01 },
+          { cx: x1, cy: y1, hash: h11, weight: w11 }
+        ],
+        interpolatedVal
+      });
+    }
+
+    return {
+      x: coords.x,
+      y: coords.y,
+      featureVal: +totalFeatureValue.toFixed(4),
+      activations: gridActivation
+    };
+  }
+}
+
+// 2. Q-LEARNING REINFORCEMENT LEARNING ENGINE (Agent Strategy Optimization)
+class QLearningEngine {
+  constructor() {
+    this.emotions = ["neutral", "angry", "sad", "anxious", "confused", "joy", "grateful"]; // 7 states
+    this.intents = ["greeting", "reflection", "memory", "support", "question", "statement"]; // 6 states
+    this.numStates = this.emotions.length * this.intents.length; // 42 total States
+
+    this.actions = [
+      { name: "direct_answer", label: "Direct Answer" },
+      { name: "clarify_question", label: "Clarification Probe" },
+      { name: "empathetic_ack", label: "Empathetic Connection" },
+      { name: "reflect_and_summarize", label: "Synthesis Reflect" },
+      { name: "plan_next_step", label: "Step-by-Step Blueprint" }
+    ]; // 5 actions
+
+    this.alpha = 0.2; // Learning Rate
+    this.gamma = 0.8; // Discount Factor
+    this.epsilon = 0.15; // Exploration Rate (for e-greedy strategy)
+
+    // Initialize 42x5 Q-Table with zeros
+    this.qTable = [];
+    for (let s = 0; s < this.numStates; s++) {
+      const row = [];
+      for (let a = 0; a < this.actions.length; a++) {
+        row.push(0.0);
+      }
+      this.qTable.push(row);
+    }
+  }
+
+  // Get index from state parameters
+  getStateIndex(emotionName, intentName) {
+    const emotionIdx = this.emotions.indexOf(emotionName);
+    const intentIdx = this.intents.indexOf(intentName);
+    
+    // Fallback safe index check
+    const safeEmotionIdx = emotionIdx !== -1 ? emotionIdx : 0;
+    const safeIntentIdx = intentIdx !== -1 ? intentIdx : 5;
+
+    return safeEmotionIdx * this.intents.length + safeIntentIdx;
+  }
+
+  // Decouple index back to descriptive state strings
+  getStateDescription(stateIdx) {
+    const eIdx = Math.floor(stateIdx / this.intents.length);
+    const iIdx = stateIdx % this.intents.length;
+    return {
+      emotion: this.emotions[eIdx],
+      intent: this.intents[iIdx]
+    };
+  }
+
+  // Select action using epsilon-greedy rules
+  selectAction(stateIdx, allowExploration = true) {
+    const roll = Math.random();
+    
+    if (allowExploration && roll < this.epsilon) {
+      // Exploration: Pick random strategy index
+      return {
+        actionIdx: Math.floor(Math.random() * this.actions.length),
+        exploration: true
+      };
+    } else {
+      // Exploitation: Find strategy with maximum Q-value
+      const qValues = this.qTable[stateIdx];
+      let maxVal = qValues[0];
+      let maxIdx = 0;
+      
+      for (let a = 1; a < qValues.length; a++) {
+        if (qValues[a] > maxVal) {
+          maxVal = qValues[a];
+          maxIdx = a;
+        }
+      }
+      return {
+        actionIdx: maxIdx,
+        exploration: false
+      };
+    }
+  }
+
+  // Update State-Action Value using Q-learning formula
+  updateQValue(stateIdx, actionIdx, reward, nextStateIdx) {
+    const oldQ = this.qTable[stateIdx][actionIdx];
+    
+    // Find max Q-value in next state
+    const nextQValues = this.qTable[nextStateIdx];
+    const maxNextQ = Math.max(...nextQValues);
+
+    // Q-learning temporal difference updates
+    const targetQ = reward + this.gamma * maxNextQ;
+    const newQ = oldQ + this.alpha * (targetQ - oldQ);
+    
+    this.qTable[stateIdx][actionIdx] = +newQ.toFixed(4);
+    
+    return {
+      oldVal: oldQ,
+      newVal: this.qTable[stateIdx][actionIdx],
+      delta: +(this.qTable[stateIdx][actionIdx] - oldQ).toFixed(4)
+    };
+  }
+
+  reset() {
+    for (let s = 0; s < this.numStates; s++) {
+      for (let a = 0; a < this.actions.length; a++) {
+        this.qTable[s][a] = 0.0;
+      }
+    }
+  }
+}
+
+// 3. ADVERSARIAL CHALLENGE GENERATOR
 class AdversarialGenerator {
   constructor() {
     this.challenges = {
@@ -69,7 +295,6 @@ class AdversarialGenerator {
       ]
     };
 
-    // Distressed suffixes added depending on adversarial difficulty
     this.distressedAdditions = [
       " Fix this immediately!",
       " Explain it step-by-step or I will get fired!",
@@ -79,9 +304,7 @@ class AdversarialGenerator {
     ];
   }
 
-  // Generate a challenge based on the agent's weakest score
   generateChallenge(agentMetrics, difficulty = 0.6) {
-    // Determine weakest metric
     let weakestMetric = "helpfulness";
     let minScore = agentMetrics.helpfulness;
 
@@ -98,17 +321,14 @@ class AdversarialGenerator {
       minScore = agentMetrics.heuristicClarity;
     }
 
-    // Roll a 30% chance to pick a random dimension anyway to maintain variety
     if (Math.random() < 0.3) {
       const keys = Object.keys(this.challenges);
       weakestMetric = keys[Math.floor(Math.random() * keys.length)];
     }
 
-    // Pick a random template from selected category
     const list = this.challenges[weakestMetric];
     let template = list[Math.floor(Math.random() * list.length)];
 
-    // Inject difficulty suffixes
     if (difficulty > 0.7 && Math.random() < 0.7) {
       const suffix = this.distressedAdditions[Math.floor(Math.random() * this.distressedAdditions.length)];
       template += suffix;
@@ -123,39 +343,13 @@ class AdversarialGenerator {
   }
 }
 
-// Default system prompt and heuristics rules template
-const DEFAULT_HEURISTICS = {
-  version: "1.0.0",
-  rules: {
-    direct_answer: "Draft a concise, factual answer focusing on immediately usable information.",
-    clarify_question: "Ask targeted clarification questions to resolve ambiguous parameters or causes.",
-    empathetic_ack: "Validate user feelings warmly first. Establish calm reassurance and emotional alignment.",
-    reflect_and_summarize: "Synthesize the conversational arc, identify key hurdles, and direct focus.",
-    plan_next_step: "Provide a logical 4-step execution blueprint: objective, hurdle, test, review."
-  },
-  systemPrompt: `You are an adaptive agent operating in a recursive self-improvement environment.
-Focus: Maintain high relevance, logical clarity, and tight alignment with the user's mood.
-Guidelines: Avoid long preambles if the user sounds frustrated. Use short, concrete tasks.`
-};
-
-// Custom Stopwords for keyword retrieval
-const STOPWORDS = new Set([
-  "the", "a", "an", "and", "or", "but", "if", "then", "else", "to", "for", "with", "by", "from", 
-  "in", "on", "at", "about", "into", "of", "is", "are", "was", "were", "be", "been", "being", 
-  "have", "has", "had", "do", "does", "did", "can", "could", "should", "would", "will", "i", 
-  "you", "he", "she", "it", "we", "they", "me", "him", "her", "us", "them", "my", "your", 
-  "his", "its", "our", "their", "this", "that", "these", "those", "what", "how", "why", "where", 
-  "who", "which", "please", "help", "need"
-]);
-
 // Memory Vault containing Semantic and Episodic structures
 class MemoryVault {
   constructor() {
-    this.episodic = []; // [{t, turn, userText, agentResponse, critique, promptVer}]
-    this.semantic = []; // [{t, label, content, associations: []}]
+    this.episodic = []; 
+    this.semantic = []; 
   }
 
-  // Tokenize and clean text to extract keywords
   extractKeywords(text) {
     return text.toLowerCase()
       .trim()
@@ -173,12 +367,10 @@ class MemoryVault {
       critique,
       promptVer
     });
-    // Keep max 30 recent episodes
     if (this.episodic.length > 30) this.episodic.shift();
   }
 
   addSemantic(label, content, associations = []) {
-    // Check if semantic rule already exists
     const exists = this.semantic.some(node => node.content.toLowerCase() === content.toLowerCase());
     if (!exists) {
       this.semantic.push({
@@ -191,7 +383,6 @@ class MemoryVault {
     if (this.semantic.length > 40) this.semantic.shift();
   }
 
-  // Query memory based on keyword overlaps (Simulated semantic search)
   query(queryText, retrievalDepth = 4) {
     const queryKeywords = this.extractKeywords(queryText);
     if (queryKeywords.length === 0) {
@@ -201,7 +392,6 @@ class MemoryVault {
       };
     }
 
-    // Score semantic database
     const scoredSemantic = this.semantic.map(node => {
       let score = 0;
       const combinedWords = [...this.extractKeywords(node.label), ...this.extractKeywords(node.content), ...node.associations];
@@ -216,7 +406,6 @@ class MemoryVault {
       .sort((a, b) => b.score - a.score)
       .slice(0, retrievalDepth);
 
-    // Score episodic database
     const scoredEpisodic = this.episodic.map(ep => {
       let score = 0;
       const epKeywords = [...this.extractKeywords(ep.userText), ...this.extractKeywords(ep.agentResponse)];
@@ -246,8 +435,8 @@ class MemoryVault {
 class SystemPromptManager {
   constructor() {
     this.activeHeuristics = JSON.parse(JSON.stringify(DEFAULT_HEURISTICS));
-    this.history = []; // Array of previous heuristics states
-    this.mutationsLog = []; // [{version, instructionModified, diff}]
+    this.history = []; 
+    this.mutationsLog = []; 
   }
 
   get activeVersion() {
@@ -262,7 +451,6 @@ class SystemPromptManager {
     return this.activeHeuristics.rules;
   }
 
-  // Generate Git-Style line-by-line Diff
   generateLineDiff(oldStr, newStr) {
     const oldLines = oldStr.split("\n");
     const newLines = newStr.split("\n");
@@ -316,7 +504,6 @@ class SystemPromptManager {
     return diff;
   }
 
-  // Mutate heuristics based on critique performance deficiencies
   mutateHeuristics(deficiencies, learningRate = 0.05) {
     this.history.push(JSON.parse(JSON.stringify(this.activeHeuristics)));
 
@@ -396,7 +583,6 @@ class SystemPromptManager {
     return `v${parts.join(".")}`;
   }
 
-  // Attempt to compile external user heuristic code
   compileUserHeuristics(jsonString) {
     try {
       const parsed = JSON.parse(jsonString);
@@ -435,12 +621,26 @@ class SystemPromptManager {
   }
 }
 
+// Custom Stopwords for keyword retrieval
+const STOPWORDS = new Set([
+  "the", "a", "an", "and", "or", "but", "if", "then", "else", "to", "for", "with", "by", "from", 
+  "in", "on", "at", "about", "into", "of", "is", "are", "was", "were", "be", "been", "being", 
+  "have", "has", "had", "do", "does", "did", "can", "could", "should", "would", "will", "i", 
+  "you", "he", "she", "it", "we", "they", "me", "him", "her", "us", "them", "my", "your", 
+  "his", "its", "our", "their", "this", "that", "these", "those", "what", "how", "why", "where", 
+  "who", "which", "please", "help", "need"
+]);
+
 // MAIN CONSOLIDATED RSI AGENT CLASS
 class RSIAgent {
   constructor() {
     this.memory = new MemoryVault();
     this.promptManager = new SystemPromptManager();
     this.adversary = new AdversarialGenerator();
+    
+    // Neural & Reinforcement components
+    this.hashGrid = new MultiResolutionHashGrid();
+    this.qEngine = new QLearningEngine();
     
     // Core parameters
     this.temperature = 0.7;
@@ -461,13 +661,19 @@ class RSIAgent {
       heuristicClarity: 64
     };
 
+    // Diagnostics caches
+    this.lastStateIdx = 0;
+    this.lastActionIdx = 0;
+    this.lastHashResult = null;
+    this.lastLatentVector = Array(64).fill(0.0);
+
     // Historical tracking matrices for plotting (Autopilot Trend Chart)
-    this.autopilotHistory = []; // Array of { turn, metrics: {...}, promptVer, mutated }
+    this.autopilotHistory = []; 
     this.mutationLineage = [
       { id: "v1.0.0", parent: null, desc: "Factory Spec Blueprint" }
     ];
 
-    // Active strategy weight parameters
+    // Active strategy weight parameters (Mapped directly to action indexes)
     this.strategies = [
       { name: "direct_answer", label: "Direct Answer", weight: 0.28 },
       { name: "clarify_question", label: "Clarification Probe", weight: 0.22 },
@@ -510,25 +716,6 @@ class RSIAgent {
     return "statement";
   }
 
-  // Select active response strategy using soft probability distribution based on weights
-  selectStrategy(intent, emotionName) {
-    if (intent === "greeting") return "warm_open";
-    if (intent === "reflection") return "reflect_and_summarize";
-    if (intent === "memory") return "memory";
-    if (["sad", "angry", "anxious"].includes(emotionName)) return "empathetic_ack";
-    if (intent === "meta") return "meta_reasoning";
-
-    const roll = Math.random();
-    let cumulative = 0;
-    for (const strat of this.strategies) {
-      cumulative += strat.weight;
-      if (roll <= cumulative) {
-        return strat.name;
-      }
-    }
-    return "direct_answer";
-  }
-
   // Auto-evaluation block grading the generated output response
   evaluateDraft(userText, responseText, emotionInfo) {
     const hasStructure = /[\-\*\d\.]+\s|```|###|\*\*/.test(responseText);
@@ -562,31 +749,16 @@ class RSIAgent {
     };
   }
 
-  // Apply feedback to modify strategy weights (emulating gradient updates)
-  adjustWeights(critique, learningRate = 0.05) {
-    let boostName = null;
-    let weakenName = null;
-
-    if (critique.helpfulness < 70) boostName = "plan_next_step";
-    if (critique.toneMatch < 70) boostName = "empathetic_ack";
-    if (critique.reasoningDepth < 70) {
-      boostName = "reflect_and_summarize";
-      weakenName = "direct_answer";
-    }
-    if (critique.heuristicClarity < 70) boostName = "direct_answer";
-
-    if (boostName) {
-      const s = this.strategies.find(x => x.name === boostName);
-      if (s) s.weight = Math.min(0.5, s.weight + learningRate);
-    }
-    if (weakenName) {
-      const s = this.strategies.find(x => x.name === weakenName);
-      if (s) s.weight = Math.max(0.05, s.weight - learningRate);
-    }
-
-    const sum = this.strategies.reduce((acc, s) => acc + s.weight, 0);
-    this.strategies.forEach(s => {
-      s.weight = +(s.weight / sum).toFixed(4);
+  // Adjust Strategy Weights dynamically to match Q-Table profile weights
+  syncStrategyWeightsFromQ(stateIdx) {
+    const qValues = this.qEngine.qTable[stateIdx];
+    
+    // Scale Q-values exponentially (Softmax weighting) to get weights summing to 1.0
+    const exps = qValues.map(v => Math.exp(Math.max(-2, Math.min(5, v))));
+    const sum = exps.reduce((a, b) => a + b, 0);
+    
+    this.strategies.forEach((strat, idx) => {
+      strat.weight = +(exps[idx] / sum).toFixed(4);
     });
   }
 
@@ -613,9 +785,31 @@ class RSIAgent {
       this.dominantTopic = topic;
       this.memory.addSemantic(`Topic: ${topic}`, `Discussed context regarding '${topic}' during interaction flow.`, [topic]);
     }
-    trace("perception", `Intent parsed as '${intent}'. Emotion category detected: '${emotion.label}' (Tone: '${emotion.tone}').`);
+    trace("perception", `Intent parsed as '${intent}'. Emotion category detected: '${emotion.label}' (Valence: ${emotion.valence}).`);
 
-    // 2. MEMORY RETRIEVAL PIPELINE
+    // 2. MULTI-RES HASH GRID & LATENT NET ENCODING
+    // Map emotion valence (x) and keyword length ratio (y) to spatial coordinates
+    const gridX = emotion.valence;
+    const keywordsCount = this.memory.extractKeywords(userInput).length;
+    const gridY = Math.min(0.95, 0.15 + (keywordsCount * 0.12));
+    
+    trace("perception", `Mapping features onto Semantic Coordinate Space: (${gridX.toFixed(2)}, ${gridY.toFixed(2)})`);
+    this.lastHashResult = this.hashGrid.query(gridX, gridY);
+    trace("perception", `Hash Grid query compiled! Interpolated Feature Weight: ${this.lastHashResult.featureVal}`);
+
+    // Simulate LMM 64-dimensional latent embedding vector projection
+    this.lastLatentVector = Array(64).fill(0.0).map((_, idx) => {
+      let v = Math.sin(idx * 0.15 + gridX * 2.0) * 0.3;
+      v += Math.cos(idx * 0.25 - gridY * 3.0) * 0.3;
+      // Add keyword bias to latent projections
+      if (userInput.toLowerCase().charCodeAt(idx % userInput.length) % 2 === 0) {
+        v += 0.25;
+      }
+      return +v.toFixed(3);
+    });
+    trace("perception", `Latent 64D Vector generated successfully.`);
+
+    // 3. MEMORY RETRIEVAL PIPELINE
     trace("memory", `Retrieving associated memory traces with Depth ${this.retrievalDepth}.`);
     const memHits = this.memory.query(userInput, this.retrievalDepth);
     trace("memory", `Retrieved ${memHits.semanticHits.length} semantic vectors and ${memHits.episodicHits.length} episodic contexts.`);
@@ -628,18 +822,25 @@ class RSIAgent {
       memoryPromptContext += "\nRetrieved historical episodes:\n" + memHits.episodicHits.map(h => `- [Score: ${h.score.toFixed(2)}] User: '${h.episode.userText}' | Agent: '${h.episode.agentResponse.substring(0, 40)}...'`).join("\n");
     }
 
-    // 3. REASONER & DECISION SYSTEM
-    const strategyName = this.selectStrategy(intent, emotion.name);
-    trace("reasoner", `Compiling active instructions under System Prompt Version: ${this.promptManager.activeVersion}.`);
-    trace("reasoner", `Decision heuristics selected response strategy: '${strategyName}' (Weight: ${this.strategies.find(s=>s.name===strategyName)?.weight || 'override'}).`);
+    // 4. Q-LEARNING STATE ACTION DECISION
+    const stateIdx = this.qEngine.getStateIndex(emotion.name, intent);
+    trace("reasoner", `Q-Learning State Index locked: ${stateIdx} (Emotion: ${emotion.name}, Intent: ${intent}).`);
 
+    // Select action index
+    const decision = this.qEngine.selectAction(stateIdx, true);
+    const actionIdx = decision.actionIdx;
+    const actionName = this.qEngine.actions[actionIdx].name;
+
+    trace("reasoner", `Q-Policy Heuristic selection: '${actionName}' (Index: ${actionIdx}) via ${decision.exploration ? 'EXPLORATION (E-greedy)' : 'EXPLOITATION (Max Q)'}.`);
+
+    // Fetch matching strategy guideline text
     const activeRules = this.promptManager.activeRules;
-    const strategyInstruction = activeRules[strategyName] || activeRules.direct_answer;
+    const strategyInstruction = activeRules[actionName] || activeRules.direct_answer;
 
-    const responseDraft = this.simulateResponseGeneration(userInput, intent, emotion, strategyName, strategyInstruction, memoryPromptContext);
+    const responseDraft = this.simulateResponseGeneration(userInput, intent, emotion, actionName, strategyInstruction, memoryPromptContext);
     trace("reasoner", `Draft reply constructed (Length: ${responseDraft.length} chars). Routing to critique sandbox.`);
 
-    // 4. AUTONOMOUS SELF-CRITIQUE
+    // 5. AUTONOMOUS SELF-CRITIQUE & REWARD
     trace("critic", "Reviewing drafted reply against performance parameters.");
     const critique = this.evaluateDraft(userInput, responseDraft, emotion);
     trace("critic", `Auto-evaluation scores: Helpfulness=${critique.helpfulness}%, Tone Match=${critique.toneMatch}%, Reasoning Depth=${critique.reasoningDepth}%, Clarity=${critique.heuristicClarity}%.`);
@@ -653,7 +854,24 @@ class RSIAgent {
     this.memory.addEpisodic(this.turns, userInput, responseDraft, critique, this.promptManager.activeVersion);
     trace("memory", `Episode committed to Episodic DB. Stored ${this.memory.episodic.length} total episodes.`);
 
-    // 5. MUTATOR / RECURSION ENGINE
+    // Compute reinforcement reward value (Scale to 0.0 - 10.0 scale)
+    const reward = +(0.3 * critique.helpfulness + 0.3 * critique.toneMatch + 0.2 * critique.reasoningDepth + 0.2 * critique.heuristicClarity) / 10.0;
+    
+    // Simulate next transition state (represented by active variables)
+    const nextStateIdx = this.qEngine.getStateIndex(emotion.name, intent);
+    
+    // Update Q-value table
+    const qUpdate = this.qEngine.updateQValue(stateIdx, actionIdx, reward, nextStateIdx);
+    trace("critic", `Q-learning matrix updated. State-Action (${stateIdx}, ${actionIdx}) Q-value updated: ${qUpdate.oldVal} -> ${qUpdate.newVal} (Delta: ${qUpdate.delta > 0 ? '+' : ''}${qUpdate.delta})`);
+
+    // Synchronize strategy biases display with updated Q-table weights
+    this.syncStrategyWeightsFromQ(stateIdx);
+
+    // Save caches for UI drawing
+    this.lastStateIdx = stateIdx;
+    this.lastActionIdx = actionIdx;
+
+    // 6. MUTATOR / RECURSION ENGINE
     let mutationApplied = null;
     const threshold = 68;
     const deficiencies = {};
@@ -664,9 +882,6 @@ class RSIAgent {
     if (critique.heuristicClarity < threshold) deficiencies.clarity = critique.heuristicClarity;
 
     const needsMutation = Object.keys(deficiencies).length > 0;
-    
-    this.adjustWeights(critique, this.learningRate);
-    trace("mutator", `Gradient adjustment on strategy weights completed.`);
 
     if (needsMutation) {
       this.mutations += 1;
@@ -674,7 +889,6 @@ class RSIAgent {
       mutationApplied = this.promptManager.mutateHeuristics(deficiencies, this.learningRate);
       trace("mutator", `Prompt mutated! System prompt updated to ${this.promptManager.activeVersion}. Modifications: ${mutationApplied.description}`);
 
-      // Add to lineage tree
       this.mutationLineage.push({
         id: mutationApplied.version,
         parent: parentVersion,
@@ -691,7 +905,6 @@ class RSIAgent {
       metrics: { ...this.metrics },
       mutated: !!mutationApplied
     });
-    // Keep max 50 history entries
     if (this.autopilotHistory.length > 50) this.autopilotHistory.shift();
 
     trace("system", `=== Execution Turn ${this.turns} Completed successfully ===`);
@@ -701,7 +914,7 @@ class RSIAgent {
       emotion,
       topic,
       intent,
-      strategy: strategyName,
+      strategy: actionName,
       critique,
       mutation: mutationApplied,
       traces
@@ -739,14 +952,13 @@ class RSIAgent {
     else if (intent === "meta") {
       output = `Evolving System parameters:
 - **Auto-Correction Rate**: ${this.learningRate}
-- **Active Weights**: ${this.strategies.map(s => `${s.name} (${(s.weight * 100).toFixed(0)}%)`).join(", ")}
+- **Q-learning State-Action size**: 42 x 5
 - **Prompt version**: ${this.promptManager.activeVersion}
 I mutate instruction lines dynamically when self-critique grades drop below threshold boundaries.`;
     } 
     else {
       const cleanUser = userInput.toLowerCase();
       
-      // Look for standard mock tasks
       if (cleanUser.includes("quantum")) {
         output = `${tonePrefix} **Quantum computing** uses qubits (quantum bits) instead of standard binary bits.
 - Qubits utilize *superposition* to exist in states of 0 and 1 simultaneously.
@@ -894,6 +1106,7 @@ Provide these specs and we will isolate the solution.`;
   reset() {
     this.memory.clear();
     this.promptManager.reset();
+    this.qEngine.reset();
     this.turns = 0;
     this.mutations = 0;
     this.dominantTopic = "None";
@@ -904,6 +1117,10 @@ Provide these specs and we will isolate the solution.`;
       reasoningDepth: 54,
       heuristicClarity: 64
     };
+    this.lastStateIdx = 0;
+    this.lastActionIdx = 0;
+    this.lastHashResult = null;
+    this.lastLatentVector = Array(64).fill(0.0);
     this.autopilotHistory = [];
     this.mutationLineage = [
       { id: "v1.0.0", parent: null, desc: "Factory Spec Blueprint" }
