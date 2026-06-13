@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>WebMaya Advanced Studio v4</title>
+  <title>WebMaya Advanced Studio v5</title>
   <style>
     :root {
       --bg:#171717; --panel:#202020; --panel2:#252525; --header:#2c2c2c; --accent:#007fd4;
@@ -57,6 +57,8 @@
     .keyframe { position:absolute; top:56px; width:9px; height:9px; margin-left:-5px; background:#b8b8b8; transform:rotate(45deg); border:1px solid #111; cursor:grab; z-index:6; }
     .keyframe:hover { background:var(--hot); }
     .keyframe.selected { background:var(--hot); box-shadow:0 0 0 2px rgba(255,153,0,.35); }
+    .keyframe.cam { top:40px; background:#ffcf3a; cursor:default; }
+    .keyframe.cam:hover { background:#fff; }
     .out-row { display:flex; align-items:center; gap:6px; padding:5px; border-radius:4px; cursor:pointer; font-size:11px; }
     .out-row:hover { background:#2b2b2b; }
     .out-row.selected { background:#343434; color:white; }
@@ -97,7 +99,7 @@
 <body>
 <div id="app">
   <div id="header">
-    <div class="brand">WEBMAYA v4</div>
+    <div class="brand">WEBMAYA v5</div>
     <div class="menu-btn" onclick="Palette.open()" title="Command palette (Ctrl+K)">⌘ <span class="kbd">Ctrl K</span></div>
     <span style="color:#555">|</span>
     <div class="menu-btn" onclick="Editor.newScene()">New</div>
@@ -182,6 +184,7 @@
             <option value="grab">Grab</option>
             <option value="smooth">Smooth</option>
             <option value="flatten">Flatten</option>
+            <option value="mask">Mask (paint)</option>
           </select>
         </div>
         <div class="prop-row"><span class="prop-label">Falloff</span>
@@ -195,9 +198,14 @@
         </div>
         <div class="prop-row"><span class="prop-label">Size</span><input type="range" min="0.1" max="3" step="0.05" id="sculpt-size" value="0.65" /></div>
         <div class="prop-row"><span class="prop-label">Power</span><input type="range" min="0.005" max="0.25" step="0.005" id="sculpt-power" value="0.045" /></div>
+        <div class="prop-row"><span class="prop-label">Hardness</span><input type="range" min="0" max="1" step="0.05" id="sculpt-hardness" value="0.35" title="Higher = tighter, sharper brush tip" /></div>
         <div class="prop-row"><span class="prop-label">Symmetry X</span><input type="checkbox" id="sculpt-sym" /></div>
         <div class="prop-row"><span class="prop-label">Invert</span><input type="checkbox" id="brush-invert" /></div>
-        <div class="hint">Drag on the selected mesh. Shift = smooth, Alt = invert, [ ] = brush size. Sculpting is BVH-accelerated.</div>
+        <div class="prop-row"><span class="prop-label">Mask</span>
+          <button class="btn" onclick="Sculpt.invertMask()">Invert</button>
+          <button class="btn" onclick="Sculpt.clearMask()">Clear</button>
+        </div>
+        <div class="hint">Drag on the selected mesh. Shift = smooth, Alt = invert, [ ] = brush size. Sculpting is BVH-accelerated. Pick the <b>Mask</b> brush to paint protected zones (red) that resist every brush; Alt erases.</div>
       </div>
     </div>
 
@@ -222,6 +230,8 @@
         <button class="btn" onclick="Tools.addWireOverlay()">Wire Overlay</button>
         <button class="btn" onclick="Tools.shellOffset(0.05)">Fatten</button>
         <button class="btn" onclick="Tools.shellOffset(-0.05)">Shrink</button>
+        <button class="btn" onclick="Tools.symmetrize(1)">Symmetrize +</button>
+        <button class="btn" onclick="Tools.symmetrize(-1)">Symmetrize −</button>
       </div>
       <div class="prop-row" style="margin-top:8px;"><span class="prop-label">Noise</span>
         <input class="prop-input mini" id="noise-amt" type="number" value="0.15" step="0.05" title="Amount" />
@@ -263,7 +273,7 @@
   </div>
 
   <div id="viewport">
-    <div id="overlay-info">Perspective<br />Ctrl+K commands · W/E/R transform · F8-F11 modes · K keyframe · Space play · Ctrl+D duplicate · Ctrl snap</div>
+    <div id="overlay-info">Perspective<br />Ctrl+K commands · W/E/R transform · F8-F11 modes · \ shading · K keyframe · Space play · Ctrl+D duplicate · Ctrl snap</div>
     <div id="brush-ring"></div>
     <div id="drop-hint">Drop GLTF/GLB or WebMaya project here</div>
   </div>
@@ -273,6 +283,8 @@
       <button class="btn" id="play-btn" onclick="Anim.toggle()">▶</button>
       <button class="btn" onclick="Anim.recordKey()">◆ Key</button>
       <button class="btn" onclick="Anim.clearKeys()">Clear Keys</button>
+      <button class="btn" onclick="Anim.recordCamKey()" title="Keyframe the camera (position, target, FOV)">🎥 Cam</button>
+      <button class="btn" onclick="Anim.clearCamKeys()" title="Clear all camera keyframes">Clear Cam</button>
       <input type="number" class="prop-input mini" id="frame-val" value="0" min="0" max="100" onchange="Anim.goto(this.value)" />
       <span>/ <span id="max-frame-label">100</span></span>
       <span>FPS</span><input type="number" class="prop-input mini" id="fps-val" value="24" min="1" max="60" />
@@ -285,6 +297,8 @@
         <option value="smooth">Smooth</option>
       </select>
       <label style="display:flex;align-items:center;gap:3px;"><input type="checkbox" id="autokey" />Auto-key</label>
+      <label style="display:flex;align-items:center;gap:3px;"><input type="checkbox" id="turntable" onchange="Turntable.set(this.checked)" />Turntable</label>
+      <button class="btn" id="playblast-btn" onclick="Record.playblast()" title="Record the timeline to a WebM video">⏺ Playblast</button>
       <div style="flex:1"></div>
       <span class="hint">drag key = move · right-click = delete</span>
       <button class="btn" onclick="Anim.setRange(100)">100f</button>
@@ -304,6 +318,7 @@
       <div class="prop-row"><span class="prop-label">Rot</span><input class="prop-input" id="rx" /><input class="prop-input" id="ry" /><input class="prop-input" id="rz" /></div>
       <div class="prop-row"><span class="prop-label">Scl</span><input class="prop-input" id="sx" /><input class="prop-input" id="sy" /><input class="prop-input" id="sz" /></div>
       <button class="btn" style="width:100%; margin-top:4px" onclick="Editor.applyTransformUI()">Update Transform</button>
+      <button class="btn" id="space-btn" style="width:100%; margin-top:4px" onclick="Editor.toggleSpace()">Gizmo Space: World</button>
     </div>
 
     <div class="section">
@@ -326,6 +341,15 @@
 
     <div class="section">
       <div class="section-head">Render</div>
+      <div class="prop-row"><span class="prop-label">Shading</span>
+        <select id="shading-sel" onchange="Display.set(this.value)" title="Viewport shading mode ( \ to cycle )">
+          <option value="solid" selected>Solid</option>
+          <option value="wireframe">Wireframe</option>
+          <option value="matcap">Matcap</option>
+          <option value="normals">Normals</option>
+          <option value="xray">X-ray</option>
+        </select>
+      </div>
       <div class="prop-row"><span class="prop-label">Environ.</span>
         <select id="env-sel" onchange="Env.apply(); History.push('environment')">
           <option value="studio" selected>Studio</option>
@@ -506,7 +530,7 @@ const App = {
   scene:null, camera:null, renderer:null, orbit:null, transform:null,
   raycaster:new THREE.Raycaster(), mouse:new THREE.Vector2(), clock:new THREE.Clock(),
   objects:[], helpers:new THREE.Group(), grid:null, axes:null, selectionBox:null,
-  vertexHandle:null, sculpting:false, dirtySinceStroke:false, ctrlHeld:false,
+  vertexHandle:null, maskOverlay:null, sculpting:false, dirtySinceStroke:false, ctrlHeld:false,
   composer:null, bloomPass:null, shadowGround:null, keyLight:null,
   fpsFrames:0, fpsTime:0, fps:0
 };
@@ -531,6 +555,9 @@ const History = {
         bloom:$('bloom-toggle').checked,
         bloomStrength:parseFloat($('bloom-strength').value),
         shadows:$('shadow-toggle').checked,
+        grid:$('grid-toggle').checked,
+        axes:$('axes-toggle').checked,
+        camTrack:Anim.camTrack,
         maxFrame:Anim.maxFrame,
         fps:parseFloat($('fps-val').value) || 24
       }
@@ -640,6 +667,58 @@ const Env = {
     App.objects.forEach(o => { if (o.material) o.material.needsUpdate = true; });
   },
   usePost() { return App.bloomPass?.enabled; }
+};
+
+// ---- Viewport shading modes (Solid / Wireframe / Matcap / Normals / X-ray) ----
+// Uses scene.overrideMaterial so real per-object materials are never swapped — nothing to
+// restore, nothing to mis-serialize. Scene chrome (grid/axes/helpers/gizmo) is hidden while
+// previewing and restored from a snapshot when returning to Solid.
+const Display = {
+  mode:'solid', _mats:null, _saved:null,
+  makeMatcap() {
+    const s = 128, cv = document.createElement('canvas'); cv.width = cv.height = s;
+    const ctx = cv.getContext('2d');
+    ctx.fillStyle = '#16171b'; ctx.fillRect(0, 0, s, s);
+    const g = ctx.createRadialGradient(s*0.36, s*0.30, s*0.04, s*0.5, s*0.52, s*0.62);
+    g.addColorStop(0, '#ffffff'); g.addColorStop(0.45, '#c7c8cf'); g.addColorStop(0.78, '#6c6d75'); g.addColorStop(1, '#26272d');
+    ctx.beginPath(); ctx.arc(s/2, s/2, s/2 - 1, 0, Math.PI*2); ctx.fillStyle = g; ctx.fill();
+    const tex = new THREE.CanvasTexture(cv); tex.colorSpace = THREE.SRGBColorSpace; return tex;
+  },
+  mats() {
+    if (!this._mats) this._mats = {
+      wireframe: new THREE.MeshBasicMaterial({ color:0x9fd0ff, wireframe:true, side:THREE.DoubleSide }),
+      matcap:    new THREE.MeshMatcapMaterial({ matcap:this.makeMatcap(), side:THREE.DoubleSide }),
+      normals:   new THREE.MeshNormalMaterial({ side:THREE.DoubleSide }),
+      xray:      new THREE.MeshBasicMaterial({ color:0x7cc8ff, transparent:true, opacity:0.3, depthWrite:false, side:THREE.DoubleSide, blending:THREE.AdditiveBlending }),
+    };
+    return this._mats;
+  },
+  set(mode) {
+    if (mode !== 'solid' && this.mode === 'solid')
+      this._saved = { grid:App.grid.visible, axes:App.axes.visible, shadow:App.shadowGround.visible, helpers:App.helpers.visible, vh:App.vertexHandle.visible };
+    this.mode = mode;
+    App.scene.overrideMaterial = mode === 'solid' ? null : (this.mats()[mode] || null);
+    const show = mode === 'solid';
+    if (show) {
+      const s = this._saved;
+      App.grid.visible    = s ? s.grid   : $('grid-toggle').checked;
+      App.axes.visible    = s ? s.axes   : $('axes-toggle').checked;
+      App.shadowGround.visible = s ? s.shadow : $('shadow-toggle').checked;
+      App.helpers.visible = s ? s.helpers : true;
+      App.vertexHandle.visible = s ? s.vh : false;
+      this._saved = null;
+      App.transform.enabled = true; App.transform.visible = true;
+    } else {
+      App.grid.visible = App.axes.visible = App.shadowGround.visible = false;
+      App.helpers.visible = false; App.vertexHandle.visible = false;
+      App.transform.enabled = false; App.transform.visible = false;
+    }
+    if (App.selectionBox) App.selectionBox.visible = show;
+    if (App.maskOverlay) App.maskOverlay.visible = show;
+    const sel = $('shading-sel'); if (sel) sel.value = mode;
+    status('Shading: ' + (mode === 'solid' ? 'Solid' : mode[0].toUpperCase() + mode.slice(1)));
+  },
+  cycle() { const order = ['solid','wireframe','matcap','normals','xray']; this.set(order[(order.indexOf(this.mode) + 1) % order.length]); }
 };
 
 const Editor = {
@@ -811,11 +890,13 @@ const Editor = {
   select(obj) {
     if (State.selection === obj && State.mode !== 'vertex') return;
     State.selection = obj || null; State.faceIndex = -1; State.vertexIndex = -1;
-    Helpers.clearEditHelpers();
+    Anim.selectedKeyFrame = null;            // stale ease/highlight would otherwise bleed across objects
+    Helpers.clearEditHelpers(); Helpers.hideMask();
     App.transform.detach();
     if (obj) {
       if (State.mode === 'object') App.transform.attach(obj);
       if (State.mode === 'vertex') Helpers.showVertices(obj);
+      if (State.mode === 'sculpt') Helpers.showMask(obj);
       status('Selected ' + obj.name);
     } else status('Selection cleared.');
     this.syncUI(); this.updateOutliner(); Helpers.updateSelectionBox(); Anim.renderKeys();
@@ -831,6 +912,7 @@ const Editor = {
     Helpers.clearEditHelpers(); App.transform.detach();
     if (mode === 'object' && State.selection) App.transform.attach(State.selection);
     if (mode === 'vertex' && State.selection) Helpers.showVertices(State.selection);
+    if (mode === 'sculpt' && State.selection) Helpers.showMask(State.selection); else Helpers.hideMask();
     if (mode === 'sculpt' && !State.selection) status('Select a mesh, then drag to sculpt.');
     this.syncUI();
   },
@@ -853,8 +935,14 @@ const Editor = {
     const data = Array.isArray(parsed) ? { objects:parsed } : parsed;
     State.suppressHistory = true;
     try {
-      App.transform.detach(); Helpers.clearEditHelpers(); this.select(null);
-      App.objects.forEach(o => { App.scene.remove(o); o.geometry?.dispose?.(); });
+      App.transform.detach(); Helpers.clearEditHelpers(); Helpers.hideMask();
+      Anim.camTrack = {};   // cleared up front; applySettings repopulates from settings.camTrack if present
+      this.select(null);
+      App.objects.forEach(o => {
+        App.scene.remove(o);
+        o.geometry?.disposeBoundsTree?.(); o.geometry?.dispose?.();
+        if (o.material) { o.material.map?.dispose?.(); o.material.dispose?.(); }
+      });
       App.objects = [];
       const geoLoader = new THREE.BufferGeometryLoader();
       const matLoader = new THREE.MaterialLoader();
@@ -877,7 +965,13 @@ const Editor = {
         mesh.visible = d.visible !== false;
         mesh.userData.anim = d.userData?.anim || {};
         mesh.userData.editor = d.userData?.editor || { editable:true };
-        if (d.type !== 'light-bulb') this.prepareMesh(mesh);
+        if (d.type !== 'light-bulb') {
+          this.prepareMesh(mesh);
+          if (mesh.userData.editor?.wireOverlay) {
+            const wire = new THREE.LineSegments(new THREE.WireframeGeometry(mesh.geometry), new THREE.LineBasicMaterial({ color:0x111111, transparent:true, opacity:.35 }));
+            wire.name = 'wire_overlay'; mesh.add(wire);
+          }
+        }
         App.scene.add(mesh); App.objects.push(mesh);
       });
       if (data.bg) { App.scene.background = new THREE.Color('#' + data.bg); $('bg-col').value = '#' + data.bg; }
@@ -895,8 +989,11 @@ const Editor = {
     if (s.bloom !== undefined) $('bloom-toggle').checked = s.bloom;
     if (s.bloomStrength !== undefined) $('bloom-strength').value = s.bloomStrength;
     if (s.shadows !== undefined) $('shadow-toggle').checked = s.shadows;
+    if (s.grid !== undefined) { $('grid-toggle').checked = s.grid; App.grid.visible = s.grid; }
+    if (s.axes !== undefined) { $('axes-toggle').checked = s.axes; App.axes.visible = s.axes; }
     if (s.fps) $('fps-val').value = s.fps;
     if (s.maxFrame) Anim.setRange(s.maxFrame);
+    Anim.camTrack = s.camTrack || {}; Anim.renderKeys();
     Env.apply(); Env.updateExposure(); Env.updateBloom(); Env.updateShadows();
   },
 
@@ -1025,9 +1122,14 @@ const Editor = {
 
   newScene() {
     if (!confirm('Reset scene?')) return;
-    App.transform.detach(); Helpers.clearEditHelpers();
-    App.objects.forEach(o => { App.scene.remove(o); o.geometry?.dispose?.(); });
+    App.transform.detach(); Helpers.clearEditHelpers(); Helpers.hideMask();
+    App.objects.forEach(o => {
+      App.scene.remove(o);
+      o.geometry?.disposeBoundsTree?.(); o.geometry?.dispose?.();
+      if (o.material) { o.material.map?.dispose?.(); o.material.dispose?.(); }
+    });
     App.objects=[]; this.select(null);
+    Anim.camTrack = {}; Anim.renderKeys();
     localStorage.removeItem('webmaya_scene_v2'); localStorage.removeItem('webmaya_scene');
     IDB.del('scene');
     History.push('new scene'); this.updateOutliner(); this.updateStats();
@@ -1046,7 +1148,14 @@ const Editor = {
 
   deleteSelection() {
     if (!State.selection) return;
-    App.scene.remove(State.selection); App.objects = App.objects.filter(o => o !== State.selection);
+    const o = State.selection;
+    App.scene.remove(o); App.objects = App.objects.filter(x => x !== o);
+    // Dispose only resources no surviving object shares (multi-mesh GLTF imports can share geometry/material).
+    if (o.geometry && !App.objects.some(x => x.geometry === o.geometry)) { o.geometry.disposeBoundsTree?.(); o.geometry.dispose(); }
+    if (o.material && !App.objects.some(x => x.material === o.material)) {
+      if (o.material.map && !App.objects.some(x => x.material?.map === o.material.map)) o.material.map.dispose();
+      o.material.dispose();
+    }
     this.select(null); History.push('delete'); this.updateStats();
   },
 
@@ -1113,6 +1222,7 @@ const Editor = {
       ring.style.width = ring.style.height = clamp(px, 8, 500) + 'px';
     }
     if (State.mode === 'sculpt' && App.sculpting) {
+      if (e.buttons === 0) { this.onPointerUp(); return; } // recover from a pointerup we never saw (focus loss / Alt-Tab)
       this.updateMouse(e);
       if (Sculpt.grab) { Sculpt.moveGrab(e); return; }
       if (!State.selection?.isMesh) return;
@@ -1158,6 +1268,7 @@ const Editor = {
     if (k === 'f') this.focusSelection();
     if (k === '[') { const s=$('sculpt-size'); s.value = Math.max(parseFloat(s.min), parseFloat(s.value) - 0.1); }
     if (k === ']') { const s=$('sculpt-size'); s.value = Math.min(parseFloat(s.max), parseFloat(s.value) + 0.1); }
+    if (k === '\\' && !mod) Display.cycle();
     if (k === 'o' && State.mode === 'vertex') { const c=$('vtx-prop'); c.checked = !c.checked; status('Proportional editing ' + (c.checked ? 'on.' : 'off.')); }
     if (e.key === 'F8') this.setMode('object');
     if (e.key === 'F9') this.setMode('face');
@@ -1232,13 +1343,34 @@ const Editor = {
     State.selection.material.needsUpdate = true; this.syncUI(); History.push('material preset');
   },
   loadTexture(input) {
-    const file = input.files?.[0]; if(!file || !State.selection?.material) return;
+    const file = input.files?.[0]; const mat = State.selection?.material; if (!file || !mat) return;
     const url = URL.createObjectURL(file);
-    new THREE.TextureLoader().load(url, tex => { tex.colorSpace = THREE.SRGBColorSpace; State.selection.material.map = tex; State.selection.material.needsUpdate=true; URL.revokeObjectURL(url); History.push('texture'); });
+    // Capture mat now — the object may be deleted/changed before this async load resolves.
+    new THREE.TextureLoader().load(url, tex => {
+      tex.colorSpace = THREE.SRGBColorSpace;
+      mat.map?.dispose();           // free the texture we are replacing
+      mat.map = tex; mat.needsUpdate = true; URL.revokeObjectURL(url); History.push('texture');
+    }, undefined, () => { URL.revokeObjectURL(url); status('Texture load failed.'); });
+    input.value = '';
   },
   updateBackground() { Env.apply(); History.push('background'); },
-  toggleGrid() { App.grid.visible = $('grid-toggle').checked; },
-  toggleAxes() { App.axes.visible = $('axes-toggle').checked; },
+  toggleGrid() {
+    const on = $('grid-toggle').checked;
+    if (Display.mode === 'solid') App.grid.visible = on; else if (Display._saved) Display._saved.grid = on;
+    History.push('toggle grid');
+  },
+  toggleAxes() {
+    const on = $('axes-toggle').checked;
+    if (Display.mode === 'solid') App.axes.visible = on; else if (Display._saved) Display._saved.axes = on;
+    History.push('toggle axes');
+  },
+  toggleSpace() {
+    if (App.transform.dragging) return;   // switching space mid-drag desyncs the gizmo
+    const sp = App.transform.space === 'local' ? 'world' : 'local';
+    App.transform.setSpace(sp);
+    $('space-btn').textContent = 'Gizmo Space: ' + (sp[0].toUpperCase() + sp.slice(1));
+    status('Transform gizmo in ' + sp + ' space.');
+  },
 
   updateOutliner() {
     const div = $('outliner'); div.innerHTML='';
@@ -1256,8 +1388,10 @@ const Editor = {
   render() {
     requestAnimationFrame(() => this.render());
     const dt = App.clock.getDelta(); Anim.update(dt);
+    if (Turntable.on) Turntable.step(dt);
     App.orbit.update();
-    if (Env.usePost()) App.composer.render();
+    // Post FX only in Solid; preview shading modes render raw for a predictable look.
+    if (Env.usePost() && Display.mode === 'solid') App.composer.render();
     else App.renderer.render(App.scene, App.camera);
     App.fpsFrames++; App.fpsTime += dt;
     if (App.fpsTime >= 0.5) {
@@ -1270,6 +1404,7 @@ const Editor = {
 
 const Helpers = {
   clearEditHelpers() {
+    App.helpers.children.forEach(c => { c.geometry?.dispose?.(); c.material?.dispose?.(); }); // freed each select/mode change
     App.helpers.clear();
     App.vertexHandle.visible = false;
     if (App.transform.object === App.vertexHandle) App.transform.detach();
@@ -1283,7 +1418,28 @@ const Helpers = {
     if (!State.selection) return;
     App.selectionBox = new THREE.BoxHelper(State.selection, 0x00aaff);
     App.selectionBox.material.depthTest = false; App.selectionBox.renderOrder = 998;
+    App.selectionBox.visible = Display.mode === 'solid';
     App.scene.add(App.selectionBox);
+  },
+  // Sculpt mask overlay: masked welded-vertices shown as dim red points (depth-independent).
+  showMask(mesh) {
+    this.hideMask();
+    const geo = mesh?.geometry, mask = geo?.attributes.aMask; if (!mask) return;
+    const pos = geo.attributes.position, pts = [];
+    for (let i = 0; i < pos.count; i++) if (mask.getX(i) > 0.05) pts.push(pos.getX(i), pos.getY(i), pos.getZ(i));
+    if (!pts.length) return;
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(pts, 3));
+    App.maskOverlay = new THREE.Points(g, new THREE.PointsMaterial({ color:0xff3a4a, size:0.06, depthTest:false, transparent:true, opacity:0.85 }));
+    App.maskOverlay.renderOrder = 995; App.maskOverlay.visible = Display.mode === 'solid';
+    App.maskOverlay.applyMatrix4(mesh.matrixWorld);
+    App.scene.add(App.maskOverlay);
+  },
+  hideMask() {
+    if (!App.maskOverlay) return;
+    App.scene.remove(App.maskOverlay);
+    App.maskOverlay.geometry.dispose(); App.maskOverlay.material.dispose();
+    App.maskOverlay = null;
   },
   highlightFace(mesh, idx) {
     this.clearEditHelpers(); if (!mesh?.geometry || idx < 0) return;
@@ -1435,6 +1591,7 @@ const Sculpt = {
 
   applyAt(mesh, localCenter, brushDirLocal, opts) {
     const geo = mesh.geometry, pos = geo.attributes.position, nor = geo.attributes.normal;
+    const maskAttr = geo.attributes.aMask;
     const topo = Topo.get(geo);
     const groupsHit = this.collect(mesh, localCenter, opts.rLocal);
     if (!groupsHit.size) return false;
@@ -1447,7 +1604,8 @@ const Sculpt = {
       const gverts = topo.groups[g];
       rep.fromBufferAttribute(pos, gverts[0]);
       const p = clamp(1 - dist/opts.rLocal, 0, 1);
-      const w = opts.power * FALLOFF[opts.falloff](p) * (opts.invert ? -1 : 1);
+      let w = opts.power * Math.pow(FALLOFF[opts.falloff](p), opts.hardExp || 1) * (opts.invert ? -1 : 1);
+      if (maskAttr) w *= (1 - maskAttr.getX(gverts[0]));   // masked groups resist the brush
       out.copy(rep);
       switch (opts.mode) {
         case 'draw':
@@ -1495,9 +1653,45 @@ const Sculpt = {
     });
     pos.needsUpdate = true;
     this.updateNormalsPartial(mesh, tris);
-    geo.boundsTree.refit();
+    geo.boundsTree?.refit();
     App.dirtySinceStroke = true;
     return true;
+  },
+
+  // ---- Mask painting: writes per-vertex weights into an aMask attribute (rides geo.toJSON for save/undo) ----
+  ensureMask(geo) {
+    const n = geo.attributes.position.count;
+    let m = geo.attributes.aMask;
+    if (!m || m.count !== n) { m = new THREE.BufferAttribute(new Float32Array(n), 1); geo.setAttribute('aMask', m); }
+    return m;
+  },
+  paintMask(mesh, localCenter, opts) {
+    const geo = mesh.geometry, topo = Topo.get(geo);
+    const mask = this.ensureMask(geo);
+    const groupsHit = this.collect(mesh, localCenter, opts.rLocal);
+    if (!groupsHit.size) return false;
+    const sign = opts.invert ? -1 : 1;
+    groupsHit.forEach((dist, g) => {
+      const gverts = topo.groups[g];
+      const p = clamp(1 - dist/opts.rLocal, 0, 1);
+      const v = clamp(mask.getX(gverts[0]) + 0.5 * FALLOFF[opts.falloff](p) * sign, 0, 1);
+      for (const vi of gverts) mask.setX(vi, v);
+    });
+    mask.needsUpdate = true;
+    App.dirtySinceStroke = true;
+    return true;
+  },
+  invertMask() {
+    const mesh = State.selection; if (!mesh?.geometry) return status('Select a mesh.');
+    const mask = this.ensureMask(mesh.geometry);
+    for (let i = 0; i < mask.count; i++) mask.setX(i, 1 - mask.getX(i));
+    mask.needsUpdate = true; Helpers.showMask(mesh); History.push('invert mask'); status('Mask inverted.');
+  },
+  clearMask() {
+    const mesh = State.selection, mask = mesh?.geometry?.attributes.aMask;
+    if (!mask) return status('No mask to clear.');
+    for (let i = 0; i < mask.count; i++) mask.setX(i, 0);
+    mask.needsUpdate = true; Helpers.hideMask(); History.push('clear mask'); status('Mask cleared.');
   },
 
   stroke(mesh, hit, e) {
@@ -1506,21 +1700,24 @@ const Sculpt = {
     const invert = $('brush-invert').checked || e.altKey;
     const mode = e.shiftKey ? 'smooth' : $('brush-mode').value;
     const falloff = $('brush-falloff').value;
+    const hardExp = 1 + (parseFloat($('sculpt-hardness').value) || 0) * 3; // higher = tighter tip
     const rLocal = this.localRadius(mesh, radius);
     const localCenter = mesh.worldToLocal(hit.point.clone());
     const dirLocal = hit.face ? hit.face.normal.clone() : null;
-    const opts = { mode, power, invert, falloff, rLocal };
-    this.applyAt(mesh, localCenter, dirLocal, opts);
+    const opts = { mode, power, invert, falloff, rLocal, hardExp };
+    const apply = (c, d) => mode === 'mask' ? this.paintMask(mesh, c, opts) : this.applyAt(mesh, c, d, opts);
+    apply(localCenter, dirLocal);
     if ($('sculpt-sym').checked && Math.abs(localCenter.x) > 1e-5) {
       const mc = localCenter.clone(); mc.x *= -1;
       const md = dirLocal ? dirLocal.clone() : null; if (md) md.x *= -1;
-      this.applyAt(mesh, mc, md, opts);
+      apply(mc, md);
     }
   },
 
   endStroke() {
     const mesh = State.selection;
     if (mesh?.geometry) mesh.geometry.computeBoundingSphere();
+    if (mesh?.geometry?.attributes.aMask) Helpers.showMask(mesh);  // keep overlay in sync after the stroke
     History.push('sculpt stroke');
   },
 
@@ -1530,13 +1727,17 @@ const Sculpt = {
     const localCenter = mesh.worldToLocal(hit.point.clone());
     const topo = Topo.get(mesh.geometry);
     const falloff = $('brush-falloff').value;
+    const hardExp = 1 + (parseFloat($('sculpt-hardness').value) || 0) * 3;
     const pos = mesh.geometry.attributes.position;
+    const maskAttr = mesh.geometry.attributes.aMask;
     const capture = (center) => {
       const groupsHit = this.collect(mesh, center, rLocal);
       const entries = [];
       groupsHit.forEach((dist, g) => {
         const p = clamp(1 - dist/rLocal, 0, 1);
-        entries.push({ g, w:FALLOFF[falloff](p), orig:new THREE.Vector3().fromBufferAttribute(pos, topo.groups[g][0]) });
+        let w = Math.pow(FALLOFF[falloff](p), hardExp);
+        if (maskAttr) w *= (1 - maskAttr.getX(topo.groups[g][0]));
+        entries.push({ g, w, orig:new THREE.Vector3().fromBufferAttribute(pos, topo.groups[g][0]) });
       });
       return entries;
     };
@@ -1582,7 +1783,7 @@ const Sculpt = {
       g.tris = this.trianglesOf(topo, all);
     }
     this.updateNormalsPartial(g.mesh, g.tris);
-    g.mesh.geometry.boundsTree.refit();
+    g.mesh.geometry.boundsTree?.refit();
     App.dirtySinceStroke = true;
   },
 
@@ -1738,7 +1939,7 @@ const Tools = {
     const mesh=this.ensureMesh(); if(!mesh) return;
     const old = mesh.geometry;
     mesh.geometry = BufferGeometryUtils.mergeVertices(old, 0.015).toNonIndexed();
-    old.dispose();
+    old.disposeBoundsTree?.(); old.dispose();
     mesh.geometry.computeVertexNormals(); mesh.geometry.computeBoundingBox(); mesh.geometry.computeBoundingSphere();
     Helpers.showVertices(mesh); Editor.updateStats(); History.push('weld close'); status('Close vertices welded.');
   },
@@ -1935,6 +2136,7 @@ const Tools = {
     const minA = bb.min.getComponent(ai), maxA = bb.max.getComponent(ai), span = (maxA - minA) || 1;
     const ci = bb.getCenter(new THREE.Vector3());
     const rad = THREE.MathUtils.degToRad(amt);
+    if (kind === 'bend' && Math.abs(rad) < 1e-3) return status('Bend angle too small — use a larger amount.');
     const rep = new THREE.Vector3();
     for (let g = 0; g < topo.groups.length; g++) {
       const gverts = topo.groups[g];
@@ -1974,8 +2176,53 @@ const Tools = {
   },
   addWireOverlay() {
     const mesh=State.selection; if(!mesh?.geometry) return;
+    mesh.userData.editor = mesh.userData.editor || {};
+    const existing = mesh.getObjectByName('wire_overlay');
+    if (existing) {   // toggle off
+      mesh.remove(existing); existing.geometry.dispose(); existing.material.dispose();
+      mesh.userData.editor.wireOverlay = false; History.push('wire overlay off'); status('Wire overlay removed.'); return;
+    }
     const wire=new THREE.LineSegments(new THREE.WireframeGeometry(mesh.geometry), new THREE.LineBasicMaterial({ color:0x111111, transparent:true, opacity:.35 }));
-    wire.name='wire_overlay'; mesh.add(wire); History.push('wire overlay');
+    wire.name='wire_overlay'; mesh.add(wire);
+    mesh.userData.editor.wireOverlay = true; History.push('wire overlay'); status('Wire overlay added.');
+  },
+  // Symmetrize: keep the chosen half across the deformer axis, mirror it, and weld the seam into ONE
+  // watertight mesh (distinct from modMirror, which spawns a separate object).
+  symmetrize(sign = 1) {
+    const mesh = this.ensureMesh(); if (!mesh) return status('Select a mesh first.');
+    const axis = $('deform-axis').value, ai = axis === 'x' ? 0 : axis === 'y' ? 1 : 2;
+    const pos = mesh.geometry.attributes.position;
+    const va = new THREE.Vector3(), vb = new THREE.Vector3(), vc = new THREE.Vector3();
+    const snap = v => { if (Math.abs(v.getComponent(ai)) < 1e-3) v.setComponent(ai, 0); return v; };
+    const kept = [];
+    for (let t = 0; t < pos.count / 3; t++) {
+      va.fromBufferAttribute(pos, t*3); vb.fromBufferAttribute(pos, t*3+1); vc.fromBufferAttribute(pos, t*3+2);
+      const cen = (va.getComponent(ai) + vb.getComponent(ai) + vc.getComponent(ai)) / 3;
+      if (cen * sign >= -1e-4) kept.push([snap(va.clone()), snap(vb.clone()), snap(vc.clone())]);
+    }
+    if (!kept.length) return status('Nothing on that side of the axis to keep.');
+    const arr = [];
+    const e1 = new THREE.Vector3(), e2 = new THREE.Vector3(), cr = new THREE.Vector3();
+    const push = (a, b, c) => {
+      cr.crossVectors(e1.subVectors(b, a), e2.subVectors(c, a));
+      if (cr.lengthSq() < 1e-12) return;              // drop degenerate/zero-area triangles (e.g. seam-collapsed)
+      arr.push(a.x,a.y,a.z, b.x,b.y,b.z, c.x,c.y,c.z);
+    };
+    kept.forEach(([a,b,c]) => push(a, b, c));
+    kept.forEach(([a,b,c]) => {                       // mirrored half, winding reversed to keep normals out
+      const m = v => { const w = v.clone(); w.setComponent(ai, -w.getComponent(ai)); return w; };
+      push(m(a), m(c), m(b));
+    });
+    let g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(arr, 3));
+    const merged = BufferGeometryUtils.mergeVertices(g, 1e-3).toNonIndexed();
+    g.dispose();
+    mesh.geometry.disposeBoundsTree?.(); mesh.geometry.dispose();
+    mesh.geometry = merged;
+    Sculpt.recomputeNormals(mesh, !mesh.material?.flatShading);
+    merged.computeBoundingBox(); merged.computeBoundingSphere();
+    Editor.updateStats(); Editor.syncUI(); Helpers.updateSelectionBox();
+    History.push('symmetrize'); status('Symmetrized on ' + axis.toUpperCase() + ' (' + Math.floor(merged.attributes.position.count/3) + ' tris).');
   },
   applyTransform() {
     const mesh=State.selection; if(!mesh?.geometry) return;
@@ -1999,15 +2246,14 @@ const Tools = {
 };
 
 const Anim = {
-  frame:0, maxFrame:100, playing:false, accum:0, selectedKeyFrame:null, defaultEase:'linear',
+  frame:0, maxFrame:100, playing:false, accum:0, selectedKeyFrame:null, defaultEase:'linear', camTrack:{},
   setRange(n){ this.maxFrame=n; $('max-frame-label').textContent=n; $('frame-val').max=n; this.renderTicks(); this.goto(clamp(this.frame,0,n)); },
   renderTicks(){ const ticks=$('ticks'); ticks.innerHTML=''; for(let f=0; f<=this.maxFrame; f+=Math.max(10,this.maxFrame/10)){ const line=document.createElement('div'); line.className='frame-line'; line.style.left=(f/this.maxFrame*100)+'%'; const lab=document.createElement('div'); lab.className='frame-label'; lab.style.left=line.style.left; lab.textContent=Math.round(f); ticks.append(line,lab); } },
 
   renderKeys(){
     const con=$('key-container'); con.innerHTML='';
     const track = State.selection?.userData.anim;
-    if(!track) return;
-    Object.keys(track).forEach(f=>{
+    if (track) Object.keys(track).forEach(f=>{
       const frame = Number(f);
       const k=document.createElement('div');
       k.className='keyframe' + (this.selectedKeyFrame === frame ? ' selected' : '');
@@ -2015,6 +2261,15 @@ const Anim = {
       k.title='Frame '+f+' · '+(track[f].ease || 'linear');
       k.addEventListener('mousedown', ev => { ev.stopPropagation(); if (ev.button !== 0) return; this.dragKey(ev, frame); });
       k.addEventListener('contextmenu', ev => { ev.preventDefault(); ev.stopPropagation(); this.deleteKey(frame); });
+      con.appendChild(k);
+    });
+    // Camera keys (shown regardless of selection, gold, right-click to delete)
+    Object.keys(this.camTrack).forEach(f=>{
+      const frame = Number(f);
+      const k=document.createElement('div'); k.className='keyframe cam';
+      k.style.left=(frame/this.maxFrame*100)+'%';
+      k.title='Camera · frame '+f+' (right-click to delete)';
+      k.addEventListener('contextmenu', ev => { ev.preventDefault(); ev.stopPropagation(); delete this.camTrack[frame]; this.renderKeys(); History.push('delete cam key'); status('Camera key '+frame+' deleted.'); });
       con.appendChild(k);
     });
   },
@@ -2075,7 +2330,27 @@ const Anim = {
     this.renderKeys(); History.push('record key'); status('Key recorded at frame '+this.frame+'.');
   },
   clearKeys(){ if(State.selection?.userData.anim){ State.selection.userData.anim={}; this.selectedKeyFrame=null; this.renderKeys(); History.push('clear keys'); } },
-  goto(f){ this.frame=clamp(parseInt(f)||0,0,this.maxFrame); $('playhead').style.left=(this.frame/this.maxFrame*100)+'%'; $('frame-val').value=this.frame; App.objects.forEach(o=>this.evaluate(o,this.frame)); Editor.syncUI(); Helpers.updateSelectionBox(); },
+
+  // ---- Camera animation: position + orbit target + FOV keyed on a dedicated gold track ----
+  recordCamKey(){
+    this.camTrack[this.frame] = { p:App.camera.position.toArray(), t:App.orbit.target.toArray(), fov:App.camera.fov, ease:this.defaultEase };
+    this.renderKeys(); History.push('camera key'); status('Camera key recorded at frame '+this.frame+'.');
+  },
+  clearCamKeys(){ if(Object.keys(this.camTrack).length){ this.camTrack={}; this.renderKeys(); History.push('clear cam keys'); status('Camera keys cleared.'); } },
+  evaluateCam(f){
+    const keys = Object.keys(this.camTrack).map(Number).sort((a,b)=>a-b); if(!keys.length) return;
+    let prev=keys[0], next=keys[keys.length-1];
+    for(const k of keys){ if(k<=f) prev=k; if(k>=f){ next=k; break; } }
+    const a=this.camTrack[prev], b=this.camTrack[next]; if(!a||!b) return;
+    let t = prev===next?0:(f-prev)/(next-prev);
+    t = (EASE[a.ease] || EASE.linear)(t);
+    const lerp=(u,v)=>u+(v-u)*t;
+    App.camera.position.set(lerp(a.p[0],b.p[0]), lerp(a.p[1],b.p[1]), lerp(a.p[2],b.p[2]));
+    App.orbit.target.set(lerp(a.t[0],b.t[0]), lerp(a.t[1],b.t[1]), lerp(a.t[2],b.t[2]));
+    const fov = lerp(a.fov, b.fov);
+    if (Math.abs(fov - App.camera.fov) > 1e-4) { App.camera.fov = fov; App.camera.updateProjectionMatrix(); }
+  },
+  goto(f){ this.frame=clamp(parseInt(f)||0,0,this.maxFrame); $('playhead').style.left=(this.frame/this.maxFrame*100)+'%'; $('frame-val').value=this.frame; App.objects.forEach(o=>this.evaluate(o,this.frame)); this.evaluateCam(this.frame); Editor.syncUI(); Helpers.updateSelectionBox(); },
 
   _qa:new THREE.Quaternion(), _qb:new THREE.Quaternion(), _eu:new THREE.Euler(),
   keyQuat(k, out) {
@@ -2097,15 +2372,74 @@ const Anim = {
     obj.quaternion.slerpQuaternions(this._qa, this._qb, t);
     obj.scale.fromArray(a.s).lerp(new THREE.Vector3().fromArray(b.s), t);
   },
-  toggle(){ this.playing=!this.playing; $('play-btn').textContent=this.playing?'⏸':'▶'; },
-  update(dt){ if(!this.playing) return; const fps=clamp(parseFloat($('fps-val').value)||24,1,60); this.accum+=dt; if(this.accum >= 1/fps){ this.accum=0; this.goto((this.frame+1)%(this.maxFrame+1)); } },
+  toggle(){ if(Record.active){ Record.cancel(); return; } this.playing=!this.playing; $('play-btn').textContent=this.playing?'⏸':'▶'; },
+  update(dt){
+    if (Record.active) {   // playblast drives the timeline by wall-clock at scene FPS, then stops at the end
+      const spf = 1/clamp(parseFloat($('fps-val').value)||24,1,60);
+      Record.acc += dt;
+      while (Record.acc >= spf) {
+        Record.acc -= spf;
+        if (this.frame >= this.maxFrame) { Record.finish(); break; }
+        this.goto(this.frame + 1);
+      }
+      return;
+    }
+    if(!this.playing) return; const fps=clamp(parseFloat($('fps-val').value)||24,1,60); this.accum+=dt; if(this.accum >= 1/fps){ this.accum=0; this.goto((this.frame+1)%(this.maxFrame+1)); }
+  },
   scrubStart(e){ const track=$('scrub-track'); const move=ev=>{ const r=track.getBoundingClientRect(); const pct=clamp((ev.clientX-r.left)/r.width,0,1); this.goto(Math.round(pct*this.maxFrame)); }; move(e); const up=()=>{ window.removeEventListener('mousemove',move); window.removeEventListener('mouseup',up); }; window.addEventListener('mousemove',move); window.addEventListener('mouseup',up); }
+};
+
+// ---- Turntable: continuous camera orbit around the pivot (great for product spins + playblasts) ----
+const Turntable = {
+  on:false, speed:36,   // degrees / second
+  set(v){ this.on = (v === undefined) ? !this.on : !!v; const c = $('turntable'); if (c) c.checked = this.on; status('Turntable ' + (this.on ? 'on.' : 'off.')); },
+  step(dt){
+    const ang = THREE.MathUtils.degToRad(this.speed) * Math.min(dt, 0.05);
+    const t = App.orbit.target, c = App.camera.position;
+    const dx = c.x - t.x, dz = c.z - t.z, cs = Math.cos(ang), sn = Math.sin(ang);
+    c.x = t.x + dx*cs - dz*sn; c.z = t.z + dx*sn + dz*cs;   // OrbitControls.update() re-derives spherical from this
+  }
+};
+
+// ---- Playblast: record the live canvas to WebM via MediaRecorder while the timeline plays ----
+const Record = {
+  rec:null, chunks:[], active:false, acc:0, aborting:false,
+  supported(){ return ('MediaRecorder' in window) && !!App.renderer?.domElement?.captureStream; },
+  start(){
+    if (!this.supported()) { status('Recording is not supported in this browser.'); return false; }
+    const fps = clamp(parseFloat($('fps-val').value)||24, 1, 60);
+    const stream = App.renderer.domElement.captureStream(fps);
+    let mime = 'video/webm';
+    ['video/webm;codecs=vp9','video/webm;codecs=vp8','video/webm'].some(m => MediaRecorder.isTypeSupported(m) && (mime = m, true));
+    this.chunks = [];
+    try { this.rec = new MediaRecorder(stream, { mimeType:mime, videoBitsPerSecond:16000000 }); }
+    catch(err){ status('Recorder init failed: ' + err.message); return false; }
+    this.rec.ondataavailable = e => { if (e.data.size) this.chunks.push(e.data); };
+    this.rec.onstop = () => {
+      if (this.aborting) { this.chunks = []; status('Playblast discarded.'); return; }
+      download(new Blob(this.chunks, { type:'video/webm' }), 'webmaya_playblast.webm'); status('Playblast saved (webm).');
+    };
+    this.aborting = false;
+    this.rec.start();
+    return true;
+  },
+  stop(){ if (this.rec && this.rec.state !== 'inactive') this.rec.stop(); this.rec = null; },
+  playblast(){
+    if (this.active) return this.cancel();
+    if (Anim.maxFrame < 1) return status('Set a frame range first.');
+    if (!this.start()) return;
+    this.active = true; this.acc = 0; Anim.playing = false; Anim.goto(0);
+    $('play-btn').textContent = '⏸'; $('playblast-btn').classList.add('primary');
+    status('Playblast recording — playing ' + (Anim.maxFrame + 1) + ' frames…');
+  },
+  finish(){ this.active = false; this.stop(); $('play-btn').textContent = '▶'; $('playblast-btn').classList.remove('primary'); },
+  cancel(){ this.active = false; this.aborting = true; this.stop(); $('play-btn').textContent = '▶'; $('playblast-btn').classList.remove('primary'); }
 };
 
 // ---- Command palette: fuzzy launcher for every action (Ctrl+K) ----
 const Palette = {
   commands:[], filtered:[], active:0, recent:[],
-  toggleCheck(id, fn) { const c = $(id); c.checked = !c.checked; fn?.(); return c.checked; },
+  toggleCheck(id, fn) { const c = $(id); c.checked = !c.checked; fn?.(); return c.checked; }, // history handled by caller
   build() {
     const C = (id, label, group, ico, run, hint) => ({ id, label, group, ico, run, hint });
     const prim = ['cube','sphere','plane','torus','cylinder','cone','ico','knot','capsule'];
@@ -2156,8 +2490,8 @@ const Palette = {
       C('frame', 'Frame Selected', 'View', '⛶', () => Editor.focusSelection(), 'F'),
       C('toggle-grid', 'Toggle Grid', 'View', '▦', () => this.toggleCheck('grid-toggle', () => Editor.toggleGrid())),
       C('toggle-axes', 'Toggle Axes', 'View', '✛', () => this.toggleCheck('axes-toggle', () => Editor.toggleAxes())),
-      C('toggle-bloom', 'Toggle Bloom', 'Render', '✨', () => this.toggleCheck('bloom-toggle', () => Env.updateBloom())),
-      C('toggle-shadows', 'Toggle Shadows', 'Render', '◐', () => this.toggleCheck('shadow-toggle', () => Env.updateShadows())),
+      C('toggle-bloom', 'Toggle Bloom', 'Render', '✨', () => { this.toggleCheck('bloom-toggle', () => Env.updateBloom()); History.push('bloom'); }),
+      C('toggle-shadows', 'Toggle Shadows', 'Render', '◐', () => { this.toggleCheck('shadow-toggle', () => Env.updateShadows()); History.push('shadows'); }),
 
       C('anim-play', 'Play / Pause Timeline', 'Animation', '▶', () => Anim.toggle(), 'Space'),
       C('anim-key', 'Record Keyframe', 'Animation', '◆', () => Anim.recordKey(), 'K'),
@@ -2170,6 +2504,24 @@ const Palette = {
       C('exp-obj', 'Export OBJ', 'File', '⇪', () => Editor.exportOBJ()),
       C('exp-stl', 'Export STL', 'File', '⇪', () => Editor.exportSTL()),
       C('shot', 'Screenshot', 'File', '📷', () => Editor.screenshot()),
+
+      C('shade-solid', 'Shading: Solid', 'Display', '▢', () => Display.set('solid'), '\\'),
+      C('shade-wire', 'Shading: Wireframe', 'Display', '#', () => Display.set('wireframe')),
+      C('shade-matcap', 'Shading: Matcap', 'Display', '◍', () => Display.set('matcap')),
+      C('shade-normals', 'Shading: Normals', 'Display', '◈', () => Display.set('normals')),
+      C('shade-xray', 'Shading: X-ray', 'Display', '◌', () => Display.set('xray')),
+
+      C('mask-invert', 'Mask: Invert', 'Sculpt', '▣', () => Sculpt.invertMask()),
+      C('mask-clear', 'Mask: Clear', 'Sculpt', '□', () => Sculpt.clearMask()),
+
+      C('sym-plus', 'Symmetrize +', 'Modifier', '◑', () => Tools.symmetrize(1)),
+      C('sym-minus', 'Symmetrize −', 'Modifier', '◐', () => Tools.symmetrize(-1)),
+
+      C('gizmo-space', 'Toggle Gizmo Space (local/world)', 'Object', '⊹', () => Editor.toggleSpace()),
+      C('turntable', 'Toggle Turntable', 'View', '⟳', () => Turntable.set()),
+      C('playblast', 'Playblast → WebM', 'File', '⏺', () => Record.playblast()),
+      C('cam-key', 'Record Camera Keyframe', 'Animation', '🎥', () => Anim.recordCamKey()),
+      C('cam-clear', 'Clear Camera Keyframes', 'Animation', '✕', () => Anim.clearCamKeys()),
     ];
   },
   score(cmd, q) {
@@ -2239,8 +2591,9 @@ const Palette = {
 };
 
 // Expose the runtime for power users / devtools console (e.g. WebMaya.App.scene, WebMaya.objects()).
-window.WebMaya = { App, State, Editor, Tools, Anim, Env, History, Palette, Sculpt, objects:() => App.objects };
+window.WebMaya = { App, State, Editor, Tools, Anim, Env, History, Palette, Sculpt, Display, Record, Turntable, objects:() => App.objects };
 window.Editor=Editor; window.Tools=Tools; window.Anim=Anim; window.Env=Env; window.History=History; window.Palette=Palette;
+window.Sculpt=Sculpt; window.Display=Display; window.Record=Record; window.Turntable=Turntable;
 Palette.init();
 Editor.init();
 </script>
