@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>WebMaya Advanced Studio v3</title>
+  <title>WebMaya Advanced Studio v4</title>
   <style>
     :root {
       --bg:#171717; --panel:#202020; --panel2:#252525; --header:#2c2c2c; --accent:#007fd4;
@@ -66,6 +66,21 @@
     .pill { background:#151515; color:#aaa; border:1px solid #333; border-radius:999px; padding:2px 7px; font-size:10px; }
     .hint { font-size:10px; color:#888; line-height:1.45; }
     .hidden { display:none !important; }
+    .kbd { display:inline-block; background:#151515; border:1px solid #3a3a3a; border-bottom-width:2px; border-radius:3px; padding:1px 5px; font-size:10px; color:#bbb; font-family:Segoe UI, system-ui, sans-serif; }
+    /* Command palette */
+    #cmdk { position:fixed; inset:0; z-index:200; display:none; align-items:flex-start; justify-content:center; background:rgba(0,0,0,.5); backdrop-filter:blur(2px); }
+    #cmdk.open { display:flex; }
+    .cmdk-box { margin-top:11vh; width:min(560px,92vw); max-height:64vh; background:#1d1d1d; border:1px solid #3d3d3d; border-radius:10px; box-shadow:0 18px 60px rgba(0,0,0,.6); display:flex; flex-direction:column; overflow:hidden; }
+    #cmdk-input { background:#161616; border:none; border-bottom:1px solid #333; color:#eee; font-size:15px; padding:14px 16px; outline:none; }
+    #cmdk-input::placeholder { color:#666; }
+    #cmdk-list { overflow-y:auto; padding:6px; }
+    .cmdk-item { display:flex; align-items:center; gap:10px; padding:9px 11px; border-radius:6px; cursor:pointer; font-size:13px; color:#ccc; }
+    .cmdk-item .ci-ico { width:20px; text-align:center; opacity:.85; }
+    .cmdk-item .ci-grp { font-size:10px; text-transform:uppercase; letter-spacing:.05em; color:#777; margin-left:auto; }
+    .cmdk-item .ci-hint { font-size:10px; color:#888; }
+    .cmdk-item.active { background:var(--accent); color:#fff; }
+    .cmdk-item.active .ci-grp, .cmdk-item.active .ci-hint { color:rgba(255,255,255,.8); }
+    .cmdk-empty { padding:20px; text-align:center; color:#777; font-size:12px; }
   </style>
   <script type="importmap">
     {
@@ -82,7 +97,9 @@
 <body>
 <div id="app">
   <div id="header">
-    <div class="brand">WEBMAYA v3</div>
+    <div class="brand">WEBMAYA v4</div>
+    <div class="menu-btn" onclick="Palette.open()" title="Command palette (Ctrl+K)">⌘ <span class="kbd">Ctrl K</span></div>
+    <span style="color:#555">|</span>
     <div class="menu-btn" onclick="Editor.newScene()">New</div>
     <div class="menu-btn" onclick="Editor.saveProjectFile()">Save</div>
     <div class="menu-btn" onclick="document.getElementById('project-open').click()">Open</div>
@@ -143,11 +160,16 @@
         <button class="btn" onclick="Tools.flipFace()">Flip Face</button>
         <button class="btn danger" onclick="Tools.deleteFace()">Del Face</button>
       </div>
-      <div id="tools-vertex" class="grid-2 hidden">
-        <button class="btn" onclick="Tools.weldClose()">Weld Close</button>
-        <button class="btn" onclick="Tools.relaxMesh()">Relax Mesh</button>
-        <button class="btn" onclick="Tools.selectNextVertex(1)">Next</button>
-        <button class="btn" onclick="Tools.selectNextVertex(-1)">Prev</button>
+      <div id="tools-vertex" class="hidden">
+        <div class="grid-2">
+          <button class="btn" onclick="Tools.weldClose()">Weld Close</button>
+          <button class="btn" onclick="Tools.relaxMesh()">Relax Mesh</button>
+          <button class="btn" onclick="Tools.selectNextVertex(1)">Next</button>
+          <button class="btn" onclick="Tools.selectNextVertex(-1)">Prev</button>
+        </div>
+        <div class="prop-row" style="margin-top:8px;"><span class="prop-label">Proportional</span><input type="checkbox" id="vtx-prop" /></div>
+        <div class="prop-row"><span class="prop-label">Falloff R</span><input type="range" min="0.2" max="4" step="0.05" id="vtx-prop-radius" value="1.2" /></div>
+        <div class="hint">Drag the handle to move a vertex (whole welded group). Proportional (O) pulls nearby vertices with smooth falloff.</div>
       </div>
       <div id="tools-sculpt" class="hidden">
         <div class="prop-row"><span class="prop-label">Brush</span>
@@ -214,6 +236,26 @@
       </div>
     </div>
 
+    <div class="section">
+      <div class="section-head">Deformers</div>
+      <div class="prop-row">
+        <span class="prop-label">Axis</span>
+        <select id="deform-axis" style="flex:0 0 50px">
+          <option value="x">X</option>
+          <option value="y" selected>Y</option>
+          <option value="z">Z</option>
+        </select>
+        <span class="prop-label" style="width:auto;margin-left:6px;">Amount</span>
+        <input class="prop-input mini" id="deform-amt" type="number" value="60" step="5" title="Degrees for twist/bend · percent for taper" />
+      </div>
+      <div class="grid-3">
+        <button class="btn" onclick="Tools.deform('twist')">Twist</button>
+        <button class="btn" onclick="Tools.deform('bend')">Bend</button>
+        <button class="btn" onclick="Tools.deform('taper')">Taper</button>
+      </div>
+      <div class="hint" style="margin-top:6px;">Twist/Bend use degrees; Taper uses percent. Deform is applied around the object's local bounding box, keeping it watertight.</div>
+    </div>
+
     <div class="section" style="flex:1; min-height:160px;">
       <div class="section-head">Outliner <button class="btn" onclick="Editor.select(null)">Clear</button></div>
       <div id="outliner"></div>
@@ -221,7 +263,7 @@
   </div>
 
   <div id="viewport">
-    <div id="overlay-info">Perspective<br />W/E/R transform · F8-F11 modes · K keyframe · Space play · Ctrl+D duplicate · Ctrl snap</div>
+    <div id="overlay-info">Perspective<br />Ctrl+K commands · W/E/R transform · F8-F11 modes · K keyframe · Space play · Ctrl+D duplicate · Ctrl snap</div>
     <div id="brush-ring"></div>
     <div id="drop-hint">Drop GLTF/GLB or WebMaya project here</div>
   </div>
@@ -322,6 +364,13 @@
   <div id="status">
     <span id="status-msg">Ready.</span>
     <span class="right"><span id="perf-msg"></span><span id="autosave-msg">Autosave on</span></span>
+  </div>
+</div>
+
+<div id="cmdk">
+  <div class="cmdk-box">
+    <input id="cmdk-input" type="text" placeholder="Type a command…  (↑↓ to navigate, Enter to run, Esc to close)" autocomplete="off" spellcheck="false" />
+    <div id="cmdk-list"></div>
   </div>
 </div>
 
@@ -647,11 +696,15 @@ const Editor = {
     App.transform = new TransformControls(App.camera, App.renderer.domElement);
     App.transform.setSize(0.86);
     App.transform.addEventListener('dragging-changed', e => App.orbit.enabled = !e.value);
+    App.transform.addEventListener('mouseDown', () => {
+      if (State.mode === 'vertex' && State.selection && State.vertexIndex >= 0) Tools.beginVertexDrag();
+    });
     App.transform.addEventListener('objectChange', () => {
       if (State.mode === 'vertex') Tools.commitVertexHandle();
       Editor.syncUI(); Helpers.updateSelectionBox();
     });
     App.transform.addEventListener('mouseUp', () => {
+      if (State.mode === 'vertex') return Tools.endVertexDrag();
       if ($('autokey').checked && State.selection && State.mode === 'object') Anim.recordKey();
       else History.push('transform');
     });
@@ -738,7 +791,7 @@ const Editor = {
     mesh.name = type + '_' + App.objects.length;
     this.prepareMesh(mesh, type);
     App.scene.add(mesh); App.objects.push(mesh);
-    this.select(mesh); History.push('add ' + type);
+    this.select(mesh); this.updateStats(); History.push('add ' + type);
     status('Added ' + type);
   },
 
@@ -750,7 +803,7 @@ const Editor = {
     bulb.userData.isLight = true; bulb.userData.anim = {};
     bulb.add(light);
     App.scene.add(bulb); App.objects.push(bulb);
-    this.select(bulb); History.push('add light');
+    this.select(bulb); this.updateStats(); History.push('add light');
   },
 
   lightOf(obj) { return obj?.children?.find(c => c.isLight) || null; },
@@ -1105,6 +1158,7 @@ const Editor = {
     if (k === 'f') this.focusSelection();
     if (k === '[') { const s=$('sculpt-size'); s.value = Math.max(parseFloat(s.min), parseFloat(s.value) - 0.1); }
     if (k === ']') { const s=$('sculpt-size'); s.value = Math.min(parseFloat(s.max), parseFloat(s.value) + 0.1); }
+    if (k === 'o' && State.mode === 'vertex') { const c=$('vtx-prop'); c.checked = !c.checked; status('Proportional editing ' + (c.checked ? 'on.' : 'off.')); }
     if (e.key === 'F8') this.setMode('object');
     if (e.key === 'F9') this.setMode('face');
     if (e.key === 'F10') this.setMode('vertex');
@@ -1624,12 +1678,54 @@ const Tools = {
     MeshOps.rebuild(mesh,tris); Helpers.highlightFace(mesh,State.faceIndex); History.push('flip face');
   },
 
+  // Proportional ("soft") vertex editing. Captured at drag start: the affected welded groups,
+  // their falloff weights, and original local positions. Off => only the picked group moves.
+  vtxDrag:null,
+  beginVertexDrag() {
+    const mesh = State.selection; if (!mesh?.geometry || State.vertexIndex < 0) return;
+    const geo = mesh.geometry, pos = geo.attributes.position, topo = Topo.get(geo);
+    const g0 = topo.groupOf[State.vertexIndex];
+    const origin = new THREE.Vector3().fromBufferAttribute(pos, topo.groups[g0][0]);
+    const affected = [];
+    if ($('vtx-prop').checked) {
+      const radius = parseFloat($('vtx-prop-radius').value) || 1.2;
+      const p = new THREE.Vector3();
+      for (let g = 0; g < topo.groups.length; g++) {
+        p.fromBufferAttribute(pos, topo.groups[g][0]);
+        const d = p.distanceTo(origin);
+        if (d <= radius) affected.push({ g, w:FALLOFF.smooth(clamp(1 - d/radius, 0, 1)), orig:p.clone() });
+      }
+    } else {
+      affected.push({ g:g0, w:1, orig:origin.clone() });
+    }
+    this.vtxDrag = { originLocal:origin.clone(), affected };
+  },
   commitVertexHandle() {
     const mesh = State.selection; if (!mesh || State.vertexIndex < 0) return;
+    const geo = mesh.geometry, pos = geo.attributes.position, topo = Topo.get(geo);
     const local = mesh.worldToLocal(App.vertexHandle.position.clone());
-    mesh.geometry.attributes.position.setXYZ(State.vertexIndex, local.x, local.y, local.z);
-    mesh.geometry.attributes.position.needsUpdate = true; mesh.geometry.computeVertexNormals();
-    Helpers.showVertices(mesh); App.vertexHandle.visible = true; App.transform.attach(App.vertexHandle);
+    const drag = this.vtxDrag;
+    if (drag) {
+      const delta = local.clone().sub(drag.originLocal), out = new THREE.Vector3();
+      for (const ent of drag.affected) {
+        out.copy(ent.orig).addScaledVector(delta, ent.w);
+        for (const vi of topo.groups[ent.g]) pos.setXYZ(vi, out.x, out.y, out.z);
+      }
+    } else {
+      // No drag context (e.g. programmatic): move the whole welded group so the mesh can't tear.
+      const g0 = topo.groupOf[State.vertexIndex];
+      for (const vi of topo.groups[g0]) pos.setXYZ(vi, local.x, local.y, local.z);
+    }
+    pos.needsUpdate = true;
+    Sculpt.recomputeNormals(mesh, !mesh.material?.flatShading);
+    geo.boundsTree?.refit();
+    App.vertexHandle.visible = true; App.transform.attach(App.vertexHandle);
+  },
+  endVertexDrag() {
+    this.vtxDrag = null;
+    const mesh = State.selection;
+    if (mesh?.geometry) { mesh.geometry.computeBoundingSphere(); Helpers.showVertices(mesh); App.vertexHandle.visible = true; }
+    History.push('edit vertex');
   },
   selectNextVertex(dir=1) {
     const mesh=this.ensureMesh(); if(!mesh) return;
@@ -1824,6 +1920,58 @@ const Tools = {
     }
     History.push('array'); Editor.updateOutliner(); Editor.updateStats(); status('Array x' + count + ' applied.');
   },
+  // ---- Procedural deformers (twist / bend / taper) over welded topology groups ----
+  deform(kind) {
+    const mesh = this.ensureMesh(); if (!mesh) return status('Select a mesh first.');
+    const amt = parseFloat($('deform-amt').value) || 0;
+    if (!amt) return status('Set a non-zero deform amount.');
+    const axis = $('deform-axis').value;
+    const ai = axis === 'x' ? 0 : axis === 'y' ? 1 : 2;   // length axis
+    const bi = ai === 1 ? 0 : 1;                            // bend/twist plane partner axis
+    const geo = mesh.geometry, pos = geo.attributes.position;
+    const topo = Topo.get(geo);
+    geo.computeBoundingBox();
+    const bb = geo.boundingBox;
+    const minA = bb.min.getComponent(ai), maxA = bb.max.getComponent(ai), span = (maxA - minA) || 1;
+    const ci = bb.getCenter(new THREE.Vector3());
+    const rad = THREE.MathUtils.degToRad(amt);
+    const rep = new THREE.Vector3();
+    for (let g = 0; g < topo.groups.length; g++) {
+      const gverts = topo.groups[g];
+      rep.fromBufferAttribute(pos, gverts[0]);
+      const aVal = rep.getComponent(ai);
+      const t = (aVal - minA) / span;          // 0..1 along the length axis
+      if (kind === 'twist') {
+        const ang = rad * (t - 0.5);            // centered: ends counter-rotate
+        const cs = Math.cos(ang), sn = Math.sin(ang);
+        const ux = (ai + 1) % 3, uz = (ai + 2) % 3;
+        const x = rep.getComponent(ux) - ci.getComponent(ux);
+        const z = rep.getComponent(uz) - ci.getComponent(uz);
+        rep.setComponent(ux, ci.getComponent(ux) + x * cs - z * sn);
+        rep.setComponent(uz, ci.getComponent(uz) + x * sn + z * cs);
+      } else if (kind === 'taper') {
+        const s = 1 + (amt / 100) * (t - 0.5) * 2;   // amt% taper from min->max end
+        const ux = (ai + 1) % 3, uz = (ai + 2) % 3;
+        rep.setComponent(ux, ci.getComponent(ux) + (rep.getComponent(ux) - ci.getComponent(ux)) * s);
+        rep.setComponent(uz, ci.getComponent(uz) + (rep.getComponent(uz) - ci.getComponent(uz)) * s);
+      } else if (kind === 'bend') {
+        const sLen = aVal - ci.getComponent(ai);     // signed dist along length from center
+        const h = rep.getComponent(bi) - ci.getComponent(bi);
+        const R = span / rad;                        // bend radius
+        const a = sLen / R;
+        const r = R - h;
+        rep.setComponent(ai, ci.getComponent(ai) + r * Math.sin(a));
+        rep.setComponent(bi, ci.getComponent(bi) + R - r * Math.cos(a));
+      }
+      for (const vi of gverts) pos.setXYZ(vi, rep.x, rep.y, rep.z);
+    }
+    pos.needsUpdate = true;
+    Sculpt.recomputeNormals(mesh, !mesh.material?.flatShading);
+    geo.boundsTree?.refit(); geo.computeBoundingBox(); geo.computeBoundingSphere();
+    Editor.syncUI(); Helpers.updateSelectionBox();
+    History.push('deform ' + kind);
+    status(kind[0].toUpperCase() + kind.slice(1) + ' applied (' + amt + (kind === 'taper' ? '%' : '°') + ').');
+  },
   addWireOverlay() {
     const mesh=State.selection; if(!mesh?.geometry) return;
     const wire=new THREE.LineSegments(new THREE.WireframeGeometry(mesh.geometry), new THREE.LineBasicMaterial({ color:0x111111, transparent:true, opacity:.35 }));
@@ -1954,7 +2102,146 @@ const Anim = {
   scrubStart(e){ const track=$('scrub-track'); const move=ev=>{ const r=track.getBoundingClientRect(); const pct=clamp((ev.clientX-r.left)/r.width,0,1); this.goto(Math.round(pct*this.maxFrame)); }; move(e); const up=()=>{ window.removeEventListener('mousemove',move); window.removeEventListener('mouseup',up); }; window.addEventListener('mousemove',move); window.addEventListener('mouseup',up); }
 };
 
-window.Editor=Editor; window.Tools=Tools; window.Anim=Anim; window.Env=Env; window.History=History;
+// ---- Command palette: fuzzy launcher for every action (Ctrl+K) ----
+const Palette = {
+  commands:[], filtered:[], active:0, recent:[],
+  toggleCheck(id, fn) { const c = $(id); c.checked = !c.checked; fn?.(); return c.checked; },
+  build() {
+    const C = (id, label, group, ico, run, hint) => ({ id, label, group, ico, run, hint });
+    const prim = ['cube','sphere','plane','torus','cylinder','cone','ico','knot','capsule'];
+    this.commands = [
+      ...prim.map(p => C('add-'+p, 'Add ' + p[0].toUpperCase()+p.slice(1), 'Create', '✚', () => Editor.addPrimitive(p))),
+      C('add-light', 'Add Point Light', 'Create', '💡', () => Editor.addLight()),
+
+      C('mode-object', 'Object Mode', 'Mode', '📦', () => Editor.setMode('object'), 'F8'),
+      C('mode-face', 'Face Edit Mode', 'Mode', '▰', () => Editor.setMode('face'), 'F9'),
+      C('mode-vertex', 'Vertex Edit Mode', 'Mode', '✣', () => Editor.setMode('vertex'), 'F10'),
+      C('mode-sculpt', 'Sculpt Mode', 'Mode', '🖌', () => Editor.setMode('sculpt'), 'F11'),
+
+      C('duplicate', 'Duplicate Selection', 'Edit', '⧉', () => Editor.duplicate(), 'Ctrl+D'),
+      C('delete', 'Delete Selection', 'Edit', '🗑', () => Editor.deleteSelection(), 'Del'),
+      C('undo', 'Undo', 'Edit', '↶', () => Editor.undo(), 'Ctrl+Z'),
+      C('redo', 'Redo', 'Edit', '↷', () => Editor.redo(), 'Ctrl+Y'),
+      C('center-pivot', 'Center Pivot', 'Object', '⌖', () => Tools.centerPivot()),
+      C('apply-xform', 'Apply Transform', 'Object', '✓', () => Tools.applyTransform()),
+      C('to-ground', 'Drop To Ground', 'Object', '⬇', () => Tools.dropToGround()),
+
+      C('mod-mirror', 'Mirror X', 'Modifier', '⇋', () => Tools.modMirror()),
+      C('mod-radial', 'Radial Mirror ×6', 'Modifier', '❉', () => Tools.modRadialMirror()),
+      C('mod-smooth', 'Smooth Normals', 'Modifier', '◠', () => Tools.modSmoothNormals()),
+      C('mod-flat', 'Flat Normals', 'Modifier', '◇', () => Tools.modFlatNormals()),
+      C('mod-subdiv', 'Loop Subdivide', 'Modifier', '⊞', () => Tools.subdivideMesh()),
+      C('mod-fatten', 'Fatten (Shell +)', 'Modifier', '◉', () => Tools.shellOffset(0.05)),
+      C('mod-shrink', 'Shrink (Shell −)', 'Modifier', '◎', () => Tools.shellOffset(-0.05)),
+      C('mod-noise', 'Noise Displace', 'Modifier', '∿', () => Tools.noiseDisplace()),
+      C('mod-array', 'Array', 'Modifier', '⋯', () => Tools.arrayModifier()),
+      C('mod-wire', 'Wire Overlay', 'Modifier', '#', () => Tools.addWireOverlay()),
+
+      C('deform-twist', 'Deform: Twist', 'Deform', '🌀', () => Tools.deform('twist')),
+      C('deform-bend', 'Deform: Bend', 'Deform', '◡', () => Tools.deform('bend')),
+      C('deform-taper', 'Deform: Taper', 'Deform', '▽', () => Tools.deform('taper')),
+
+      C('bool-union', 'Boolean Union', 'Boolean', '∪', () => Tools.startBoolean('union')),
+      C('bool-subtract', 'Boolean Subtract', 'Boolean', '∖', () => Tools.startBoolean('subtract')),
+      C('bool-intersect', 'Boolean Intersect', 'Boolean', '∩', () => Tools.startBoolean('intersect')),
+
+      C('mat-clay', 'Material: Clay', 'Material', '🟤', () => Editor.materialPreset('clay')),
+      C('mat-metal', 'Material: Metal', 'Material', '⬜', () => Editor.materialPreset('metal')),
+      C('mat-glass', 'Material: Glass', 'Material', '🔷', () => Editor.materialPreset('glass')),
+
+      C('view-front', 'View: Front', 'View', '▢', () => Editor.view('front')),
+      C('view-side', 'View: Side', 'View', '▢', () => Editor.view('side')),
+      C('view-top', 'View: Top', 'View', '▢', () => Editor.view('top')),
+      C('view-persp', 'View: Perspective', 'View', '◰', () => Editor.view('persp')),
+      C('frame', 'Frame Selected', 'View', '⛶', () => Editor.focusSelection(), 'F'),
+      C('toggle-grid', 'Toggle Grid', 'View', '▦', () => this.toggleCheck('grid-toggle', () => Editor.toggleGrid())),
+      C('toggle-axes', 'Toggle Axes', 'View', '✛', () => this.toggleCheck('axes-toggle', () => Editor.toggleAxes())),
+      C('toggle-bloom', 'Toggle Bloom', 'Render', '✨', () => this.toggleCheck('bloom-toggle', () => Env.updateBloom())),
+      C('toggle-shadows', 'Toggle Shadows', 'Render', '◐', () => this.toggleCheck('shadow-toggle', () => Env.updateShadows())),
+
+      C('anim-play', 'Play / Pause Timeline', 'Animation', '▶', () => Anim.toggle(), 'Space'),
+      C('anim-key', 'Record Keyframe', 'Animation', '◆', () => Anim.recordKey(), 'K'),
+      C('anim-clear', 'Clear Keyframes', 'Animation', '✕', () => Anim.clearKeys()),
+
+      C('file-new', 'New Scene', 'File', '✦', () => Editor.newScene()),
+      C('file-save', 'Save Project (.webmaya)', 'File', '💾', () => Editor.saveProjectFile()),
+      C('exp-gltf', 'Export GLTF', 'File', '⇪', () => Editor.exportGLTF(false)),
+      C('exp-glb', 'Export GLB', 'File', '⇪', () => Editor.exportGLTF(true)),
+      C('exp-obj', 'Export OBJ', 'File', '⇪', () => Editor.exportOBJ()),
+      C('exp-stl', 'Export STL', 'File', '⇪', () => Editor.exportSTL()),
+      C('shot', 'Screenshot', 'File', '📷', () => Editor.screenshot()),
+    ];
+  },
+  score(cmd, q) {
+    if (!q) return 1;
+    const hay = (cmd.label + ' ' + cmd.group).toLowerCase();
+    if (hay.includes(q)) return 100 - hay.indexOf(q);
+    // subsequence (fuzzy) match
+    let qi = 0;
+    for (let i = 0; i < hay.length && qi < q.length; i++) if (hay[i] === q[qi]) qi++;
+    return qi === q.length ? 1 : 0;
+  },
+  render() {
+    const list = $('cmdk-list');
+    if (!this.filtered.length) { list.innerHTML = '<div class="cmdk-empty">No matching commands</div>'; return; }
+    list.innerHTML = '';
+    this.filtered.forEach((cmd, i) => {
+      const row = document.createElement('div');
+      row.className = 'cmdk-item' + (i === this.active ? ' active' : '');
+      row.innerHTML = `<span class="ci-ico">${cmd.ico}</span><span class="ci-label"></span>` +
+        (cmd.hint ? `<span class="ci-hint">${cmd.hint}</span>` : '') + `<span class="ci-grp">${cmd.group}</span>`;
+      row.querySelector('.ci-label').textContent = cmd.label;
+      row.addEventListener('mousemove', () => { if (this.active !== i) { this.active = i; this.render(); } });
+      row.addEventListener('mousedown', e => { e.preventDefault(); this.run(cmd); });
+      list.appendChild(row);
+    });
+    list.children[this.active]?.scrollIntoView({ block:'nearest' });
+  },
+  filter() {
+    const q = $('cmdk-input').value.trim().toLowerCase();
+    let pool = this.commands;
+    if (!q && this.recent.length) {
+      const order = id => { const i = this.recent.indexOf(id); return i < 0 ? 999 : i; };
+      pool = [...this.commands].sort((a, b) => order(a.id) - order(b.id));
+    }
+    this.filtered = pool.map(c => ({ c, s:this.score(c, q) })).filter(x => x.s > 0)
+      .sort((a, b) => b.s - a.s).map(x => x.c);
+    this.active = 0;
+    this.render();
+  },
+  open() {
+    if (!this.commands.length) this.build();
+    $('cmdk').classList.add('open');
+    const inp = $('cmdk-input'); inp.value = ''; this.filter(); inp.focus();
+  },
+  close() { $('cmdk').classList.remove('open'); App.renderer?.domElement.focus?.(); },
+  toggle() { $('cmdk').classList.contains('open') ? this.close() : this.open(); },
+  run(cmd) {
+    this.recent = [cmd.id, ...this.recent.filter(id => id !== cmd.id)].slice(0, 8);
+    this.close();
+    try { cmd.run(); } catch (e) { console.error(e); status('Command failed: ' + e.message); }
+  },
+  onInputKey(e) {
+    if (e.key === 'ArrowDown') { e.preventDefault(); this.active = Math.min(this.active + 1, this.filtered.length - 1); this.render(); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); this.active = Math.max(this.active - 1, 0); this.render(); }
+    else if (e.key === 'Enter') { e.preventDefault(); const c = this.filtered[this.active]; if (c) this.run(c); }
+    else if (e.key === 'Escape') { e.preventDefault(); this.close(); }
+  },
+  init() {
+    this.build();
+    $('cmdk-input').addEventListener('input', () => this.filter());
+    $('cmdk-input').addEventListener('keydown', e => this.onInputKey(e));
+    $('cmdk').addEventListener('mousedown', e => { if (e.target.id === 'cmdk') this.close(); });
+    window.addEventListener('keydown', e => {
+      if ((e.ctrlKey || e.metaKey) && (e.key === 'k' || e.key === 'K')) { e.preventDefault(); this.toggle(); }
+    });
+  }
+};
+
+// Expose the runtime for power users / devtools console (e.g. WebMaya.App.scene, WebMaya.objects()).
+window.WebMaya = { App, State, Editor, Tools, Anim, Env, History, Palette, Sculpt, objects:() => App.objects };
+window.Editor=Editor; window.Tools=Tools; window.Anim=Anim; window.Env=Env; window.History=History; window.Palette=Palette;
+Palette.init();
 Editor.init();
 </script>
 </body>
