@@ -1,0 +1,1599 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Advanced Biosphere Simulation Platform</title>
+    <style>
+        :root {
+            --bg: #0c0f12;
+            --panel: rgba(10, 16, 22, 0.98);
+            --line: rgba(51, 187, 255, 0.25);
+            --accent: #3bf;
+            --accent-soft: rgba(51, 187, 255, 0.1);
+            --accent-glow: rgba(51, 187, 255, 0.5);
+            --text: #d9f7ff;
+            --muted: #8af;
+            --good: #2e8;
+            --warn: #fc3;
+            --bad: #f33;
+        }
+
+        * { box-sizing: border-box; }
+
+        body {
+            margin: 0;
+            font-family: 'Courier New', Arial, monospace, sans-serif;
+            background-color: var(--bg);
+            overflow: hidden;
+            color: var(--accent);
+            display: flex;
+            height: 100vh;
+            width: 100vw;
+        }
+
+        #hud {
+            width: 340px;
+            min-width: 340px;
+            background: var(--panel);
+            border-right: 1px solid var(--line);
+            box-shadow: 4px 0 25px rgba(0,0,0,0.85);
+            padding: 15px;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            overflow-y: auto;
+            z-index: 10;
+            scrollbar-width: thin;
+            scrollbar-color: rgba(51, 187, 255, 0.3) transparent;
+            transition: margin-left 0.3s ease, min-width 0.3s ease, padding 0.3s ease, width 0.3s ease;
+        }
+
+        #hud.collapsed {
+            margin-left: -340px;
+            min-width: 0;
+            width: 0;
+            padding: 0;
+            border-right: none;
+            overflow: hidden;
+        }
+
+        #hud h2 {
+            margin: 0 0 5px 0;
+            color: #fff;
+            font-size: 15px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            border-bottom: 2px solid var(--accent);
+            padding-bottom: 8px;
+            text-shadow: 0 0 8px rgba(51, 187, 255, 0.5);
+        }
+
+        details {
+            background: rgba(51, 187, 255, 0.03);
+            border: 1px solid rgba(51, 187, 255, 0.15);
+            border-radius: 4px;
+            transition: all 0.3s;
+        }
+
+        details[open] {
+            background: rgba(51, 187, 255, 0.05);
+            border-color: rgba(51, 187, 255, 0.3);
+        }
+
+        summary {
+            padding: 8px;
+            cursor: pointer;
+            font-weight: bold;
+            font-size: 11px;
+            user-select: none;
+            color: #fff;
+            outline: none;
+            border-bottom: 1px solid transparent;
+        }
+
+        details[open] summary {
+            border-bottom-color: rgba(51, 187, 255, 0.2);
+        }
+
+        .panel-content {
+            padding: 10px;
+            font-size: 11px;
+            line-height: 1.4;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 4px;
+            font-size: 10px;
+            color: var(--muted);
+        }
+
+        input[type=range] {
+            width: 100%;
+            margin-bottom: 10px;
+            accent-color: var(--accent);
+        }
+
+        button {
+            background: var(--accent-soft);
+            border: 1px solid var(--accent);
+            padding: 6px 10px;
+            color: var(--accent);
+            width: 100%;
+            cursor: pointer;
+            font-family: inherit;
+            font-size: 11px;
+            margin-bottom: 6px;
+            transition: all 0.2s;
+            text-transform: uppercase;
+        }
+
+        button:hover {
+            background: rgba(51, 187, 255, 0.25);
+            box-shadow: 0 0 8px rgba(51, 187, 255, 0.5);
+            color: #fff;
+        }
+
+        p {
+            margin: 4px 0;
+            display: flex;
+            justify-content: space-between;
+            border-bottom: 1px dotted rgba(51, 187, 255, 0.08);
+            padding-bottom: 1px;
+        }
+
+        p span { font-weight: bold; }
+
+        .bar {
+            height: 14px;
+            background: #2a9;
+            margin: 6px 0;
+            border-radius: 2px;
+            position: relative;
+            font-size: 9px;
+            color: #000;
+            font-weight: bold;
+            line-height: 14px;
+            text-align: right;
+            padding-right: 5px;
+            box-sizing: border-box;
+            overflow: hidden;
+            white-space: nowrap;
+        }
+
+        #eventList {
+            list-style-type: none;
+            padding: 0;
+            margin: 0;
+            max-height: 110px;
+            overflow-y: auto;
+        }
+
+        #eventList li {
+            margin-bottom: 4px;
+            color: #2a9;
+            font-size: 9px;
+            border-left: 2px solid #2a9;
+            padding-left: 5px;
+            line-height: 1.2;
+        }
+
+        #canvas-container {
+            flex-grow: 1;
+            position: relative;
+            background: #06080a;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+        }
+
+        #toggle-hud {
+            position: absolute;
+            top: 15px;
+            left: 15px;
+            z-index: 100;
+            background: rgba(10, 16, 22, 0.9);
+            border: 1px solid var(--accent);
+            color: var(--accent);
+            padding: 6px 10px;
+            cursor: pointer;
+            font-family: inherit;
+            font-size: 11px;
+            border-radius: 4px;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.5);
+            transition: all 0.2s;
+        }
+
+        #toggle-hud:hover {
+            background: rgba(51, 187, 255, 0.2);
+            color: #fff;
+            box-shadow: 0 0 8px rgba(51, 187, 255, 0.4);
+        }
+
+        @media (max-width: 768px) {
+            body { flex-direction: column-reverse; }
+            #hud {
+                width: 100%;
+                height: 40vh;
+                min-height: 250px;
+                border-right: none;
+                border-top: 1px solid rgba(51, 187, 255, 0.25);
+            }
+            #hud.collapsed {
+                margin-left: 0;
+                margin-bottom: -40vh;
+                height: 0;
+                min-height: 0;
+                padding: 0;
+            }
+            #canvas-container {
+                height: 60vh;
+                flex-grow: 1;
+            }
+            #toggle-hud {
+                top: 10px;
+                left: 10px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div id="hud">
+        <h2>Telemetry Deck</h2>
+
+        <details open>
+            <summary>SYSTEM ACTUATION</summary>
+            <div class="panel-content">
+                <label for="speedSlider">Time Acceleration:</label>
+                <input type="range" id="speedSlider" min="1" max="10" value="5">
+                <label for="threatSlider">Predator Instinct:</label>
+                <input type="range" id="threatSlider" min="1" max="5" value="3">
+                <button id="resetBtn">Hard Reset System</button>
+                <button id="taskBtn">Inject Task Anomaly</button>
+                <button id="pauseBtn">Halt Simulation</button>
+            </div>
+        </details>
+
+        <details open>
+            <summary>BIOLOGICAL DIVERSITY</summary>
+            <div class="panel-content">
+                <p>Shannon Index (H'): <span id="shannonIndex" style="color: #fff;">0.000</span></p>
+                <p>Dominant Clade: <span id="dominantTrait" style="color: #fff;">-</span></p>
+                <p>Avg Speed Gene: <span id="avgSpeedGene" style="color: #fff;">0</span></p>
+                <p>Avg Sensor Gene: <span id="avgSensorGene" style="color: #fff;">0</span></p>
+                <p>Active Genomes: <span id="aliveAgents" style="color: #fff;">0</span></p>
+                <p>Avg Vitality: <span id="avgHealth" style="color: #fff;">0</span></p>
+                <p>Avg Longevity: <span id="avgLifespan" style="color: #fff;">0</span></p>
+                <p>Tasks Completed: <span id="tasksCompleted" style="color: #fff;">0</span></p>
+            </div>
+        </details>
+
+        <details open>
+            <summary>ATMOSPHERICS & CODES</summary>
+            <div class="panel-content">
+                <p>Refresh Frame Rate: <span id="fps">0</span></p>
+                <p>Cycle Delay: <span id="stepTime">0</span> ms</p>
+                <p>Temporal Season: <span id="currentSeason" style="color: #fff;">Spring</span></p>
+                <p>Solar Clock: <span id="timeOfDayDisplay">0.0</span>h</p>
+                <p>Ambient Temp: <span id="temperatureDisplay">0</span> °C</p>
+                <p>Micro-Climate: <span id="weatherDisplay">Clear</span></p>
+                <p>Radius Boundary: <span id="mapRadiusDisplay">0</span>m</p>
+            </div>
+        </details>
+
+        <details open>
+            <summary>BIOMASS DISTRIBUTION</summary>
+            <div class="panel-content">
+                <div class="bar" id="agentHealthBar"></div>
+                <div class="bar" id="agentLifespanBar"></div>
+                <div class="bar" id="taskCompletionBar"></div>
+            </div>
+        </details>
+
+        <details>
+            <summary>ENVIRONMENT LOG</summary>
+            <div class="panel-content">
+                <ul id="eventList"></ul>
+            </div>
+        </details>
+
+        <details>
+            <summary>DIAGNOSTIC BLUEPRINT</summary>
+            <div class="panel-content" style="color: #8af; font-size: 10px;">
+                <p><strong>Kin Altruism:</strong> Well-fed agents transfer energy to starving clade members in physical proximity.</p>
+                <p><strong>Sub-soil Grid:</strong> Procedural vegetative structures map moisture patterns onto the background buffer when cell nutrition exceeds baseline limits.</p>
+                <p><strong>Collapse HUD:</strong> Use the floating button on the upper left to hide this control deck entirely.</p>
+            </div>
+        </details>
+    </div>
+
+    <div id="canvas-container">
+        <button id="toggle-hud">[-] Hide Panel</button>
+        <canvas id="canvas"></canvas>
+    </div>
+
+    <script>
+        'use strict';
+
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        const pixelWidth = 160;
+        const pixelHeight = 90;
+        const offscreenCanvas = document.createElement('canvas');
+        offscreenCanvas.width = pixelWidth;
+        offscreenCanvas.height = pixelHeight;
+        const offctx = offscreenCanvas.getContext('2d', { willReadFrequently: true });
+
+        const gridCols = 16;
+        const gridRows = 16;
+        let soilGrid = [];
+
+        const settings = {
+            agent: { count: 30, maxHealth: 150, maxCount: 90, baseSpeed: 3.5, mutationRate: 0.16 },
+            threat: { count: 6, speed: 2.3, aggressiveness: 3 },
+            food: { count: 32 },
+            task: { completionReward: 35 },
+            dayNightCycle: { enabled: true, timeIncrement: 0.05 },
+            circadian: { nightSpeedFactor: 0.72, daySpeedFactor: 1.0 },
+            seasonCycle: { enabled: true, length: 1600, seasons: ['Spring', 'Summer', 'Autumn', 'Winter'], currentIndex: 0 },
+            weatherCycle: { states: ['Sunny', 'Cloudy', 'Rain'], length: 500, currentIndex: 0 },
+            politicalCycleLength: 1800,
+            eventLog: { maxSize: 100 },
+            mapExpandRate: 0.18
+        };
+
+        let agents = [];
+        let threats = [];
+        let foods = [];
+        let tasks = [];
+        let particles = [];
+        let signals = [];
+        let tasksCompleted = 0;
+        let paused = false;
+        let simulationStep = 0;
+        let timeOfDay = 6.0;
+        let lastTimestamp = performance.now();
+        let fps = 0;
+        let stepTime = 0;
+        let globalSpeedFactor = 1.0;
+        let mapRadius = 150;
+
+        const dom = {
+            hud: document.getElementById('hud'),
+            toggleHud: document.getElementById('toggle-hud'),
+            speedSlider: document.getElementById('speedSlider'),
+            threatSlider: document.getElementById('threatSlider'),
+            resetBtn: document.getElementById('resetBtn'),
+            taskBtn: document.getElementById('taskBtn'),
+            pauseBtn: document.getElementById('pauseBtn'),
+            shannonIndex: document.getElementById('shannonIndex'),
+            dominantTrait: document.getElementById('dominantTrait'),
+            avgSpeedGene: document.getElementById('avgSpeedGene'),
+            avgSensorGene: document.getElementById('avgSensorGene'),
+            aliveAgents: document.getElementById('aliveAgents'),
+            avgHealth: document.getElementById('avgHealth'),
+            avgLifespan: document.getElementById('avgLifespan'),
+            tasksCompleted: document.getElementById('tasksCompleted'),
+            fps: document.getElementById('fps'),
+            stepTime: document.getElementById('stepTime'),
+            currentSeason: document.getElementById('currentSeason'),
+            timeOfDayDisplay: document.getElementById('timeOfDayDisplay'),
+            temperatureDisplay: document.getElementById('temperatureDisplay'),
+            weatherDisplay: document.getElementById('weatherDisplay'),
+            mapRadiusDisplay: document.getElementById('mapRadiusDisplay'),
+            agentHealthBar: document.getElementById('agentHealthBar'),
+            agentLifespanBar: document.getElementById('agentLifespanBar'),
+            taskCompletionBar: document.getElementById('taskCompletionBar'),
+            eventList: document.getElementById('eventList')
+        };
+
+        function resizeCanvas() {
+            const container = document.getElementById('canvas-container');
+            if (!container) return;
+            canvas.width = container.clientWidth;
+            canvas.height = container.clientHeight;
+        }
+
+        function simToCanvasX(x) {
+            return Math.floor(((x / mapRadius) + 1) * 0.5 * pixelWidth);
+        }
+
+        function simToCanvasY(y) {
+            return Math.floor(((y / mapRadius) + 1) * 0.5 * pixelHeight);
+        }
+
+        function logEvent(message) {
+            if (!dom.eventList) return;
+            const logItem = document.createElement('li');
+            logItem.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+            dom.eventList.appendChild(logItem);
+            while (dom.eventList.children.length > settings.eventLog.maxSize) {
+                dom.eventList.removeChild(dom.eventList.firstChild);
+            }
+            dom.eventList.scrollTop = dom.eventList.scrollHeight;
+        }
+
+        function getSeason() {
+            return settings.seasonCycle.seasons[settings.seasonCycle.currentIndex];
+        }
+
+        function getWeather() {
+            return settings.weatherCycle.states[settings.weatherCycle.currentIndex];
+        }
+
+        function getTemperature() {
+            const season = getSeason();
+            let baseTemp = 15;
+            if (season === 'Summer') baseTemp = 29;
+            if (season === 'Autumn') baseTemp = 11;
+            if (season === 'Winter') baseTemp = -3;
+            const angle = (timeOfDay / 24) * Math.PI * 2 - Math.PI / 2;
+            const dayOffset = Math.sin(angle) * 6;
+            return Math.round(baseTemp + dayOffset);
+        }
+
+        function getThermalSpeedFactor(temp) {
+            let factor = 1.0;
+            if (temp < 4) factor -= 0.18;
+            if (temp > 24) factor -= 0.12;
+            return factor;
+        }
+
+        function getFoodBenefitModifier() {
+            return getWeather() === 'Rain' ? 0.85 : 1.0;
+        }
+
+        function initSoilGrid() {
+            soilGrid = [];
+            for (let r = 0; r < gridRows; r++) {
+                const row = [];
+                for (let c = 0; c < gridCols; c++) {
+                    row.push({
+                        nutrients: 45 + Math.random() * 45,
+                        moisture: 30 + Math.random() * 40,
+                        agents: [],
+                        foods: [],
+                        threats: [],
+                        tasks: []
+                    });
+                }
+                soilGrid.push(row);
+            }
+        }
+
+        function clearGridBins() {
+            for (let r = 0; r < gridRows; r++) {
+                for (let c = 0; c < gridCols; c++) {
+                    const cell = soilGrid[r][c];
+                    cell.agents = [];
+                    cell.foods = [];
+                    cell.threats = [];
+                    cell.tasks = [];
+                }
+            }
+        }
+
+        function getGridCell(x, y) {
+            let col = Math.floor(((x / mapRadius) + 1) * 0.5 * gridCols);
+            let row = Math.floor(((y / mapRadius) + 1) * 0.5 * gridRows);
+            col = Math.max(0, Math.min(gridCols - 1, col));
+            row = Math.max(0, Math.min(gridRows - 1, row));
+            return soilGrid[row][col];
+        }
+
+        function binEntities() {
+            clearGridBins();
+
+            for (const a of agents) {
+                if (a.isAlive) getGridCell(a.x, a.y).agents.push(a);
+            }
+            for (const f of foods) getGridCell(f.x, f.y).foods.push(f);
+            for (const t of threats) getGridCell(t.x, t.y).threats.push(t);
+            for (const ta of tasks) getGridCell(ta.x, ta.y).tasks.push(ta);
+        }
+
+        function updateSoilGrid() {
+            const weather = getWeather();
+            for (let r = 0; r < gridRows; r++) {
+                for (let c = 0; c < gridCols; c++) {
+                    const cell = soilGrid[r][c];
+                    if (weather === 'Rain') {
+                        cell.moisture = Math.min(100, cell.moisture + 0.18 * globalSpeedFactor);
+                    } else if (weather === 'Sunny') {
+                        cell.moisture = Math.max(0, cell.moisture - 0.08 * globalSpeedFactor);
+                    } else {
+                        cell.moisture = Math.max(0, cell.moisture - 0.03 * globalSpeedFactor);
+                    }
+                    cell.nutrients = Math.min(100, cell.nutrients + 0.012 * globalSpeedFactor);
+                }
+            }
+        }
+
+        function sproutSoilFood() {
+            let maxCapacity = settings.food.count;
+            if (getWeather() === 'Rain') maxCapacity *= 1.35;
+            if (getSeason() === 'Winter') maxCapacity *= 0.3;
+
+            if (foods.length < maxCapacity && Math.random() < 0.28) {
+                const r = Math.floor(Math.random() * gridRows);
+                const c = Math.floor(Math.random() * gridCols);
+                const cell = soilGrid[r][c];
+
+                if (cell.nutrients > 15 && cell.moisture > 12) {
+                    cell.nutrients -= 8;
+                    cell.moisture -= 6;
+
+                    const lx = (((c + Math.random()) / gridCols) * 2 - 1) * mapRadius;
+                    const ly = (((r + Math.random()) / gridRows) * 2 - 1) * mapRadius;
+
+                    if (Math.hypot(lx, ly) < mapRadius - 12) {
+                        foods.push(new Food(lx, ly));
+                    }
+                }
+            }
+        }
+
+        class Entity {
+            constructor(x, y, size, color) {
+                this.x = x;
+                this.y = y;
+                this.size = size;
+                this.color = color;
+                this.isAlive = true;
+            }
+
+            draw(targetCtx) {
+                targetCtx.fillStyle = this.color;
+                targetCtx.beginPath();
+                const sx = simToCanvasX(this.x);
+                const sy = simToCanvasY(this.y);
+                const ssize = Math.max(1.5, Math.floor((this.size / mapRadius) * (pixelWidth / 2)));
+                targetCtx.arc(sx, sy, ssize, 0, Math.PI * 2);
+                targetCtx.fill();
+            }
+
+            keepWithinMap() {
+                const dist = Math.hypot(this.x, this.y);
+                const maxR = mapRadius - this.size;
+                if (dist > maxR) {
+                    const angle = Math.atan2(this.y, this.x);
+                    this.x = maxR * Math.cos(angle);
+                    this.y = maxR * Math.sin(angle);
+                    if (this.vx !== undefined && this.vy !== undefined) {
+                        this.vx *= -0.4;
+                        this.vy *= -0.4;
+                    }
+                }
+            }
+        }
+
+        class Threat extends Entity {
+            constructor(x, y) {
+                super(x, y, 7, '#f33');
+                this.baseSpeed = settings.threat.speed;
+                this.speed = this.baseSpeed * settings.threat.aggressiveness;
+                this.vx = (Math.random() - 0.5) * this.speed;
+                this.vy = (Math.random() - 0.5) * this.speed;
+                this.history = [];
+                this.maxHistory = 6;
+            }
+
+            move() {
+                let closestAgent = null;
+                let minDist = 180;
+
+                let cellR = Math.floor(((this.y / mapRadius) + 1) * 0.5 * gridRows);
+                let cellC = Math.floor(((this.x / mapRadius) + 1) * 0.5 * gridCols);
+                const checkRad = 2;
+
+                for (let r = Math.max(0, cellR - checkRad); r <= Math.min(gridRows - 1, cellR + checkRad); r++) {
+                    for (let c = Math.max(0, cellC - checkRad); c <= Math.min(gridCols - 1, cellC + checkRad); c++) {
+                        const cell = soilGrid[r][c];
+                        for (const a of cell.agents) {
+                            const d = Math.hypot(this.x - a.x, this.y - a.y);
+                            if (d < minDist) {
+                                minDist = d;
+                                closestAgent = a;
+                            }
+                        }
+                    }
+                }
+
+                let targetVx = (Math.random() - 0.5) * this.speed;
+                let targetVy = (Math.random() - 0.5) * this.speed;
+
+                if (closestAgent) {
+                    const dx = closestAgent.x - this.x;
+                    const dy = closestAgent.y - this.y;
+                    const dist = Math.hypot(dx, dy);
+                    if (dist > 0) {
+                        targetVx = (dx / dist) * this.speed;
+                        targetVy = (dy / dist) * this.speed;
+                    }
+                }
+
+                this.vx += (targetVx - this.vx) * 0.1;
+                this.vy += (targetVy - this.vy) * 0.1;
+                this.x += this.vx * globalSpeedFactor;
+                this.y += this.vy * globalSpeedFactor;
+                this.keepWithinMap();
+
+                this.history.push({ x: this.x, y: this.y });
+                if (this.history.length > this.maxHistory) this.history.shift();
+            }
+
+            draw(targetCtx) {
+                targetCtx.save();
+                targetCtx.strokeStyle = 'rgba(255, 50, 50, 0.22)';
+                targetCtx.lineWidth = 1;
+                targetCtx.beginPath();
+                for (let i = 0; i < this.history.length; i++) {
+                    const sx = simToCanvasX(this.history[i].x);
+                    const sy = simToCanvasY(this.history[i].y);
+                    if (i === 0) targetCtx.moveTo(sx, sy);
+                    else targetCtx.lineTo(sx, sy);
+                }
+                targetCtx.stroke();
+                targetCtx.restore();
+                super.draw(targetCtx);
+            }
+        }
+
+        class Food extends Entity {
+            constructor(x, y) { super(x, y, 4.2, '#2e8'); }
+        }
+
+        class Task extends Entity {
+            constructor(x, y) { super(x, y, 5, '#fc3'); }
+        }
+
+        class Signal {
+            constructor(x, y, type) {
+                this.x = x;
+                this.y = y;
+                this.type = type;
+                this.life = 140;
+            }
+
+            update() {
+                this.life -= globalSpeedFactor;
+            }
+
+            draw(targetCtx) {
+                const sx = simToCanvasX(this.x);
+                const sy = simToCanvasY(this.y);
+                const ssize = Math.max(1.5, Math.floor(((this.life / 140) * 10 / mapRadius) * (pixelWidth / 2)));
+                targetCtx.save();
+                targetCtx.strokeStyle = this.type === 'alarm' ? 'rgba(255, 60, 60, 0.22)' : 'rgba(40, 230, 120, 0.22)';
+                targetCtx.lineWidth = 1;
+                targetCtx.beginPath();
+                targetCtx.arc(sx, sy, ssize, 0, Math.PI * 2);
+                targetCtx.stroke();
+                targetCtx.restore();
+            }
+        }
+
+        class Agent extends Entity {
+            constructor(x, y, genes = null) {
+                super(x, y, 4, '#3bf');
+                this.energy = 100;
+                this.age = 0;
+                this.vx = (Math.random() - 0.5) * 2;
+                this.vy = (Math.random() - 0.5) * 2;
+                this.wanderAngle = Math.random() * Math.PI * 2;
+                this.history = [];
+                this.maxHistory = 4;
+
+                if (genes) {
+                    this.genes = { ...genes };
+                } else {
+                    this.genes = {
+                        speed: Math.random() * 3.4 + 1.6,
+                        sensoryRadius: Math.random() * 80 + 40,
+                        foodAttraction: Math.random() * 1.5 + 0.5,
+                        threatRepulsion: Math.random() * 2.0 + 1.0,
+                        wanderWeight: Math.random() * 0.4 + 0.1,
+                        size: Math.random() * 3 + 3.5
+                    };
+                }
+
+                this.size = this.genes.size;
+                this.clade = this.classifyClade();
+                this.color = this.assignCladeColor();
+            }
+
+            classifyClade() {
+                const normSpeed = this.genes.speed;
+                const normSensory = this.genes.sensoryRadius / 25;
+                const normFood = this.genes.foodAttraction * 2.2;
+                const normThreat = this.genes.threatRepulsion * 1.5;
+
+                const highest = Math.max(normSpeed, normSensory, normFood, normThreat);
+                if (highest === normSpeed) return 'Velocis';
+                if (highest === normSensory) return 'Sentis';
+                if (highest === normFood) return 'Vorax';
+                return 'Fugax';
+            }
+
+            assignCladeColor() {
+                if (this.clade === 'Velocis') return '#3bf';
+                if (this.clade === 'Sentis') return '#0ff';
+                if (this.clade === 'Vorax') return '#2e8';
+                return '#f83';
+            }
+
+            move(temp) {
+                this.age++;
+
+                const speedCost = 0.015 * Math.pow(this.genes.speed, 1.4);
+                const sensorCost = 0.003 * this.genes.sensoryRadius;
+                const sizeCost = 0.008 * this.genes.size;
+                const temperatureMultiplier = temp < 4 ? 1.4 : 1.0;
+                this.energy -= (speedCost + sensorCost + sizeCost) * temperatureMultiplier;
+
+                if (this.energy <= 0) {
+                    this.isAlive = false;
+                    decomposeAgent(this.x, this.y);
+                    return;
+                }
+
+                let cellR = Math.floor(((this.y / mapRadius) + 1) * 0.5 * gridRows);
+                let cellC = Math.floor(((this.x / mapRadius) + 1) * 0.5 * gridCols);
+                cellR = Math.max(0, Math.min(gridRows - 1, cellR));
+                cellC = Math.max(0, Math.min(gridCols - 1, cellC));
+
+                const checkWidth = 2 * mapRadius / gridCols;
+                let scanRadius = (checkWidth > 0) ? Math.ceil(this.genes.sensoryRadius / checkWidth) : 1;
+                if (!Number.isFinite(scanRadius) || scanRadius < 1) scanRadius = 1;
+
+                let closestFood = null;
+                let minFoodDist = this.genes.sensoryRadius;
+                let closestThreat = null;
+                let minThreatDist = this.genes.sensoryRadius * 1.25;
+
+                for (let r = Math.max(0, cellR - scanRadius); r <= Math.min(gridRows - 1, cellR + scanRadius); r++) {
+                    for (let c = Math.max(0, cellC - scanRadius); c <= Math.min(gridCols - 1, cellC + scanRadius); c++) {
+                        const cell = soilGrid[r][c];
+                        for (const f of cell.foods) {
+                            const d = Math.hypot(this.x - f.x, this.y - f.y);
+                            if (d < minFoodDist) {
+                                minFoodDist = d;
+                                closestFood = f;
+                            }
+                        }
+                        for (const t of cell.threats) {
+                            const d = Math.hypot(this.x - t.x, this.y - t.y);
+                            if (d < minThreatDist) {
+                                minThreatDist = d;
+                                closestThreat = t;
+                            }
+                        }
+                    }
+                }
+
+                let closestSignal = null;
+                let minSignalDist = this.genes.sensoryRadius;
+                for (const s of signals) {
+                    const d = Math.hypot(this.x - s.x, this.y - s.y);
+                    if (d < minSignalDist) {
+                        minSignalDist = d;
+                        closestSignal = s;
+                    }
+                }
+
+                let steerX = 0;
+                let steerY = 0;
+
+                this.wanderAngle += (Math.random() - 0.5) * 0.45;
+                const wx = Math.cos(this.wanderAngle) * this.genes.speed;
+                const wy = Math.sin(this.wanderAngle) * this.genes.speed;
+                steerX += (wx - this.vx) * this.genes.wanderWeight;
+                steerY += (wy - this.vy) * this.genes.wanderWeight;
+
+                if (closestFood) {
+                    const dx = closestFood.x - this.x;
+                    const dy = closestFood.y - this.y;
+                    const dist = Math.hypot(dx, dy);
+                    if (dist > 0) {
+                        const desiredX = (dx / dist) * this.genes.speed;
+                        const desiredY = (dy / dist) * this.genes.speed;
+                        steerX += (desiredX - this.vx) * this.genes.foodAttraction;
+                        steerY += (desiredY - this.vy) * this.genes.foodAttraction;
+                    }
+                }
+
+                if (closestThreat) {
+                    const dx = this.x - closestThreat.x;
+                    const dy = this.y - closestThreat.y;
+                    const dist = Math.hypot(dx, dy);
+                    if (dist > 0) {
+                        const desiredX = (dx / dist) * this.genes.speed * 1.35;
+                        const desiredY = (dy / dist) * this.genes.speed * 1.35;
+                        steerX += (desiredX - this.vx) * this.genes.threatRepulsion;
+                        steerY += (desiredY - this.vy) * this.genes.threatRepulsion;
+                    }
+                }
+
+                if (closestSignal) {
+                    const dx = closestSignal.x - this.x;
+                    const dy = closestSignal.y - this.y;
+                    const dist = Math.hypot(dx, dy);
+                    if (dist > 0) {
+                        if (closestSignal.type === 'alarm') {
+                            const desiredX = -(dx / dist) * this.genes.speed * 1.2;
+                            const desiredY = -(dy / dist) * this.genes.speed * 1.2;
+                            steerX += (desiredX - this.vx) * (this.genes.threatRepulsion * 0.5);
+                            steerY += (desiredY - this.vy) * (this.genes.threatRepulsion * 0.5);
+                        } else if (closestSignal.type === 'harvest') {
+                            const desiredX = (dx / dist) * this.genes.speed;
+                            const desiredY = (dy / dist) * this.genes.speed;
+                            steerX += (desiredX - this.vx) * (this.genes.foodAttraction * 0.4);
+                            steerY += (desiredY - this.vy) * (this.genes.foodAttraction * 0.4);
+                        }
+                    }
+                }
+
+                this.vx += steerX * 0.12;
+                this.vy += steerY * 0.12;
+
+                const circadianModifier = (timeOfDay > 19.5 || timeOfDay < 4.5) ? settings.circadian.nightSpeedFactor : settings.circadian.daySpeedFactor;
+                const thermalModifier = getThermalSpeedFactor(temp);
+                const maxSpeed = this.genes.speed * circadianModifier * thermalModifier;
+
+                const curSpeed = Math.hypot(this.vx, this.vy);
+                if (curSpeed > maxSpeed && curSpeed > 0) {
+                    this.vx = (this.vx / curSpeed) * maxSpeed;
+                    this.vy = (this.vy / curSpeed) * maxSpeed;
+                }
+
+                this.x += this.vx * globalSpeedFactor;
+                this.y += this.vy * globalSpeedFactor;
+                this.keepWithinMap();
+
+                this.history.push({ x: this.x, y: this.y });
+                if (this.history.length > this.maxHistory) this.history.shift();
+
+                this.interact();
+                this.checkReproduction();
+            }
+
+            interact() {
+                const cell = getGridCell(this.x, this.y);
+                if (!cell) return;
+
+                for (const t of cell.threats) {
+                    const dist = Math.hypot(this.x - t.x, this.y - t.y);
+                    if (dist < this.size + t.size) {
+                        this.energy -= 1.8;
+                        if (Math.random() < 0.08) {
+                            signals.push(new Signal(this.x, this.y, 'alarm'));
+                            spawnParticles(this.x, this.y, 2, '#f44');
+                        }
+                        if (this.energy <= 0) {
+                            this.isAlive = false;
+                            logEvent(`[${this.clade}] fell to predator.`);
+                            decomposeAgent(this.x, this.y);
+                            return;
+                        }
+                    }
+                }
+
+                const foodModifier = getFoodBenefitModifier();
+                for (let i = cell.foods.length - 1; i >= 0; i--) {
+                    const f = cell.foods[i];
+                    const dist = Math.hypot(this.x - f.x, this.y - f.y);
+                    if (dist < this.size + f.size) {
+                        const payload = 32 * foodModifier;
+                        this.energy = Math.min(this.energy + payload, settings.agent.maxHealth);
+                        const idx = foods.indexOf(f);
+                        if (idx > -1) foods.splice(idx, 1);
+                        signals.push(new Signal(this.x, this.y, 'harvest'));
+                        spawnParticles(this.x, this.y, 4, '#2e8');
+                    }
+                }
+
+                for (let i = tasks.length - 1; i >= 0; i--) {
+                    const ta = tasks[i];
+                    const dist = Math.hypot(this.x - ta.x, this.y - ta.y);
+                    if (dist < this.size + ta.size) {
+                        this.energy = Math.min(this.energy + settings.task.completionReward, settings.agent.maxHealth);
+                        tasksCompleted++;
+                        tasks.splice(i, 1);
+                        spawnParticles(this.x, this.y, 10, '#fc3');
+                        logEvent(`Structural task resolved. Complete: ${tasksCompleted}`);
+                    }
+                }
+
+                if (this.energy > 110) {
+                    for (const sibling of cell.agents) {
+                        if (sibling !== this && sibling.clade === this.clade && sibling.energy < 40) {
+                            const dist = Math.hypot(this.x - sibling.x, this.y - sibling.y);
+                            if (dist < (this.size + sibling.size) * 2.5) {
+                                this.energy -= 8;
+                                sibling.energy = Math.min(sibling.energy + 8, settings.agent.maxHealth);
+                                spawnAltruismParticles(this.x, this.y, sibling.x, sibling.y);
+                                if (Math.random() < 0.05) {
+                                    logEvent(`Kin Altruism: [${this.clade}] shared energy with clade sibling.`);
+                                }
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+
+            checkReproduction() {
+                if (this.energy > 125 && this.age > 120 && agents.length < settings.agent.maxCount) {
+                    this.energy -= 62;
+
+                    const childGenes = {};
+                    for (const key in this.genes) {
+                        const deviation = (Math.random() - 0.5) * settings.agent.mutationRate * this.genes[key];
+                        childGenes[key] = Math.max(0.1, this.genes[key] + deviation);
+                    }
+
+                    childGenes.speed = Math.max(1.0, Math.min(7.0, childGenes.speed));
+                    childGenes.sensoryRadius = Math.max(25, Math.min(220, childGenes.sensoryRadius));
+                    childGenes.size = Math.max(2.5, Math.min(9.5, childGenes.size));
+
+                    const offspring = new Agent(
+                        this.x + (Math.random() - 0.5) * 8,
+                        this.y + (Math.random() - 0.5) * 8,
+                        childGenes
+                    );
+                    offspring.energy = 60;
+                    agents.push(offspring);
+                    spawnParticles(this.x, this.y, 6, '#3bf');
+                }
+            }
+        }
+
+        function spawnAltruismParticles(x1, y1, x2, y2) {
+            const steps = 4;
+            for (let i = 0; i <= steps; i++) {
+                const t = i / steps;
+                particles.push({
+                    x: x1 + (x2 - x1) * t,
+                    y: y1 + (y2 - y1) * t,
+                    vx: (Math.random() - 0.5) * 0.2,
+                    vy: (Math.random() - 0.5) * 0.2,
+                    life: 12,
+                    color: '#fc3'
+                });
+            }
+        }
+
+        function spawnParticles(x, y, count, color) {
+            for (let i = 0; i < count; i++) {
+                particles.push({
+                    x: x + (Math.random() - 0.5) * 5,
+                    y: y + (Math.random() - 0.5) * 5,
+                    vx: (Math.random() - 0.5) * 1.3,
+                    vy: (Math.random() - 0.5) * 1.3,
+                    life: 15 + Math.random() * 10,
+                    color
+                });
+            }
+        }
+
+        function decomposeAgent(x, y) {
+            const cell = getGridCell(x, y);
+            if (cell) cell.nutrients = Math.min(100, cell.nutrients + 25);
+            spawnParticles(x, y, 7, '#5c3c24');
+        }
+
+        function checkImmigrationCohort() {
+            const alive = agents.filter(a => a.isAlive);
+            if (alive.length === 0 && simulationStep > 100) {
+                logEvent('Ecological Extinction occurred. Pioneering synthetics dispatched.');
+                for (let i = 0; i < 12; i++) {
+                    const angle = Math.random() * Math.PI * 2;
+                    const r = Math.random() * mapRadius * 0.45;
+                    agents.push(new Agent(r * Math.cos(angle), r * Math.sin(angle)));
+                }
+            }
+        }
+
+        const politicalEvents = [
+            {
+                msg: 'Radiation Storm: Mutation rate coefficient elevated.',
+                action: () => {
+                    settings.agent.mutationRate = 0.4;
+                    setTimeout(() => { settings.agent.mutationRate = 0.16; }, 10000);
+                }
+            },
+            {
+                msg: 'Predator Optimization: Predator tracking speed boosted.',
+                action: () => {
+                    settings.threat.speed *= 1.35;
+                    threats.forEach(t => t.speed = t.baseSpeed * settings.threat.aggressiveness * 1.35);
+                    setTimeout(() => {
+                        settings.threat.speed = 2.3;
+                        threats.forEach(t => t.speed = t.baseSpeed * settings.threat.aggressiveness);
+                    }, 8000);
+                }
+            },
+            {
+                msg: 'Global Rain: Resource hydration levels adjusted.',
+                action: () => {
+                    for (let r = 0; r < gridRows; r++) {
+                        for (let c = 0; c < gridCols; c++) {
+                            soilGrid[r][c].moisture = 100;
+                        }
+                    }
+                }
+            }
+        ];
+
+        function triggerPoliticalEvent() {
+            const event = politicalEvents[Math.floor(Math.random() * politicalEvents.length)];
+            logEvent(event.msg);
+            event.action();
+        }
+
+        function createEnvironmentalTask() {
+            const angle = Math.random() * Math.PI * 2;
+            const r = Math.random() * mapRadius * 0.85;
+            tasks.push(new Task(r * Math.cos(angle), r * Math.sin(angle)));
+            logEvent('Task anomaly detected in containment field.');
+        }
+
+        function initializeSimulation() {
+            mapRadius = 150;
+            initSoilGrid();
+
+            agents = Array.from({ length: settings.agent.count }, () => {
+                const angle = Math.random() * Math.PI * 2;
+                const r = Math.random() * mapRadius * 0.7;
+                return new Agent(r * Math.cos(angle), r * Math.sin(angle));
+            });
+
+            threats = Array.from({ length: settings.threat.count }, () => {
+                const angle = Math.random() * Math.PI * 2;
+                const r = Math.random() * mapRadius * 0.8;
+                return new Threat(r * Math.cos(angle), r * Math.sin(angle));
+            });
+
+            foods = [];
+            for (let i = 0; i < settings.food.count; i++) {
+                const angle = Math.random() * Math.PI * 2;
+                const r = Math.random() * mapRadius * 0.65;
+                foods.push(new Food(r * Math.cos(angle), r * Math.sin(angle)));
+            }
+
+            tasks = [];
+            signals = [];
+            tasksCompleted = 0;
+            particles = [];
+            simulationStep = 0;
+            timeOfDay = 6.0;
+            settings.seasonCycle.currentIndex = 0;
+            settings.weatherCycle.currentIndex = 0;
+
+            logEvent('Integrated ecological sandbox initialized.');
+            updateScoreboard();
+            updateCharts();
+        }
+
+        function resetSimulation() {
+            initializeSimulation();
+            logEvent('Simulative state registers restored.');
+        }
+
+        function togglePause() {
+            paused = !paused;
+            dom.pauseBtn.textContent = paused ? 'Resume Simulation' : 'Halt Simulation';
+        }
+
+        function toggleHUD() {
+            dom.hud.classList.toggle('collapsed');
+            dom.toggleHud.textContent = dom.hud.classList.contains('collapsed') ? '[+] Show Panel' : '[-] Hide Panel';
+            resizeCanvas();
+        }
+
+        function quantize9bit(imgData) {
+            const d = imgData.data;
+            for (let i = 0; i < d.length; i += 4) {
+                d[i] = Math.floor(d[i] / 32) * 32;
+                d[i + 1] = Math.floor(d[i + 1] / 32) * 32;
+                d[i + 2] = Math.floor(d[i + 2] / 32) * 32;
+            }
+        }
+
+        function applyDistortion(imgData) {
+            const d = imgData.data;
+            const newData = new Uint8ClampedArray(d.length);
+            const timePhase = simulationStep * 0.07;
+
+            for (let y = 0; y < pixelHeight; y++) {
+                const offset = Math.floor(Math.sin(y / 4 + timePhase) * 1.2);
+                for (let x = 0; x < pixelWidth; x++) {
+                    let srcX = x + offset;
+                    if (srcX < 0) srcX = 0;
+                    if (srcX >= pixelWidth) srcX = pixelWidth - 1;
+
+                    const srcIndex = (y * pixelWidth + srcX) * 4;
+                    const dstIndex = (y * pixelWidth + x) * 4;
+                    newData[dstIndex] = d[srcIndex];
+                    newData[dstIndex + 1] = d[srcIndex + 1];
+                    newData[dstIndex + 2] = d[srcIndex + 2];
+                    newData[dstIndex + 3] = d[srcIndex + 3];
+                }
+            }
+            imgData.data.set(newData);
+        }
+
+        function updateParticlesAndAtmospherics() {
+            for (let i = particles.length - 1; i >= 0; i--) {
+                const p = particles[i];
+                p.x += p.vx * globalSpeedFactor;
+                p.y += p.vy * globalSpeedFactor;
+                p.life -= globalSpeedFactor;
+                if (p.life <= 0) particles.splice(i, 1);
+            }
+
+            if (getWeather() === 'Rain' && Math.random() < 0.3) {
+                particles.push({
+                    x: (Math.random() - 0.5) * mapRadius * 2,
+                    y: -mapRadius,
+                    vx: -0.3,
+                    vy: 3.5 + Math.random() * 1.5,
+                    life: 30,
+                    color: 'rgba(51, 187, 255, 0.4)'
+                });
+            }
+        }
+
+        function updateSignals() {
+            for (let i = signals.length - 1; i >= 0; i--) {
+                signals[i].update();
+                if (signals[i].life <= 0) signals.splice(i, 1);
+            }
+        }
+
+        function drawSoilGridOverlay(targetCtx) {
+            targetCtx.save();
+            const cellW = pixelWidth / gridCols;
+            const cellH = pixelHeight / gridRows;
+
+            for (let r = 0; r < gridRows; r++) {
+                for (let c = 0; c < gridCols; c++) {
+                    const cell = soilGrid[r][c];
+                    const nitro = Math.floor((cell.nutrients / 100) * 8);
+                    const water = Math.floor((cell.moisture / 100) * 12);
+
+                    if (nitro > 0 || water > 0) {
+                        targetCtx.fillStyle = `rgba(0, ${nitro * 4}, ${water * 4}, 0.08)`;
+                        targetCtx.fillRect(c * cellW, r * cellH, cellW, cellH);
+                    }
+
+                    if (cell.nutrients > 65) {
+                        targetCtx.strokeStyle = 'rgba(251, 187, 255, 0.07)';
+                        targetCtx.lineWidth = 0.5;
+                        targetCtx.beginPath();
+                        const cx = (c + 0.5) * cellW;
+                        const cy = (r + 0.5) * cellH;
+                        targetCtx.moveTo(cx - 1, cy - 1);
+                        targetCtx.lineTo(cx + 1, cy + 1);
+                        targetCtx.moveTo(cx + 1, cy - 1);
+                        targetCtx.lineTo(cx - 1, cy + 1);
+                        targetCtx.stroke();
+                    }
+                }
+            }
+            targetCtx.restore();
+        }
+
+        function drawSpiral(targetCtx) {
+            targetCtx.save();
+            targetCtx.strokeStyle = 'rgba(51, 187, 255, 0.04)';
+            targetCtx.lineWidth = 1;
+            targetCtx.beginPath();
+            let started = false;
+            for (let t = 0; t < 12 * Math.PI; t += 0.1) {
+                const r = 12 * t;
+                const lx = r * Math.cos(t);
+                const ly = r * Math.sin(t);
+                const sx = simToCanvasX(lx);
+                const sy = simToCanvasY(ly);
+                if (sx < 0 || sx > pixelWidth || sy < 0 || sy > pixelHeight) break;
+                if (!started) {
+                    targetCtx.moveTo(sx, sy);
+                    started = true;
+                } else {
+                    targetCtx.lineTo(sx, sy);
+                }
+            }
+            targetCtx.stroke();
+            targetCtx.restore();
+        }
+
+        function drawLocalGrid(targetCtx) {
+            targetCtx.save();
+            targetCtx.strokeStyle = 'rgba(51, 187, 255, 0.03)';
+            targetCtx.setLineDash([1, 4]);
+            targetCtx.lineWidth = 1;
+            const sx0 = simToCanvasX(0);
+            const sy0 = simToCanvasY(0);
+            for (let r = 50; r < mapRadius; r += 50) {
+                targetCtx.beginPath();
+                const pixels = Math.floor((r / mapRadius) * (pixelWidth / 2));
+                targetCtx.arc(sx0, sy0, pixels, 0, Math.PI * 2);
+                targetCtx.stroke();
+            }
+            targetCtx.restore();
+        }
+
+        function drawMapBoundary(targetCtx) {
+            targetCtx.save();
+            targetCtx.strokeStyle = 'rgba(51, 187, 255, 0.18)';
+            targetCtx.lineWidth = 1;
+            targetCtx.beginPath();
+            const sx = simToCanvasX(0);
+            const sy = simToCanvasY(0);
+            const radiusInPixels = Math.floor(pixelWidth / 2) - 2;
+            targetCtx.arc(sx, sy, radiusInPixels, 0, Math.PI * 2);
+            targetCtx.stroke();
+            targetCtx.restore();
+        }
+
+        function drawAxesAndScale(targetCtx) {
+            targetCtx.save();
+            targetCtx.strokeStyle = 'rgba(51, 187, 255, 0.07)';
+            targetCtx.lineWidth = 1;
+
+            const cx = pixelWidth / 2;
+            const cy = pixelHeight / 2;
+
+            targetCtx.beginPath();
+            targetCtx.moveTo(0, cy);
+            targetCtx.lineTo(pixelWidth, cy);
+            targetCtx.stroke();
+
+            targetCtx.beginPath();
+            targetCtx.moveTo(cx, 0);
+            targetCtx.lineTo(cx, pixelHeight);
+            targetCtx.stroke();
+
+            targetCtx.fillStyle = 'rgba(51, 187, 255, 0.35)';
+            targetCtx.font = '5px monospace';
+            targetCtx.fillText('N', cx - 2, 7);
+            targetCtx.fillText('S', cx - 2, pixelHeight - 3);
+            targetCtx.fillText('W', 3, cy + 2);
+            targetCtx.fillText('E', pixelWidth - 8, cy + 2);
+
+            const margin = 4;
+            targetCtx.strokeStyle = 'rgba(51, 187, 255, 0.45)';
+            targetCtx.lineWidth = 1;
+            targetCtx.beginPath();
+            targetCtx.moveTo(margin, pixelHeight - margin);
+            targetCtx.lineTo(margin + 12, pixelHeight - margin);
+            targetCtx.moveTo(margin, pixelHeight - margin - 2);
+            targetCtx.lineTo(margin, pixelHeight - margin);
+            targetCtx.moveTo(margin + 12, pixelHeight - margin - 2);
+            targetCtx.lineTo(margin + 12, pixelHeight - margin);
+            targetCtx.stroke();
+
+            targetCtx.fillStyle = 'rgba(51, 187, 255, 0.5)';
+            targetCtx.fillText(`${(mapRadius * 0.15).toFixed(0)}m`, margin, pixelHeight - margin - 4);
+            targetCtx.restore();
+        }
+
+        function drawIllusions(targetCtx) {
+            targetCtx.save();
+            targetCtx.strokeStyle = 'rgba(51, 187, 255, 0.05)';
+            targetCtx.lineWidth = 1;
+            const vpX = pixelWidth / 2;
+            const vpY = pixelHeight / 2;
+            const sweepAngle = simulationStep * 0.002;
+
+            for (let i = 0; i < 8; i++) {
+                targetCtx.beginPath();
+                targetCtx.moveTo(vpX, vpY);
+                const angle = (i / 8) * Math.PI * 2 + sweepAngle;
+                const endX = vpX + Math.cos(angle) * pixelWidth;
+                const endY = vpY + Math.sin(angle) * pixelHeight;
+                targetCtx.lineTo(endX, endY);
+                targetCtx.stroke();
+            }
+
+            targetCtx.strokeStyle = 'rgba(51, 187, 255, 0.1)';
+            targetCtx.beginPath();
+            const size = 9;
+            const rot = -simulationStep * 0.01;
+            targetCtx.translate(vpX, vpY);
+            targetCtx.rotate(rot);
+            targetCtx.rect(-size, -size, size * 2, size * 2);
+            targetCtx.stroke();
+            targetCtx.restore();
+        }
+
+        function drawParticles(targetCtx) {
+            for (const p of particles) {
+                const sx = simToCanvasX(p.x);
+                const sy = simToCanvasY(p.y);
+                if (sx >= 0 && sx < pixelWidth && sy >= 0 && sy < pixelHeight) {
+                    targetCtx.fillStyle = p.color;
+                    targetCtx.fillRect(sx, sy, 1, 1);
+                }
+            }
+        }
+
+        function drawSignals(targetCtx) {
+            for (const s of signals) s.draw(targetCtx);
+        }
+
+        function updateCharts() {
+            const alive = agents.filter(a => a.isAlive);
+            if (!alive.length) {
+                if (dom.agentHealthBar) {
+                    dom.agentHealthBar.style.width = '0%';
+                    dom.agentHealthBar.innerText = 'Energy: 0';
+                }
+                if (dom.agentLifespanBar) {
+                    dom.agentLifespanBar.style.width = '0%';
+                    dom.agentLifespanBar.innerText = 'Age: 0';
+                }
+                if (dom.taskCompletionBar) {
+                    dom.taskCompletionBar.style.width = '0%';
+                    dom.taskCompletionBar.innerText = 'System Chk: 0/100';
+                }
+                return;
+            }
+
+            const avgEnergy = alive.reduce((sum, a) => sum + a.energy, 0) / alive.length;
+            const energyPct = Math.min(100, (avgEnergy / 150) * 100);
+            dom.agentHealthBar.style.width = energyPct + '%';
+            dom.agentHealthBar.style.background = `hsl(${energyPct * 1.25}, 80%, 45%)`;
+            dom.agentHealthBar.innerText = `Energy: ${avgEnergy.toFixed(0)} `;
+
+            const avgAge = alive.reduce((sum, a) => sum + a.age, 0) / alive.length;
+            const agePct = Math.min(100, (avgAge / 1200) * 100);
+            dom.agentLifespanBar.style.width = agePct + '%';
+            dom.agentLifespanBar.style.background = '#3bf';
+            dom.agentLifespanBar.innerText = `Age: ${avgAge.toFixed(0)} `;
+
+            const completionPct = Math.min(100, (tasksCompleted % 100));
+            dom.taskCompletionBar.style.width = completionPct + '%';
+            dom.taskCompletionBar.style.background = '#fc3';
+            dom.taskCompletionBar.innerText = `System Chk: ${tasksCompleted}/100 `;
+        }
+
+        function updateScoreboard() {
+            const alive = agents.filter(a => a.isAlive);
+            if (dom.tasksCompleted) dom.tasksCompleted.innerText = String(tasksCompleted);
+            if (dom.aliveAgents) dom.aliveAgents.innerText = String(alive.length);
+
+            const avgEnergy = alive.length ? (alive.reduce((sum, a) => sum + a.energy, 0) / alive.length).toFixed(1) : '0';
+            const avgLifespan = alive.length ? (alive.reduce((sum, a) => sum + a.age, 0) / alive.length).toFixed(1) : '0';
+            if (dom.avgHealth) dom.avgHealth.innerText = avgEnergy;
+            if (dom.avgLifespan) dom.avgLifespan.innerText = avgLifespan;
+
+            if (alive.length > 0) {
+                let sumSpeed = 0;
+                let sumSensor = 0;
+                const cladeCounts = { Velocis: 0, Sentis: 0, Vorax: 0, Fugax: 0 };
+
+                for (const a of alive) {
+                    sumSpeed += a.genes.speed;
+                    sumSensor += a.genes.sensoryRadius;
+                    cladeCounts[a.clade]++;
+                }
+
+                const avgSpeed = sumSpeed / alive.length;
+                const avgSensor = sumSensor / alive.length;
+                dom.avgSpeedGene.innerText = avgSpeed.toFixed(2);
+                dom.avgSensorGene.innerText = avgSensor.toFixed(1);
+
+                const sortedClades = Object.keys(cladeCounts).map(name => ({ name, count: cladeCounts[name] }));
+                sortedClades.sort((a, b) => b.count - a.count);
+                dom.dominantTrait.innerText = sortedClades[0].count > 0 ? `${sortedClades[0].name} (${sortedClades[0].count})` : '-';
+
+                let shannon = 0;
+                for (const k in cladeCounts) {
+                    const p = cladeCounts[k] / alive.length;
+                    if (p > 0) shannon -= p * Math.log(p);
+                }
+                dom.shannonIndex.innerText = shannon.toFixed(3);
+            } else {
+                dom.avgSpeedGene.innerText = '0';
+                dom.avgSensorGene.innerText = '0';
+                dom.dominantTrait.innerText = 'Extinct';
+                dom.shannonIndex.innerText = '0.000';
+            }
+        }
+
+        const echoChance = 0.0015;
+        const echoMessages = [
+            'Ambient nitrogen cycle stabilizing.',
+            'Sub-surface chemical matrix balanced.',
+            'Visual buffer sync coordinates aligned.'
+        ];
+
+        function updateSimulation(timestamp) {
+            if (paused) {
+                requestAnimationFrame(updateSimulation);
+                return;
+            }
+
+            const delta = timestamp - lastTimestamp;
+            lastTimestamp = timestamp;
+            fps = delta > 0 ? (1000 / delta).toFixed(1) : '0.0';
+            stepTime = delta.toFixed(1);
+
+            const container = document.getElementById('canvas-container');
+            if (container && (canvas.width !== container.clientWidth || canvas.height !== container.clientHeight)) {
+                canvas.width = container.clientWidth;
+                canvas.height = container.clientHeight;
+            }
+
+            if (settings.dayNightCycle.enabled) {
+                timeOfDay = (timeOfDay + settings.dayNightCycle.timeIncrement * globalSpeedFactor) % 24;
+            }
+
+            simulationStep++;
+
+            if (settings.seasonCycle.enabled && simulationStep % settings.seasonCycle.length === 0) {
+                settings.seasonCycle.currentIndex = (settings.seasonCycle.currentIndex + 1) % settings.seasonCycle.seasons.length;
+                logEvent('Seasonal cycle advanced: ' + getSeason());
+            }
+
+            if (simulationStep % settings.weatherCycle.length === 0) {
+                settings.weatherCycle.currentIndex = (settings.weatherCycle.currentIndex + 1) % settings.weatherCycle.states.length;
+                logEvent('Dynamic climate shifted: ' + getWeather());
+            }
+
+            if (Math.random() < echoChance) {
+                const emsg = echoMessages[Math.floor(Math.random() * echoMessages.length)];
+                logEvent(emsg);
+            }
+
+            if (simulationStep % settings.politicalCycleLength === 0) {
+                triggerPoliticalEvent();
+            }
+
+            if (simulationStep % 350 === 0 && tasks.length < 4) {
+                createEnvironmentalTask();
+            }
+
+            const temp = getTemperature();
+            const weather = getWeather();
+
+            const maxBoundary = Math.max(120, Math.min(canvas.width, canvas.height) * 0.44);
+            if (mapRadius < maxBoundary) {
+                mapRadius += settings.mapExpandRate;
+                if (mapRadius > maxBoundary) mapRadius = maxBoundary;
+            }
+            if (mapRadius > maxBoundary) mapRadius = maxBoundary;
+
+            binEntities();
+
+            offctx.fillStyle = '#0c0f12';
+            offctx.fillRect(0, 0, pixelWidth, pixelHeight);
+
+            drawSoilGridOverlay(offctx);
+            drawSpiral(offctx);
+            drawLocalGrid(offctx);
+            drawAxesAndScale(offctx);
+            drawMapBoundary(offctx);
+
+            updateSoilGrid();
+            sproutSoilFood();
+
+            for (let i = agents.length - 1; i >= 0; i--) {
+                const a = agents[i];
+                if (a.isAlive) {
+                    a.move(temp);
+                    a.draw(offctx);
+                } else {
+                    agents.splice(i, 1);
+                }
+            }
+
+            for (const t of threats) {
+                t.move();
+                t.draw(offctx);
+            }
+
+            for (const f of foods) f.draw(offctx);
+            for (const ta of tasks) ta.draw(offctx);
+
+            checkImmigrationCohort();
+            updateParticlesAndAtmospherics();
+            updateSignals();
+
+            drawParticles(offctx);
+            drawSignals(offctx);
+            drawIllusions(offctx);
+
+            const imgData = offctx.getImageData(0, 0, pixelWidth, pixelHeight);
+            const d = imgData.data;
+
+            if (weather === 'Cloudy') {
+                for (let i = 0; i < d.length; i += 4) {
+                    d[i] *= 0.76;
+                    d[i + 1] *= 0.80;
+                    d[i + 2] *= 0.88;
+                }
+            } else if (weather === 'Rain') {
+                for (let i = 0; i < d.length; i += 4) {
+                    d[i] *= 0.52;
+                    d[i + 1] *= 0.62;
+                    d[i + 2] *= 0.95;
+                }
+            }
+
+            quantize9bit(imgData);
+            applyDistortion(imgData);
+            offctx.putImageData(imgData, 0, 0);
+
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.imageSmoothingEnabled = false;
+            ctx.drawImage(offscreenCanvas, 0, 0, canvas.width, canvas.height);
+
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.15)';
+            for (let y = 0; y < canvas.height; y += 4) {
+                ctx.fillRect(0, y, canvas.width, 2);
+            }
+
+            const vignetteGrad = ctx.createRadialGradient(
+                canvas.width / 2, canvas.height / 2, canvas.width / 3.5,
+                canvas.width / 2, canvas.height / 2, canvas.width * 0.85
+            );
+            vignetteGrad.addColorStop(0, 'rgba(0,0,0,0)');
+            vignetteGrad.addColorStop(1, 'rgba(0,0,0,0.8)');
+            ctx.fillStyle = vignetteGrad;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            dom.fps.innerText = fps;
+            dom.stepTime.innerText = stepTime;
+            dom.currentSeason.innerText = getSeason();
+            dom.timeOfDayDisplay.innerText = timeOfDay.toFixed(1);
+            dom.temperatureDisplay.innerText = String(temp);
+            dom.weatherDisplay.innerText = weather;
+            dom.mapRadiusDisplay.innerText = mapRadius.toFixed(0);
+
+            updateScoreboard();
+            updateCharts();
+            requestAnimationFrame(updateSimulation);
+        }
+
+        function triggerPoliticalEvent() {
+            const event = politicalEvents[Math.floor(Math.random() * politicalEvents.length)];
+            logEvent(event.msg);
+            event.action();
+        }
+
+        dom.toggleHud.addEventListener('click', toggleHUD);
+        dom.resetBtn.addEventListener('click', resetSimulation);
+        dom.taskBtn.addEventListener('click', createEnvironmentalTask);
+        dom.pauseBtn.addEventListener('click', togglePause);
+
+        dom.speedSlider.addEventListener('input', (e) => {
+            globalSpeedFactor = parseFloat(e.target.value) / 5;
+            logEvent('System dynamic timescale scaled to ' + globalSpeedFactor.toFixed(1));
+        });
+
+        dom.threatSlider.addEventListener('input', (e) => {
+            settings.threat.aggressiveness = parseFloat(e.target.value);
+            threats.forEach(t => t.speed = t.baseSpeed * settings.threat.aggressiveness);
+            logEvent('Predatory stalking vectors adjusted to: ' + settings.threat.aggressiveness);
+        });
+
+        window.addEventListener('resize', resizeCanvas);
+
+        initializeSimulation();
+        resizeCanvas();
+        requestAnimationFrame(updateSimulation);
+    </script>
+</body>
+</html>
