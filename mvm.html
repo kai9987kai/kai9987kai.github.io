@@ -1,0 +1,265 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>GENOME-OS: Metabolic RSI Simulation</title>
+  <style>
+    :root {
+      --bg: #020408; --panel: #0a0e14; --accent: #00ffaa;
+      --dna-a: #00f2ff; --dna-t: #7000ff; --dna-g: #ff007b; --dna-c: #ffcc00;
+    }
+    body, html { margin: 0; padding: 0; height: 100%; background: var(--bg); color: #fff; font-family: 'Segoe UI', monospace; overflow: hidden; }
+    canvas { display: block; }
+    
+    #sim-layer {
+      position: absolute; top: 20px; left: 20px; width: 350px;
+      background: rgba(10, 14, 20, 0.9); border: 1px solid #1a2635;
+      padding: 20px; border-radius: 8px; backdrop-filter: blur(10px);
+    }
+    
+    .metric { display: flex; justify-content: space-between; margin-bottom: 10px; font-size: 12px; }
+    .bar-wrap { width: 100%; height: 4px; background: #1a2635; margin-top: 4px; position: relative; }
+    .bar-fill { height: 100%; background: var(--accent); transition: width 0.3s; }
+    
+    #q-log {
+      position: absolute; bottom: 20px; left: 20px; width: 350px; height: 150px;
+      background: rgba(0,0,0,0.8); border: 1px solid #222; font-size: 10px;
+      color: #0f0; overflow-y: hidden; padding: 10px; pointer-events: none;
+    }
+
+    #genome-hex {
+      position: absolute; top: 20px; right: 20px; width: 200px;
+      font-size: 10px; color: #444; word-break: break-all; text-align: right;
+    }
+
+    .status-tag { font-size: 10px; padding: 2px 6px; border-radius: 4px; background: #222; }
+    .live { color: var(--accent); border: 1px solid var(--accent); }
+  </style>
+</head>
+<body>
+
+<canvas id="c"></canvas>
+
+<div id="genome-hex"></div>
+
+<div id="sim-layer">
+    <div style="font-weight: bold; font-size: 18px; margin-bottom: 5px; color: var(--accent);">METABOLIC VIRTUAL MACHINE</div>
+    <div style="font-size: 10px; color: #666; margin-bottom: 15px;">Recursive Self-Improving Synthetic Lifeform</div>
+
+    <div class="metric"><span>CELL ENERGY (ATP)</span><span id="v-atp">100%</span></div>
+    <div class="bar-wrap"><div id="b-atp" class="bar-fill" style="width: 100%;"></div></div>
+
+    <div class="metric" style="margin-top:15px;"><span>STRUCTURAL INTEGRITY</span><span id="v-health">100%</span></div>
+    <div class="bar-wrap"><div id="b-health" class="bar-fill" style="width: 100%; background: #ff007b;"></div></div>
+
+    <div class="metric" style="margin-top:15px;"><span>GENOMIC FITNESS (Q)</span><span id="v-q">0.00</span></div>
+    
+    <div style="margin-top: 20px; padding: 10px; background: #000; border: 1px solid #333; font-size: 11px;">
+        <div class="metric"><span>Generation</span><span id="v-gen">1</span></div>
+        <div class="metric"><span>Survival Time</span><span id="v-time">0s</span></div>
+        <div class="metric"><span>Active Codons</span><span id="v-codons">0</span></div>
+    </div>
+
+    <div style="margin-top:15px;">
+        <button id="run-btn" style="background:var(--accent); border:none; padding:8px 15px; border-radius:4px; font-weight:bold; cursor:pointer;">RUN SIMULATION</button>
+    </div>
+</div>
+
+<div id="q-log"></div>
+
+<script>
+(function() {
+    const canvas = document.getElementById('c');
+    const ctx = canvas.getContext('2d');
+    let W, H, DPR;
+
+    // --- BIO-VM CONFIG ---
+    const CODON_MAP = {
+        'GCG': 'METABOLIC_BOOST', // Increases ATP
+        'ATT': 'STRUCTURAL_FIX',  // Repairs Health
+        'CAT': 'STRESS_SHIELD',   // Reduces decay
+        'GGG': 'REPLICATE',       // Goal action
+    };
+    
+    const BASES = ['A', 'T', 'G', 'C'];
+    let genome = Array(120).fill(0).map(() => BASES[(Math.random()*4)|0]);
+    
+    let cell = {
+        atp: 100,
+        health: 100,
+        age: 0,
+        gen: 1,
+        isRunning: false,
+        maxAge: 0
+    };
+
+    // --- RSI Q-LEARNER ---
+    class RSIAgent {
+        constructor() {
+            this.qTable = {};
+            this.lr = 0.2;
+            this.epsilon = 1.0;
+            this.history = [];
+        }
+
+        // The state is the current metabolic health + a k-mer of the genome
+        getState(idx) {
+            const chunk = genome.slice(idx, idx + 3).join("");
+            const metabolicState = Math.floor(cell.atp / 20); 
+            return `${chunk}_${metabolicState}`;
+        }
+
+        step() {
+            if (!cell.isRunning) return;
+
+            // Agent picks a codon to mutate to improve survival
+            const idx = Math.floor(Math.random() * (genome.length - 3));
+            const state = this.getState(idx);
+            
+            if (!this.qTable[state]) this.qTable[state] = new Array(4).fill(0);
+
+            let action;
+            if (Math.random() < this.epsilon) {
+                action = Math.floor(Math.random() * 4);
+            } else {
+                action = this.qTable[state].indexOf(Math.max(...this.qTable[state]));
+            }
+
+            const oldBase = genome[idx];
+            genome[idx] = BASES[action];
+
+            // Evaluate the "Phenotype" - did this mutation help metabolism?
+            const reward = this.evaluateMetabolism();
+            
+            // Q-Update
+            const nextState = this.getState(idx);
+            const nextMax = this.qTable[nextState] ? Math.max(...this.qTable[nextState]) : 0;
+            this.qTable[state][action] += this.lr * (reward + 0.9 * nextMax - this.qTable[state][action]);
+
+            this.epsilon *= 0.9995;
+            if (this.epsilon < 0.01) this.epsilon = 0.3; // RSI Trigger: maintain exploration
+        }
+
+        evaluateMetabolism() {
+            let r = 0;
+            // Parse codons
+            for (let i = 0; i < genome.length - 3; i += 3) {
+                const codon = genome.slice(i, i + 3).join("");
+                if (codon === 'GCG') { cell.atp += 0.5; r += 0.1; }
+                if (codon === 'ATT') { cell.health += 0.5; r += 0.1; }
+            }
+            return r;
+        }
+    }
+
+    const agent = new RSIAgent();
+
+    // --- RENDER ENGINE ---
+    function init() {
+        DPR = window.devicePixelRatio || 1;
+        W = canvas.width = window.innerWidth * DPR;
+        H = canvas.height = window.innerHeight * DPR;
+    }
+
+    function draw() {
+        ctx.fillStyle = '#020408';
+        ctx.fillRect(0, 0, W, H);
+
+        if (cell.isRunning) {
+            // Decay metabolism
+            cell.atp -= 0.2;
+            cell.health -= 0.1;
+            cell.age++;
+
+            for(let i=0; i<5; i++) agent.step(); // Accelerated learning
+
+            if (cell.atp <= 0 || cell.health <= 0) {
+                logToConsole(`Gen ${cell.gen} expired. Survival: ${cell.age} cycles.`);
+                cell.maxAge = Math.max(cell.maxAge, cell.age);
+                resetCell();
+            }
+        }
+
+        // Draw Helix
+        const centerX = W / 2;
+        const centerY = H / 2;
+        const time = Date.now() * 0.002;
+
+        for (let i = 0; i < genome.length; i++) {
+            const y = (i * 15) - (genome.length * 7.5) + centerY;
+            const xOffset = Math.sin(time + i * 0.2) * 80;
+            
+            // Strand 1
+            drawBase(centerX + xOffset, y, genome[i], 1);
+            // Strand 2 (Complement)
+            drawBase(centerX - xOffset, y, getComp(genome[i]), 0.5);
+            
+            if (i % 4 === 0) {
+                ctx.strokeStyle = 'rgba(255,255,255,0.1)';
+                ctx.beginPath();
+                ctx.moveTo(centerX + xOffset, y);
+                ctx.lineTo(centerX - xOffset, y);
+                ctx.stroke();
+            }
+        }
+
+        updateUI();
+        requestAnimationFrame(draw);
+    }
+
+    function drawBase(x, y, type, alpha) {
+        const colors = { A: '#00f2ff', T: '#7000ff', G: '#ff007b', C: '#ffcc00' };
+        ctx.globalAlpha = alpha;
+        ctx.fillStyle = colors[type];
+        ctx.beginPath();
+        ctx.arc(x, y, 4, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.globalAlpha = 1;
+    }
+
+    function getComp(b) {
+        return { A: 'T', T: 'A', G: 'C', C: 'G' }[b];
+    }
+
+    function resetCell() {
+        cell.atp = 100;
+        cell.health = 100;
+        cell.age = 0;
+        cell.gen++;
+    }
+
+    function updateUI() {
+        document.getElementById('b-atp').style.width = cell.atp + '%';
+        document.getElementById('b-health').style.width = cell.health + '%';
+        document.getElementById('v-atp').textContent = Math.max(0, Math.floor(cell.atp)) + '%';
+        document.getElementById('v-health').textContent = Math.max(0, Math.floor(cell.health)) + '%';
+        document.getElementById('v-gen').textContent = cell.gen;
+        document.getElementById('v-time').textContent = (cell.age / 60).toFixed(2) + 's';
+        document.getElementById('genome-hex').textContent = genome.join("");
+        
+        let codonCount = 0;
+        for(let i=0; i<genome.length-3; i+=3) {
+            if(CODON_MAP[genome.slice(i,i+3).join("")]) codonCount++;
+        }
+        document.getElementById('v-codons').textContent = codonCount;
+    }
+
+    function logToConsole(msg) {
+        const log = document.getElementById('q-log');
+        log.innerHTML += `<div>> ${msg}</div>`;
+        log.scrollTop = log.scrollHeight;
+    }
+
+    document.getElementById('run-btn').onclick = () => {
+        cell.isRunning = !cell.isRunning;
+        document.getElementById('run-btn').textContent = cell.isRunning ? "HALT SIMULATION" : "RUN SIMULATION";
+        logToConsole(cell.isRunning ? "Metabolic VM Started..." : "Simulation Halted.");
+    };
+
+    window.addEventListener('resize', init);
+    init();
+    draw();
+})();
+</script>
+</body>
+</html>
