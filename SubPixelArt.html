@@ -1,130 +1,394 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Advanced Sub-Pixel Rendering Animation</title>
-    <style>
-        body {
-            margin: 0;
-            background-color: #000;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            height: 100vh;
-            overflow: hidden;
-            color: white;
-            font-family: Arial, sans-serif;
-        }
-        canvas {
-            border: 2px solid white;
-            image-rendering: pixelated;
-        }
-    </style>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Advanced Sub-Pixel Rendering Animation</title>
+  <style>
+    :root {
+      color-scheme: dark;
+    }
+
+    html, body {
+      margin: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background:
+        radial-gradient(circle at 50% 35%, #111 0%, #050505 55%, #000 100%);
+      display: grid;
+      place-items: center;
+      font-family: Arial, sans-serif;
+    }
+
+    canvas {
+      display: block;
+      border: 2px solid rgba(255,255,255,0.85);
+      background: #000;
+      box-shadow: 0 0 30px rgba(255,255,255,0.08);
+    }
+  </style>
 </head>
 <body>
-    <canvas id="subPixelCanvas" width="800" height="400"></canvas>
-    <script>
-        const canvas = document.getElementById('subPixelCanvas');
-        const ctx = canvas.getContext('2d');
+  <canvas id="subPixelCanvas" aria-label="Animated sub-pixel scene"></canvas>
 
-        const canvasWidth = canvas.width;
-        const canvasHeight = canvas.height;
-        const pixelSize = 20; // Virtual pixel size
+  <script>
+    const canvas = document.getElementById("subPixelCanvas");
+    const ctx = canvas.getContext("2d", { alpha: false });
 
-        let frame = 0;
+    const BASE_W = 800;
+    const BASE_H = 400;
+    const ASPECT = BASE_W / BASE_H;
 
-        function drawSubPixel(x, y, colorR, colorG, colorB) {
-            const subPixelWidth = pixelSize / 3;
-            ctx.fillStyle = colorR;
-            ctx.fillRect(x, y, subPixelWidth, pixelSize);
-            ctx.fillStyle = colorG;
-            ctx.fillRect(x + subPixelWidth, y, subPixelWidth, pixelSize);
-            ctx.fillStyle = colorB;
-            ctx.fillRect(x + 2 * subPixelWidth, y, subPixelWidth, pixelSize);
+    let cssW = BASE_W;
+    let cssH = BASE_H;
+    let dpr = Math.max(1, window.devicePixelRatio || 1);
+    let t0 = performance.now();
+
+    ctx.imageSmoothingEnabled = false;
+
+    const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
+    const lerp = (a, b, t) => a + (b - a) * t;
+
+    function rgb(r, g, b) {
+      return `rgb(${clamp(r | 0, 0, 255)}, ${clamp(g | 0, 0, 255)}, ${clamp(b | 0, 0, 255)})`;
+    }
+
+    function resizeCanvas() {
+      dpr = Math.max(1, window.devicePixelRatio || 1);
+
+      const maxW = Math.min(window.innerWidth * 0.96, 1200);
+      const maxH = Math.min(window.innerHeight * 0.90, 700);
+
+      cssW = maxW;
+      cssH = cssW / ASPECT;
+
+      if (cssH > maxH) {
+        cssH = maxH;
+        cssW = cssH * ASPECT;
+      }
+
+      canvas.style.width = `${cssW}px`;
+      canvas.style.height = `${cssH}px`;
+
+      canvas.width = Math.round(cssW * dpr);
+      canvas.height = Math.round(cssH * dpr);
+
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.imageSmoothingEnabled = false;
+    }
+
+    window.addEventListener("resize", resizeCanvas, { passive: true });
+    resizeCanvas();
+
+    function drawStripeCell(x, y, w, h, c1, c2, c3) {
+      const third = w / 3;
+      ctx.fillStyle = c1;
+      ctx.fillRect(x, y, third, h);
+      ctx.fillStyle = c2;
+      ctx.fillRect(x + third, y, third, h);
+      ctx.fillStyle = c3;
+      ctx.fillRect(x + third * 2, y, w - third * 2, h);
+    }
+
+    function drawCircle(x, y, r, fill) {
+      ctx.beginPath();
+      ctx.fillStyle = fill;
+      ctx.arc(x, y, r, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    function drawSky(time) {
+      const horizon = cssH * 0.52;
+      const tile = 24;
+
+      for (let y = 0; y < horizon; y += tile) {
+        const ny = y / horizon;
+        for (let x = 0; x < cssW; x += tile) {
+          const nx = x / cssW;
+          const shimmer = Math.sin(time * 0.8 + nx * 6 + ny * 5) * 3;
+
+          const r1 = lerp(24, 70, ny);
+          const g1 = lerp(70, 160, ny);
+          const b1 = lerp(170, 255, ny);
+
+          const r2 = r1 + 6;
+          const g2 = g1 + 18;
+          const b2 = b1 - 4;
+
+          const r3 = r1 + 14;
+          const g3 = g1 + 28;
+          const b3 = b1;
+
+          drawStripeCell(
+            x,
+            y + shimmer * 0.2,
+            tile + 0.5,
+            tile + 0.5,
+            rgb(r1, g1, b1),
+            rgb(r2, g2, b2),
+            rgb(r3, g3, b3)
+          );
         }
+      }
 
-        function drawScene() {
-            ctx.clearRect(0, 0, canvasWidth, canvasHeight);
+      const sunX = cssW * 0.79;
+      const sunY = cssH * 0.18 + Math.sin(time * 0.6) * 2;
+      const sunR = cssH * 0.085;
 
-            // Draw gradient sky
-            for (let y = 0; y < canvasHeight / 2; y += pixelSize) {
-                for (let x = 0; x < canvasWidth; x += pixelSize) {
-                    const colorR = `rgb(${50 + y / 2}, ${100 + y / 4}, 255)`;
-                    const colorG = `rgb(${50 + y / 3}, ${150 + y / 3}, 255)`;
-                    const colorB = `rgb(${50 + y / 5}, ${200 + y / 6}, 255)`;
-                    drawSubPixel(x, y, colorR, colorG, colorB);
-                }
-            }
+      const glow = ctx.createRadialGradient(sunX, sunY, sunR * 0.15, sunX, sunY, sunR * 2.4);
+      glow.addColorStop(0, "rgba(255, 245, 180, 0.95)");
+      glow.addColorStop(0.3, "rgba(255, 212, 110, 0.42)");
+      glow.addColorStop(1, "rgba(255, 180, 60, 0)");
 
-            // Draw grassy field with a waving effect
-            for (let y = canvasHeight / 2; y < canvasHeight; y += pixelSize) {
-                for (let x = 0; x < canvasWidth; x += pixelSize) {
-                    const waveOffset = Math.sin((x + frame) / 10) * 5;
-                    const grassColorR = `rgb(0, ${100 + y / 8}, 0)`;
-                    const grassColorG = `rgb(0, ${150 + y / 6}, 0)`;
-                    const grassColorB = `rgb(0, ${200 + y / 4}, 0)`;
-                    drawSubPixel(x, y + waveOffset, grassColorR, grassColorG, grassColorB);
-                }
-            }
+      ctx.fillStyle = glow;
+      ctx.fillRect(0, 0, cssW, cssH);
 
-            // Draw a simple tree with swaying leaves
-            const treeX = canvasWidth / 2;
-            const treeY = canvasHeight / 2;
-            for (let y = 0; y < 100; y += pixelSize) {
-                drawSubPixel(treeX, treeY + y, 'rgb(139,69,19)', 'rgb(160,82,45)', 'rgb(210,105,30)');
-            }
-            for (let y = -100; y < 0; y += pixelSize) {
-                for (let x = -60; x < 60; x += pixelSize) {
-                    const sway = Math.sin((y + frame) / 10) * 10;
-                    drawSubPixel(treeX + x + sway, treeY + y, 'rgb(34,139,34)', 'rgb(0,128,0)', 'rgb(50,205,50)');
-                }
-            }
+      drawCircle(sunX, sunY, sunR, "rgba(255, 240, 170, 0.98)");
+    }
+
+    function drawMountains(time) {
+      const baseY = cssH * 0.54;
+      const sway = Math.sin(time * 0.7) * 4;
+
+      ctx.beginPath();
+      ctx.moveTo(0, baseY);
+
+      for (let x = 0; x <= cssW; x += 24) {
+        const n = x / cssW;
+        const hill =
+          Math.sin(n * Math.PI * 2.2 + time * 0.25) * 12 +
+          Math.sin(n * Math.PI * 5.1 + 1.7) * 6;
+        ctx.lineTo(x, baseY - 32 - hill + sway);
+      }
+
+      ctx.lineTo(cssW, baseY);
+      ctx.closePath();
+      ctx.fillStyle = "rgba(36, 58, 78, 0.92)";
+      ctx.fill();
+    }
+
+    function drawField(time) {
+      const horizon = cssH * 0.52;
+      const tile = 24;
+
+      for (let y = horizon; y < cssH; y += tile) {
+        const ny = (y - horizon) / (cssH - horizon);
+        for (let x = 0; x < cssW; x += tile) {
+          const nx = x / cssW;
+          const wave = Math.sin((x * 0.035) + time * 2.3) * (2 + ny * 8);
+          const d = 1 - ny;
+
+          const r1 = lerp(8, 12, d);
+          const g1 = lerp(90, 130, d);
+          const b1 = lerp(18, 24, d);
+
+          const r2 = r1;
+          const g2 = g1 + 18;
+          const b2 = b1;
+
+          const r3 = r1 + 2;
+          const g3 = g1 + 34;
+          const b3 = b1 + 2;
+
+          drawStripeCell(
+            x,
+            y + wave * 0.12,
+            tile + 0.5,
+            tile + 0.5,
+            rgb(r1, g1, b1),
+            rgb(r2, g2, b2),
+            rgb(r3, g3, b3)
+          );
+
+          if (ny > 0.55 && (Math.round(nx * 6 + time * 2) % 3 === 0)) {
+            ctx.fillStyle = "rgba(18, 82, 22, 0.35)";
+            ctx.fillRect(x + tile * 0.45, y - wave * 0.08, 2, tile * 0.6);
+          }
         }
+      }
 
-        function drawMan(x, y, frame) {
-            drawSubPixel(x, y, 'rgb(255,228,196)', 'rgb(255,222,173)', 'rgb(255,218,185)');
-            for (let i = 1; i <= 2; i++) {
-                drawSubPixel(x, y + i * pixelSize, 'rgb(0,0,255)', 'rgb(0,0,205)', 'rgb(0,0,139)');
-            }
-            if (frame % 4 < 2) {
-                drawSubPixel(x - pixelSize, y + 3 * pixelSize, 'rgb(0,0,0)', 'rgb(0,0,0)', 'rgb(0,0,0)');
-                drawSubPixel(x + pixelSize, y + 3 * pixelSize, 'rgb(0,0,0)', 'rgb(0,0,0)', 'rgb(0,0,0)');
-            } else {
-                drawSubPixel(x, y + 3 * pixelSize, 'rgb(0,0,0)', 'rgb(0,0,0)', 'rgb(0,0,0)');
-            }
+      const horizonLine = ctx.createLinearGradient(0, horizon, 0, cssH);
+      horizonLine.addColorStop(0, "rgba(255,255,255,0.08)");
+      horizonLine.addColorStop(0.25, "rgba(255,255,255,0.02)");
+      horizonLine.addColorStop(1, "rgba(0,0,0,0)");
+      ctx.fillStyle = horizonLine;
+      ctx.fillRect(0, horizon - 8, cssW, 18);
+    }
+
+    function drawCloud(x, y, scale, time) {
+      const drift = Math.sin(time * 0.25 + x * 0.004) * 2;
+      const s = scale;
+
+      ctx.save();
+      ctx.translate(x + drift, y);
+      ctx.scale(s, s);
+
+      ctx.fillStyle = "rgba(255,255,255,0.95)";
+      drawCircle(0, 0, 10, ctx.fillStyle);
+      drawCircle(-12, 2, 8, ctx.fillStyle);
+      drawCircle(12, 3, 9, ctx.fillStyle);
+      drawCircle(2, -4, 7, ctx.fillStyle);
+
+      ctx.restore();
+    }
+
+    function drawBird(x, y, wingPhase) {
+      ctx.save();
+      ctx.translate(x, y);
+
+      ctx.fillStyle = "rgba(255,255,255,0.98)";
+      ctx.fillRect(-2, -1, 4, 2);
+      ctx.fillRect(-6, 0, 4, 2);
+      ctx.fillRect(2, 0, 4, 2);
+
+      const wing = Math.sin(wingPhase) * 3;
+      ctx.fillRect(-8, wing > 0 ? -1 : 1, 6, 2);
+      ctx.fillRect(2, wing > 0 ? 1 : -1, 6, 2);
+
+      ctx.restore();
+    }
+
+    function drawTree(time) {
+      const groundY = cssH * 0.52;
+      const trunkX = cssW * 0.5;
+      const trunkY = groundY + 8;
+      const sway = Math.sin(time * 1.4) * 4;
+
+      ctx.fillStyle = "rgb(92, 53, 24)";
+      ctx.fillRect(trunkX - 8, trunkY - 4, 16, 78);
+
+      ctx.fillStyle = "rgb(120, 70, 35)";
+      ctx.fillRect(trunkX - 5, trunkY - 2, 10, 74);
+
+      const leaves = [
+        [-40, -6, 40],
+        [-22, -30, 48],
+        [0, -42, 52],
+        [20, -28, 46],
+        [38, -4, 36]
+      ];
+
+      for (const [dx, dy, r] of leaves) {
+        const sx = trunkX + dx + sway * (0.35 + r / 120);
+        const sy = trunkY + dy;
+        drawCircle(sx, sy, r, "rgba(38, 126, 44, 0.98)");
+        drawCircle(sx + 10, sy - 6, r * 0.72, "rgba(50, 168, 62, 0.45)");
+      }
+
+      drawCircle(trunkX - 18 + sway * 0.2, trunkY - 34, 26, "rgba(31, 110, 34, 0.95)");
+      drawCircle(trunkX + 18 + sway * 0.2, trunkY - 28, 24, "rgba(32, 118, 38, 0.95)");
+    }
+
+    function drawMan(x, y, time) {
+      const walk = Math.sin(time * 8);
+      const bob = Math.sin(time * 4) * 2;
+
+      ctx.save();
+      ctx.translate(x, y + bob);
+
+      // shadow
+      ctx.fillStyle = "rgba(0,0,0,0.35)";
+      ctx.beginPath();
+      ctx.ellipse(0, 40, 14, 5, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      // head
+      ctx.fillStyle = "rgb(255, 224, 192)";
+      ctx.beginPath();
+      ctx.arc(0, -18, 10, 0, Math.PI * 2);
+      ctx.fill();
+
+      // hair
+      ctx.fillStyle = "rgb(70, 42, 22)";
+      ctx.beginPath();
+      ctx.arc(0, -21, 10, Math.PI, Math.PI * 2);
+      ctx.fill();
+
+      // torso
+      ctx.fillStyle = "rgb(26, 82, 215)";
+      ctx.fillRect(-9, -6, 18, 24);
+
+      // arms
+      ctx.strokeStyle = "rgb(255, 224, 192)";
+      ctx.lineWidth = 4;
+      ctx.lineCap = "round";
+      ctx.beginPath();
+      ctx.moveTo(-8, 0);
+      ctx.lineTo(-16, 14 + walk * 2);
+      ctx.moveTo(8, 0);
+      ctx.lineTo(16, 12 - walk * 2);
+      ctx.stroke();
+
+      // legs
+      ctx.strokeStyle = "rgb(20, 20, 20)";
+      ctx.lineWidth = 5;
+      ctx.beginPath();
+      ctx.moveTo(-5, 18);
+      ctx.lineTo(-10 - walk * 4, 38);
+      ctx.moveTo(5, 18);
+      ctx.lineTo(10 + walk * 4, 38);
+      ctx.stroke();
+
+      // shoes
+      ctx.fillStyle = "rgb(0,0,0)";
+      ctx.fillRect(-15 - walk * 4, 36, 9, 4);
+      ctx.fillRect(6 + walk * 4, 36, 9, 4);
+
+      ctx.restore();
+    }
+
+    function drawForeground(time) {
+      const birdX = (time * 120) % (cssW + 80) - 40;
+      const birdY = 80 + Math.sin(time * 2.4) * 8;
+
+      drawBird(birdX, birdY, time * 16);
+      drawBird(birdX - 120, birdY + 22, time * 16 + 1.7);
+
+      const cloudX = (time * 28) % (cssW + 220) - 110;
+      drawCloud(cloudX, 52, 1.15, time);
+      drawCloud(cloudX + 280, 95, 1.6, time + 1.3);
+
+      const manX = ((time * 60) % (cssW + 100)) - 50;
+      drawMan(manX, cssH * 0.72, time);
+    }
+
+    function drawScene(now) {
+      const time = (now - t0) / 1000;
+
+      ctx.clearRect(0, 0, cssW, cssH);
+
+      drawSky(time);
+      drawMountains(time);
+      drawField(time);
+      drawTree(time);
+      drawForeground(time);
+
+      // subtle scanline shimmer for the sub-pixel look
+      ctx.fillStyle = "rgba(255,255,255,0.03)";
+      for (let y = 0; y < cssH; y += 4) {
+        if ((y + (time * 60 | 0)) % 8 === 0) {
+          ctx.fillRect(0, y, cssW, 1);
         }
+      }
 
-        function drawBird(x, y) {
-            drawSubPixel(x, y, 'rgb(255,255,255)', 'rgb(255,255,255)', 'rgb(255,255,255)');
-            drawSubPixel(x - pixelSize, y + pixelSize, 'rgb(255,255,255)', 'rgb(255,255,255)', 'rgb(255,255,255)');
-            drawSubPixel(x + pixelSize, y + pixelSize, 'rgb(255,255,255)', 'rgb(255,255,255)', 'rgb(255,255,255)');
-        }
+      // tiny vignette
+      const vignette = ctx.createRadialGradient(
+        cssW * 0.5, cssH * 0.5, Math.min(cssW, cssH) * 0.2,
+        cssW * 0.5, cssH * 0.5, Math.max(cssW, cssH) * 0.75
+      );
+      vignette.addColorStop(0, "rgba(0,0,0,0)");
+      vignette.addColorStop(1, "rgba(0,0,0,0.32)");
+      ctx.fillStyle = vignette;
+      ctx.fillRect(0, 0, cssW, cssH);
+    }
 
-        function drawCloud(x, y) {
-            drawSubPixel(x, y, 'rgb(255,255,255)', 'rgb(255,255,255)', 'rgb(255,255,255)');
-            drawSubPixel(x - pixelSize, y, 'rgb(255,255,255)', 'rgb(255,255,255)', 'rgb(255,255,255)');
-            drawSubPixel(x + pixelSize, y, 'rgb(255,255,255)', 'rgb(255,255,255)', 'rgb(255,255,255)');
-        }
+    function animate(now) {
+      drawScene(now);
+      requestAnimationFrame(animate);
+    }
 
-        function animate() {
-            drawScene();
-
-            const birdX = (frame * 2) % canvasWidth;
-            drawBird(birdX, 80);
-
-            const cloudX = (frame * 0.5) % canvasWidth;
-            drawCloud(cloudX, 50);
-            drawCloud(cloudX + 300, 100);
-
-            const manX = (100 + frame) % canvasWidth;
-            drawMan(manX, canvasHeight / 2 + 50, frame);
-
-            frame++;
-            requestAnimationFrame(animate);
-        }
-
-        animate();
-    </script>
+    requestAnimationFrame(animate);
+  </script>
 </body>
 </html>
