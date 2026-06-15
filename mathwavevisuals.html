@@ -1,47 +1,424 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-    <title>Math Functions Visualization</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Advanced Math Sandbox Visualizer</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.0/p5.js"></script>
     <style>
+        :root {
+            --bg-dark: #0f111a;
+            --panel-bg: #1e2235;
+            --accent-cyan: #00f2fe;
+            --accent-pink: #4facfe;
+            --text-main: #e2e8f0;
+            --text-muted: #94a3b8;
+        }
+
         body {
             display: flex;
             justify-content: center;
             align-items: center;
-            height: 100vh;
+            min-height: 100vh;
             margin: 0;
-            background-color: #f5f5f5;
+            background-color: var(--bg-dark);
+            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            color: var(--text-main);
         }
-        canvas {
-            border: 1px solid;
+
+        #dashboard {
+            display: flex;
+            background: var(--panel-bg);
+            padding: 20px;
+            border-radius: 16px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.5);
+            gap: 25px;
+            align-items: flex-start;
+        }
+
+        #canvas-container {
+            position: relative;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: inset 0 0 20px rgba(0,0,0,0.6);
+        }
+
+        #controls {
+            display: flex;
+            flex-direction: column;
+            width: 280px;
+            gap: 18px;
+        }
+
+        h2 {
+            margin: 0 0 5px 0;
+            font-size: 1.4rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            background: linear-gradient(135deg, var(--accent-cyan), var(--accent-pink));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .subtitle {
+            font-size: 0.85rem;
+            color: var(--text-muted);
+            margin-bottom: 10px;
+        }
+
+        .control-group {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        label {
+            font-size: 0.85rem;
+            font-weight: 600;
+            color: var(--text-muted);
+            display: flex;
+            justify-content: space-between;
+        }
+
+        label span {
+            color: var(--accent-cyan);
+            font-family: monospace;
+        }
+
+        select, input[type="range"], button {
+            background: #2d3149;
+            border: 1px solid #41476b;
+            color: var(--text-main);
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-size: 0.9rem;
+            outline: none;
+            transition: all 0.2s ease;
+        }
+
+        select:focus, input[type="range"]:focus {
+            border-color: var(--accent-cyan);
+        }
+
+        input[type="range"] {
+            -webkit-appearance: none;
+            width: 100%;
+            height: 6px;
+            background: #2d3149;
+            padding: 0;
+        }
+
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background: var(--accent-cyan);
+            cursor: pointer;
+            box-shadow: 0 0 8px var(--accent-cyan);
+        }
+
+        button {
+            cursor: pointer;
+            font-weight: bold;
+            background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+            border: none;
+            color: #000;
+            margin-top: 10px;
+        }
+
+        button:hover {
+            filter: brightness(1.2);
+            box-shadow: 0 0 12px rgba(0, 242, 254, 0.4);
+        }
+
+        button.paused {
+            background: #ef4444;
+            color: white;
+        }
+
+        .stats {
+            background: #141622;
+            padding: 10px;
+            border-radius: 6px;
+            font-family: monospace;
+            font-size: 0.8rem;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
         }
     </style>
 </head>
 <body>
+
+    <div id="dashboard">
+        <div id="controls">
+            <div>
+                <h2>Math Sandbox</h2>
+                <div class="subtitle">Advanced Wave Analysis</div>
+            </div>
+
+            <div class="control-group">
+                <label>Function Type</label>
+                <select id="funcType">
+                    <option value="clamped">1. Clamped Sine (Original Refined)</option>
+                    <option value="fourier">2. Fourier Square Wave Builder</option>
+                    <option value="perlin">3. Perlin Algorithmic Noise</option>
+                </select>
+            </div>
+
+            <div class="control-group">
+                <label>Wave Speed <span id="val-speed">1.0x</span></label>
+                <input type="range" id="param-speed" min="0" max="3" step="0.1" value="1">
+            </div>
+
+            <div class="control-group">
+                <label>Frequency (Scale) <span id="val-freq">2.0</span></label>
+                <input type="range" id="param-freq" min="0.5" max="10" step="0.1" value="2">
+            </div>
+
+            <div class="control-group">
+                <label>Amplitude <span id="val-amp">0.6</span></label>
+                <input type="range" id="param-amp" min="0.1" max="1" step="0.05" value="0.6">
+            </div>
+
+            <div class="control-group">
+                <label id="lbl-modifier">Modifier Parameter <span id="val-mod">0.7</span></label>
+                <input type="range" id="param-mod" min="0.05" max="1" step="0.01" value="0.7">
+            </div>
+
+            <button id="btn-play">Pause Engine</button>
+
+            <div class="stats">
+                <div>FPS: <span id="stat-fps">60</span></div>
+                <div>Time State ($t$): <span id="stat-t">0.00</span></div>
+                <div>Mouse Position: <span id="stat-mouse">X:0, Y:0</span></div>
+            </div>
+        </div>
+
+        <div id="canvas-container"></div>
+    </div>
+
     <script>
+        let t = 0;
+        let isRunning = true;
+        
+        // UI elements mappings
+        let selectFunc, sliderSpeed, sliderFreq, sliderAmp, sliderMod, lblMod, btnPlay;
+        let valSpeed, valFreq, valAmp, valMod;
+
         function setup() {
-            createCanvas(800, 600);
+            let canvas = createCanvas(800, 500);
+            canvas.parent('canvas-container');
+
+            // Hook UI elements
+            selectFunc = select('#funcType');
+            sliderSpeed = select('#param-speed');
+            sliderFreq = select('#param-freq');
+            sliderAmp = select('#param-amp');
+            sliderMod = select('#param-mod');
+            lblMod = select('#lbl-modifier');
+            btnPlay = select('#btn-play');
+
+            // Labels
+            valSpeed = select('#val-speed');
+            valFreq = select('#val-freq');
+            valAmp = select('#val-amp');
+            valMod = select('#val-mod');
+
+            btnPlay.mousePressed(toggleEngine);
+            selectFunc.changed(updateModifierLabels);
+            updateModifierLabels();
         }
 
         function draw() {
-            background(220);
-            stroke(0);
-            let t = frameCount / 100;
+            background(15, 17, 26); // Deep space dark blue
+            
+            // Draw background coordinate system grid
+            drawGrid();
 
-            beginShape();
-            for (let x = 0; x < width; x++) {
-                let y = f1(x / 100, t) * height / 2;
-                vertex(x, height / 2 - y);
+            // Calculate operational variables from UI
+            let speed = parseFloat(sliderSpeed.value());
+            let freq = parseFloat(sliderFreq.value());
+            let amp = parseFloat(sliderAmp.value());
+            let modifier = parseFloat(sliderMod.value());
+
+            // Update DOM labels dynamically
+            valSpeed.html(speed.toFixed(1) + 'x');
+            valFreq.html(freq.toFixed(1));
+            valAmp.html(amp.toFixed(1));
+            valMod.html(modifier.toFixed(2));
+
+            if (isRunning) {
+                t += (0.02) * speed;
             }
+
+            let mode = selectFunc.value();
+            
+            // Render Wave with Glow Effects using CanvasContext
+            push();
+            noFill();
+            
+            // Setup Neon Glow Effects via raw canvas API
+            drawingContext.shadowBlur = 15;
+            if (mode === 'clamped') drawingContext.shadowColor = 'rgba(0, 242, 254, 0.6)';
+            else if (mode === 'fourier') drawingContext.shadowColor = 'rgba(245, 56, 137, 0.6)';
+            else drawingContext.shadowColor = 'rgba(52, 211, 153, 0.6)';
+
+            // Create a linear color gradient path for the wave fill
+            let grad = drawingContext.createLinearGradient(0, height/2 - 150, 0, height/2 + 150);
+            if (mode === 'clamped') {
+                grad.addColorStop(0, 'rgba(0, 242, 254, 0.35)');
+                grad.addColorStop(1, 'rgba(79, 172, 254, 0.0)');
+                stroke(0, 242, 254);
+            } else if (mode === 'fourier') {
+                grad.addColorStop(0, 'rgba(245, 56, 137, 0.35)');
+                grad.addColorStop(1, 'rgba(147, 51, 234, 0.0)');
+                stroke(245, 56, 137);
+            } else {
+                grad.addColorStop(0, 'rgba(52, 211, 153, 0.35)');
+                grad.addColorStop(1, 'rgba(16, 185, 129, 0.0)');
+                stroke(52, 211, 153);
+            }
+            strokeWeight(3);
+
+            // Shape loop logic (draws curve + closes bottom boundary for the gradient fill)
+            beginShape();
+            // Start at bottom center axis to allow smooth gradient closing
+            vertex(0, height / 2); 
+            
+            for (let x = 0; x <= width; x++) {
+                // Normalize evaluation across width space
+                let xNorm = (x / width) * freq * TWO_PI; 
+                let yVal = 0;
+
+                if (mode === 'clamped') {
+                    yVal = calculateClampedSine(xNorm, t, modifier);
+                } else if (mode === 'fourier') {
+                    yVal = calculateFourier(xNorm, t, modifier);
+                } else if (mode === 'perlin') {
+                    yVal = calculateNoise(xNorm, t, modifier);
+                }
+
+                // Scale value relative to visual container parameters securely
+                let yPos = (height / 2) - (yVal * (height / 2) * amp);
+                vertex(x, yPos);
+            }
+            
+            vertex(width, height / 2); // Anchor back to axis right
             endShape();
+
+            // Apply fill gradient safely underneath the stroke
+            drawingContext.fillStyle = grad;
+            drawingContext.shadowBlur = 0; // Turn off glow for inner fill to preserve performance
+            fill(255); // Trigger native p5 pipeline fill process targeting custom context gradient
+            pop();
+
+            // Overlay interactive tracker crosshairs when user hovers
+            drawCrosshair();
+            
+            // Performance stats tracking
+            select('#stat-fps').html(floor(frameRate()));
+            select('#stat-t').html(t.toFixed(2));
         }
 
-        function f1(x, t) {
-            let start = 0;
-            let end = 0.7;
-            let value = sin(x * t);
+        // --- MATH REFINEMENT ENGINES ---
+
+        // 1. Fixed & Adaptable Clamped Sine Wave Function
+        function calculateClampedSine(x, time, upperClamp) {
+            let value = sin(x - time);
+            let start = 0; 
+            let end = upperClamp; // Dynamically driven by dashboard modifier slider
+            
             let result = value < start ? 0 : value > end ? 1 : (value - start) / (end - start);
-            return 4 * result;
+            
+            // Scaled dynamically down to peak limit of 1.0 (Prevents broken canvas overflow)
+            return result; 
+        }
+
+        // 2. Fourier Series Square Wave Approximator Engine
+        function calculateFourier(x, time, complexity) {
+            let sum = 0;
+            // Map 0-1 slider value to number of iterations up to 25 steps smoothly
+            let harmonics = floor(map(complexity, 0.05, 1, 1, 25)) * 2 - 1; 
+
+            for (let i = 1; i <= harmonics; i += 2) {
+                sum += sin(i * (x - time)) / i;
+            }
+            // Return normalized amplitude output matching a square wave approximation
+            return sum * (4 / PI); 
+        }
+
+        // 3. Dynamic Organic Perlin Noise Wave Engine
+        function calculateNoise(x, time, morph) {
+            // Perlin noise creates multi-dimensional chaotic mathematical sequences
+            let noiseVal = noise(x * 0.5, time * morph);
+            return map(noiseVal, 0, 1, -1, 1);
+        }
+
+        // --- ENVIRONMENT GRAPHICS ---
+
+        function drawGrid() {
+            stroke(30, 41, 59, 150);
+            strokeWeight(1);
+            
+            // Horizontal grid lines
+            for (let y = 0; y < height; y += 40) {
+                line(0, y, width, y);
+            }
+            // Vertical grid lines
+            for (let x = 0; x < width; x += 40) {
+                line(x, 0, x, height);
+            }
+
+            // High Contrast Center Core Axes lines
+            stroke(71, 85, 105);
+            strokeWeight(2);
+            line(0, height / 2, width, height / 2); // X Axis
+            line(40, 0, 40, height); // Shifted Y Axis index
+        }
+
+        function drawCrosshair() {
+            if (mouseX >= 0 && mouseX <= width && mouseY >= 0 && mouseY <= height) {
+                stroke('rgba(255, 255, 255, 0.15)');
+                strokeWeight(1);
+                line(mouseX, 0, mouseX, height);
+                line(0, mouseY, width, mouseY);
+
+                // Live dynamic math coordinates display calculation
+                let mathX = (mouseX / width).toFixed(2);
+                let mathY = ((height / 2 - mouseY) / (height / 2)).toFixed(2);
+                select('#stat-mouse').html(`X: ${mathX}, Y: ${mathY}`);
+
+                // Tiny tracker anchor circle
+                fill(255);
+                noStroke();
+                ellipse(mouseX, mouseY, 6, 6);
+            }
+        }
+
+        function toggleEngine() {
+            isRunning = !isRunning;
+            if (isRunning) {
+                btnPlay.html("Pause Engine").removeClass('paused');
+            } else {
+                btnPlay.html("Resume Engine").addClass('paused');
+            }
+        }
+
+        function updateModifierLabels() {
+            let mode = selectFunc.value();
+            if (mode === 'clamped') {
+                lblMod.html('Upper Clamp Limit <span id="val-mod"></span>');
+                sliderMod.attribute('min', '0.1').attribute('max', '1.0').attribute('step', '0.05').value(0.7);
+            } else if (mode === 'fourier') {
+                lblMod.html('Fourier Harmonics Depth <span id="val-mod"></span>');
+                sliderMod.attribute('min', '0.05').attribute('max', '1.0').attribute('step', '0.01').value(0.3);
+            } else if (mode === 'perlin') {
+                lblMod.html('Noise Morph Frequency <span id="val-mod"></span>');
+                sliderMod.attribute('min', '0.1').attribute('max', '2.0').attribute('step', '0.05').value(0.8);
+            }
+            valMod = select('#val-mod'); // Re-link DOM pointer
         }
     </script>
 </body>
