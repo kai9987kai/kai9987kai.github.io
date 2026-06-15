@@ -1,152 +1,325 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-  <title>Random 3D Terrain Generator</title>
+  <meta charset="UTF-8">
+  <title>Modern Procedural 3D Terrain Generator</title>
+  
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet">
+  
   <style>
     body {
       margin: 0;
       overflow: hidden;
+      background-color: #111; 
+      font-family: 'Inter', sans-serif;
     }
-
-    #canvas {
+    #canvas-container {
       position: absolute;
       width: 100%;
       height: 100%;
     }
 
-    #exportButton {
-      position: fixed;
-      bottom: 20px;
-      left: 20px;
+    /* Modern Glassmorphism Styling for lil-gui */
+    .lil-gui.root {
+      --background-color: rgba(20, 20, 25, 0.65);
+      --text-color: #f0f0f0;
+      --title-background-color: rgba(40, 40, 50, 0.5);
+      --widget-color: rgba(255, 255, 255, 0.15);
+      --hover-color: rgba(255, 255, 255, 0.25);
+      --focus-color: #3b82f6;
+      --number-color: #60a5fa;
+      --string-color: #34d399;
+      --font-family: 'Inter', sans-serif;
+      --folder-indent: 12px;
+      
+      position: absolute;
+      top: 20px;
+      right: 20px;
+      border-radius: 16px;
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border: 1px solid rgba(255, 255, 255, 0.1);
       padding: 10px;
-      background-color: #4CAF50;
+      box-shadow: 0 10px 40px rgba(0,0,0,0.5);
+    }
+
+    .lil-gui .title {
+      border-radius: 8px;
+      font-weight: 600;
+      margin-bottom: 4px;
+      letter-spacing: 0.5px;
+    }
+
+    .lil-gui .controller {
+      margin-bottom: 2px;
+    }
+
+    /* Sleek Export Button overlaid on canvas */
+    #export-btn {
+      position: absolute;
+      bottom: 30px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: linear-gradient(135deg, #3b82f6, #2563eb);
       color: white;
       border: none;
+      padding: 14px 28px;
+      font-family: 'Inter', sans-serif;
+      font-size: 15px;
+      font-weight: 600;
+      border-radius: 30px;
       cursor: pointer;
+      box-shadow: 0 8px 24px rgba(37, 99, 235, 0.4);
+      transition: all 0.3s ease;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      z-index: 10;
+    }
+
+    #export-btn:hover {
+      transform: translateX(-50%) translateY(-3px);
+      box-shadow: 0 12px 28px rgba(37, 99, 235, 0.6);
+      background: linear-gradient(135deg, #4f46e5, #3b82f6);
+    }
+    
+    #export-btn:active {
+      transform: translateX(-50%) translateY(1px);
     }
   </style>
-  <script src="https://threejs.org/build/three.js"></script>
+
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+        "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/",
+        "simplex-noise": "https://unpkg.com/simplex-noise@4.0.1/dist/esm/simplex-noise.js",
+        "lil-gui": "https://unpkg.com/lil-gui@0.19.1/dist/lil-gui.esm.min.js"
+      }
+    }
+  </script>
 </head>
 <body>
-  <div id="canvas"></div>
-  <button id="exportButton">Export OBJ</button>
-  <script>
-    var scene = new THREE.Scene();
-    var camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+  <div id="canvas-container"></div>
+  <button id="export-btn">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+    Export Terrain to OBJ
+  </button>
 
-    var renderer = new THREE.WebGLRenderer();
+  <script type="module">
+    import * as THREE from 'three';
+    import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+    import { OBJExporter } from 'three/addons/exporters/OBJExporter.js';
+    import { createNoise2D } from 'simplex-noise';
+    import GUI from 'lil-gui';
+
+    // --- 1. Scene & Engine Setup ---
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x87CEEB); 
+    scene.fog = new THREE.FogExp2(0x87CEEB, 0.005);
+
+    const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 2000);
+    const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
     renderer.setSize(window.innerWidth, window.innerHeight);
-    document.body.appendChild(renderer.domElement);
+    renderer.setPixelRatio(window.devicePixelRatio);
+    document.getElementById('canvas-container').appendChild(renderer.domElement);
 
-    var geometry = new THREE.PlaneGeometry(20, 20, 20, 20);
+    // --- 2. Lighting ---
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
+    scene.add(ambientLight);
 
-    var positions = geometry.attributes.position.array;
-    for (var i = 2; i < positions.length; i += 3) {
-      positions[i] += Math.random() * 2;
-    }
-    geometry.attributes.position.needsUpdate = true;
+    const dirLight = new THREE.DirectionalLight(0xffffff, 1.2);
+    dirLight.position.set(100, 150, 50);
+    scene.add(dirLight);
 
-    var material = new THREE.MeshBasicMaterial({ color: 0x00ff00, wireframe: true });
-    var terrain = new THREE.Mesh(geometry, material);
+    // --- 3. Controls ---
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.05;
 
-    scene.add(terrain);
-
-    camera.position.z = 5;
-
-    var animate = function () {
-      requestAnimationFrame(animate);
-      terrain.rotation.x += 0.01;
-      terrain.rotation.y += 0.01;
-      renderer.render(scene, camera);
-    };
-
-    animate();
-
-    // OBJExporter from THREE.js examples
-    var OBJExporter = function () { };
-
-    OBJExporter.prototype = {
-      constructor: OBJExporter,
-
-      parse: function (object) {
-        var output = '';
-        var indexVertex = 0;
-        var indexNormals = 0;
-        var vertex = new THREE.Vector3();
-        var normal = new THREE.Vector3();
-
-        object.traverse(function (child) {
-          if (child.isMesh) {
-            var geometry = child.geometry;
-
-            if (geometry.isGeometry) {
-              geometry = new THREE.BufferGeometry().setFromObject(child);
-            }
-
-            if (geometry.isBufferGeometry) {
-              var vertices = geometry.getAttribute('position');
-              var normals = geometry.getAttribute('normal');
-              output += 'o ' + child.name + '\n';
-
-              if (geometry.index) {
-                var indices = geometry.index;
-                for (var i = 0, l = indices.count; i < l; i++) {
-                  vertex.x = vertices.getX(indices.getX(i));
-                  vertex.y = vertices.getY(indices.getX(i));
-                  vertex.z = vertices.getZ(indices.getX(i));
-                  vertex.applyMatrix4(child.matrixWorld);
-                  output += 'v ' + vertex.x + ' ' + vertex.y + ' ' + vertex.z + '\n';
-                  indexVertex++;
-
-                  if (normals !== undefined) {
-                    normal.x = normals.getX(indices.getX(i));
-                    normal.y = normals.getY(indices.getX(i));
-                    normal.z = normals.getZ(indices.getX(i));
-                    normal.transformDirection(child.matrixWorld);
-                    output += 'vn ' + normal.x + ' ' + normal.y + ' ' + normal.z + '\n';
-                    indexNormals++;
-                  }
-                }
-              } else {
-                for (var i = 0, l = vertices.count; i < l; i++) {
-                  vertex.x = vertices.getX(i);
-                  vertex.y = vertices.getY(i);
-                  vertex.z = vertices.getZ(i);
-                  vertex.applyMatrix4(child.matrixWorld);
-                  output += 'v ' + vertex.x + ' ' + vertex.y + ' ' + vertex.z + '\n';
-                  indexVertex++;
-
-                  if (normals !== undefined) {
-                    normal.x = normals.getX(i);
-                    normal.y = normals.getY(i);
-                    normal.z = normals.getZ(i);
-                    normal.transformDirection(child.matrixWorld);
-                    output += 'vn ' + normal.x + ' ' + normal.y + ' ' + normal.z + '\n';
-                    indexNormals++;
-                  }
-                }
-              }
-            }
-          }
-        });
-
-        return output;
+    // --- 4. Biome Definitions ---
+    const biomes = {
+      Forest: {
+        sky: 0x87CEEB,
+        colors: [
+          { threshold: -0.2, color: 0x1f78b4 },
+          { threshold: 0.0, color: 0x38a3a5 }, 
+          { threshold: 0.1, color: 0xe9c46a }, 
+          { threshold: 0.4, color: 0x2a9d8f }, 
+          { threshold: 0.7, color: 0x6b705c }, 
+          { threshold: 0.95, color: 0xfffbfe }  
+        ]
+      },
+      Desert: {
+        sky: 0xffe8b2,
+        colors: [
+          { threshold: -0.2, color: 0xbc6c25 },
+          { threshold: 0.2, color: 0xdda15e }, 
+          { threshold: 0.6, color: 0xf4a261 }, 
+          { threshold: 1.0, color: 0xe9c46a }  
+        ]
+      },
+      Arctic: {
+        sky: 0xddeef0,
+        colors: [
+          { threshold: -0.2, color: 0x023e8a },
+          { threshold: 0.0, color: 0x0096c7 }, 
+          { threshold: 0.4, color: 0xade8f4 }, 
+          { threshold: 1.0, color: 0xffffff }  
+        ]
+      },
+      Volcanic: {
+        sky: 0x2b0f0f,
+        colors: [
+          { threshold: -0.1, color: 0xd00000 },
+          { threshold: 0.0, color: 0x370617 }, 
+          { threshold: 0.4, color: 0x1a1a1a }, 
+          { threshold: 0.8, color: 0x333333 }, 
+          { threshold: 1.0, color: 0x555555 }  
+        ]
       }
     };
 
-    // Export as OBJ
-    document.getElementById('exportButton').addEventListener('click', function () {
-      var exporter = new OBJExporter();
-      var result = exporter.parse(terrain);
-      var blob = new Blob([result], { type: 'text/plain' });
-      var url = URL.createObjectURL(blob);
+    // --- 5. State & Generator Logic ---
+    let terrainMesh;
+    const noise2D = createNoise2D();
+    
+    const params = {
+      size: 100,            // Overall scale of the terrain in 3D space
+      resolution: 150,      // Number of subdivisions (higher = smoother geometry)
+      heightMapScale: 0.03, // Zoom level of the noise
+      amplitude: 25,        // Vertical height multiplier
+      octaves: 5,           // Number of noise passes
+      biome: 'Forest',
+      wireframe: false
+    };
 
-      var link = document.createElement('a');
+    function getColorForElevation(elevation, normalizedHeight) {
+      const activeBiome = biomes[params.biome];
+      let chosenColor = activeBiome.colors[0].color;
+      for (let i = 0; i < activeBiome.colors.length; i++) {
+        if (normalizedHeight >= activeBiome.colors[i].threshold) {
+          chosenColor = activeBiome.colors[i].color;
+        }
+      }
+      return new THREE.Color(chosenColor);
+    }
+
+    function generateTerrain() {
+      if (terrainMesh) {
+        scene.remove(terrainMesh);
+        terrainMesh.geometry.dispose();
+        terrainMesh.material.dispose();
+      }
+
+      // Update Environment and Fog based on Biome and Size
+      scene.background = new THREE.Color(biomes[params.biome].sky);
+      scene.fog.color = new THREE.Color(biomes[params.biome].sky);
+      scene.fog.density = 0.5 / params.size; // Adjust fog dynamically based on size
+
+      const geometry = new THREE.PlaneGeometry(params.size, params.size, params.resolution, params.resolution);
+      geometry.rotateX(-Math.PI / 2);
+
+      const positions = geometry.attributes.position.array;
+      const colors = [];
+
+      // Fractal Brownian Motion (FBM)
+      for (let i = 0; i < positions.length; i += 3) {
+        const x = positions[i];
+        const z = positions[i + 2];
+
+        let elevation = 0;
+        let frequency = params.heightMapScale;
+        let amplitude = 1;
+        let maxAmplitude = 0;
+
+        for (let j = 0; j < params.octaves; j++) {
+          elevation += noise2D(x * frequency, z * frequency) * amplitude;
+          maxAmplitude += amplitude;
+          amplitude *= 0.5;
+          frequency *= 2.0;
+        }
+
+        let normalizedElevation = elevation / maxAmplitude; 
+        if(normalizedElevation < -0.15) {
+            normalizedElevation = -0.15; // Create flat "water" floors
+        }
+
+        const finalHeight = normalizedElevation * params.amplitude;
+        positions[i + 1] = finalHeight;
+
+        const vertexColor = getColorForElevation(finalHeight, normalizedElevation);
+        colors.push(vertexColor.r, vertexColor.g, vertexColor.b);
+      }
+
+      geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+      geometry.computeVertexNormals(); 
+
+      const material = new THREE.MeshStandardMaterial({
+        vertexColors: true,
+        flatShading: true,
+        roughness: 0.9,
+        wireframe: params.wireframe
+      });
+
+      terrainMesh = new THREE.Mesh(geometry, material);
+      scene.add(terrainMesh);
+      
+      // Auto-adjust camera when size changes significantly
+      const cameraDistance = params.size * 0.6;
+      camera.position.set(0, cameraDistance * 0.6, cameraDistance);
+      controls.target.set(0, 0, 0);
+      controls.update();
+    }
+
+    // --- 6. Modern GUI Setup ---
+    const gui = new GUI({ title: 'Terrain Studio' });
+    
+    // Geometry Folder
+    const geomFolder = gui.addFolder('Geometry');
+    geomFolder.add(params, 'size', 50, 500, 10).name('Physical Size').onChange(generateTerrain);
+    geomFolder.add(params, 'resolution', 50, 300, 10).name('Resolution').onChange(generateTerrain);
+    geomFolder.add(params, 'wireframe').name('Wireframe Mode').onChange(generateTerrain);
+    
+    // Topography Folder
+    const topoFolder = gui.addFolder('Topography');
+    topoFolder.add(params, 'biome', ['Forest', 'Desert', 'Arctic', 'Volcanic']).name('Ecosystem').onChange(generateTerrain);
+    topoFolder.add(params, 'heightMapScale', 0.005, 0.1).name('Scale (Zoom)').onChange(generateTerrain);
+    topoFolder.add(params, 'amplitude', 1, 100).name('Max Elevation').onChange(generateTerrain);
+    topoFolder.add(params, 'octaves', 1, 8, 1).name('Detail (Octaves)').onChange(generateTerrain);
+
+    // Initial Generation
+    generateTerrain();
+
+    // --- 7. Animation Loop ---
+    function animate() {
+      requestAnimationFrame(animate);
+      controls.update();
+      renderer.render(scene, camera);
+    }
+    animate();
+
+    // --- 8. Window Resize ---
+    window.addEventListener('resize', () => {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+
+    // --- 9. Exporter ---
+    document.getElementById('export-btn').addEventListener('click', () => {
+      const exporter = new OBJExporter();
+      const result = exporter.parse(terrainMesh);
+      const blob = new Blob([result], { type: 'text/plain' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.style.display = 'none';
       link.href = url;
-      link.download = 'terrain.obj';
+      link.download = `${params.biome.toLowerCase()}_terrain_hq.obj`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
+      URL.revokeObjectURL(url);
     });
   </script>
 </body>
