@@ -1,33 +1,874 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <title>Local Storage File Viewer</title>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="color-scheme" content="light dark" />
+  <title>Local File Vault</title>
+  <style>
+    :root {
+      --bg: #0b1020;
+      --bg-elev: rgba(255,255,255,0.06);
+      --bg-elev-2: rgba(255,255,255,0.09);
+      --text: #e8ecff;
+      --muted: #a9b2d6;
+      --border: rgba(255,255,255,0.12);
+      --accent: #7c8cff;
+      --accent-2: #5ae0c5;
+      --danger: #ff6b7a;
+      --shadow: 0 20px 60px rgba(0,0,0,0.35);
+      --radius: 20px;
+      --radius-sm: 14px;
+      --max: 1280px;
+    }
+
+    [data-theme="light"] {
+      --bg: #f5f7ff;
+      --bg-elev: rgba(255,255,255,0.8);
+      --bg-elev-2: rgba(255,255,255,0.95);
+      --text: #10162a;
+      --muted: #5e6783;
+      --border: rgba(16,22,42,0.10);
+      --accent: #4f67ff;
+      --accent-2: #10b981;
+      --danger: #e11d48;
+      --shadow: 0 20px 60px rgba(16,22,42,0.10);
+    }
+
+    * { box-sizing: border-box; }
+    html, body { height: 100%; }
+    body {
+      margin: 0;
+      font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background:
+        radial-gradient(circle at top left, rgba(124,140,255,0.25), transparent 30%),
+        radial-gradient(circle at top right, rgba(90,224,197,0.16), transparent 28%),
+        var(--bg);
+      color: var(--text);
+    }
+
+    .shell {
+      max-width: var(--max);
+      margin: 0 auto;
+      padding: 24px;
+    }
+
+    .topbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 16px;
+      padding: 16px 18px;
+      border: 1px solid var(--border);
+      background: var(--bg-elev);
+      backdrop-filter: blur(16px);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      margin-bottom: 18px;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      min-width: 0;
+    }
+
+    .logo {
+      width: 48px;
+      height: 48px;
+      border-radius: 16px;
+      display: grid;
+      place-items: center;
+      font-weight: 800;
+      color: white;
+      background: linear-gradient(135deg, var(--accent), var(--accent-2));
+      box-shadow: 0 10px 30px rgba(79,103,255,0.30);
+      flex: none;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: clamp(1.2rem, 2vw, 1.7rem);
+      line-height: 1.1;
+    }
+
+    .subtitle {
+      margin: 4px 0 0;
+      color: var(--muted);
+      font-size: 0.95rem;
+    }
+
+    .actions {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+
+    button, .button {
+      border: 0;
+      border-radius: 999px;
+      padding: 12px 16px;
+      font: inherit;
+      color: var(--text);
+      background: var(--bg-elev-2);
+      border: 1px solid var(--border);
+      cursor: pointer;
+      transition: transform .15s ease, background .15s ease, border-color .15s ease, opacity .15s ease;
+    }
+
+    button:hover, .button:hover { transform: translateY(-1px); }
+    button:active, .button:active { transform: translateY(0); }
+    button.primary { background: linear-gradient(135deg, var(--accent), #596dff); color: white; }
+    button.good { background: linear-gradient(135deg, var(--accent-2), #0ea5a8); color: #fff; }
+    button.danger { background: linear-gradient(135deg, var(--danger), #ef4444); color: white; }
+    button.ghost { background: transparent; }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    .layout {
+      display: grid;
+      grid-template-columns: 340px 1fr;
+      gap: 18px;
+      align-items: start;
+    }
+
+    .panel {
+      border: 1px solid var(--border);
+      background: var(--bg-elev);
+      backdrop-filter: blur(16px);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    }
+
+    .panel-inner { padding: 16px; }
+
+    .dropzone {
+      border: 1.5px dashed color-mix(in srgb, var(--accent) 60%, var(--border));
+      border-radius: 18px;
+      padding: 26px;
+      text-align: center;
+      background: linear-gradient(180deg, rgba(255,255,255,0.03), rgba(255,255,255,0.01));
+      transition: border-color .15s ease, transform .15s ease, background .15s ease;
+    }
+
+    .dropzone.dragover {
+      border-color: var(--accent);
+      transform: scale(1.01);
+      background: rgba(124,140,255,0.10);
+    }
+
+    .dropzone h2 {
+      margin: 10px 0 6px;
+      font-size: 1.1rem;
+    }
+
+    .dropzone p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 0.95rem;
+      line-height: 1.5;
+    }
+
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
+      margin-top: 14px;
+    }
+
+    .stat {
+      padding: 12px;
+      border-radius: 16px;
+      background: var(--bg-elev-2);
+      border: 1px solid var(--border);
+    }
+
+    .stat strong { display: block; font-size: 1.05rem; }
+    .stat span { color: var(--muted); font-size: 0.85rem; }
+
+    .searchbar {
+      display: flex;
+      gap: 10px;
+      margin-top: 16px;
+      align-items: center;
+    }
+
+    input[type="search"], input[type="text"] {
+      width: 100%;
+      padding: 13px 14px;
+      border-radius: 14px;
+      border: 1px solid var(--border);
+      background: var(--bg-elev-2);
+      color: var(--text);
+      font: inherit;
+      outline: none;
+    }
+
+    input::placeholder { color: color-mix(in srgb, var(--muted) 75%, transparent); }
+
+    .list {
+      display: grid;
+      gap: 10px;
+      margin-top: 14px;
+      max-height: 60vh;
+      overflow: auto;
+      padding-right: 2px;
+    }
+
+    .file-row {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 10px;
+      align-items: center;
+      padding: 14px;
+      border-radius: 16px;
+      border: 1px solid var(--border);
+      background: var(--bg-elev-2);
+      cursor: pointer;
+      transition: transform .15s ease, border-color .15s ease, background .15s ease;
+    }
+
+    .file-row:hover, .file-row.active {
+      transform: translateY(-1px);
+      border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
+      background: color-mix(in srgb, var(--accent) 8%, var(--bg-elev-2));
+    }
+
+    .file-meta {
+      min-width: 0;
+    }
+
+    .file-name {
+      margin: 0 0 4px;
+      font-size: 0.98rem;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .file-sub {
+      color: var(--muted);
+      font-size: 0.83rem;
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .chip {
+      display: inline-flex;
+      align-items: center;
+      padding: 7px 10px;
+      border-radius: 999px;
+      background: rgba(124,140,255,0.10);
+      border: 1px solid var(--border);
+      color: var(--text);
+      font-size: 0.8rem;
+      gap: 6px;
+    }
+
+    .viewer {
+      min-height: 70vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .viewer-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: start;
+      gap: 14px;
+      padding: 18px 18px 0;
+    }
+
+    .viewer-title {
+      margin: 0;
+      font-size: 1.25rem;
+      word-break: break-word;
+    }
+
+    .viewer-subtitle {
+      margin: 6px 0 0;
+      color: var(--muted);
+      font-size: 0.92rem;
+    }
+
+    .viewer-actions {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+
+    .viewer-body {
+      padding: 18px;
+      display: grid;
+      gap: 14px;
+    }
+
+    .preview {
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      background: rgba(0,0,0,0.08);
+      overflow: hidden;
+      min-height: 420px;
+    }
+
+    pre, textarea {
+      margin: 0;
+      white-space: pre-wrap;
+      word-break: break-word;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 0.92rem;
+      line-height: 1.6;
+      color: var(--text);
+    }
+
+    pre {
+      padding: 16px;
+      overflow: auto;
+      max-height: 560px;
+    }
+
+    .empty-state {
+      display: grid;
+      place-items: center;
+      min-height: 100%;
+      padding: 30px;
+      text-align: center;
+      color: var(--muted);
+    }
+
+    .empty-state h3 { margin: 10px 0 8px; color: var(--text); }
+    .empty-state p { margin: 0; max-width: 52ch; line-height: 1.6; }
+
+    .viewer-tools {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 10px;
+      align-items: center;
+    }
+
+    .notice {
+      margin-top: 10px;
+      padding: 12px 14px;
+      border-radius: 14px;
+      border: 1px solid var(--border);
+      background: color-mix(in srgb, var(--accent) 8%, var(--bg-elev-2));
+      color: var(--muted);
+      font-size: 0.92rem;
+    }
+
+    .hidden { display: none !important; }
+
+    @media (max-width: 980px) {
+      .layout { grid-template-columns: 1fr; }
+      .viewer { min-height: auto; }
+      .list { max-height: 320px; }
+    }
+
+    @media (max-width: 640px) {
+      .shell { padding: 14px; }
+      .topbar { padding: 14px; }
+      .actions, .viewer-header { align-items: stretch; }
+      .viewer-header, .topbar { flex-direction: column; }
+      .viewer-actions, .actions { justify-content: stretch; }
+      .viewer-actions button, .actions button { flex: 1 1 auto; }
+      .stats { grid-template-columns: 1fr; }
+      .viewer-tools { grid-template-columns: 1fr; }
+    }
+  </style>
 </head>
 <body>
-  <h1>Local Storage File Viewer</h1>
-  <input type="file" id="fileInput">
-  <button onclick="saveFile()">Save File</button>
-  <button onclick="loadFile()">Load File</button>
-  <div id="fileContents"></div>
+  <div class="shell">
+    <header class="topbar">
+      <div class="brand">
+        <div class="logo">FV</div>
+        <div>
+          <h1>Local File Vault</h1>
+          <p class="subtitle">Modern offline file storage with preview, search, and organized browsing.</p>
+        </div>
+      </div>
+      <div class="actions">
+        <button class="ghost" id="themeToggle" type="button">Toggle theme</button>
+        <button class="ghost" id="exportBtn" type="button">Export backup</button>
+        <button class="ghost" id="importBtn" type="button">Import backup</button>
+        <button class="primary" id="pickFilesBtn" type="button">Add files</button>
+        <input id="fileInput" type="file" multiple hidden />
+        <input id="importInput" type="file" accept="application/json" hidden />
+      </div>
+    </header>
+
+    <main class="layout">
+      <section class="panel">
+        <div class="panel-inner">
+          <div class="dropzone" id="dropzone">
+            <div class="chip">Drag & drop</div>
+            <h2>Drop files here</h2>
+            <p>Add text files, code, notes, and documents. Files are stored locally in IndexedDB, not localStorage.</p>
+            <div class="stats">
+              <div class="stat"><strong id="statFiles">0</strong><span>Files saved</span></div>
+              <div class="stat"><strong id="statSize">0 KB</strong><span>Total size</span></div>
+              <div class="stat"><strong id="statTypes">0</strong><span>Types</span></div>
+            </div>
+          </div>
+
+          <div class="searchbar">
+            <input id="search" type="search" placeholder="Search by name or text content..." />
+          </div>
+
+          <div class="list" id="fileList" aria-live="polite"></div>
+        </div>
+      </section>
+
+      <section class="panel viewer">
+        <div class="viewer-header">
+          <div>
+            <h2 class="viewer-title" id="viewerTitle">No file selected</h2>
+            <p class="viewer-subtitle" id="viewerSub">Choose a file to preview, copy, download, or delete.</p>
+          </div>
+          <div class="viewer-actions">
+            <button class="ghost" id="copyBtn" type="button" disabled>Copy text</button>
+            <button class="ghost" id="downloadBtn" type="button" disabled>Download</button>
+            <button class="danger" id="deleteBtn" type="button" disabled>Delete</button>
+          </div>
+        </div>
+
+        <div class="viewer-body">
+          <div class="viewer-tools">
+            <input id="previewSearch" type="text" placeholder="Find inside preview..." disabled />
+            <button id="clearSelectionBtn" type="button" disabled>Clear</button>
+          </div>
+
+          <div class="preview" id="previewPane">
+            <div class="empty-state" id="emptyState">
+              <div>
+                <div class="chip">Modern preview</div>
+                <h3>Nothing selected yet</h3>
+                <p>Upload a file or drag one into the app to start browsing. Use search to filter your library instantly.</p>
+              </div>
+            </div>
+            <pre id="previewText" class="hidden"></pre>
+          </div>
+
+          <div class="notice" id="statusBar">Ready.</div>
+        </div>
+      </section>
+    </main>
+  </div>
 
   <script>
-    function saveFile() {
-      var fileInput = document.getElementById("fileInput");
-      var file = fileInput.files[0];
-      var reader = new FileReader();
-      reader.onload = function() {
-        var fileContents = reader.result;
-        localStorage.setItem("fileContents", fileContents);
-        alert("File saved successfully!");
-      }
-      reader.readAsText(file);
+    const DB_NAME = 'LocalFileVaultDB';
+    const DB_VERSION = 1;
+    const STORE = 'files';
+
+    const els = {
+      fileInput: document.getElementById('fileInput'),
+      importInput: document.getElementById('importInput'),
+      pickFilesBtn: document.getElementById('pickFilesBtn'),
+      importBtn: document.getElementById('importBtn'),
+      exportBtn: document.getElementById('exportBtn'),
+      themeToggle: document.getElementById('themeToggle'),
+      dropzone: document.getElementById('dropzone'),
+      search: document.getElementById('search'),
+      fileList: document.getElementById('fileList'),
+      viewerTitle: document.getElementById('viewerTitle'),
+      viewerSub: document.getElementById('viewerSub'),
+      previewPane: document.getElementById('previewPane'),
+      previewText: document.getElementById('previewText'),
+      emptyState: document.getElementById('emptyState'),
+      statusBar: document.getElementById('statusBar'),
+      copyBtn: document.getElementById('copyBtn'),
+      downloadBtn: document.getElementById('downloadBtn'),
+      deleteBtn: document.getElementById('deleteBtn'),
+      clearSelectionBtn: document.getElementById('clearSelectionBtn'),
+      previewSearch: document.getElementById('previewSearch'),
+      statFiles: document.getElementById('statFiles'),
+      statSize: document.getElementById('statSize'),
+      statTypes: document.getElementById('statTypes'),
+    };
+
+    let db;
+    let files = [];
+    let selectedId = null;
+    let currentPreview = '';
+    let theme = localStorage.getItem('fv-theme') || (matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
+    document.documentElement.dataset.theme = theme;
+
+    function setStatus(message) {
+      els.statusBar.textContent = message;
     }
 
-    function loadFile() {
-      var fileContents = localStorage.getItem("fileContents");
-      document.getElementById("fileContents").innerHTML = fileContents;
+    function formatBytes(bytes) {
+      if (!bytes) return '0 KB';
+      const units = ['B', 'KB', 'MB', 'GB'];
+      const i = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
+      const value = bytes / Math.pow(1024, i);
+      return `${value.toFixed(value >= 10 || i === 0 ? 0 : 1)} ${units[i]}`;
     }
+
+    function escapeHTML(text) {
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+
+    function extFromName(name) {
+      const idx = name.lastIndexOf('.');
+      return idx >= 0 ? name.slice(idx + 1).toLowerCase() : 'file';
+    }
+
+    function isProbablyText(file) {
+      return file.type.startsWith('text/') || /^(json|js|ts|tsx|jsx|html|css|md|csv|xml|yaml|yml|txt|log|py|java|c|cpp|go|rs|php|sh)$/i.test(extFromName(file.name));
+    }
+
+    async function initDB() {
+      return new Promise((resolve, reject) => {
+        const request = indexedDB.open(DB_NAME, DB_VERSION);
+        request.onupgradeneeded = (event) => {
+          const db = event.target.result;
+          if (!db.objectStoreNames.contains(STORE)) {
+            const store = db.createObjectStore(STORE, { keyPath: 'id', autoIncrement: true });
+            store.createIndex('name', 'name', { unique: false });
+            store.createIndex('createdAt', 'createdAt', { unique: false });
+          }
+        };
+        request.onsuccess = (event) => {
+          db = event.target.result;
+          resolve();
+        };
+        request.onerror = () => reject(request.error);
+      });
+    }
+
+    async function dbGetAll() {
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction(STORE, 'readonly');
+        const req = tx.objectStore(STORE).getAll();
+        req.onsuccess = () => resolve(req.result || []);
+        req.onerror = () => reject(req.error);
+      });
+    }
+
+    async function dbAdd(record) {
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction(STORE, 'readwrite');
+        const req = tx.objectStore(STORE).add(record);
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => reject(req.error);
+      });
+    }
+
+    async function dbDelete(id) {
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction(STORE, 'readwrite');
+        const req = tx.objectStore(STORE).delete(id);
+        req.onsuccess = () => resolve();
+        req.onerror = () => reject(req.error);
+      });
+    }
+
+    async function ingestFiles(fileList) {
+      const incoming = [...fileList];
+      if (!incoming.length) return;
+
+      let saved = 0;
+      for (const file of incoming) {
+        const isText = isProbablyText(file);
+        const content = isText ? await file.text() : '';
+        const record = {
+          name: file.name,
+          type: file.type || 'application/octet-stream',
+          size: file.size,
+          lastModified: file.lastModified,
+          createdAt: Date.now(),
+          isText,
+          content,
+          blob: file,
+        };
+        await dbAdd(record);
+        saved += 1;
+      }
+      files = await dbGetAll();
+      render();
+      setStatus(`${saved} file${saved > 1 ? 's' : ''} added.`);
+    }
+
+    function filterFiles(list) {
+      const q = els.search.value.trim().toLowerCase();
+      if (!q) return list;
+      return list.filter(f =>
+        f.name.toLowerCase().includes(q) ||
+        (f.isText && f.content && f.content.toLowerCase().includes(q)) ||
+        (f.type && f.type.toLowerCase().includes(q))
+      );
+    }
+
+    function updateStats(list) {
+      const totalBytes = list.reduce((sum, f) => sum + (f.size || 0), 0);
+      const types = new Set(list.map(f => f.type || 'unknown'));
+      els.statFiles.textContent = String(list.length);
+      els.statSize.textContent = formatBytes(totalBytes);
+      els.statTypes.textContent = String(types.size);
+    }
+
+    function renderList(list) {
+      els.fileList.innerHTML = '';
+      if (!list.length) {
+        els.fileList.innerHTML = `
+          <div class="notice">No files match your search.</div>
+        `;
+        return;
+      }
+
+      for (const file of list.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0))) {
+        const row = document.createElement('div');
+        row.className = `file-row${file.id === selectedId ? ' active' : ''}`;
+        row.innerHTML = `
+          <div class="file-meta">
+            <p class="file-name" title="${escapeHTML(file.name)}">${escapeHTML(file.name)}</p>
+            <div class="file-sub">
+              <span>${escapeHTML(file.type || 'unknown type')}</span>
+              <span>${formatBytes(file.size || 0)}</span>
+              <span>${new Date(file.createdAt || Date.now()).toLocaleString()}</span>
+            </div>
+          </div>
+          <div class="chip">${file.isText ? 'Text' : 'Binary'}</div>
+        `;
+        row.addEventListener('click', () => selectFile(file.id));
+        els.fileList.appendChild(row);
+      }
+    }
+
+    function showPreview(file) {
+      currentPreview = file.isText ? (file.content || '') : '';
+      els.viewerTitle.textContent = file.name;
+      els.viewerSub.textContent = `${file.type || 'unknown type'} • ${formatBytes(file.size || 0)} • ${new Date(file.createdAt || Date.now()).toLocaleString()}`;
+      els.previewSearch.disabled = !file.isText;
+      els.clearSelectionBtn.disabled = false;
+      els.copyBtn.disabled = !file.isText;
+      els.downloadBtn.disabled = false;
+      els.deleteBtn.disabled = false;
+
+      if (file.isText) {
+        els.emptyState.classList.add('hidden');
+        els.previewText.classList.remove('hidden');
+        els.previewText.textContent = file.content || '(empty file)';
+      } else {
+        els.previewText.classList.add('hidden');
+        els.emptyState.classList.remove('hidden');
+        els.emptyState.innerHTML = `
+          <div>
+            <div class="chip">Binary preview</div>
+            <h3>${escapeHTML(file.name)}</h3>
+            <p>This file is stored locally. Download it to open in the right application, or re-import as text if needed.</p>
+          </div>
+        `;
+      }
+    }
+
+    function clearViewer() {
+      selectedId = null;
+      currentPreview = '';
+      els.viewerTitle.textContent = 'No file selected';
+      els.viewerSub.textContent = 'Choose a file to preview, copy, download, or delete.';
+      els.previewText.classList.add('hidden');
+      els.emptyState.classList.remove('hidden');
+      els.emptyState.innerHTML = `
+        <div>
+          <div class="chip">Modern preview</div>
+          <h3>Nothing selected yet</h3>
+          <p>Upload a file or drag one into the app to start browsing. Use search to filter your library instantly.</p>
+        </div>
+      `;
+      els.copyBtn.disabled = true;
+      els.downloadBtn.disabled = true;
+      els.deleteBtn.disabled = true;
+      els.previewSearch.disabled = true;
+      els.previewSearch.value = '';
+      els.clearSelectionBtn.disabled = true;
+      render();
+    }
+
+    function selectFile(id) {
+      const file = files.find(f => f.id === id);
+      if (!file) return;
+      selectedId = id;
+      showPreview(file);
+      renderList(filterFiles(files));
+    }
+
+    async function deleteSelected() {
+      if (selectedId == null) return;
+      const file = files.find(f => f.id === selectedId);
+      if (!file) return;
+      if (!confirm(`Delete "${file.name}"?`)) return;
+      await dbDelete(selectedId);
+      files = await dbGetAll();
+      const wasSelected = selectedId;
+      clearViewer();
+      setStatus(`Deleted ${file.name}.`);
+      if (wasSelected && files.length) render();
+    }
+
+    async function copySelected() {
+      const file = files.find(f => f.id === selectedId);
+      if (!file || !file.isText) return;
+      await navigator.clipboard.writeText(file.content || '');
+      setStatus(`Copied ${file.name} to clipboard.`);
+    }
+
+    function downloadSelected() {
+      const file = files.find(f => f.id === selectedId);
+      if (!file) return;
+      if (file.isText) {
+        const blob = new Blob([file.content || ''], { type: file.type || 'text/plain' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = file.name;
+        a.click();
+        URL.revokeObjectURL(url);
+      } else if (file.blob) {
+        const url = URL.createObjectURL(file.blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = file.name;
+        a.click();
+        URL.revokeObjectURL(url);
+      }
+      setStatus(`Downloaded ${file.name}.`);
+    }
+
+    async function exportBackup() {
+      const data = files.map(({ blob, ...rest }) => rest);
+      const blob = new Blob([JSON.stringify({ exportedAt: new Date().toISOString(), files: data }, null, 2)], {
+        type: 'application/json'
+      });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `local-file-vault-backup-${new Date().toISOString().slice(0,10)}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+      setStatus('Backup exported.');
+    }
+
+    async function importBackupFile(file) {
+      const text = await file.text();
+      const payload = JSON.parse(text);
+      const arr = Array.isArray(payload?.files) ? payload.files : [];
+      for (const item of arr) {
+        await dbAdd({
+          name: item.name || 'imported-file',
+          type: item.type || 'application/octet-stream',
+          size: item.size || (item.content ? item.content.length : 0),
+          lastModified: item.lastModified || Date.now(),
+          createdAt: item.createdAt || Date.now(),
+          isText: Boolean(item.isText ?? true),
+          content: item.content || '',
+          blob: null,
+        });
+      }
+      files = await dbGetAll();
+      render();
+      setStatus(`Imported ${arr.length} file${arr.length === 1 ? '' : 's'}.`);
+    }
+
+    function applyPreviewSearch() {
+      const q = els.previewSearch.value.trim().toLowerCase();
+      const file = files.find(f => f.id === selectedId);
+      if (!file || !file.isText) return;
+      const text = file.content || '';
+      if (!q) {
+        els.previewText.textContent = text;
+        return;
+      }
+      const idx = text.toLowerCase().indexOf(q);
+      if (idx < 0) {
+        els.previewText.textContent = text + '\n\n[No matches found]';
+        return;
+      }
+      const start = Math.max(0, idx - 300);
+      const end = Math.min(text.length, idx + q.length + 700);
+      const before = text.slice(start, idx);
+      const hit = text.slice(idx, idx + q.length);
+      const after = text.slice(idx + q.length, end);
+      els.previewText.innerHTML = `${escapeHTML(before)}<mark>${escapeHTML(hit)}</mark>${escapeHTML(after)}`;
+    }
+
+    function render() {
+      updateStats(files);
+      renderList(filterFiles(files));
+      if (selectedId != null && !files.some(f => f.id === selectedId)) {
+        clearViewer();
+      }
+      if (selectedId != null) {
+        const f = files.find(x => x.id === selectedId);
+        if (f) showPreview(f);
+      }
+    }
+
+    els.pickFilesBtn.addEventListener('click', () => els.fileInput.click());
+    els.importBtn.addEventListener('click', () => els.importInput.click());
+    els.exportBtn.addEventListener('click', exportBackup);
+    els.fileInput.addEventListener('change', async (e) => {
+      await ingestFiles(e.target.files);
+      els.fileInput.value = '';
+    });
+    els.importInput.addEventListener('change', async (e) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+      try {
+        await importBackupFile(file);
+      } catch {
+        alert('Could not import that backup file.');
+      }
+      els.importInput.value = '';
+    });
+    els.search.addEventListener('input', render);
+    els.previewSearch.addEventListener('input', applyPreviewSearch);
+    els.copyBtn.addEventListener('click', copySelected);
+    els.downloadBtn.addEventListener('click', downloadSelected);
+    els.deleteBtn.addEventListener('click', deleteSelected);
+    els.clearSelectionBtn.addEventListener('click', clearViewer);
+    els.themeToggle.addEventListener('click', () => {
+      theme = theme === 'dark' ? 'light' : 'dark';
+      document.documentElement.dataset.theme = theme;
+      localStorage.setItem('fv-theme', theme);
+    });
+
+    ['dragenter', 'dragover'].forEach(evt => {
+      els.dropzone.addEventListener(evt, (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        els.dropzone.classList.add('dragover');
+      });
+    });
+    ['dragleave', 'drop'].forEach(evt => {
+      els.dropzone.addEventListener(evt, (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        els.dropzone.classList.remove('dragover');
+      });
+    });
+    els.dropzone.addEventListener('drop', async (e) => {
+      const dropped = e.dataTransfer.files;
+      await ingestFiles(dropped);
+    });
+
+    (async function boot() {
+      try {
+        await initDB();
+        files = await dbGetAll();
+        render();
+        setStatus('Ready. Add files to start building your vault.');
+      } catch (err) {
+        console.error(err);
+        setStatus('IndexedDB could not be initialized in this browser.');
+      }
+    })();
   </script>
 </body>
 </html>
