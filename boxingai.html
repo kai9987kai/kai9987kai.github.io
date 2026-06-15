@@ -1,110 +1,260 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-    <title>Boxing Match Simulator</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Advanced Boxing Analytics Simulator</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         body {
-            font-family: Arial, sans-serif;
-            background-color: #f0f0f0;
-            padding: 20px;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #121212;
+            color: #e0e0e0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 40px 20px;
+            margin: 0;
         }
         h1 {
-            color: #333;
+            color: #ffffff;
+            font-weight: 600;
+            letter-spacing: 1px;
+            margin-bottom: 10px;
         }
-        #healthChart {
+        .controls {
+            margin-bottom: 30px;
+            text-align: center;
+        }
+        p {
+            color: #a0a0a0;
+            font-size: 0.9em;
             max-width: 600px;
-            margin: 20px auto;
+            text-align: center;
+            line-height: 1.5;
         }
         button {
-            background-color: #007BFF;
+            background: linear-gradient(135deg, #ff416c, #ff4b2b);
             color: white;
             border: none;
-            padding: 10px 20px;
-            text-align: center;
-            text-decoration: none;
-            display: inline-block;
+            padding: 12px 30px;
             font-size: 16px;
-            margin: 20px 2px;
+            font-weight: bold;
+            border-radius: 8px;
             cursor: pointer;
-            border-radius: 4px;
+            box-shadow: 0 4px 15px rgba(255, 65, 108, 0.4);
+            transition: transform 0.2s, box-shadow 0.2s;
         }
         button:hover {
-            background-color: #0056b3;
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(255, 65, 108, 0.6);
+        }
+        button:active {
+            transform: translateY(0);
+        }
+        .chart-container {
+            background-color: #1e1e1e;
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5);
+            width: 100%;
+            max-width: 800px;
+        }
+        #resultsLog {
+            margin-top: 20px;
+            font-family: monospace;
+            color: #4CAF50;
+            font-size: 1.1em;
         }
     </style>
 </head>
 <body>
-    <h1>Boxing Match Simulator</h1>
-    <button onclick="simulateMatch()">Start Match</button>
-    <canvas id="healthChart"></canvas>
+
+    <h1>Advanced Match Simulator</h1>
+    <p>Utilizes fatigue degradation, stamina tracking, and punch-probability vectors (Jabs vs. Power Punches) to simulate realistic fight outcomes.</p>
+    
+    <div class="controls">
+        <button onclick="simulateMatch()">Simulate Bout</button>
+        <div id="resultsLog"></div>
+    </div>
+
+    <div class="chart-container">
+        <canvas id="healthChart"></canvas>
+    </div>
+
     <script>
-    function simulateMatch() {
-        var boxer1 = {name: "Boxer 1", health: 100};
-        var boxer2 = {name: "Boxer 2", health: 100};
-        var health_history = {"Boxer 1": [100], "Boxer 2": [100]};
-        var rounds = 10;
-        for (var round = 0; round < rounds; round++) {
-            var attack = Math.floor(Math.random() * 20) + 1;
-            boxer2.health -= attack;
-            if (boxer2.health <= 0) {
-                health_history["Boxer 2"].push(0);
-                break;
-            } else {
-                health_history["Boxer 2"].push(boxer2.health);
+        let chartInstance = null; // Track the chart to destroy it on re-run
+
+        class Boxer {
+            constructor(name, color) {
+                this.name = name;
+                this.health = 100;
+                this.stamina = 100; // Affects power and accuracy
+                this.color = color;
+                this.healthHistory = [100];
             }
-            attack = Math.floor(Math.random() * 20) + 1;
-            boxer1.health -= attack;
-            if (boxer1.health <= 0) {
-                health_history["Boxer 1"].push(0);
-                break;
-            } else {
-                health_history["Boxer 1"].push(boxer1.health);
-            }
-        }
-        var ctx = document.getElementById('healthChart').getContext('2d');
-        new Chart(ctx, {
-            type: 'line',
-            data: {
-                labels: Array.from({length: health_history["Boxer 1"].length}, (_, i) => i + 1),
-                datasets: [{
-                    label: 'Boxer 1',
-                    data: health_history["Boxer 1"],
-                    borderColor: 'rgb(75, 192, 192)',
-                    fill: false
-                }, {
-                    label: 'Boxer 2',
-                    data: health_history["Boxer 2"],
-                    borderColor: 'rgb(255, 99, 132)',
-                    fill: false
-                }]
-            },
-            options: {
-                responsive: true,
-                title: {
-                    display: true,
-                    text: 'Health of Boxers Over Time'
-                },
-                scales: {
-                    x: {
-                        display: true,
-                        scaleLabel: {
-                            display: true,
-                            labelString: 'Round'
-                        }
-                    },
-                    y: {
-                        display: true,
-                        scaleLabel: {
-                            display: true,
-                            labelString: 'Health'
-                        }
+
+            // Simulates throwing a combination of punches in a round
+            fightRound(opponent) {
+                if (this.health <= 0 || opponent.health <= 0) return;
+
+                // Fatigue multiplier: As stamina drops, efficiency drops (down to 50%)
+                let fatigueFactor = 0.5 + (this.stamina / 200); 
+
+                // Decide strategy for the round: Volume (jabs) or Power (hooks/crosses)
+                let isPowerRound = Math.random() > 0.6; 
+
+                let damageDealt = 0;
+                let staminaCost = 0;
+
+                if (isPowerRound) {
+                    // High risk, high reward
+                    let hitChance = 0.4 * fatigueFactor;
+                    if (Math.random() < hitChance) {
+                        // Landed a power punch!
+                        damageDealt = (Math.random() * 15 + 10) * fatigueFactor; // 10-25 base damage
+                        staminaCost = 15;
+                    } else {
+                        // Missed, but still burned energy
+                        staminaCost = 10;
+                    }
+                } else {
+                    // Jab round: Consistent, low damage, setup punches
+                    let hitChance = 0.75 * fatigueFactor;
+                    if (Math.random() < hitChance) {
+                        damageDealt = (Math.random() * 5 + 3) * fatigueFactor; // 3-8 base damage
+                        staminaCost = 5;
+                    } else {
+                        staminaCost = 3;
                     }
                 }
+
+                // Apply results
+                opponent.health -= damageDealt;
+                this.stamina -= staminaCost;
+
+                // Prevent negative stats
+                if (opponent.health < 0) opponent.health = 0;
+                if (this.stamina < 0) this.stamina = 0;
+                
+                // Slight stamina recovery between rounds
+                this.stamina = Math.min(100, this.stamina + 5);
             }
-        });
-    }
+
+            recordHistory() {
+                this.healthHistory.push(this.health);
+            }
+        }
+
+        function simulateMatch() {
+            const boxer1 = new Boxer("Red Corner", 'rgb(255, 99, 132)');
+            const boxer2 = new Boxer("Blue Corner", 'rgb(54, 162, 235)');
+            const rounds = 12; // Championship rules
+
+            let matchEndedEarly = false;
+            let endingRound = rounds;
+
+            for (let round = 1; round <= rounds; round++) {
+                // Determine who attacks first in the clinch
+                if (Math.random() > 0.5) {
+                    boxer1.fightRound(boxer2);
+                    boxer2.fightRound(boxer1);
+                } else {
+                    boxer2.fightRound(boxer1);
+                    boxer1.fightRound(boxer2);
+                }
+
+                boxer1.recordHistory();
+                boxer2.recordHistory();
+
+                // Check for Knockout (KO)
+                if (boxer1.health <= 0 || boxer2.health <= 0) {
+                    matchEndedEarly = true;
+                    endingRound = round;
+                    break;
+                }
+            }
+
+            updateLog(boxer1, boxer2, matchEndedEarly, endingRound);
+            renderChart(boxer1, boxer2);
+        }
+
+        function updateLog(b1, b2, endedEarly, round) {
+            const logDiv = document.getElementById('resultsLog');
+            if (endedEarly) {
+                const winner = b1.health > 0 ? b1.name : b2.name;
+                logDiv.innerHTML = `KO Victory for ${winner} in Round ${round}!`;
+                logDiv.style.color = '#ff4b2b';
+            } else {
+                const winner = b1.health > b2.health ? b1.name : (b2.health > b1.health ? b2.name : "Draw");
+                logDiv.innerHTML = `Match went the distance. Winner by Decision: ${winner}`;
+                logDiv.style.color = '#4CAF50';
+            }
+        }
+
+        function renderChart(b1, b2) {
+            const ctx = document.getElementById('healthChart').getContext('2d');
+            
+            // Crucial: Destroy previous chart instance to prevent hover-glitching
+            if (chartInstance) {
+                chartInstance.destroy();
+            }
+
+            chartInstance = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: Array.from({length: b1.healthHistory.length}, (_, i) => i === 0 ? 'Start' : `R${i}`),
+                    datasets: [
+                        {
+                            label: b1.name,
+                            data: b1.healthHistory,
+                            borderColor: b1.color,
+                            backgroundColor: 'rgba(255, 99, 132, 0.1)',
+                            borderWidth: 3,
+                            tension: 0.3, // Smooths the lines for a modern look
+                            fill: true
+                        }, 
+                        {
+                            label: b2.name,
+                            data: b2.healthHistory,
+                            borderColor: b2.color,
+                            backgroundColor: 'rgba(54, 162, 235, 0.1)',
+                            borderWidth: 3,
+                            tension: 0.3,
+                            fill: true
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        legend: { labels: { color: '#e0e0e0' } },
+                        tooltip: { mode: 'index', intersect: false }
+                    },
+                    scales: {
+                        x: {
+                            display: true,
+                            title: { display: true, text: 'Rounds', color: '#a0a0a0' },
+                            ticks: { color: '#a0a0a0' },
+                            grid: { color: '#333' }
+                        },
+                        y: {
+                            display: true,
+                            title: { display: true, text: 'Remaining Health %', color: '#a0a0a0' },
+                            min: 0,
+                            max: 100,
+                            ticks: { color: '#a0a0a0' },
+                            grid: { color: '#333' }
+                        }
+                    },
+                    interaction: {
+                        mode: 'nearest',
+                        axis: 'x',
+                        intersect: false
+                    }
+                }
+            });
+        }
     </script>
 </body>
 </html>
-
