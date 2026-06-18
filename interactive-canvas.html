@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Advanced Interactive Canvas</title>
+
+<style>
+html,body{
+    margin:0;
+    overflow:hidden;
+    background:#000;
+    width:100%;
+    height:100%;
+}
+
+canvas{
+    display:block;
+    width:100vw;
+    height:100vh;
+}
+</style>
+</head>
+
+<body>
+
+<canvas id="canvas"></canvas>
+
+<script>
+
+const canvas = document.getElementById("canvas");
+const ctx = canvas.getContext("2d");
+
+let w,h,dpr;
+
+function resize(){
+    dpr = window.devicePixelRatio || 1;
+
+    w = window.innerWidth;
+    h = window.innerHeight;
+
+    canvas.width = w * dpr;
+    canvas.height = h * dpr;
+
+    canvas.style.width = w + "px";
+    canvas.style.height = h + "px";
+
+    ctx.setTransform(dpr,0,0,dpr,0,0);
+}
+resize();
+window.addEventListener("resize",resize);
+
+const mouse = {
+    x:w/2,
+    y:h/2
+};
+
+window.addEventListener("mousemove",e=>{
+    mouse.x=e.clientX;
+    mouse.y=e.clientY;
+});
+
+window.addEventListener("touchmove",e=>{
+    mouse.x=e.touches[0].clientX;
+    mouse.y=e.touches[0].clientY;
+},{passive:true});
+
+class Particle{
+
+    constructor(){
+        this.reset();
+    }
+
+    reset(){
+
+        this.x=Math.random()*w;
+        this.y=Math.random()*h;
+
+        this.vx=(Math.random()-0.5)*2;
+        this.vy=(Math.random()-0.5)*2;
+
+        this.size=Math.random()*4+1;
+
+        this.hue=Math.random()*360;
+
+        this.life=Math.random()*300+100;
+    }
+
+    update(){
+
+        const dx = mouse.x-this.x;
+        const dy = mouse.y-this.y;
+
+        const dist=Math.sqrt(dx*dx+dy*dy)+0.01;
+
+        const force=150/dist;
+
+        this.vx += (dx/dist)*force*0.002;
+        this.vy += (dy/dist)*force*0.002;
+
+        this.vx*=0.99;
+        this.vy*=0.99;
+
+        this.x+=this.vx;
+        this.y+=this.vy;
+
+        this.life--;
+
+        if(
+            this.life<0 ||
+            this.x<-100 ||
+            this.x>w+100 ||
+            this.y<-100 ||
+            this.y>h+100
+        ){
+            this.reset();
+        }
+    }
+
+    draw(){
+
+        ctx.beginPath();
+
+        ctx.shadowBlur=20;
+        ctx.shadowColor=`hsl(${this.hue},100%,60%)`;
+
+        ctx.fillStyle=`hsl(${this.hue},100%,60%)`;
+
+        ctx.arc(this.x,this.y,this.size,0,Math.PI*2);
+
+        ctx.fill();
+    }
+}
+
+const particles=[];
+
+for(let i=0;i<500;i++){
+    particles.push(new Particle());
+}
+
+let time=0;
+
+function animate(){
+
+    requestAnimationFrame(animate);
+
+    time+=0.01;
+
+    const gradient=ctx.createLinearGradient(
+        0,
+        0,
+        w,
+        h
+    );
+
+    gradient.addColorStop(
+        0,
+        `hsl(${time*50%360},70%,8%)`
+    );
+
+    gradient.addColorStop(
+        1,
+        `hsl(${(time*50+120)%360},70%,5%)`
+    );
+
+    ctx.fillStyle="rgba(0,0,0,0.08)";
+    ctx.fillRect(0,0,w,h);
+
+    ctx.fillStyle=gradient;
+    ctx.globalCompositeOperation="destination-over";
+    ctx.fillRect(0,0,w,h);
+
+    ctx.globalCompositeOperation="source-over";
+
+    for(const p of particles){
+
+        p.update();
+        p.draw();
+    }
+
+    for(let i=0;i<particles.length;i++){
+
+        const a=particles[i];
+
+        for(let j=i+1;j<particles.length;j++){
+
+            const b=particles[j];
+
+            const dx=a.x-b.x;
+            const dy=a.y-b.y;
+
+            const dist=Math.sqrt(dx*dx+dy*dy);
+
+            if(dist<120){
+
+                ctx.strokeStyle=
+                    `rgba(255,255,255,${
+                        1-dist/120
+                    })`;
+
+                ctx.lineWidth=0.5;
+
+                ctx.beginPath();
+                ctx.moveTo(a.x,a.y);
+                ctx.lineTo(b.x,b.y);
+                ctx.stroke();
+            }
+        }
+    }
+
+    const radial=ctx.createRadialGradient(
+        mouse.x,
+        mouse.y,
+        0,
+        mouse.x,
+        mouse.y,
+        300
+    );
+
+    radial.addColorStop(
+        0,
+        "rgba(255,255,255,0.25)"
+    );
+
+    radial.addColorStop(
+        1,
+        "rgba(255,255,255,0)"
+    );
+
+    ctx.fillStyle=radial;
+    ctx.fillRect(0,0,w,h);
+}
+
+animate();
+
+</script>
+
+</body>
+</html>
