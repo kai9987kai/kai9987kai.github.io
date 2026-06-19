@@ -1,280 +1,749 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <title>Enhanced Realistic 3D Animal Simulation Environment</title>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Evolutionary Ecosystem Simulation</title>
+
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/simplex-noise/2.4.0/simplex-noise.min.js"></script>
+
   <style>
-    body { font-family: Arial, sans-serif; margin: 0; background-color: #f0f2f5; overflow: hidden; }
+    :root {
+      --bg: rgba(12, 16, 24, 0.85);
+      --line: rgba(255, 255, 255, 0.1);
+      --text: #eef4ff;
+      --accent: #4aa5ff;
+      --health: #ff4a4a;
+      --food: #7ee787;
+      --water: #4ad1ff;
+    }
+
+    html, body {
+      margin: 0; padding: 0; width: 100%; height: 100%;
+      overflow: hidden; background: #07111d;
+      font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+    }
+
     #canvasContainer { width: 100vw; height: 100vh; }
-    #info { 
-      position: absolute; 
-      top: 10px; 
-      left: 10px; 
-      color: white; 
-      background: rgba(0,0,0,0.7); 
-      padding: 10px; 
-      border-radius: 5px; 
-      z-index: 1;
+
+    .panel {
+      position: absolute; z-index: 10; color: var(--text);
+      background: var(--bg); border: 1px solid var(--line);
+      backdrop-filter: blur(12px); border-radius: 12px;
+      box-shadow: 0 16px 40px rgba(0,0,0,0.4);
+      padding: 16px; font-size: 13px;
     }
-    #controls { 
-      position: absolute; 
-      top: 10px; 
-      right: 10px; 
-      background: rgba(0,0,0,0.7); 
-      color: white; 
-      padding: 10px; 
-      border-radius: 5px; 
-      z-index: 1;
+
+    #info { top: 16px; left: 16px; min-width: 260px; line-height: 1.6; }
+    #controls { top: 16px; right: 16px; width: 300px; max-height: calc(100vh - 32px); overflow-y: auto; }
+    
+    #targetPanel {
+      bottom: 16px; left: 50%; transform: translateX(-50%);
+      width: 400px; display: none; text-align: center;
     }
+
+    .title { font-size: 15px; font-weight: 800; margin-bottom: 12px; color: white; text-transform: uppercase; letter-spacing: 1px; }
+    .hint { font-size: 11px; opacity: 0.7; margin-top: 10px; line-height: 1.4; }
+    .value { color: var(--accent); font-weight: 700; float: right; }
+
+    label { display: block; margin-top: 12px; font-size: 12px; opacity: 0.9; }
+    input[type="range"], select, button { width: 100%; margin-top: 6px; box-sizing: border-box; }
+    
+    select, button {
+      padding: 8px 12px; border-radius: 6px;
+      border: 1px solid rgba(255,255,255,0.2);
+      background: rgba(255,255,255,0.08); color: var(--text);
+      outline: none; transition: all 0.2s;
+    }
+    button { cursor: pointer; font-weight: bold; margin-top: 12px; background: rgba(74, 165, 255, 0.2); }
+    button:hover { background: rgba(74, 165, 255, 0.4); }
+
+    .stat-bar-container { width: 100%; background: rgba(255,255,255,0.1); border-radius: 4px; margin: 4px 0 8px; height: 6px; overflow: hidden; }
+    .stat-bar { height: 100%; border-radius: 4px; transition: width 0.2s linear; }
+    .stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; text-align: left; }
   </style>
 </head>
 <body>
   <div id="canvasContainer"></div>
-  <div id="info">
-    <strong>Enhanced Animal Simulation</strong><br>
-    <span id="timeDisplay">Time: Morning</span><br>
-    Animal Speed: <span id="speedDisplay">2</span><br>
-    Terrain Complexity: <span id="terrainDisplay">1</span>
+
+  <div id="info" class="panel">
+    <div class="title">Ecosystem Data</div>
+    <div>Time: <span id="timeDisplay" class="value">Morning</span></div>
+    <div>Weather: <span id="weatherDisplay" class="value">Clear</span></div>
+    <hr style="border: 0; border-top: 1px solid var(--line); margin: 10px 0;">
+    <div>Entities: <span id="entityDisplay" class="value">0</span></div>
+    <div>Herbivores: <span id="herbivoreDisplay" class="value">0</span></div>
+    <div>Predators: <span id="predatorDisplay" class="value">0</span></div>
+    <div>Plants / Meat: <span id="foodDisplay" class="value">0 / 0</span></div>
+    <div class="hint">Animals now breed, evolve, leave carcasses, and seek water via topographical gradient mapping.</div>
   </div>
-  <div id="controls">
-    <label>Animal Speed:</label>
-    <input type="range" id="speedControl" min="0.5" max="5" step="0.1" value="2"><br>
-    <label>Terrain Complexity:</label>
-    <input type="range" id="terrainControl" min="0.1" max="1.5" step="0.1" value="1"><br>
-    <label>Day/Night Cycle Speed:</label>
-    <input type="range" id="timeControl" min="0.1" max="5" step="0.1" value="1">
+
+  <div id="targetPanel" class="panel">
+    <div class="title">Tracking: <span id="targetName">None</span></div>
+    <div class="stat-grid">
+      <div>
+        <label>Energy</label>
+        <div class="stat-bar-container"><div id="barEnergy" class="stat-bar" style="background: var(--health); width: 100%;"></div></div>
+        <label>Food</label>
+        <div class="stat-bar-container"><div id="barFood" class="stat-bar" style="background: var(--food); width: 100%;"></div></div>
+        <label>Water</label>
+        <div class="stat-bar-container"><div id="barWater" class="stat-bar" style="background: var(--water); width: 100%;"></div></div>
+      </div>
+      <div>
+        <div>Gen: <span id="targetGen" class="value">1</span></div>
+        <div>Age: <span id="targetAge" class="value">0</span></div>
+        <div>Speed Gene: <span id="geneSpeed" class="value">1.0</span></div>
+        <div>Vision Gene: <span id="geneVision" class="value">1.0</span></div>
+        <div>Size Gene: <span id="geneSize" class="value">1.0</span></div>
+      </div>
+    </div>
+  </div>
+
+  <div id="controls" class="panel">
+    <div class="title">Simulation Controls</div>
+    <label for="speedControl">Time Factor</label>
+    <input type="range" id="speedControl" min="0.5" max="5" step="0.1" value="1.5">
+
+    <label for="followControl">Camera Follow Focus</label>
+    <select id="followControl">
+      <option value="none" selected>Free Camera</option>
+      <option value="deer">Track Deer</option>
+      <option value="wolf">Track Wolf</option>
+      <option value="rabbit">Track Rabbit</option>
+      <option value="bird">Track Bird</option>
+      <option value="bear">Track Bear</option>
+    </select>
+
+    <button id="rainBtn">Toggle Rain</button>
+    <button id="rebuildBtn">Rebuild World</button>
   </div>
 
   <script>
+    // --- Core Systems ---
     let scene, camera, renderer, controls, clock;
-    let env, animals, skybox;
-    let animalSpeed = 2, terrainComplexity = 1, dayNightSpeed = 1, timeOfDay = 0;
+    let sunLight, moonLight, ambientLight;
+    let timeOfDay = 0;
+    let simSpeed = 1.5;
+    let followType = "none";
+    let trackedEntity = null;
+    let isRaining = false;
+    let rainSystem = null;
 
-    class Environment {
-      constructor(size) {
-        this.size = size;
-        this.simplex = new SimplexNoise();
+    const simplex = new SimplexNoise();
+    const tempObj = new THREE.Object3D();
+
+    const WORLD_HALF = 4096;
+    const CHUNK_SIZE = 192;
+    const CHUNK_SEGMENTS = 32;
+    const SEA_LEVEL = -5.5;
+
+    const activeChunks = new Map();
+    let entities = [];
+    const foodNodes = []; // Contains type: "plant" or "meat"
+
+    // --- Definitions ---
+    const speciesDefs = [
+      { key: "deer", label: "Deer", faction: "herbivore", count: 45, color: 0xb88b62, geometry: new THREE.ConeGeometry(0.56, 1.8, 5), baseSpeed: 7.2, turn: 1.8, vision: 36, yOffset: 1.0, prey: true },
+      { key: "rabbit", label: "Rabbit", faction: "herbivore", count: 70, color: 0xefefef, geometry: new THREE.SphereGeometry(0.42, 8, 8), baseSpeed: 9.8, turn: 2.8, vision: 24, yOffset: 0.35, prey: true },
+      { key: "wolf", label: "Wolf", faction: "predator", count: 18, color: 0x4b5563, geometry: new THREE.DodecahedronGeometry(0.74, 0), baseSpeed: 10.4, turn: 2.8, vision: 50, yOffset: 0.55, prey: false },
+      { key: "bear", label: "Bear", faction: "omnivore", count: 10, color: 0x5e4a3a, geometry: new THREE.SphereGeometry(0.9, 10, 10), baseSpeed: 6.2, turn: 1.4, vision: 35, yOffset: 0.7, prey: false },
+      { key: "bird", label: "Bird", faction: "ambient", count: 35, color: 0xe3d7ac, geometry: new THREE.TetrahedronGeometry(0.42, 0), baseSpeed: 14.0, turn: 3.6, vision: 60, yOffset: 16, prey: false }
+    ];
+
+    const plantDefs = {
+      grass: { geometry: new THREE.ConeGeometry(0.06, 0.8, 3), material: new THREE.MeshStandardMaterial({ color: 0x77c76e, roughness: 1 }) },
+      tree: { geometry: new THREE.ConeGeometry(0.55, 4.2, 6), material: new THREE.MeshStandardMaterial({ color: 0x2f7f43, roughness: 1 }) },
+      rock: { geometry: new THREE.DodecahedronGeometry(0.24, 0), material: new THREE.MeshStandardMaterial({ color: 0x8f95a3, roughness: 1 }) }
+    };
+
+    // --- Math & Terrain ---
+    function clamp(v, min, max) { return Math.max(min, Math.min(max, v)); }
+    function lerp(a, b, t) { return a + (b - a) * t; }
+    function lerpAngle(a, b, t) {
+      let d = b - a;
+      d = ((d + Math.PI) % (Math.PI * 2)) - Math.PI;
+      return a + d * t;
+    }
+    function wrapWorld(v) { return v < -WORLD_HALF ? v + (WORLD_HALF*2) : (v > WORLD_HALF ? v - (WORLD_HALF*2) : v); }
+    function randRange(min, max) { return min + Math.random() * (max - min); }
+    function mulberry32(seed) {
+      return function () {
+        let t = seed += 0x6D2B79F5;
+        t = Math.imul(t ^ t >>> 15, t | 1); t ^= t + Math.imul(t ^ t >>> 7, t | 61);
+        return ((t ^ t >>> 14) >>> 0) / 4294967296;
+      };
+    }
+
+    function fbm(x, z, scale, octaves = 4, persistence = 0.5) {
+      let total = 0, amplitude = 1, frequency = 1, norm = 0;
+      for (let i = 0; i < octaves; i++) {
+        total += simplex.noise2D(x * scale * frequency, z * scale * frequency) * amplitude;
+        norm += amplitude; amplitude *= persistence; frequency *= 2;
+      }
+      return total / norm;
+    }
+
+    function moistureAt(x, z) { return fbm(x + 2300, z - 1800, 0.002, 4) * 0.5 + 0.5; }
+    function heightAt(x, z) {
+      const base = fbm(x, z, 0.0015, 5) * 16;
+      const detail = fbm(x + 900, z - 500, 0.006, 3) * 5;
+      const mountains = Math.pow(Math.max(simplex.noise2D(x * 0.0003, z * 0.0003), 0), 3) * 65;
+      return base + detail + mountains - 5;
+    }
+
+    // Mathematical Gradient to find Downhill (Water)
+    function getDownhillGradient(x, z) {
+      const delta = 1.0;
+      const h0 = heightAt(x, z);
+      const hX = heightAt(x + delta, z);
+      const hZ = heightAt(x, z + delta);
+      return { dx: hX - h0, dz: hZ - h0 };
+    }
+
+    // --- Entity & Evolution Class ---
+    class Entity {
+      constructor(def, parent = null) {
+        this.def = def;
+        this.id = Math.random().toString(36).substr(2, 9);
+        this.generation = parent ? parent.generation + 1 : 1;
+        
+        // Genetics System
+        this.genes = parent ? {
+          speed: clamp(parent.genes.speed * randRange(0.9, 1.1), 0.5, 2.0),
+          vision: clamp(parent.genes.vision * randRange(0.9, 1.1), 0.5, 2.0),
+          size: clamp(parent.genes.size * randRange(0.9, 1.1), 0.6, 1.5),
+          r: clamp(parent.genes.r + randRange(-0.05, 0.05), 0, 1),
+          g: clamp(parent.genes.g + randRange(-0.05, 0.05), 0, 1),
+          b: clamp(parent.genes.b + randRange(-0.05, 0.05), 0, 1)
+        } : {
+          speed: randRange(0.9, 1.1), vision: randRange(0.9, 1.1), size: randRange(0.9, 1.1),
+          r: new THREE.Color(def.color).r, g: new THREE.Color(def.color).g, b: new THREE.Color(def.color).b
+        };
+
+        this.x = parent ? parent.x + randRange(-2, 2) : randRange(-1000, 1000);
+        this.z = parent ? parent.z + randRange(-2, 2) : randRange(-1000, 1000);
+        this.yaw = Math.random() * Math.PI * 2;
+        this.vx = 0; this.vz = 0;
+        
+        // Needs
+        this.energy = parent ? 60 : randRange(70, 100);
+        this.hunger = parent ? 40 : randRange(0, 30);
+        this.thirst = parent ? 30 : randRange(0, 20);
+        this.age = 0;
+        this.walkCycle = Math.random() * Math.PI;
+
+        const mat = new THREE.MeshStandardMaterial({ 
+          color: new THREE.Color(this.genes.r, this.genes.g, this.genes.b), roughness: 0.9 
+        });
+        this.mesh = new THREE.Mesh(def.geometry, mat);
+        this.mesh.castShadow = true;
+        scene.add(this.mesh);
+        
+        if (!parent) this.findValidSpawn();
       }
 
-      getHeight(x, y) {
-        return this.simplex.noise2D(x * terrainComplexity / 10, y * terrainComplexity / 10) * 5;
+      findValidSpawn() {
+        for (let i = 0; i < 30; i++) {
+          const h = heightAt(this.x, this.z);
+          if (this.def.faction !== "ambient" && h < SEA_LEVEL + 1) {
+            this.x += randRange(-100, 100); this.z += randRange(-100, 100);
+          } else break;
+        }
       }
 
-      isWater(x, y) {
-        return Math.abs(this.simplex.noise2D(x / 5, y / 5)) < 0.1;
+      die(cause) {
+        scene.remove(this.mesh);
+        this.mesh.geometry.dispose();
+        this.mesh.material.dispose();
+        
+        // Drop meat for predators when dying (if not a bird out of bounds)
+        if (cause !== "water" && this.def.faction !== "ambient") {
+          spawnFoodNode(this.x, this.z, "meat", this.genes.size * 2);
+        }
+        
+        if (trackedEntity === this) trackedEntity = null;
+        return true; // flag for removal
       }
 
-      addWaterAndVegetation() {
-        const waterMaterial = new THREE.MeshPhongMaterial({ color: 0x1e90ff, transparent: true, opacity: 0.7 });
-        const vegetationMaterial = new THREE.MeshLambertMaterial({ color: 0x228B22 });
+      reproduce() {
+        if (this.energy > 130 && this.hunger < 30 && this.thirst < 30 && this.age > 10) {
+          this.energy -= 60;
+          entities.push(new Entity(this.def, this));
+        }
+      }
 
-        for (let i = 0; i < this.size; i += 2) {
-          for (let j = 0; j < this.size; j += 2) {
-            const x = i - this.size / 2;
-            const z = j - this.size / 2;
-            if (this.isWater(i, j)) {
-              const water = new THREE.Mesh(new THREE.CircleGeometry(1, 16), waterMaterial);
-              water.rotation.x = -Math.PI / 2;
-              water.position.set(x, this.getHeight(x, z) + 0.05, z);
-              scene.add(water);
-            } else if (Math.random() < 0.1) {  // Place vegetation at random
-              const plant = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 1, 8), vegetationMaterial);
-              plant.position.set(x, this.getHeight(x, z) + 0.5, z);
-              plant.castShadow = true;
-              scene.add(plant);
+      findClosest(arr, maxDist, filterFn) {
+        let best = null; let bestD2 = maxDist * maxDist;
+        for (const item of arr) {
+          if (!filterFn(item)) continue;
+          const d2 = (item.x - this.x)**2 + (item.z - this.z)**2;
+          if (d2 < bestD2) { bestD2 = d2; best = item; }
+        }
+        return best;
+      }
+
+      update(dt) {
+        this.age += dt;
+        this.energy -= dt * (this.def.baseSpeed * this.genes.speed * 0.05); // Faster costs more energy
+        this.hunger += dt * 1.5;
+        this.thirst += dt * (isRaining ? -5 : 1.2); 
+        this.thirst = clamp(this.thirst, 0, 100);
+
+        if (this.energy <= 0 || this.hunger >= 100 || this.thirst >= 100) return this.die("needs");
+
+        const h = heightAt(this.x, this.z);
+        if (h < SEA_LEVEL && this.def.faction !== "ambient") return this.die("water"); // Drowned
+
+        let desiredYaw = this.yaw;
+        let speedMult = 1.0;
+        let isMoving = true;
+        const actualVision = this.def.vision * this.genes.vision;
+
+        // Needs Hierarchy AI
+        const threat = this.def.prey ? this.findClosest(entities, actualVision, e => e.def.faction === "predator" || e.def.faction === "omnivore") : null;
+        
+        if (threat) {
+          // Flee
+          desiredYaw = Math.atan2(this.z - threat.z, this.x - threat.x);
+          speedMult = 1.8;
+          this.energy -= dt * 2;
+        } 
+        else if (this.thirst > 65) {
+          // Seek Water via Terrain Gradient Map
+          if (h > SEA_LEVEL + 1) {
+            const grad = getDownhillGradient(this.x, this.z);
+            desiredYaw = Math.atan2(-grad.dz, -grad.dx); // Move against gradient (downhill)
+          } else {
+            this.thirst -= dt * 30; // Drinking
+            speedMult = 0;
+            isMoving = false;
+          }
+        }
+        else if (this.hunger > 35) {
+          // Hunt / Forage
+          if (this.def.faction === "predator" || this.def.faction === "omnivore") {
+            const prey = this.findClosest(entities, actualVision, e => e.def.prey);
+            const meat = this.findClosest(foodNodes, actualVision, f => f.type === "meat");
+            
+            if (meat) {
+              desiredYaw = Math.atan2(meat.z - this.z, meat.x - this.x);
+              if (Math.hypot(meat.x - this.x, meat.z - this.z) < 3.0) {
+                this.hunger -= 40; this.energy += 30; meat.amount -= 1; speedMult = 0;
+              }
+            } else if (prey) {
+              desiredYaw = Math.atan2(prey.z - this.z, prey.x - this.x);
+              speedMult = 1.6;
+              if (Math.hypot(prey.x - this.x, prey.z - this.z) < 3.5) {
+                prey.energy -= dt * 50; // Attack
+              }
+            } else {
+              desiredYaw += Math.sin(timeOfDay + this.age) * 0.05; // Wander
             }
+          } 
+          if (this.def.faction === "herbivore" || this.def.faction === "omnivore") {
+            const plant = this.findClosest(foodNodes, actualVision, f => f.type === "plant");
+            if (plant) {
+              desiredYaw = Math.atan2(plant.z - this.z, plant.x - this.x);
+              if (Math.hypot(plant.x - this.x, plant.z - this.z) < 3.0) {
+                this.hunger -= 35; this.energy += 25; plant.amount -= 1; speedMult = 0;
+              }
+            } else {
+              desiredYaw += Math.sin(timeOfDay + this.age) * 0.05;
+            }
+          }
+        } else {
+          // Wander & Reproduce
+          desiredYaw += Math.sin(timeOfDay * 0.5 + this.x * 0.01) * 0.04;
+          speedMult = 0.5;
+          this.reproduce();
+        }
+
+        // Avoid Water if not thirsty
+        if (h < SEA_LEVEL + 2 && this.thirst < 50 && this.def.faction !== "ambient") {
+          const grad = getDownhillGradient(this.x, this.z);
+          desiredYaw = Math.atan2(grad.dz, grad.dx); // Move uphill
+        }
+
+        // Physics & Movement
+        this.yaw = lerpAngle(this.yaw, desiredYaw, dt * this.def.turn * 2);
+        const moveSpeed = this.def.baseSpeed * this.genes.speed * speedMult * (this.energy < 20 ? 0.6 : 1);
+        
+        if (isMoving) {
+          this.vx = lerp(this.vx, Math.cos(this.yaw) * moveSpeed, 0.1);
+          this.vz = lerp(this.vz, Math.sin(this.yaw) * moveSpeed, 0.1);
+          this.walkCycle += dt * moveSpeed * 1.5;
+        } else {
+          this.vx *= 0.8; this.vz *= 0.8;
+        }
+
+        this.x = wrapWorld(this.x + this.vx * dt);
+        this.z = wrapWorld(this.z + this.vz * dt);
+
+        // Procedural Animations
+        let yAnim = h + this.def.yOffset * this.genes.size;
+        let pitchAnim = 0;
+        let rollAnim = 0;
+
+        if (this.def.faction === "ambient") { // Bird
+          yAnim += 14 + Math.sin(this.walkCycle * 0.5) * 2;
+          rollAnim = Math.sin(this.walkCycle * 4) * 0.4; // Wing flap approximation via mesh roll
+        } else if (this.def.key === "rabbit" && isMoving) {
+          yAnim += Math.abs(Math.sin(this.walkCycle)) * 0.8; // Hopping
+          pitchAnim = Math.cos(this.walkCycle) * 0.3;
+        } else if (isMoving) {
+          yAnim += Math.abs(Math.sin(this.walkCycle)) * 0.2; // Quadruped trot bob
+          pitchAnim = Math.sin(this.walkCycle) * 0.1;
+          rollAnim = Math.cos(this.walkCycle * 0.5) * 0.1;
+        }
+
+        tempObj.position.set(this.x, yAnim, this.z);
+        tempObj.rotation.set(pitchAnim, -this.yaw, rollAnim);
+        tempObj.scale.setScalar(this.def.size || 1 * this.genes.size);
+        tempObj.updateMatrix();
+        this.mesh.matrix.copy(tempObj.matrix);
+        this.mesh.matrixAutoUpdate = false;
+
+        return false; // Keep alive
+      }
+    }
+
+    // --- Terrain Chunk System ---
+    class TerrainChunk {
+      constructor(cx, cz) {
+        this.cx = cx; this.cz = cz;
+        this.group = new THREE.Group();
+        this.group.position.set(cx * CHUNK_SIZE, 0, cz * CHUNK_SIZE);
+        this.meshes = [];
+        this.build();
+      }
+
+      build() {
+        const geo = new THREE.PlaneGeometry(CHUNK_SIZE, CHUNK_SIZE, CHUNK_SEGMENTS, CHUNK_SEGMENTS);
+        const pos = geo.attributes.position.array;
+        const colors = [];
+        const ox = this.cx * CHUNK_SIZE; const oz = this.cz * CHUNK_SIZE;
+
+        for (let i = 0; i < pos.length; i += 3) {
+          const h = heightAt(ox + pos[i], oz + pos[i + 1]);
+          pos[i + 2] = h;
+          
+          const c = new THREE.Color();
+          if (h < SEA_LEVEL + 1) c.setHSL(0.12, 0.4, 0.45); // Sand
+          else if (h < 15) c.setHSL(0.3, 0.5, 0.35 + (Math.random()*0.05)); // Grass
+          else if (h < 35) c.setHSL(0.08, 0.1, 0.4); // Rock
+          else c.setHSL(0, 0, 0.9); // Snow
+          colors.push(c.r, c.g, c.b);
+        }
+
+        geo.setAttribute("color", new THREE.Float32BufferAttribute(colors, 3));
+        geo.computeVertexNormals();
+
+        const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.9 });
+        this.terrainMesh = new THREE.Mesh(geo, mat);
+        this.terrainMesh.rotation.x = -Math.PI / 2;
+        this.terrainMesh.receiveShadow = true;
+        this.group.add(this.terrainMesh);
+
+        // Scatter Plants Safely via InstancedMesh (reusing shared geometry/materials)
+        const rng = mulberry32(this.cx * 37476 + this.cz * 66826);
+        const buckets = { grass: [], tree: [], rock: [] };
+
+        for (let i = 0; i < 120; i++) {
+          const x = (rng() - 0.5) * CHUNK_SIZE; const z = (rng() - 0.5) * CHUNK_SIZE;
+          const h = heightAt(ox + x, oz + z);
+          if (h < SEA_LEVEL + 2 || h > 40) continue;
+          
+          if (rng() < 0.3) buckets.tree.push({ x, y: h + 2, z, scale: 0.8 + rng() * 1.5 });
+          else if (rng() < 0.8) buckets.grass.push({ x, y: h, z, scale: 0.5 + rng() });
+        }
+
+        for (const [key, transforms] of Object.entries(buckets)) {
+          if (!transforms.length) continue;
+          const def = plantDefs[key];
+          const mesh = new THREE.InstancedMesh(def.geometry, def.material, transforms.length);
+          transforms.forEach((t, i) => {
+            tempObj.position.set(t.x, t.y, t.z);
+            tempObj.rotation.set(0, rng() * Math.PI, 0);
+            tempObj.scale.setScalar(t.scale);
+            tempObj.updateMatrix();
+            mesh.setMatrixAt(i, tempObj.matrix);
+          });
+          mesh.castShadow = true;
+          mesh.receiveShadow = true;
+          this.group.add(mesh);
+          this.meshes.push(mesh);
+        }
+      }
+
+      dispose() {
+        scene.remove(this.group);
+        // CRITICAL FIX: Only dispose the unique terrain mesh! Instanced geometries are shared in plantDefs.
+        this.terrainMesh.geometry.dispose();
+        this.terrainMesh.material.dispose();
+      }
+    }
+
+    function updateChunks() {
+      const cx = Math.floor(camera.position.x / CHUNK_SIZE);
+      const cz = Math.floor(camera.position.z / CHUNK_SIZE);
+      const needed = new Set();
+
+      for (let dx = -2; dx <= 2; dx++) {
+        for (let dz = -2; dz <= 2; dz++) {
+          const key = `${cx + dx},${cz + dz}`;
+          needed.add(key);
+          if (!activeChunks.has(key)) {
+            const chunk = new TerrainChunk(cx + dx, cz + dz);
+            activeChunks.set(key, chunk);
+            scene.add(chunk.group);
           }
         }
       }
-    }
 
-    class Animal {
-      constructor(environment) {
-        this.environment = environment;
-        this.position = [
-          Math.random() * environment.size,
-          Math.random() * environment.size
-        ];
-        this.energy = 100;
-        this.rotation = Math.random() * Math.PI * 2;
-      }
-
-      createMesh() {
-        const bodyMaterial = new THREE.MeshPhongMaterial({ color: this.getRandomColor() });
-        this.mesh = new THREE.Group();
-
-        const body = new THREE.Mesh(new THREE.SphereGeometry(0.5, 16, 16), bodyMaterial);
-        const head = new THREE.Mesh(new THREE.SphereGeometry(0.3, 16, 16), bodyMaterial);
-        head.position.set(0.5, 0.2, 0);
-
-        this.mesh.add(body);
-        this.mesh.add(head);
-
-        // Adding legs with simple rotation animation
-        this.legs = [];
-        for (let i = 0; i < 4; i++) {
-          const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 0.5, 8), bodyMaterial);
-          leg.position.set(i < 2 ? -0.3 : 0.3, -0.5, i % 2 === 0 ? -0.3 : 0.3);
-          this.legs.push(leg);
-          this.mesh.add(leg);
+      for (const [key, chunk] of activeChunks.entries()) {
+        if (!needed.has(key)) {
+          chunk.dispose();
+          activeChunks.delete(key);
         }
-
-        this.mesh.castShadow = true;
-        scene.add(this.mesh);
-        this.updateMeshPosition();
-      }
-
-      getRandomColor() {
-        const colors = [0xff5555, 0x55ff55, 0x5555ff, 0xffff55, 0xff55ff, 0x55ffff];
-        return colors[Math.floor(Math.random() * colors.length)];
-      }
-
-      updateMeshPosition() {
-        const x = this.position[0] - this.environment.size / 2;
-        const z = this.position[1] - this.environment.size / 2;
-        const height = this.environment.getHeight(x, z);
-        this.mesh.position.set(x, height + 0.5, z);
-        this.mesh.rotation.y = this.rotation;
-
-        const time = clock.getElapsedTime();
-        this.legs.forEach((leg, index) => {
-          leg.rotation.z = Math.sin(time * 5 + index) * 0.5;
-        });
-      }
-
-      move(delta) {
-        const angle = this.rotation;
-        this.position[0] += Math.cos(angle) * animalSpeed * delta;
-        this.position[1] += Math.sin(angle) * animalSpeed * delta;
-
-        this.position = this.position.map(pos => {
-          if (pos < 0) pos += this.environment.size;
-          if (pos >= this.environment.size) pos -= this.environment.size;
-          return pos;
-        });
-
-        this.rotation += (Math.random() - 0.5) * delta;
       }
     }
 
+    // --- Dynamic Food / Nodes ---
+    function spawnFoodNode(x, z, type, amount = 2) {
+      const geo = type === "plant" ? new THREE.SphereGeometry(0.3, 8, 8) : new THREE.BoxGeometry(0.5, 0.3, 0.5);
+      const color = type === "plant" ? 0x66ff66 : 0xff4444;
+      const mat = new THREE.MeshStandardMaterial({ color, roughness: 0.8 });
+      const mesh = new THREE.Mesh(geo, mat);
+      
+      mesh.position.set(x, heightAt(x, z) + 0.3, z);
+      mesh.castShadow = true;
+      scene.add(mesh);
+      foodNodes.push({ x, z, type, amount, mesh, maxAmount: amount });
+    }
+
+    function manageFoodNodes(dt) {
+      // Natural plant growth over time
+      if (Math.random() < (isRaining ? 0.1 : 0.02) && foodNodes.length < 150) {
+        const x = camera.position.x + randRange(-100, 100);
+        const z = camera.position.z + randRange(-100, 100);
+        if (heightAt(x, z) > SEA_LEVEL + 2) spawnFoodNode(x, z, "plant", randRange(2, 5));
+      }
+
+      for (let i = foodNodes.length - 1; i >= 0; i--) {
+        const n = foodNodes[i];
+        n.mesh.scale.setScalar(Math.max(0.1, n.amount / n.maxAmount));
+        if (n.amount <= 0) {
+          scene.remove(n.mesh); n.mesh.geometry.dispose(); n.mesh.material.dispose();
+          foodNodes.splice(i, 1);
+        }
+      }
+    }
+
+    // --- Weather System ---
+    function initWeather() {
+      const g = new THREE.BufferGeometry();
+      const pos = [];
+      for (let i=0; i<3000; i++) pos.push(randRange(-100, 100), randRange(0, 100), randRange(-100, 100));
+      g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+      
+      const m = new THREE.PointsMaterial({ color: 0xaaccff, size: 0.3, transparent: true, opacity: 0.6 });
+      rainSystem = new THREE.Points(g, m);
+      rainSystem.visible = false;
+      scene.add(rainSystem);
+    }
+
+    function updateWeather(dt) {
+      if (!rainSystem) return;
+      if (Math.random() < 0.0005) isRaining = !isRaining; // Natural random toggle
+      
+      rainSystem.visible = isRaining;
+      document.getElementById('weatherDisplay').textContent = isRaining ? "Raining" : "Clear";
+      
+      if (isRaining) {
+        rainSystem.position.copy(camera.position);
+        rainSystem.position.y = 0; // Lock Y to simulate falling
+        const pos = rainSystem.geometry.attributes.position.array;
+        for (let i = 1; i < pos.length; i += 3) {
+          pos[i] -= dt * 40;
+          if (pos[i] < 0) pos[i] = 100;
+        }
+        rainSystem.geometry.attributes.position.needsUpdate = true;
+        scene.fog.density = lerp(scene.fog.density, 0.003, dt * 0.5); // Thicker fog in rain
+      } else {
+        scene.fog.density = lerp(scene.fog.density, 0.001, dt * 0.5);
+      }
+    }
+
+    // --- Initialization & Loop ---
     function initScene() {
       scene = new THREE.Scene();
-      scene.background = new THREE.Color(0x87ceeb);
-      scene.fog = new THREE.FogExp2(0x87ceeb, 0.02);
+      scene.background = new THREE.Color(0x8fc9ff);
+      scene.fog = new THREE.FogExp2(0x8fc9ff, 0.001);
 
-      camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-      camera.position.set(0, 20, 30);
+      camera = new THREE.PerspectiveCamera(60, window.innerWidth/window.innerHeight, 0.1, 4000);
+      camera.position.set(50, 60, 80);
 
-      renderer = new THREE.WebGLRenderer({ antialias: true });
-      renderer.shadowMap.enabled = true;
+      renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
       renderer.setSize(window.innerWidth, window.innerHeight);
+      renderer.shadowMap.enabled = true;
+      renderer.shadowMap.type = THREE.PCFSoftShadowMap;
       document.getElementById("canvasContainer").appendChild(renderer.domElement);
 
       controls = new THREE.OrbitControls(camera, renderer.domElement);
-      controls.enableDamping = true;
-      controls.dampingFactor = 0.05;
+      controls.enableDamping = true; controls.dampingFactor = 0.05;
+      controls.maxPolarAngle = Math.PI * 0.48;
 
-      const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
-      directionalLight.position.set(10, 20, 10);
-      directionalLight.castShadow = true;
-      directionalLight.shadow.mapSize.width = 2048;
-      directionalLight.shadow.mapSize.height = 2048;
-      scene.add(directionalLight);
-
-      const ambientLight = new THREE.AmbientLight(0x404040);
+      ambientLight = new THREE.HemisphereLight(0xffffff, 0x334455, 0.6);
       scene.add(ambientLight);
 
-      clock = new THREE.Clock();
+      sunLight = new THREE.DirectionalLight(0xffeedd, 1.2);
+      sunLight.castShadow = true;
+      sunLight.shadow.mapSize.width = 1024;
+      sunLight.shadow.mapSize.height = 1024;
+      sunLight.shadow.camera.near = 10;
+      sunLight.shadow.camera.far = 300;
+      sunLight.shadow.camera.left = -150;
+      sunLight.shadow.camera.right = 150;
+      sunLight.shadow.camera.top = 150;
+      sunLight.shadow.camera.bottom = -150;
+      sunLight.shadow.bias = -0.001;
+      scene.add(sunLight);
 
-      createTerrain();
-      createAnimals();
+      // Water Plane
+      const waterGeo = new THREE.PlaneGeometry(WORLD_HALF*2, WORLD_HALF*2);
+      const waterMat = new THREE.MeshStandardMaterial({ color: 0x1a5a9a, transparent: true, opacity: 0.8, roughness: 0.1, metalness: 0.8 });
+      const water = new THREE.Mesh(waterGeo, waterMat);
+      water.rotation.x = -Math.PI / 2;
+      water.position.y = SEA_LEVEL;
+      scene.add(water);
+
+      clock = new THREE.Clock();
+      initWeather();
+      rebuildWorld();
       animate();
     }
 
-    function createTerrain() {
-      const geometry = new THREE.PlaneGeometry(env.size, env.size, env.size - 1, env.size - 1);
-      const positions = geometry.attributes.position.array;
+    function rebuildWorld() {
+      // Clear all
+      entities.forEach(e => { scene.remove(e.mesh); e.mesh.geometry.dispose(); e.mesh.material.dispose(); });
+      entities = [];
+      foodNodes.forEach(n => { scene.remove(n.mesh); n.mesh.geometry.dispose(); n.mesh.material.dispose(); });
+      foodNodes.length = 0;
+      trackedEntity = null;
 
-      for (let i = 0; i < positions.length; i += 3) {
-        const x = positions[i];
-        const z = positions[i + 1];
-        positions[i + 2] = env.getHeight(x, z);
-      }
-
-      geometry.attributes.position.needsUpdate = true;
-      geometry.computeVertexNormals();
-
-      const material = new THREE.MeshPhongMaterial({
-        color: 0x3d8c40,
-        shininess: 0,
-        flatShading: true
+      // Spawn Initials
+      speciesDefs.forEach(def => {
+        for(let i=0; i<def.count; i++) entities.push(new Entity(def));
       });
-
-      const terrain = new THREE.Mesh(geometry, material);
-      terrain.rotation.x = -Math.PI / 2;
-      terrain.receiveShadow = true;
-      scene.add(terrain);
-
-      env.addWaterAndVegetation();
+      for(let i=0; i<60; i++) {
+        spawnFoodNode(randRange(-200, 200), randRange(-200, 200), "plant", randRange(2, 6));
+      }
     }
 
-    function createAnimals() {
-      animals.forEach(animal => animal.createMesh());
+    function ensurePopulationMinimums() {
+      // Background spawner prevents total extinction
+      speciesDefs.forEach(def => {
+        const count = entities.filter(e => e.def.key === def.key).length;
+        if (count < def.count * 0.2) entities.push(new Entity(def)); // Spawn a basic one
+      });
+    }
+
+    function updateLighting(dt) {
+      timeOfDay += dt * 0.1 * simSpeed;
+      const cycle = (Math.sin(timeOfDay) + 1) * 0.5;
+      
+      const dayCol = new THREE.Color(0x8fc9ff);
+      const nightCol = new THREE.Color(0x040812);
+      scene.background.copy(nightCol).lerp(dayCol, cycle);
+      scene.fog.color.copy(scene.background);
+
+      sunLight.position.set(Math.cos(timeOfDay) * 200, Math.sin(timeOfDay) * 200, Math.sin(timeOfDay*0.5) * 100);
+      sunLight.intensity = Math.max(0, Math.sin(timeOfDay) * 1.5);
+      
+      // Update sun shadow target to stay near camera for sharp shadows
+      sunLight.target.position.copy(camera.position);
+      sunLight.target.position.y = 0;
+      sunLight.target.updateMatrixWorld();
+
+      document.getElementById('timeDisplay').textContent = cycle > 0.6 ? "Day" : cycle > 0.4 ? "Dusk/Dawn" : "Night";
+    }
+
+    function updateUI() {
+      let h = 0, p = 0, plants = 0, meats = 0;
+      entities.forEach(e => e.def.faction === "predator" ? p++ : h++);
+      foodNodes.forEach(f => f.type === "plant" ? plants++ : meats++);
+
+      document.getElementById('entityDisplay').textContent = entities.length;
+      document.getElementById('herbivoreDisplay').textContent = h;
+      document.getElementById('predatorDisplay').textContent = p;
+      document.getElementById('foodDisplay').textContent = `${plants} / ${meats}`;
+
+      const tPanel = document.getElementById('targetPanel');
+      if (trackedEntity) {
+        tPanel.style.display = 'block';
+        document.getElementById('targetName').textContent = trackedEntity.def.label;
+        document.getElementById('barEnergy').style.width = Math.max(0, trackedEntity.energy) + '%';
+        document.getElementById('barFood').style.width = Math.max(0, 100 - trackedEntity.hunger) + '%';
+        document.getElementById('barWater').style.width = Math.max(0, 100 - trackedEntity.thirst) + '%';
+        
+        document.getElementById('targetGen').textContent = trackedEntity.generation;
+        document.getElementById('targetAge').textContent = Math.floor(trackedEntity.age);
+        document.getElementById('geneSpeed').textContent = trackedEntity.genes.speed.toFixed(2);
+        document.getElementById('geneVision').textContent = trackedEntity.genes.vision.toFixed(2);
+        document.getElementById('geneSize').textContent = trackedEntity.genes.size.toFixed(2);
+      } else {
+        tPanel.style.display = 'none';
+      }
     }
 
     function animate() {
       requestAnimationFrame(animate);
-      const delta = clock.getDelta();
+      const dt = Math.min(clock.getDelta(), 0.05);
 
-      timeOfDay += delta * dayNightSpeed;
-      const sunIntensity = Math.max(Math.sin(timeOfDay * 0.1), 0);
-      scene.fog.color.setHSL(0.6, 1, 0.5 - sunIntensity * 0.3);
-      renderer.setClearColor(scene.fog.color);
+      updateLighting(dt);
+      updateChunks();
+      updateWeather(dt);
+      manageFoodNodes(dt * simSpeed);
 
-      animals.forEach(animal => {
-        animal.move(delta);
-        animal.updateMeshPosition();
-      });
+      if (Math.random() < 0.01) ensurePopulationMinimums();
+
+      // Update Entities & filter dead ones
+      entities = entities.filter(e => !e.update(dt * simSpeed));
+
+      // Camera Follow Logic
+      if (followType !== "none" && (!trackedEntity || trackedEntity.def.key !== followType)) {
+        trackedEntity = entities.find(e => e.def.key === followType) || null;
+      }
+      
+      if (trackedEntity) {
+        const tgt = new THREE.Vector3(trackedEntity.x, heightAt(trackedEntity.x, trackedEntity.z) + 10, trackedEntity.z);
+        controls.target.lerp(tgt, 0.1);
+        camera.position.lerp(new THREE.Vector3(tgt.x + 20, tgt.y + 15, tgt.z + 20), 0.05);
+      }
 
       controls.update();
+      updateUI();
       renderer.render(scene, camera);
     }
 
-    function simulate() {
-      env = new Environment(50);
-      animals = Array.from({ length: 20 }, () => new Animal(env));
-    }
-
-    // Initialize simulation on load
-    window.addEventListener("load", () => {
-      simulate();
-      initScene();
-    });
-
+    // --- Inputs ---
+    window.addEventListener("load", initScene);
     window.addEventListener("resize", () => {
       camera.aspect = window.innerWidth / window.innerHeight;
       camera.updateProjectionMatrix();
       renderer.setSize(window.innerWidth, window.innerHeight);
     });
 
-    document.getElementById("speedControl").addEventListener("input", (e) => {
-      animalSpeed = parseFloat(e.target.value);
-      document.getElementById("speedDisplay").textContent = animalSpeed;
+    document.getElementById("speedControl").addEventListener("input", e => simSpeed = parseFloat(e.target.value));
+    document.getElementById("followControl").addEventListener("change", e => {
+      followType = e.target.value;
+      trackedEntity = null;
     });
+    document.getElementById("rainBtn").addEventListener("click", () => isRaining = !isRaining);
+    document.getElementById("rebuildBtn").addEventListener("click", rebuildWorld);
 
-    document.getElementById("terrainControl").addEventListener("input", (e) => {
-      terrainComplexity = parseFloat(e.target.value);
-      document.getElementById("terrainDisplay").textContent = terrainComplexity;
-      scene.remove(scene.children.find(child => child.isMesh));
-      createTerrain();
-    });
-
-    document.getElementById("timeControl").addEventListener("input", (e) => {
-      dayNightSpeed = parseFloat(e.target.value);
-    });
   </script>
 </body>
 </html>
