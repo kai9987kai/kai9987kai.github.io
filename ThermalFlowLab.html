@@ -1,0 +1,680 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Thermal Flow Lab — 2D Airflow Simulator</title>
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #07111f;
+    --panel: #0c1a2c;
+    --panel-2: #10233a;
+    --line: #243b57;
+    --muted: #91a7be;
+    --text: #e8f1f8;
+    --accent: #62c5ff;
+    --accent-2: #70efbd;
+    --danger: #ff7b7b;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0;
+    overflow: hidden;
+    background: var(--bg);
+    color: var(--text);
+    font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  }
+  #app { height: 100%; display: grid; grid-template-rows: auto minmax(0, 1fr); }
+  header {
+    display: flex; align-items: center; gap: 18px; justify-content: space-between;
+    padding: 12px 18px;
+    border-bottom: 1px solid var(--line);
+    background: linear-gradient(180deg, #0e2035, #0a1727);
+  }
+  .brand { min-width: 245px; }
+  h1 { margin: 0; font-size: 17px; letter-spacing: .01em; }
+  .subtitle { color: var(--muted); font-size: 11px; margin-top: 3px; }
+  .top-controls { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px 14px; align-items: center; }
+  .control { display: grid; grid-template-columns: auto minmax(78px, 110px) 46px; gap: 7px; align-items: center; font-size: 11px; color: var(--muted); }
+  input[type="range"] { accent-color: var(--accent); min-width: 80px; }
+  output { font-variant-numeric: tabular-nums; color: var(--text); text-align: right; }
+  button, select {
+    border: 1px solid var(--line); border-radius: 7px; background: #12273f; color: var(--text);
+    font: inherit; font-size: 12px; padding: 7px 10px; cursor: pointer; transition: .16s ease;
+  }
+  button:hover, select:hover { border-color: var(--accent); background: #163556; }
+  button.active { background: #174e7d; border-color: #6dd0ff; }
+  button.danger:hover { border-color: var(--danger); }
+  main { min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) 270px; }
+  #stage { position: relative; min-width: 0; min-height: 0; overflow: hidden; background: radial-gradient(circle at 55% 38%, #142c48, #07111f 70%); }
+  canvas { width: 100%; height: 100%; display: block; cursor: crosshair; touch-action: none; }
+  #hud {
+    position: absolute; left: 13px; bottom: 13px; max-width: 460px; pointer-events: none;
+    display: flex; gap: 8px; flex-wrap: wrap;
+  }
+  .chip { padding: 6px 9px; border: 1px solid rgba(126, 170, 210, .27); border-radius: 999px; background: rgba(7,17,31,.75); color: #bed2e4; font-size: 11px; backdrop-filter: blur(8px); }
+  aside { overflow: auto; padding: 14px; background: #0a1829; border-left: 1px solid var(--line); }
+  aside h2 { margin: 0 0 9px; font-size: 12px; color: #93d5ff; letter-spacing: .08em; text-transform: uppercase; }
+  section { margin-bottom: 17px; }
+  .tools { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; }
+  .tool { text-align: left; min-height: 37px; padding: 7px 8px; }
+  .tool small { display: block; color: var(--muted); font-size: 10px; margin-top: 2px; }
+  .stat-grid { display: grid; grid-template-columns: 1fr auto; gap: 5px 12px; font-size: 12px; }
+  .stat-grid dt { color: var(--muted); }
+  .stat-grid dd { margin: 0; font-variant-numeric: tabular-nums; color: var(--text); }
+  .legend { height: 12px; border-radius: 4px; background: linear-gradient(90deg, #1557a5, #19b8d0, #37d57b, #ffe152, #ff6a3d, #e8374b); border: 1px solid rgba(255,255,255,.1); }
+  .legend-labels { display: flex; justify-content: space-between; margin-top: 5px; color: var(--muted); font-size: 10px; }
+  .note { color: #adbfce; line-height: 1.45; font-size: 11px; padding: 9px; border: 1px solid #203b57; background: #0d2137; border-radius: 8px; }
+  .preset-row { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
+  .status { padding: 7px 9px; border-radius: 7px; background: #10253c; font-size: 11px; color: #b5ccdf; min-height: 31px; }
+  .separator { border: 0; height: 1px; background: var(--line); margin: 12px 0; }
+  @media (max-width: 850px) {
+    header { align-items: flex-start; flex-direction: column; gap: 9px; }
+    .top-controls { justify-content: flex-start; }
+    main { grid-template-columns: minmax(0,1fr) 220px; }
+    aside { padding: 11px; }
+  }
+  @media (max-width: 640px) {
+    body { overflow: auto; }
+    #app { height: auto; min-height: 100%; }
+    main { grid-template-columns: 1fr; }
+    #stage { height: 65vh; min-height: 430px; }
+    aside { border-left: 0; border-top: 1px solid var(--line); }
+  }
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <div class="brand">
+      <h1>🌀 Thermal Flow Lab</h1>
+      <div class="subtitle">Interactive 2D Boussinesq airflow model · educational, not engineering CFD</div>
+    </div>
+    <div class="top-controls">
+      <label class="control">Fan power <input id="fanPower" type="range" min="0" max="100" value="62"><output id="fanPowerOut">62%</output></label>
+      <label class="control">Heat gain <input id="heatGain" type="range" min="10" max="160" value="75"><output id="heatGainOut">75%</output></label>
+      <label class="control">Resolution <input id="resolution" type="range" min="48" max="130" value="88"><output id="resolutionOut">88</output></label>
+      <button id="pauseBtn" aria-pressed="false">Pause</button>
+      <button id="heatmapBtn" class="active" aria-pressed="true">Heatmap</button>
+      <button id="vectorsBtn" aria-pressed="false">Vectors</button>
+      <button id="resetBtn" class="danger">Reset</button>
+    </div>
+  </header>
+  <main>
+    <div id="stage">
+      <canvas id="canvas" aria-label="Interactive thermal airflow simulation"></canvas>
+      <div id="hud">
+        <span class="chip" id="toolHint">Tool: Heat source</span>
+        <span class="chip" id="solverHint">BFECC transport · pressure projection</span>
+      </div>
+    </div>
+    <aside>
+      <section>
+        <h2>Build scene</h2>
+        <div class="tools" id="tools">
+          <button class="tool active" data-tool="heat">🔴 Heat source<small>Drag a heater</small></button>
+          <button class="tool" data-tool="cool">🔵 Cool inlet<small>Drag a cold zone</small></button>
+          <button class="tool" data-tool="wall">⬜ Obstacle<small>Drag a solid wall</small></button>
+          <button class="tool" data-tool="fan">🌀 Directional fan<small>Drag to set direction</small></button>
+          <button class="tool" data-tool="move">✋ Select / move<small>Wheel rotates fans</small></button>
+          <button class="tool" data-tool="erase">✕ Erase<small>Click an object</small></button>
+        </div>
+      </section>
+      <section>
+        <h2>Presets</h2>
+        <div class="preset-row">
+          <button data-preset="room">Room cooling</button>
+          <button data-preset="plume">Thermal plume</button>
+          <button data-preset="corridor">Corridor</button>
+          <button data-preset="clear">Clear scene</button>
+        </div>
+      </section>
+      <section>
+        <h2>Temperature</h2>
+        <div class="legend"></div>
+        <div class="legend-labels"><span>0°C</span><span>20°C</span><span>80°C+</span></div>
+        <dl class="stat-grid">
+          <dt>Average</dt><dd id="avgTemp">20.0°C</dd>
+          <dt>Maximum</dt><dd id="maxTemp">20.0°C</dd>
+          <dt>Minimum</dt><dd id="minTemp">20.0°C</dd>
+        </dl>
+      </section>
+      <section>
+        <h2>Flow diagnostics</h2>
+        <dl class="stat-grid">
+          <dt>Mean speed</dt><dd id="meanSpeed">0.00 u/s</dd>
+          <dt>Peak speed</dt><dd id="peakSpeed">0.00 u/s</dd>
+          <dt>Pressure residual</dt><dd id="residual">0.000</dd>
+          <dt>Grid</dt><dd id="gridSize">–</dd>
+          <dt>Frame rate</dt><dd id="fps">0 fps</dd>
+        </dl>
+      </section>
+      <section>
+        <h2>Scene</h2>
+        <dl class="stat-grid">
+          <dt>Heat sources</dt><dd id="heatCount">0</dd>
+          <dt>Cold inlets</dt><dd id="coolCount">0</dd>
+          <dt>Obstacles</dt><dd id="wallCount">0</dd>
+          <dt>Fans</dt><dd id="fanCount">0</dd>
+        </dl>
+      </section>
+      <section>
+        <h2>How it works</h2>
+        <div class="note">
+          Temperature and velocity live on an Eulerian grid. Each step adds source terms, advects fields with a corrected semi-Lagrangian pass, removes divergence with a pressure solve, and restores small vortices. Right-click removes objects. This is a qualitative 2D model, so do not use it for ventilation safety or design decisions.
+        </div>
+        <hr class="separator" />
+        <div id="status" class="status">Ready — drag a heater, wall, or fan onto the scene.</div>
+      </section>
+    </aside>
+  </main>
+</div>
+<script>
+(() => {
+  'use strict';
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Thermal Flow Lab
+  // A compact educational solver: semi-Lagrangian/BFECC-like scalar transport,
+  // Jacobi pressure projection, vorticity confinement and Boussinesq buoyancy.
+  // Values are deliberately model units, not calibrated real-world predictions.
+  // ─────────────────────────────────────────────────────────────────────────
+
+  const AMBIENT = 20;
+  const MAX_TEMP = 120;
+  const MIN_TEMP = -10;
+  const canvas = document.getElementById('canvas');
+  const ctx = canvas.getContext('2d', { alpha: false });
+  const stage = document.getElementById('stage');
+  const $ = (id) => document.getElementById(id);
+
+  const ui = {
+    fanPower: $('fanPower'), heatGain: $('heatGain'), resolution: $('resolution'),
+    fanPowerOut: $('fanPowerOut'), heatGainOut: $('heatGainOut'), resolutionOut: $('resolutionOut'),
+    pauseBtn: $('pauseBtn'), heatmapBtn: $('heatmapBtn'), vectorsBtn: $('vectorsBtn'), resetBtn: $('resetBtn'),
+    status: $('status'), toolHint: $('toolHint'),
+    avgTemp: $('avgTemp'), maxTemp: $('maxTemp'), minTemp: $('minTemp'),
+    meanSpeed: $('meanSpeed'), peakSpeed: $('peakSpeed'), residual: $('residual'), gridSize: $('gridSize'), fps: $('fps'),
+    heatCount: $('heatCount'), coolCount: $('coolCount'), wallCount: $('wallCount'), fanCount: $('fanCount')
+  };
+
+  let width = 1, height = 1, dpr = 1;
+  let cols = 0, rows = 0, count = 0;
+  let temperature, temperatureA, temperatureB;
+  let u, v, uA, vA, pressure, pressureA, divergence, curl, curlAbs, solids;
+  let heatImage, heatCanvas, heatCtx;
+  let simulationTime = 0;
+  let paused = false;
+  let showHeatmap = true;
+  let showVectors = false;
+  let currentTool = 'heat';
+  let objects = [];
+  let pointer = { down: false, id: null, x: 0, y: 0, startX: 0, startY: 0, moved: false, target: null, offsetX: 0, offsetY: 0 };
+  let particles = [];
+  let frameCounter = 0, lastFpsTime = performance.now(), latestFps = 0;
+  let latestResidual = 0;
+
+  const clamp = (n, low, high) => Math.max(low, Math.min(high, n));
+  const idx = (x, y) => x + y * cols;
+  const tempToRgb = (t) => {
+    const n = clamp((t - 0) / 85, 0, 1);
+    let r, g, b;
+    if (n < .18) { const f = n / .18; r = 17 + 4*f; g = 74 + 115*f; b = 168 + 55*f; }
+    else if (n < .42) { const f = (n-.18)/.24; r = 21 + 30*f; g = 189 + 38*f; b = 223 - 151*f; }
+    else if (n < .65) { const f = (n-.42)/.23; r = 51 + 204*f; g = 227 + 24*f; b = 72 - 66*f; }
+    else { const f = (n-.65)/.35; r = 255; g = 251 - 168*f; b = 6 + 58*f; }
+    return [r|0, g|0, b|0];
+  };
+  const setStatus = (text) => { ui.status.textContent = text; };
+  const countByType = (type) => objects.filter(o => o.type === type).length;
+
+  function createFieldArrays() {
+    count = cols * rows;
+    temperature = new Float32Array(count).fill(AMBIENT);
+    temperatureA = new Float32Array(count);
+    temperatureB = new Float32Array(count);
+    u = new Float32Array(count); v = new Float32Array(count);
+    uA = new Float32Array(count); vA = new Float32Array(count);
+    pressure = new Float32Array(count); pressureA = new Float32Array(count);
+    divergence = new Float32Array(count);
+    curl = new Float32Array(count); curlAbs = new Float32Array(count);
+    solids = new Uint8Array(count);
+    heatCanvas = document.createElement('canvas');
+    heatCanvas.width = cols; heatCanvas.height = rows;
+    heatCtx = heatCanvas.getContext('2d', { alpha: false });
+    heatImage = heatCtx.createImageData(cols, rows);
+    seedParticles();
+  }
+
+  function resize() {
+    const rect = stage.getBoundingClientRect();
+    width = Math.max(1, rect.width); height = Math.max(1, rect.height);
+    dpr = Math.min(window.devicePixelRatio || 1, 2);
+    canvas.width = Math.round(width * dpr);
+    canvas.height = Math.round(height * dpr);
+    canvas.style.width = width + 'px'; canvas.style.height = height + 'px';
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    const wantedRows = +ui.resolution.value;
+    rows = wantedRows;
+    cols = Math.max(38, Math.round(wantedRows * width / height));
+    createFieldArrays();
+    rebuildSolidMask();
+    ui.gridSize.textContent = `${cols} × ${rows}`;
+    setStatus('Grid resized. Temperature field restarted; scene objects were kept.');
+  }
+
+  function seedParticles() {
+    const desired = Math.min(1500, Math.max(380, Math.round(cols * rows * 0.13)));
+    particles = Array.from({ length: desired }, () => ({
+      x: Math.random() * (cols - 1), y: Math.random() * (rows - 1), age: Math.random() * 180, life: 120 + Math.random() * 250
+    }));
+  }
+
+  function pixelToGrid(x, y) { return { x: clamp(x / width * (cols - 1), 0, cols - 1), y: clamp(y / height * (rows - 1), 0, rows - 1) }; }
+  function gridToPixel(x, y) { return { x: x / (cols - 1) * width, y: y / (rows - 1) * height }; }
+
+  function sample(field, x, y) {
+    x = clamp(x, 0, cols - 1); y = clamp(y, 0, rows - 1);
+    const x0 = Math.floor(x), y0 = Math.floor(y);
+    const x1 = Math.min(cols - 1, x0 + 1), y1 = Math.min(rows - 1, y0 + 1);
+    const sx = x - x0, sy = y - y0;
+    const a = field[idx(x0,y0)] * (1 - sx) + field[idx(x1,y0)] * sx;
+    const b = field[idx(x0,y1)] * (1 - sx) + field[idx(x1,y1)] * sx;
+    return a * (1 - sy) + b * sy;
+  }
+
+  function isSolidAt(x, y) {
+    const gx = clamp(Math.round(x), 0, cols - 1), gy = clamp(Math.round(y), 0, rows - 1);
+    return solids[idx(gx, gy)] === 1;
+  }
+
+  function clearBoundaries(field) {
+    for (let x = 0; x < cols; x++) { field[idx(x,0)] = 0; field[idx(x,rows-1)] = 0; }
+    for (let y = 0; y < rows; y++) { field[idx(0,y)] = 0; field[idx(cols-1,y)] = 0; }
+  }
+
+  function rebuildSolidMask() {
+    solids.fill(0);
+    for (const obj of objects) {
+      if (obj.type !== 'wall') continue;
+      const a = pixelToGrid(obj.x, obj.y), b = pixelToGrid(obj.x + obj.w, obj.y + obj.h);
+      const x0 = Math.floor(Math.min(a.x, b.x)), x1 = Math.ceil(Math.max(a.x, b.x));
+      const y0 = Math.floor(Math.min(a.y, b.y)), y1 = Math.ceil(Math.max(a.y, b.y));
+      for (let gy = y0; gy <= y1; gy++) for (let gx = x0; gx <= x1; gx++) solids[idx(gx,gy)] = 1;
+    }
+  }
+
+  function applyObjectForces(dt) {
+    const fanStrength = (+ui.fanPower.value / 100) * 42;
+    const heatGain = (+ui.heatGain.value / 100) * 28;
+    for (const obj of objects) {
+      if (obj.type === 'heat' || obj.type === 'cool') {
+        const a = pixelToGrid(obj.x, obj.y), b = pixelToGrid(obj.x + obj.w, obj.y + obj.h);
+        const x0 = Math.floor(Math.min(a.x,b.x)), x1 = Math.ceil(Math.max(a.x,b.x));
+        const y0 = Math.floor(Math.min(a.y,b.y)), y1 = Math.ceil(Math.max(a.y,b.y));
+        const signed = obj.type === 'heat' ? 1 : -1;
+        const gain = signed * heatGain * dt;
+        for (let gy = y0; gy <= y1; gy++) for (let gx = x0; gx <= x1; gx++) {
+          if (gx < 0 || gy < 0 || gx >= cols || gy >= rows) continue;
+          const k = idx(gx,gy); if (!solids[k]) temperature[k] = clamp(temperature[k] + gain, MIN_TEMP, MAX_TEMP);
+        }
+      }
+      if (obj.type === 'fan') {
+        const center = pixelToGrid(obj.x, obj.y);
+        const radius = Math.max(8, Math.min(cols, rows) * .25);
+        const dirX = Math.cos(obj.angle), dirY = Math.sin(obj.angle);
+        for (let gy = Math.max(1, Math.floor(center.y - radius)); gy < Math.min(rows - 1, Math.ceil(center.y + radius)); gy++) {
+          for (let gx = Math.max(1, Math.floor(center.x - radius)); gx < Math.min(cols - 1, Math.ceil(center.x + radius)); gx++) {
+            const k = idx(gx,gy); if (solids[k]) continue;
+            const dx = gx - center.x, dy = gy - center.y;
+            const forward = dx * dirX + dy * dirY;
+            const lateral = Math.abs(-dy * dirX + dx * dirY);
+            if (forward < -1.5) continue;
+            const cone = Math.exp(-((lateral / (3 + forward * .45)) ** 2));
+            const fade = Math.exp(-(forward * forward + lateral * lateral) / (radius * radius * .55));
+            const force = fanStrength * cone * fade * dt;
+            u[k] += dirX * force;
+            v[k] += dirY * force;
+          }
+        }
+      }
+    }
+  }
+
+  function addBuoyancy(dt) {
+    // Negative y is upward on screen. Cold air sinks, warm air rises.
+    const buoyancy = .085;
+    for (let gy = 1; gy < rows - 1; gy++) for (let gx = 1; gx < cols - 1; gx++) {
+      const k = idx(gx,gy); if (solids[k]) continue;
+      v[k] -= (temperature[k] - AMBIENT) * buoyancy * dt;
+    }
+  }
+
+  function advectVelocity(dt) {
+    for (let gy = 0; gy < rows; gy++) for (let gx = 0; gx < cols; gx++) {
+      const k = idx(gx,gy);
+      if (solids[k]) { uA[k] = 0; vA[k] = 0; continue; }
+      const px = gx - u[k] * dt, py = gy - v[k] * dt;
+      uA[k] = isSolidAt(px,py) ? 0 : sample(u,px,py);
+      vA[k] = isSolidAt(px,py) ? 0 : sample(v,px,py);
+    }
+    [u, uA] = [uA, u]; [v, vA] = [vA, v];
+  }
+
+  function advectTemperatureBFECC(dt) {
+    // Predictor.
+    for (let gy = 0; gy < rows; gy++) for (let gx = 0; gx < cols; gx++) {
+      const k = idx(gx,gy);
+      if (solids[k]) { temperatureA[k] = AMBIENT; continue; }
+      const px = gx - u[k] * dt, py = gy - v[k] * dt;
+      temperatureA[k] = isSolidAt(px,py) ? temperature[k] : sample(temperature,px,py);
+    }
+    // Reverse pass gives an error estimate.
+    for (let gy = 0; gy < rows; gy++) for (let gx = 0; gx < cols; gx++) {
+      const k = idx(gx,gy);
+      if (solids[k]) { temperatureB[k] = AMBIENT; continue; }
+      const px = gx + u[k] * dt, py = gy + v[k] * dt;
+      temperatureB[k] = isSolidAt(px,py) ? temperatureA[k] : sample(temperatureA,px,py);
+    }
+    // Correction with local limiter to prevent overshoot.
+    for (let gy = 0; gy < rows; gy++) for (let gx = 0; gx < cols; gx++) {
+      const k = idx(gx,gy);
+      if (solids[k]) { temperatureA[k] = AMBIENT; continue; }
+      const px = gx - u[k] * dt, py = gy - v[k] * dt;
+      const x0 = clamp(Math.floor(px), 0, cols - 1), y0 = clamp(Math.floor(py), 0, rows - 1);
+      let lo = Infinity, hi = -Infinity;
+      for (let oy = 0; oy <= 1; oy++) for (let ox = 0; ox <= 1; ox++) {
+        const value = temperature[idx(clamp(x0+ox,0,cols-1), clamp(y0+oy,0,rows-1))];
+        lo = Math.min(lo, value); hi = Math.max(hi, value);
+      }
+      const corrected = temperatureA[k] + .5 * (temperature[k] - temperatureB[k]);
+      temperatureA[k] = clamp(corrected, lo, hi);
+    }
+    [temperature, temperatureA] = [temperatureA, temperature];
+  }
+
+  function diffuseTemperature(dt) {
+    // Small physical/numerical thermal diffusion. Uses a few Jacobi iterations.
+    const a = .045 * dt;
+    temperatureA.set(temperature);
+    for (let iter = 0; iter < 3; iter++) {
+      for (let gy = 1; gy < rows - 1; gy++) for (let gx = 1; gx < cols - 1; gx++) {
+        const k = idx(gx,gy);
+        if (solids[k]) { temperatureB[k] = AMBIENT; continue; }
+        const left = solids[idx(gx-1,gy)] ? temperatureA[k] : temperatureA[idx(gx-1,gy)];
+        const right = solids[idx(gx+1,gy)] ? temperatureA[k] : temperatureA[idx(gx+1,gy)];
+        const up = solids[idx(gx,gy-1)] ? temperatureA[k] : temperatureA[idx(gx,gy-1)];
+        const down = solids[idx(gx,gy+1)] ? temperatureA[k] : temperatureA[idx(gx,gy+1)];
+        temperatureB[k] = (temperature[k] + a * (left + right + up + down)) / (1 + 4*a);
+      }
+      [temperatureA, temperatureB] = [temperatureB, temperatureA];
+    }
+    temperature.set(temperatureA);
+  }
+
+  function applyVorticityConfinement(dt) {
+    for (let gy = 1; gy < rows - 1; gy++) for (let gx = 1; gx < cols - 1; gx++) {
+      const k = idx(gx,gy);
+      if (solids[k]) { curl[k] = 0; curlAbs[k] = 0; continue; }
+      const c = (v[idx(gx+1,gy)] - v[idx(gx-1,gy)] - u[idx(gx,gy+1)] + u[idx(gx,gy-1)]) * .5;
+      curl[k] = c; curlAbs[k] = Math.abs(c);
+    }
+    const eps = .48;
+    for (let gy = 2; gy < rows - 2; gy++) for (let gx = 2; gx < cols - 2; gx++) {
+      const k = idx(gx,gy); if (solids[k]) continue;
+      let nx = (curlAbs[idx(gx+1,gy)] - curlAbs[idx(gx-1,gy)]) * .5;
+      let ny = (curlAbs[idx(gx,gy+1)] - curlAbs[idx(gx,gy-1)]) * .5;
+      const len = Math.hypot(nx,ny) + 1e-5; nx /= len; ny /= len;
+      u[k] += ny * curl[k] * eps * dt;
+      v[k] -= nx * curl[k] * eps * dt;
+    }
+  }
+
+  function project(iterations = 26) {
+    let residual = 0;
+    for (let gy = 1; gy < rows - 1; gy++) for (let gx = 1; gx < cols - 1; gx++) {
+      const k = idx(gx,gy);
+      if (solids[k]) { divergence[k] = 0; pressure[k] = 0; continue; }
+      const left = solids[idx(gx-1,gy)] ? 0 : u[idx(gx-1,gy)];
+      const right = solids[idx(gx+1,gy)] ? 0 : u[idx(gx+1,gy)];
+      const top = solids[idx(gx,gy-1)] ? 0 : v[idx(gx,gy-1)];
+      const bottom = solids[idx(gx,gy+1)] ? 0 : v[idx(gx,gy+1)];
+      divergence[k] = -0.5 * (right - left + bottom - top);
+      pressure[k] = 0;
+    }
+    for (let iter = 0; iter < iterations; iter++) {
+      residual = 0;
+      for (let gy = 1; gy < rows - 1; gy++) for (let gx = 1; gx < cols - 1; gx++) {
+        const k = idx(gx,gy); if (solids[k]) { pressureA[k] = 0; continue; }
+        const l = solids[idx(gx-1,gy)] ? pressure[k] : pressure[idx(gx-1,gy)];
+        const r = solids[idx(gx+1,gy)] ? pressure[k] : pressure[idx(gx+1,gy)];
+        const t = solids[idx(gx,gy-1)] ? pressure[k] : pressure[idx(gx,gy-1)];
+        const b = solids[idx(gx,gy+1)] ? pressure[k] : pressure[idx(gx,gy+1)];
+        const next = (divergence[k] + l + r + t + b) * .25;
+        residual += Math.abs(next - pressure[k]);
+        pressureA[k] = next;
+      }
+      [pressure, pressureA] = [pressureA, pressure];
+    }
+    for (let gy = 1; gy < rows - 1; gy++) for (let gx = 1; gx < cols - 1; gx++) {
+      const k = idx(gx,gy);
+      if (solids[k]) { u[k] = 0; v[k] = 0; continue; }
+      const l = solids[idx(gx-1,gy)] ? pressure[k] : pressure[idx(gx-1,gy)];
+      const r = solids[idx(gx+1,gy)] ? pressure[k] : pressure[idx(gx+1,gy)];
+      const t = solids[idx(gx,gy-1)] ? pressure[k] : pressure[idx(gx,gy-1)];
+      const b = solids[idx(gx,gy+1)] ? pressure[k] : pressure[idx(gx,gy+1)];
+      u[k] -= .5 * (r - l); v[k] -= .5 * (b - t);
+    }
+    clearBoundaries(u); clearBoundaries(v);
+    latestResidual = residual / Math.max(1, count);
+  }
+
+  function dampAndAmbient(dt) {
+    const velocityDamping = Math.pow(.997, dt * 60);
+    const thermalRelax = 1 - Math.pow(.9991, dt * 60);
+    for (let k = 0; k < count; k++) {
+      if (solids[k]) { temperature[k] = AMBIENT; u[k] = 0; v[k] = 0; continue; }
+      u[k] *= velocityDamping; v[k] *= velocityDamping;
+      temperature[k] += (AMBIENT - temperature[k]) * thermalRelax;
+    }
+  }
+
+  function simulate(dt) {
+    // Small adaptive substeps keep the CFL number controlled after large fan impulses.
+    const steps = Math.max(1, Math.min(3, Math.ceil(dt / .022)));
+    const h = dt / steps;
+    for (let n = 0; n < steps; n++) {
+      applyObjectForces(h);
+      addBuoyancy(h);
+      applyVorticityConfinement(h);
+      project(22);
+      advectVelocity(h);
+      project(22);
+      advectTemperatureBFECC(h);
+      diffuseTemperature(h);
+      dampAndAmbient(h);
+    }
+    simulationTime += dt;
+  }
+
+  function updateParticles(dt) {
+    const fans = objects.filter(o => o.type === 'fan');
+    for (const p of particles) {
+      const speedX = sample(u, p.x, p.y), speedY = sample(v, p.x, p.y);
+      p.x += speedX * dt; p.y += speedY * dt; p.age += dt * 60;
+      if (p.x < 0 || p.x > cols - 1 || p.y < 0 || p.y > rows - 1 || p.age > p.life || isSolidAt(p.x,p.y)) {
+        p.age = 0; p.life = 110 + Math.random() * 260;
+        if (fans.length && Math.random() < .72) {
+          const f = fans[(Math.random() * fans.length) | 0]; const g = pixelToGrid(f.x,f.y);
+          p.x = g.x + (Math.random()-.5)*2.8; p.y = g.y + (Math.random()-.5)*2.8;
+        } else { p.x = Math.random()*(cols-1); p.y = Math.random()*(rows-1); }
+      }
+    }
+  }
+
+  function drawBackground() {
+    ctx.fillStyle = '#07111f'; ctx.fillRect(0,0,width,height);
+    const spacing = 44;
+    ctx.strokeStyle = 'rgba(128,174,212,.055)'; ctx.lineWidth = 1;
+    for (let x = 0; x < width; x += spacing) { ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,height); ctx.stroke(); }
+    for (let y = 0; y < height; y += spacing) { ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(width,y); ctx.stroke(); }
+  }
+
+  function drawHeatmap() {
+    if (!showHeatmap) return;
+    const data = heatImage.data;
+    for (let k = 0; k < count; k++) {
+      const [r,g,b] = tempToRgb(temperature[k]); const a = solids[k] ? 0 : clamp(Math.abs(temperature[k] - AMBIENT) / 42, 0, .92);
+      data[k*4] = r; data[k*4+1] = g; data[k*4+2] = b; data[k*4+3] = Math.round(a * 205);
+    }
+    heatCtx.putImageData(heatImage,0,0);
+    ctx.save(); ctx.imageSmoothingEnabled = true; ctx.globalAlpha = .9;
+    ctx.drawImage(heatCanvas,0,0,cols,rows,0,0,width,height);
+    ctx.restore();
+  }
+
+  function drawParticles() {
+    ctx.save();
+    for (const p of particles) {
+      const px = p.x / (cols-1)*width, py = p.y/(rows-1)*height;
+      const vx = sample(u,p.x,p.y), vy=sample(v,p.x,p.y); const speed = Math.hypot(vx,vy);
+      if (speed < .08) continue;
+      const t = sample(temperature,p.x,p.y); const [r,g,b] = tempToRgb(t);
+      const a = clamp(.12 + speed*.10, .12, .58);
+      ctx.strokeStyle = `rgba(${r},${g},${b},${a})`; ctx.lineWidth = clamp(.55 + speed*.08,.55,1.4);
+      ctx.beginPath(); ctx.moveTo(px,py); ctx.lineTo(px-vx*5.5,py-vy*5.5); ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  function drawVectors() {
+    if (!showVectors) return;
+    const step = Math.max(5, Math.round(Math.min(cols,rows)/15));
+    ctx.save(); ctx.strokeStyle = 'rgba(240,248,255,.32)'; ctx.lineWidth = 1;
+    for (let gy=step; gy<rows-step; gy+=step) for (let gx=step; gx<cols-step; gx+=step) {
+      const k=idx(gx,gy); if (solids[k]) continue;
+      const vx=u[k],vy=v[k], m=Math.hypot(vx,vy); if (m<.1) continue;
+      const p=gridToPixel(gx,gy); const length=clamp(m*3.2,3,17); const dx=vx/m*length, dy=vy/m*length;
+      ctx.beginPath(); ctx.moveTo(p.x,p.y); ctx.lineTo(p.x+dx,p.y+dy); ctx.stroke();
+      const a=Math.atan2(dy,dx); ctx.beginPath(); ctx.moveTo(p.x+dx,p.y+dy);
+      ctx.lineTo(p.x+dx-Math.cos(a-.48)*4,p.y+dy-Math.sin(a-.48)*4);
+      ctx.moveTo(p.x+dx,p.y+dy); ctx.lineTo(p.x+dx-Math.cos(a+.48)*4,p.y+dy-Math.sin(a+.48)*4); ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  function drawObject(obj) {
+    ctx.save();
+    if (obj.type === 'wall') {
+      ctx.fillStyle='#3a536d'; ctx.strokeStyle='#94afc7'; ctx.lineWidth=1.4; ctx.fillRect(obj.x,obj.y,obj.w,obj.h); ctx.strokeRect(obj.x,obj.y,obj.w,obj.h);
+      ctx.strokeStyle='rgba(197,220,238,.15)'; ctx.lineWidth=.7;
+      for(let x=obj.x+9;x<obj.x+obj.w;x+=9){ctx.beginPath();ctx.moveTo(x,obj.y);ctx.lineTo(x,obj.y+obj.h);ctx.stroke();}
+      for(let y=obj.y+9;y<obj.y+obj.h;y+=9){ctx.beginPath();ctx.moveTo(obj.x,y);ctx.lineTo(obj.x+obj.w,y);ctx.stroke();}
+    } else if (obj.type === 'heat' || obj.type === 'cool') {
+      const hot=obj.type==='heat', cx=obj.x+obj.w/2,cy=obj.y+obj.h/2;
+      const grad=ctx.createRadialGradient(cx,cy,0,cx,cy,Math.max(obj.w,obj.h)*.75);
+      grad.addColorStop(0, hot?'rgba(255,113,64,.87)':'rgba(59,163,255,.84)');
+      grad.addColorStop(1, hot?'rgba(160,36,12,.20)':'rgba(8,61,194,.17)');
+      ctx.fillStyle=grad;ctx.fillRect(obj.x,obj.y,obj.w,obj.h);
+      ctx.strokeStyle=hot?'#ff9869':'#7abaff';ctx.lineWidth=1.2;ctx.strokeRect(obj.x,obj.y,obj.w,obj.h);
+      ctx.fillStyle='#ffffff';ctx.font='600 10px system-ui';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(hot?'HEAT':'COOL',cx,cy);
+    } else if (obj.type === 'fan') {
+      ctx.translate(obj.x,obj.y);ctx.rotate(obj.angle);
+      ctx.fillStyle='rgba(12,28,47,.95)';ctx.strokeStyle='#8ed9ff';ctx.lineWidth=2;ctx.beginPath();ctx.arc(0,0,17,0,Math.PI*2);ctx.fill();ctx.stroke();
+      const spin=simulationTime*(.9 + +ui.fanPower.value/60);
+      for(let i=0;i<4;i++){ctx.save();ctx.rotate(spin+i*Math.PI/2);ctx.fillStyle='rgba(105,202,255,.72)';ctx.beginPath();ctx.ellipse(7,0,10,3.5,.16,0,Math.PI*2);ctx.fill();ctx.restore();}
+      ctx.strokeStyle='#b4e8ff';ctx.lineWidth=1.6;ctx.beginPath();ctx.moveTo(21,0);ctx.lineTo(38,0);ctx.lineTo(32,-5);ctx.moveTo(38,0);ctx.lineTo(32,5);ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  function drawObjects() { for (const obj of objects) drawObject(obj); }
+  function drawPreview() {
+    if (!pointer.down || !pointer.moved || currentTool === 'move' || currentTool === 'erase') return;
+    const x=Math.min(pointer.startX,pointer.x),y=Math.min(pointer.startY,pointer.y),w=Math.abs(pointer.x-pointer.startX),h=Math.abs(pointer.y-pointer.startY);
+    ctx.save();ctx.setLineDash([5,5]);ctx.strokeStyle='#9de1ff';ctx.lineWidth=1.3;
+    if(currentTool==='fan'){ctx.beginPath();ctx.arc(pointer.startX,pointer.startY,17,0,Math.PI*2);ctx.stroke();ctx.beginPath();ctx.moveTo(pointer.startX,pointer.startY);ctx.lineTo(pointer.x,pointer.y);ctx.stroke();}
+    else ctx.strokeRect(x,y,w,h);
+    ctx.restore();
+  }
+
+  function updateStats() {
+    let sum=0, max=-Infinity, min=Infinity, fluid=0, mean=0, peak=0;
+    for(let k=0;k<count;k++) if(!solids[k]) { const t=temperature[k]; sum+=t;max=Math.max(max,t);min=Math.min(min,t);fluid++;const s=Math.hypot(u[k],v[k]);mean+=s;peak=Math.max(peak,s); }
+    ui.avgTemp.textContent=(sum/Math.max(1,fluid)).toFixed(1)+'°C'; ui.maxTemp.textContent=max.toFixed(1)+'°C';ui.minTemp.textContent=min.toFixed(1)+'°C';
+    ui.meanSpeed.textContent=(mean/Math.max(1,fluid)).toFixed(2)+' u/s';ui.peakSpeed.textContent=peak.toFixed(2)+' u/s';ui.residual.textContent=latestResidual.toFixed(4);
+    ui.heatCount.textContent=countByType('heat');ui.coolCount.textContent=countByType('cool');ui.wallCount.textContent=countByType('wall');ui.fanCount.textContent=countByType('fan');
+  }
+
+  function render() { drawBackground(); drawHeatmap(); drawVectors(); drawParticles(); drawObjects(); drawPreview(); }
+  let lastTime=performance.now();
+  function frame(now) {
+    requestAnimationFrame(frame); const dt=Math.min(.045,Math.max(.001,(now-lastTime)/1000));lastTime=now;
+    if(!paused){simulate(dt);updateParticles(dt);} render(); updateStats();
+    frameCounter++;if(now-lastFpsTime>=1000){latestFps=Math.round(frameCounter*1000/(now-lastFpsTime));ui.fps.textContent=latestFps+' fps';frameCounter=0;lastFpsTime=now;}
+  }
+
+  function hitTest(x,y) {
+    for(let i=objects.length-1;i>=0;i--){const o=objects[i]; if(o.type==='fan'){if(Math.hypot(x-o.x,y-o.y)<23)return {o,index:i};}else if(x>=o.x&&x<=o.x+o.w&&y>=o.y&&y<=o.y+o.h)return {o,index:i};}
+    return null;
+  }
+  function canvasPoint(e){const r=canvas.getBoundingClientRect();return {x:e.clientX-r.left,y:e.clientY-r.top};}
+  function makeObject() {
+    const dx=pointer.x-pointer.startX,dy=pointer.y-pointer.startY;
+    if(currentTool==='fan') { objects.push({type:'fan',x:pointer.startX,y:pointer.startY,angle:Math.hypot(dx,dy)>6?Math.atan2(dy,dx):0}); }
+    else if(['heat','cool','wall'].includes(currentTool)) {
+      const x=Math.min(pointer.startX,pointer.x),y=Math.min(pointer.startY,pointer.y),w=Math.max(22,Math.abs(dx)),h=Math.max(22,Math.abs(dy));
+      objects.push({type:currentTool,x,y,w,h});
+    }
+    rebuildSolidMask();
+  }
+  function removeAt(x,y){const hit=hitTest(x,y);if(hit){objects.splice(hit.index,1);rebuildSolidMask();setStatus('Object removed.');}}
+
+  canvas.addEventListener('pointerdown', (e) => {
+    const p=canvasPoint(e);pointer.down=true;pointer.id=e.pointerId;pointer.x=pointer.startX=p.x;pointer.y=pointer.startY=p.y;pointer.moved=false;canvas.setPointerCapture(e.pointerId);
+    if(e.button===2||currentTool==='erase'){removeAt(p.x,p.y);pointer.down=false;return;}
+    if(currentTool==='move'){const hit=hitTest(p.x,p.y);if(hit){pointer.target=hit.o;pointer.offsetX=p.x-hit.o.x;pointer.offsetY=p.y-hit.o.y;setStatus(hit.o.type==='fan'?'Move the fan; use the mouse wheel while hovering it to rotate.':'Move the selected object.');}else setStatus('Nothing selected.');}
+  });
+  canvas.addEventListener('pointermove',(e)=>{const p=canvasPoint(e);pointer.x=p.x;pointer.y=p.y;if(!pointer.down)return;pointer.moved ||= Math.hypot(pointer.x-pointer.startX,pointer.y-pointer.startY)>3;if(currentTool==='move'&&pointer.target){pointer.target.x=pointer.x-pointer.offsetX;pointer.target.y=pointer.y-pointer.offsetY;rebuildSolidMask();}});
+  canvas.addEventListener('pointerup',(e)=>{if(pointer.id!==e.pointerId)return;if(pointer.down&&currentTool!=='move'&&currentTool!=='erase'&&e.button!==2)makeObject();pointer.down=false;pointer.target=null;try{canvas.releasePointerCapture(e.pointerId);}catch{};});
+  canvas.addEventListener('pointercancel',()=>{pointer.down=false;pointer.target=null;});
+  canvas.addEventListener('contextmenu',e=>e.preventDefault());
+  canvas.addEventListener('wheel',(e)=>{const p=canvasPoint(e);const hit=hitTest(p.x,p.y);if(hit?.o.type==='fan'){hit.o.angle+=e.deltaY>0?.16:-.16;e.preventDefault();setStatus(`Fan direction: ${(hit.o.angle*180/Math.PI%360+360)%360|0}°`);}}, {passive:false});
+
+  document.querySelectorAll('[data-tool]').forEach(btn=>btn.addEventListener('click',()=>{
+    document.querySelectorAll('[data-tool]').forEach(b=>b.classList.remove('active'));btn.classList.add('active');currentTool=btn.dataset.tool;
+    const label={heat:'Heat source',cool:'Cool inlet',wall:'Obstacle',fan:'Directional fan',move:'Select / move',erase:'Erase'}[currentTool];ui.toolHint.textContent='Tool: '+label;canvas.style.cursor=currentTool==='move'?'grab':currentTool==='erase'?'not-allowed':'crosshair';
+  }));
+  document.querySelectorAll('[data-preset]').forEach(btn=>btn.addEventListener('click',()=>loadPreset(btn.dataset.preset)));
+  function loadPreset(name){
+    const w=width,h=height;objects=[];
+    if(name==='room'){
+      objects.push({type:'wall',x:w*.35,y:h*.22,w:w*.30,h:14},{type:'heat',x:w*.53,y:h*.59,w:66,h:50},{type:'heat',x:w*.34,y:h*.45,w:52,h:40},{type:'fan',x:w*.10,y:h*.55,angle:0},{type:'cool',x:w*.84,y:h*.23,w:48,h:70});
+      setStatus('Room cooling preset loaded — fan carries warm air toward the cold inlet.');
+    } else if(name==='plume'){
+      objects.push({type:'heat',x:w*.47,y:h*.74,w:72,h:34},{type:'fan',x:w*.20,y:h*.78,angle:-.26},{type:'wall',x:w*.68,y:h*.28,w:16,h:h*.45});
+      setStatus('Thermal plume preset loaded — watch buoyancy pull heat upward.');
+    } else if(name==='corridor'){
+      objects.push({type:'wall',x:w*.11,y:h*.18,w:w*.78,h:18},{type:'wall',x:w*.11,y:h*.74,w:w*.78,h:18},{type:'fan',x:w*.12,y:h*.47,angle:0},{type:'heat',x:w*.51,y:h*.45,w:48,h:42},{type:'cool',x:w*.84,y:h*.38,w:32,h:68});
+      setStatus('Corridor preset loaded — a constrained cross-flow layout.');
+    } else setStatus('Scene cleared.');
+    rebuildSolidMask();temperature.fill(AMBIENT);u.fill(0);v.fill(0);seedParticles();
+  }
+
+  function bindRange(input,out,suffix='') { const refresh=()=>out.textContent=input.value+suffix;input.addEventListener('input',refresh);refresh(); }
+  bindRange(ui.fanPower,ui.fanPowerOut,'%');bindRange(ui.heatGain,ui.heatGainOut,'%');
+  ui.resolution.addEventListener('input',()=>ui.resolutionOut.textContent=ui.resolution.value);
+  ui.resolution.addEventListener('change',resize);ui.resolutionOut.textContent=ui.resolution.value;
+  ui.pauseBtn.addEventListener('click',()=>{paused=!paused;ui.pauseBtn.textContent=paused?'Resume':'Pause';ui.pauseBtn.classList.toggle('active',paused);ui.pauseBtn.setAttribute('aria-pressed',String(paused));setStatus(paused?'Simulation paused. You can still edit the scene.':'Simulation running.');});
+  ui.heatmapBtn.addEventListener('click',()=>{showHeatmap=!showHeatmap;ui.heatmapBtn.classList.toggle('active',showHeatmap);ui.heatmapBtn.setAttribute('aria-pressed',String(showHeatmap));});
+  ui.vectorsBtn.addEventListener('click',()=>{showVectors=!showVectors;ui.vectorsBtn.classList.toggle('active',showVectors);ui.vectorsBtn.setAttribute('aria-pressed',String(showVectors));});
+  ui.resetBtn.addEventListener('click',()=>{objects=[];temperature.fill(AMBIENT);u.fill(0);v.fill(0);pressure.fill(0);rebuildSolidMask();seedParticles();setStatus('Simulation reset.');});
+
+  new ResizeObserver(resize).observe(stage);
+  resize(); loadPreset('room'); requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
