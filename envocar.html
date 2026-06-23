@@ -1,360 +1,861 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Enhanced Ecosystem Simulator</title>
-    <style>
-        body {
-            margin: 0;
-            overflow: hidden;
-            font-family: Arial, sans-serif;
-            background-color: #1a1a1a;
-            color: white;
-        }
-
-        canvas {
-            display: block;
-        }
-
-        #controls {
-            position: absolute;
-            top: 10px;
-            left: 10px;
-            background: rgba(0, 0, 0, 0.8);
-            padding: 15px;
-            border-radius: 8px;
-            z-index: 10;
-        }
-
-        #controls label, #controls input, #controls button {
-            display: block;
-            margin: 5px 0;
-        }
-
-        #stats {
-            position: absolute;
-            top: 10px;
-            right: 10px;
-            background: rgba(0, 0, 0, 0.8);
-            padding: 15px;
-            border-radius: 8px;
-            z-index: 10;
-        }
-
-        #stats p {
-            margin: 5px 0;
-        }
-
-        #chartContainer {
-            position: absolute;
-            bottom: 10px;
-            left: 10px;
-            background: rgba(0, 0, 0, 0.8);
-            padding: 15px;
-            border-radius: 8px;
-            z-index: 10;
-            width: 300px;
-        }
-
-        .bar {
-            height: 10px;
-            background: lightgreen;
-            margin: 5px 0;
-        }
-    </style>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>EcoEvolution Lab</title>
+  <style>
+    :root {
+      --panel: rgba(7, 16, 25, 0.88);
+      --line: rgba(255,255,255,0.14);
+      --muted: #aab6c1;
+      --text: #edf5f7;
+      --accent: #66e3b4;
+      --warning: #ffcf65;
+      --danger: #ff7979;
+      --shadow: 0 16px 42px rgba(0,0,0,.33);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      overflow: hidden;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #0a1720;
+      color: var(--text);
+    }
+    canvas { display:block; width:100vw; height:100vh; cursor: crosshair; }
+    .panel {
+      position:absolute;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(12px);
+      z-index: 2;
+    }
+    #controls { top: 16px; left: 16px; width: 290px; padding: 16px; }
+    #stats { top: 16px; right: 16px; width: 260px; padding: 16px; }
+    #telemetry { bottom: 16px; left: 16px; width: 430px; padding: 14px; }
+    #inspector { bottom: 16px; right: 16px; width: 280px; padding: 14px; }
+    h1, h2, h3, p { margin: 0; }
+    h1 { font-size: 18px; letter-spacing: .02em; }
+    h2 { font-size: 12px; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); margin-bottom: 10px; }
+    .subtitle { color: var(--muted); font-size: 12px; line-height: 1.45; margin: 6px 0 14px; }
+    .section { border-top:1px solid var(--line); padding-top:12px; margin-top:12px; }
+    .control-row { margin: 10px 0; }
+    .control-row label { display:flex; justify-content:space-between; gap:10px; font-size:12px; color:#d9e4e9; margin-bottom:5px; }
+    .control-row output { color:var(--accent); font-variant-numeric: tabular-nums; }
+    input[type="range"] { width:100%; accent-color: var(--accent); }
+    select, button {
+      font: inherit;
+      border-radius: 9px;
+      border: 1px solid var(--line);
+    }
+    select { width:100%; padding:8px 10px; background:#102430; color:var(--text); }
+    .button-grid { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:12px; }
+    button { padding:8px 10px; color:var(--text); background:#173442; cursor:pointer; transition:.16s ease; }
+    button:hover { transform: translateY(-1px); background:#225064; border-color:rgba(102,227,180,.55); }
+    button.primary { background:#1f7058; }
+    button.warning { background:#6a5220; }
+    .stat-grid { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+    .stat { padding:9px; background:rgba(255,255,255,.045); border:1px solid rgba(255,255,255,.05); border-radius:10px; }
+    .stat .label { display:block; color:var(--muted); font-size:10px; text-transform:uppercase; letter-spacing:.08em; }
+    .stat strong { display:block; font-size:19px; margin-top:3px; font-variant-numeric: tabular-nums; }
+    .chip { display:flex; justify-content:space-between; align-items:center; padding:7px 0; border-bottom:1px solid rgba(255,255,255,.08); font-size:12px; }
+    .chip:last-child { border-bottom:0; }
+    .dot { width:8px; height:8px; border-radius:50%; display:inline-block; margin-right:6px; }
+    #history { width:100%; height:118px; display:block; border-radius:10px; background:rgba(255,255,255,.03); }
+    .legend { display:flex; flex-wrap:wrap; gap:10px; color:var(--muted); font-size:11px; margin-top:8px; }
+    .legend span { display:inline-flex; align-items:center; }
+    .small { color:var(--muted); font-size:11px; line-height:1.45; }
+    #selectedName { font-weight:700; font-size:15px; margin-bottom:7px; }
+    #inspector.empty #selectedName { color: var(--muted); }
+    .trait { display:flex; justify-content:space-between; padding:5px 0; border-bottom:1px dotted rgba(255,255,255,.12); font-size:12px; }
+    .trait span:last-child { font-variant-numeric:tabular-nums; color:#d9f8e9; }
+    #notice {
+      position:absolute; top:50%; left:50%; transform:translate(-50%,-50%);
+      background:rgba(4,10,15,.85); padding:10px 14px; border-radius:11px;
+      opacity:0; pointer-events:none; transition:opacity .2s ease; z-index:4; font-size:13px;
+    }
+    #notice.show { opacity:1; }
+    @media (max-width: 900px) {
+      #controls { width:260px; transform:scale(.9); transform-origin: top left; }
+      #stats { width:230px; transform:scale(.9); transform-origin: top right; }
+      #telemetry { width:330px; transform:scale(.85); transform-origin: bottom left; }
+      #inspector { display:none; }
+    }
+  </style>
 </head>
 <body>
-    <div id="controls">
-        <label for="plantCount">Plant Count:</label>
-        <input type="range" id="plantCount" min="10" max="100" value="50">
-        <label for="herbivoreCount">Herbivore Count:</label>
-        <input type="range" id="herbivoreCount" min="5" max="50" value="20">
-        <label for="carnivoreCount">Carnivore Count:</label>
-        <input type="range" id="carnivoreCount" min="1" max="20" value="5">
-        <button onclick="resetEcosystem()">Reset Ecosystem</button>
+  <canvas id="world" aria-label="EcoEvolution Lab simulation"></canvas>
+
+  <aside id="controls" class="panel">
+    <h1>EcoEvolution Lab</h1>
+    <p class="subtitle">An adaptive, individual-based ecosystem sandbox. Click an organism to inspect its inherited traits.</p>
+
+    <div class="control-row">
+      <label for="preset">Experiment preset</label>
+      <select id="preset">
+        <option value="balanced">Balanced biosphere</option>
+        <option value="evolution">Evolutionary arms race</option>
+        <option value="heat">Heat-stress world</option>
+        <option value="abundance">Resource abundance</option>
+      </select>
     </div>
 
-    <div id="stats">
-        <p>Plants: <span id="plantStats">0</span></p>
-        <p>Herbivores: <span id="herbivoreStats">0</span></p>
-        <p>Carnivores: <span id="carnivoreStats">0</span></p>
-        <p>Time: <span id="timeStats">0</span>s</p>
-        <p>Weather: <span id="weatherStats">Sunny</span></p>
-        <p>Temperature: <span id="tempStats">20</span>°C</p>
+    <div class="section">
+      <div class="control-row">
+        <label for="plantCount">Initial flora <output id="plantCountValue"></output></label>
+        <input id="plantCount" type="range" min="35" max="360" step="5" value="180" />
+      </div>
+      <div class="control-row">
+        <label for="herbivoreCount">Initial herbivores <output id="herbivoreCountValue"></output></label>
+        <input id="herbivoreCount" type="range" min="4" max="80" step="1" value="28" />
+      </div>
+      <div class="control-row">
+        <label for="carnivoreCount">Initial carnivores <output id="carnivoreCountValue"></output></label>
+        <input id="carnivoreCount" type="range" min="1" max="36" step="1" value="8" />
+      </div>
+      <div class="control-row">
+        <label for="timeScale">Simulation speed <output id="timeScaleValue"></output></label>
+        <input id="timeScale" type="range" min="0.2" max="4" step="0.1" value="1" />
+      </div>
+      <div class="control-row">
+        <label for="mutationRate">Trait mutation <output id="mutationRateValue"></output></label>
+        <input id="mutationRate" type="range" min="0" max="0.25" step="0.01" value="0.08" />
+      </div>
+      <div class="control-row">
+        <label for="seasonality">Season pressure <output id="seasonalityValue"></output></label>
+        <input id="seasonality" type="range" min="0" max="1" step="0.05" value="0.55" />
+      </div>
     </div>
 
-    <div id="chartContainer">
-        <h4>Population Metrics</h4>
-        <div class="bar" id="plantBar"></div>
-        <div class="bar" id="herbivoreBar"></div>
-        <div class="bar" id="carnivoreBar"></div>
+    <div class="button-grid">
+      <button id="pauseBtn" class="primary">Pause</button>
+      <button id="resetBtn">Reset world</button>
+      <button id="stepBtn">Single step</button>
+      <button id="seedBtn" class="warning">Seed plants</button>
     </div>
+  </aside>
 
-    <canvas id="canvas"></canvas>
+  <aside id="stats" class="panel">
+    <h2>Live state</h2>
+    <div class="stat-grid">
+      <div class="stat"><span class="label">Flora</span><strong id="plantStats">0</strong></div>
+      <div class="stat"><span class="label">Herbivores</span><strong id="herbivoreStats">0</strong></div>
+      <div class="stat"><span class="label">Carnivores</span><strong id="carnivoreStats">0</strong></div>
+      <div class="stat"><span class="label">Generation</span><strong id="generationStats">0</strong></div>
+    </div>
+    <div class="section">
+      <div class="chip"><span><i class="dot" style="background:#ffd86b"></i>Season</span><strong id="seasonStats">Spring</strong></div>
+      <div class="chip"><span><i class="dot" style="background:#78caff"></i>Weather</span><strong id="weatherStats">Clear</strong></div>
+      <div class="chip"><span><i class="dot" style="background:#ff9c7d"></i>Temperature</span><strong id="tempStats">20.0°C</strong></div>
+      <div class="chip"><span><i class="dot" style="background:#d0d8dd"></i>Sim time</span><strong id="timeStats">0.0 d</strong></div>
+    </div>
+    <div class="section small">
+      <div>Births: <b id="birthStats">0</b> &nbsp; Deaths: <b id="deathStats">0</b></div>
+      <div style="margin-top:4px">Population health: <b id="healthStats">—</b></div>
+    </div>
+  </aside>
 
-    <script>
-        const canvas = document.getElementById("canvas");
-        const ctx = canvas.getContext("2d");
-        canvas.width = window.innerWidth;
-        canvas.height = window.innerHeight;
+  <aside id="telemetry" class="panel">
+    <h2>Population telemetry</h2>
+    <canvas id="history" width="800" height="236"></canvas>
+    <div class="legend">
+      <span><i class="dot" style="background:#63dd81"></i>Flora</span>
+      <span><i class="dot" style="background:#74baff"></i>Herbivores</span>
+      <span><i class="dot" style="background:#ff7f78"></i>Carnivores</span>
+      <span>Rolling 150 observations</span>
+    </div>
+  </aside>
 
-        let plants = [];
-        let herbivores = [];
-        let carnivores = [];
-        let time = 0;
-        let weather = "Sunny";
-        let temperature = 20;
+  <aside id="inspector" class="panel empty">
+    <h2>Organism inspector</h2>
+    <div id="selectedName">Select an organism</div>
+    <div id="selectedBody" class="small">Click flora, herbivores, or carnivores in the world to reveal their current condition and inherited traits.</div>
+  </aside>
+  <div id="notice"></div>
 
-        class Plant {
-            constructor(x, y) {
-                this.x = x;
-                this.y = y;
-                this.size = 5;
-                this.color = "green";
-                this.energy = 100;
-                this.growthRate = 0.1;
-            }
+  <script>
+  (() => {
+    "use strict";
 
-            draw() {
-                ctx.fillStyle = this.color;
-                ctx.beginPath();
-                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
-                ctx.fill();
-            }
+    const canvas = document.getElementById("world");
+    const ctx = canvas.getContext("2d", { alpha: false });
+    const historyCanvas = document.getElementById("history");
+    const historyCtx = historyCanvas.getContext("2d");
 
-            grow() {
-                if (this.energy < 100) {
-                    this.energy += this.growthRate;
-                    this.size = Math.min(10, this.size + 0.01);
-                }
-            }
+    const ui = {
+      preset: document.getElementById("preset"),
+      plantCount: document.getElementById("plantCount"),
+      herbivoreCount: document.getElementById("herbivoreCount"),
+      carnivoreCount: document.getElementById("carnivoreCount"),
+      timeScale: document.getElementById("timeScale"),
+      mutationRate: document.getElementById("mutationRate"),
+      seasonality: document.getElementById("seasonality"),
+      pauseBtn: document.getElementById("pauseBtn"),
+      resetBtn: document.getElementById("resetBtn"),
+      stepBtn: document.getElementById("stepBtn"),
+      seedBtn: document.getElementById("seedBtn"),
+      plantStats: document.getElementById("plantStats"),
+      herbivoreStats: document.getElementById("herbivoreStats"),
+      carnivoreStats: document.getElementById("carnivoreStats"),
+      generationStats: document.getElementById("generationStats"),
+      seasonStats: document.getElementById("seasonStats"),
+      weatherStats: document.getElementById("weatherStats"),
+      tempStats: document.getElementById("tempStats"),
+      timeStats: document.getElementById("timeStats"),
+      birthStats: document.getElementById("birthStats"),
+      deathStats: document.getElementById("deathStats"),
+      healthStats: document.getElementById("healthStats"),
+      inspector: document.getElementById("inspector"),
+      selectedName: document.getElementById("selectedName"),
+      selectedBody: document.getElementById("selectedBody"),
+      notice: document.getElementById("notice")
+    };
 
-            reproduce() {
-                if (this.energy >= 100 && Math.random() < 0.01) {
-                    plants.push(new Plant(this.x + (Math.random() - 0.5) * 50, this.y + (Math.random() - 0.5) * 50));
-                    this.energy = 50;
-                }
-            }
+    const RENDER_SCALE = Math.min(window.devicePixelRatio || 1, 2);
+    const TAU = Math.PI * 2;
+    const WORLD = { width: 0, height: 0 };
+
+    const PRESETS = {
+      balanced: { plant: 180, herbivore: 28, carnivore: 8, mutation: 0.08, seasonality: 0.55, rainfall: 1.0, label: "Balanced biosphere" },
+      evolution: { plant: 210, herbivore: 36, carnivore: 10, mutation: 0.16, seasonality: 0.50, rainfall: 1.0, label: "Evolutionary arms race" },
+      heat: { plant: 150, herbivore: 26, carnivore: 8, mutation: 0.08, seasonality: 0.95, rainfall: 0.65, label: "Heat-stress world" },
+      abundance: { plant: 300, herbivore: 40, carnivore: 8, mutation: 0.06, seasonality: 0.20, rainfall: 1.65, label: "Resource abundance" }
+    };
+
+    const CONFIG = {
+      baseTemperature: 18,
+      floraCap: 650,
+      historyInterval: 0.35,
+      maxHistory: 150,
+      worldPadding: 4,
+      gridCell: 84
+    };
+
+    const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
+    const lerp = (a, b, amount) => a + (b - a) * amount;
+    const randomRange = (min, max) => min + Math.random() * (max - min);
+    const chance = probability => Math.random() < probability;
+    const distanceSq = (a, b) => {
+      const dx = a.x - b.x;
+      const dy = a.y - b.y;
+      return dx * dx + dy * dy;
+    };
+    const normalish = () => (Math.random() + Math.random() + Math.random() + Math.random() - 2) / 2;
+
+    function resize() {
+      WORLD.width = window.innerWidth;
+      WORLD.height = window.innerHeight;
+      canvas.width = Math.floor(WORLD.width * RENDER_SCALE);
+      canvas.height = Math.floor(WORLD.height * RENDER_SCALE);
+      ctx.setTransform(RENDER_SCALE, 0, 0, RENDER_SCALE, 0, 0);
+    }
+
+    class SpatialIndex {
+      constructor(cellSize) {
+        this.cellSize = cellSize;
+        this.cells = new Map();
+      }
+      key(x, y) { return `${Math.floor(x / this.cellSize)},${Math.floor(y / this.cellSize)}`; }
+      clear() { this.cells.clear(); }
+      insert(entity) {
+        const key = this.key(entity.x, entity.y);
+        if (!this.cells.has(key)) this.cells.set(key, []);
+        this.cells.get(key).push(entity);
+      }
+      nearby(x, y, radius) {
+        const entities = [];
+        const cellRadius = Math.ceil(radius / this.cellSize);
+        const baseX = Math.floor(x / this.cellSize);
+        const baseY = Math.floor(y / this.cellSize);
+        for (let gx = baseX - cellRadius; gx <= baseX + cellRadius; gx++) {
+          for (let gy = baseY - cellRadius; gy <= baseY + cellRadius; gy++) {
+            const cell = this.cells.get(`${gx},${gy}`);
+            if (cell) entities.push(...cell);
+          }
+        }
+        return entities;
+      }
+    }
+
+    class Environment {
+      constructor() {
+        this.day = 0;
+        this.weather = "Clear";
+        this.temperature = CONFIG.baseTemperature;
+        this.rain = 0;
+        this.light = 1;
+        this.stormClock = 0;
+      }
+      get seasonPhase() { return (this.day % 96) / 96; }
+      get season() {
+        const seasons = ["Spring", "Summer", "Autumn", "Winter"];
+        return seasons[Math.floor(this.seasonPhase * 4) % 4];
+      }
+      update(dt, seasonality, rainfallMultiplier) {
+        this.day += dt * 0.12;
+        const phase = this.seasonPhase * TAU;
+        const seasonalAmplitude = 11 * seasonality;
+        this.temperature = CONFIG.baseTemperature + Math.sin(phase - Math.PI / 2) * seasonalAmplitude;
+        this.light = clamp(0.7 + Math.sin(phase - Math.PI / 2) * 0.25, 0.32, 1.0);
+
+        this.stormClock -= dt;
+        if (this.stormClock <= 0 && chance(0.0045 * dt * (0.65 + rainfallMultiplier))) {
+          this.stormClock = randomRange(3, 10);
+        }
+        this.rain = this.stormClock > 0 ? clamp(0.6 + Math.sin(this.stormClock * 5) * 0.24, 0.30, 1) : 0;
+        const heatStress = Math.max(0, this.temperature - 27) / 16;
+        if (this.rain > 0.4) this.weather = "Rain";
+        else if (heatStress > 0.32) this.weather = "Heatwave";
+        else this.weather = "Clear";
+      }
+      plantGrowthMultiplier(rainfallMultiplier) {
+        const warmth = Math.exp(-Math.pow((this.temperature - 20) / 14, 2));
+        return (0.38 + this.light * 0.62) * (0.78 + this.rain * 0.65 * rainfallMultiplier) * warmth;
+      }
+      metabolismMultiplier() {
+        return 1 + Math.max(0, Math.abs(this.temperature - 19) - 7) * 0.035 + (this.weather === "Heatwave" ? 0.12 : 0);
+      }
+    }
+
+    class Entity {
+      constructor(x, y) {
+        this.id = crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`;
+        this.x = x;
+        this.y = y;
+        this.dead = false;
+        this.generation = 0;
+      }
+      wrap() {
+        if (this.x < 0) this.x += WORLD.width;
+        if (this.x >= WORLD.width) this.x -= WORLD.width;
+        if (this.y < 0) this.y += WORLD.height;
+        if (this.y >= WORLD.height) this.y -= WORLD.height;
+      }
+    }
+
+    class Plant extends Entity {
+      constructor(x, y, inherited = null) {
+        super(x, y);
+        this.energy = inherited?.energy ?? randomRange(32, 74);
+        this.maxEnergy = inherited?.maxEnergy ?? randomRange(70, 116);
+        this.growth = inherited?.growth ?? randomRange(0.55, 1.12);
+        this.seedRange = inherited?.seedRange ?? randomRange(24, 88);
+        this.generation = inherited?.generation ?? 0;
+        this.size = 2.8 + this.energy / this.maxEnergy * 3.9;
+      }
+      update(sim, dt) {
+        this.energy = Math.min(this.maxEnergy, this.energy + this.growth * sim.environment.plantGrowthMultiplier(sim.rainfallMultiplier) * dt);
+        this.size = 2.7 + this.energy / this.maxEnergy * 4.3;
+        if (this.energy > this.maxEnergy * 0.92 && sim.plants.length < CONFIG.floraCap && chance(0.0055 * dt)) {
+          const angle = randomRange(0, TAU);
+          const range = randomRange(12, this.seedRange);
+          const child = new Plant(this.x + Math.cos(angle) * range, this.y + Math.sin(angle) * range, {
+            energy: this.maxEnergy * 0.22,
+            maxEnergy: this.maxEnergy,
+            growth: sim.mutate(this.growth, 0.16, 0.32, 1.8),
+            seedRange: sim.mutate(this.seedRange, 0.16, 18, 130),
+            generation: this.generation + 1
+          });
+          child.wrap();
+          sim.births.push(child);
+          this.energy *= 0.64;
+        }
+      }
+      draw(ctx) {
+        const fullness = this.energy / this.maxEnergy;
+        ctx.fillStyle = `hsl(${110 + fullness * 25}, ${45 + fullness * 25}%, ${20 + fullness * 20}%)`;
+        ctx.beginPath();
+        ctx.arc(this.x, this.y, this.size, 0, TAU);
+        ctx.fill();
+      }
+      summary() {
+        return { type: "Flora", energy: this.energy, maxEnergy: this.maxEnergy, traits: { "Growth rate": this.growth.toFixed(2), "Seed range": `${this.seedRange.toFixed(0)} px`, "Generation": this.generation } };
+      }
+    }
+
+    class Animal extends Entity {
+      constructor(x, y, type, inherited = null) {
+        super(x, y);
+        this.type = type;
+        const base = type === "herbivore"
+          ? { size: 7, maxEnergy: 108, speed: 48, perception: 112, efficiency: 1.0, reproduction: 0.010, resilience: 1.0, color: "#74baff" }
+          : { size: 9.5, maxEnergy: 145, speed: 56, perception: 142, efficiency: 1.0, reproduction: 0.007, resilience: 1.0, color: "#ff7f78" };
+        this.size = inherited?.size ?? base.size;
+        this.maxEnergy = inherited?.maxEnergy ?? base.maxEnergy;
+        this.energy = inherited?.energy ?? randomRange(this.maxEnergy * 0.43, this.maxEnergy * 0.74);
+        this.speed = inherited?.speed ?? base.speed;
+        this.perception = inherited?.perception ?? base.perception;
+        this.efficiency = inherited?.efficiency ?? base.efficiency;
+        this.reproduction = inherited?.reproduction ?? base.reproduction;
+        this.resilience = inherited?.resilience ?? base.resilience;
+        this.color = base.color;
+        this.age = inherited?.age ?? randomRange(0, 16);
+        this.maxAge = inherited?.maxAge ?? randomRange(100, 160) * this.resilience;
+        this.vx = inherited?.vx ?? randomRange(-1, 1);
+        this.vy = inherited?.vy ?? randomRange(-1, 1);
+        this.generation = inherited?.generation ?? 0;
+        this.target = null;
+        this.lastMeal = 0;
+      }
+      steerToward(target, strength, dt) {
+        if (!target) return;
+        const dx = target.x - this.x;
+        const dy = target.y - this.y;
+        const distance = Math.hypot(dx, dy) || 1;
+        this.vx += (dx / distance) * strength * dt;
+        this.vy += (dy / distance) * strength * dt;
+      }
+      steerAway(target, strength, dt) {
+        if (!target) return;
+        const dx = this.x - target.x;
+        const dy = this.y - target.y;
+        const distance = Math.hypot(dx, dy) || 1;
+        this.vx += (dx / distance) * strength * dt;
+        this.vy += (dy / distance) * strength * dt;
+      }
+      normalizeVelocity() {
+        const magnitude = Math.hypot(this.vx, this.vy) || 1;
+        const desiredSpeed = this.speed * (0.72 + (1 - this.energy / this.maxEnergy) * 0.38);
+        this.vx = this.vx / magnitude * desiredSpeed;
+        this.vy = this.vy / magnitude * desiredSpeed;
+      }
+      move(sim, dt) {
+        const wandering = 17;
+        this.vx += normalish() * wandering * dt;
+        this.vy += normalish() * wandering * dt;
+        this.normalizeVelocity();
+        this.x += this.vx * dt;
+        this.y += this.vy * dt;
+        this.wrap();
+
+        const motionCost = (this.type === "herbivore" ? 0.35 : 0.52) * (0.82 + this.speed / 120) * sim.environment.metabolismMultiplier();
+        this.energy -= motionCost * dt;
+        this.age += dt;
+      }
+      findNearest(candidates, maxRange, predicate = () => true) {
+        let nearest = null;
+        let nearestDistance = maxRange * maxRange;
+        for (const candidate of candidates) {
+          if (candidate.dead || !predicate(candidate)) continue;
+          const d2 = distanceSq(this, candidate);
+          if (d2 < nearestDistance) {
+            nearestDistance = d2;
+            nearest = candidate;
+          }
+        }
+        return nearest;
+      }
+      canReproduce(sim, dt) {
+        const mature = this.age > 14;
+        return mature && this.energy > this.maxEnergy * 0.76 && chance(this.reproduction * dt * 1.8);
+      }
+      reproduce(sim) {
+        const parentEnergy = this.energy;
+        const traits = {
+          size: sim.mutate(this.size, 0.12, 4.5, this.type === "herbivore" ? 12 : 15),
+          maxEnergy: sim.mutate(this.maxEnergy, 0.11, 65, 210),
+          speed: sim.mutate(this.speed, 0.10, 27, 96),
+          perception: sim.mutate(this.perception, 0.12, 55, 230),
+          efficiency: sim.mutate(this.efficiency, 0.10, 0.60, 1.55),
+          reproduction: sim.mutate(this.reproduction, 0.14, 0.002, 0.024),
+          resilience: sim.mutate(this.resilience, 0.10, 0.7, 1.5),
+          maxAge: this.maxAge,
+          energy: parentEnergy * 0.34,
+          age: 0,
+          vx: this.vx * 0.3 + normalish() * 9,
+          vy: this.vy * 0.3 + normalish() * 9,
+          generation: this.generation + 1
+        };
+        const child = new Animal(this.x + randomRange(-12, 12), this.y + randomRange(-12, 12), this.type, traits);
+        child.wrap();
+        this.energy *= 0.58;
+        sim.births.push(child);
+      }
+      draw(ctx, selected) {
+        const direction = Math.atan2(this.vy, this.vx);
+        ctx.save();
+        ctx.translate(this.x, this.y);
+        ctx.rotate(direction);
+        ctx.fillStyle = this.color;
+        ctx.globalAlpha = clamp(0.40 + this.energy / this.maxEnergy * 0.65, 0.35, 1);
+        ctx.beginPath();
+        ctx.moveTo(this.size * 1.18, 0);
+        ctx.lineTo(-this.size * 0.88, this.size * 0.68);
+        ctx.lineTo(-this.size * 0.5, 0);
+        ctx.lineTo(-this.size * 0.88, -this.size * 0.68);
+        ctx.closePath();
+        ctx.fill();
+        if (selected) {
+          ctx.globalAlpha = 1;
+          ctx.strokeStyle = "#ffffff";
+          ctx.lineWidth = 1.5;
+          ctx.beginPath();
+          ctx.arc(0, 0, this.size + 4, 0, TAU);
+          ctx.stroke();
+        }
+        ctx.restore();
+      }
+      summary() {
+        return {
+          type: this.type === "herbivore" ? "Herbivore" : "Carnivore",
+          energy: this.energy,
+          maxEnergy: this.maxEnergy,
+          traits: {
+            "Energy": `${Math.max(0, this.energy).toFixed(0)} / ${this.maxEnergy.toFixed(0)}`,
+            "Age": `${this.age.toFixed(1)} / ${this.maxAge.toFixed(0)} d`,
+            "Speed": `${this.speed.toFixed(1)} px/s`,
+            "Perception": `${this.perception.toFixed(0)} px`,
+            "Efficiency": `${this.efficiency.toFixed(2)}×`,
+            "Resilience": `${this.resilience.toFixed(2)}×`,
+            "Generation": this.generation
+          }
+        };
+      }
+    }
+
+    class EcosystemSimulation {
+      constructor() {
+        this.environment = new Environment();
+        this.plants = [];
+        this.herbivores = [];
+        this.carnivores = [];
+        this.plantIndex = new SpatialIndex(CONFIG.gridCell);
+        this.herbivoreIndex = new SpatialIndex(CONFIG.gridCell);
+        this.carnivoreIndex = new SpatialIndex(CONFIG.gridCell);
+        this.births = [];
+        this.totalBirths = 0;
+        this.totalDeaths = 0;
+        this.history = [];
+        this.historyClock = 0;
+        this.rainfallMultiplier = 1;
+        this.selected = null;
+        this.paused = false;
+        this.maxGeneration = 0;
+      }
+      mutate(value, spread, min, max) {
+        const probability = Number(ui.mutationRate.value);
+        if (!chance(probability)) return value;
+        return clamp(value * (1 + normalish() * spread), min, max);
+      }
+      reset(presetName = ui.preset.value) {
+        const preset = PRESETS[presetName];
+        ui.plantCount.value = preset.plant;
+        ui.herbivoreCount.value = preset.herbivore;
+        ui.carnivoreCount.value = preset.carnivore;
+        ui.mutationRate.value = preset.mutation;
+        ui.seasonality.value = preset.seasonality;
+        syncControlLabels();
+
+        this.rainfallMultiplier = preset.rainfall;
+        this.environment = new Environment();
+        this.plants = [];
+        this.herbivores = [];
+        this.carnivores = [];
+        this.history = [];
+        this.totalBirths = 0;
+        this.totalDeaths = 0;
+        this.maxGeneration = 0;
+        this.selected = null;
+        this.births = [];
+
+        const safeX = () => randomRange(24, Math.max(25, WORLD.width - 24));
+        const safeY = () => randomRange(24, Math.max(25, WORLD.height - 24));
+        for (let i = 0; i < Number(ui.plantCount.value); i++) this.plants.push(new Plant(safeX(), safeY()));
+        for (let i = 0; i < Number(ui.herbivoreCount.value); i++) this.herbivores.push(new Animal(safeX(), safeY(), "herbivore"));
+        for (let i = 0; i < Number(ui.carnivoreCount.value); i++) this.carnivores.push(new Animal(safeX(), safeY(), "carnivore"));
+        this.recordHistory();
+        showNotice(`${preset.label} initialized`);
+      }
+      seedPlants(amount = 36) {
+        for (let i = 0; i < amount; i++) this.plants.push(new Plant(randomRange(0, WORLD.width), randomRange(0, WORLD.height)));
+        showNotice(`${amount} plants introduced`);
+      }
+      buildIndexes() {
+        this.plantIndex.clear(); this.herbivoreIndex.clear(); this.carnivoreIndex.clear();
+        for (const plant of this.plants) this.plantIndex.insert(plant);
+        for (const herbivore of this.herbivores) this.herbivoreIndex.insert(herbivore);
+        for (const carnivore of this.carnivores) this.carnivoreIndex.insert(carnivore);
+      }
+      updateHerbivore(animal, dt) {
+        const nearbyPredators = this.carnivoreIndex.nearby(animal.x, animal.y, animal.perception);
+        const threat = animal.findNearest(nearbyPredators, animal.perception);
+        const nearbyPlants = this.plantIndex.nearby(animal.x, animal.y, animal.perception);
+        const food = animal.findNearest(nearbyPlants, animal.perception);
+        const hungry = 1 - clamp(animal.energy / animal.maxEnergy, 0, 1);
+
+        if (threat) animal.steerAway(threat, 115 + hungry * 30, dt);
+        if (food && (!threat || distanceSq(animal, threat) > (animal.perception * 0.52) ** 2)) animal.steerToward(food, 76 + hungry * 70, dt);
+        animal.move(this, dt);
+
+        const edible = this.plantIndex.nearby(animal.x, animal.y, animal.size + 9);
+        for (const plant of edible) {
+          if (plant.dead || distanceSq(animal, plant) > (animal.size + plant.size + 2) ** 2) continue;
+          const gain = Math.min(plant.energy, 22 * animal.efficiency);
+          animal.energy = Math.min(animal.maxEnergy * 1.18, animal.energy + gain);
+          plant.energy -= gain;
+          animal.lastMeal = this.environment.day;
+          if (plant.energy <= 0.5) plant.dead = true;
+          break;
+        }
+        if (animal.canReproduce(this, dt)) animal.reproduce(this);
+      }
+      updateCarnivore(animal, dt) {
+        const nearbyPrey = this.herbivoreIndex.nearby(animal.x, animal.y, animal.perception);
+        const prey = animal.findNearest(nearbyPrey, animal.perception);
+        const hungry = 1 - clamp(animal.energy / animal.maxEnergy, 0, 1);
+        if (prey) animal.steerToward(prey, 86 + hungry * 90, dt);
+        animal.move(this, dt);
+
+        const catchable = this.herbivoreIndex.nearby(animal.x, animal.y, animal.size + 13);
+        for (const herbivore of catchable) {
+          if (herbivore.dead || distanceSq(animal, herbivore) > (animal.size + herbivore.size + 3) ** 2) continue;
+          const captureProbability = clamp(0.42 + (animal.speed - herbivore.speed) * 0.018 + (animal.perception - herbivore.perception) * 0.002, 0.14, 0.92);
+          if (chance(captureProbability)) {
+            herbivore.dead = true;
+            animal.energy = Math.min(animal.maxEnergy * 1.18, animal.energy + herbivore.energy * 0.70 * animal.efficiency + 25);
+            animal.lastMeal = this.environment.day;
+          }
+          break;
+        }
+        if (animal.canReproduce(this, dt)) animal.reproduce(this);
+      }
+      collectDeaths() {
+        const expire = animal => animal.dead || animal.energy <= 0 || animal.age >= animal.maxAge;
+        const before = this.plants.length + this.herbivores.length + this.carnivores.length;
+        this.plants = this.plants.filter(plant => !plant.dead && plant.energy > 0.5);
+        this.herbivores = this.herbivores.filter(animal => !expire(animal));
+        this.carnivores = this.carnivores.filter(animal => !expire(animal));
+        const after = this.plants.length + this.herbivores.length + this.carnivores.length;
+        this.totalDeaths += before - after;
+      }
+      addBirths() {
+        for (const entity of this.births) {
+          if (entity instanceof Plant) this.plants.push(entity);
+          else if (entity.type === "herbivore") this.herbivores.push(entity);
+          else this.carnivores.push(entity);
+          this.maxGeneration = Math.max(this.maxGeneration, entity.generation || 0);
+        }
+        this.totalBirths += this.births.length;
+        this.births = [];
+      }
+      recordHistory() {
+        this.history.push({ plants: this.plants.length, herbivores: this.herbivores.length, carnivores: this.carnivores.length });
+        if (this.history.length > CONFIG.maxHistory) this.history.shift();
+      }
+      update(dt) {
+        const seasonality = Number(ui.seasonality.value);
+        this.environment.update(dt, seasonality, this.rainfallMultiplier);
+        this.buildIndexes();
+
+        for (const plant of this.plants) plant.update(this, dt);
+        for (const herbivore of this.herbivores) this.updateHerbivore(herbivore, dt);
+        for (const carnivore of this.carnivores) this.updateCarnivore(carnivore, dt);
+
+        this.collectDeaths();
+        this.addBirths();
+        this.historyClock += dt;
+        if (this.historyClock >= CONFIG.historyInterval) {
+          this.historyClock = 0;
+          this.recordHistory();
+        }
+      }
+      entityAt(x, y) {
+        let nearest = null;
+        let nearestDistance = 16 * 16;
+        for (const entity of [...this.carnivores, ...this.herbivores, ...this.plants]) {
+          const hitRadius = (entity.size || 5) + 6;
+          const d2 = (entity.x - x) ** 2 + (entity.y - y) ** 2;
+          if (d2 < hitRadius ** 2 && d2 < nearestDistance) {
+            nearest = entity;
+            nearestDistance = d2;
+          }
+        }
+        return nearest;
+      }
+      render() {
+        const env = this.environment;
+        const heat = clamp((env.temperature - 16) / 20, 0, 1);
+        const baseR = Math.floor(10 + heat * 18);
+        const baseG = Math.floor(34 + env.light * 35);
+        const baseB = Math.floor(33 + (1 - heat) * 18);
+        ctx.fillStyle = `rgb(${baseR}, ${baseG}, ${baseB})`;
+        ctx.fillRect(0, 0, WORLD.width, WORLD.height);
+
+        // Seasonal terrain layers
+        ctx.fillStyle = `rgba(110, 190, 93, ${0.05 + env.light * 0.08})`;
+        for (let y = 0; y < WORLD.height; y += 68) {
+          for (let x = 0; x < WORLD.width; x += 68) {
+            ctx.beginPath();
+            ctx.arc(x + 20, y + 28, 25 + ((x * 17 + y * 13) % 15), 0, TAU);
+            ctx.fill();
+          }
+        }
+        if (env.rain > 0.05) {
+          ctx.strokeStyle = `rgba(170, 220, 255, ${0.10 + env.rain * 0.18})`;
+          ctx.lineWidth = 1;
+          for (let i = 0; i < 130 * env.rain; i++) {
+            const x = (i * 47 + env.day * 80) % WORLD.width;
+            const y = (i * 91 + env.day * 140) % WORLD.height;
+            ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x - 3, y + 10); ctx.stroke();
+          }
+        }
+        if (env.weather === "Heatwave") {
+          const gradient = ctx.createLinearGradient(0, 0, 0, WORLD.height);
+          gradient.addColorStop(0, "rgba(255, 158, 91, .14)");
+          gradient.addColorStop(1, "rgba(255, 92, 61, .03)");
+          ctx.fillStyle = gradient; ctx.fillRect(0, 0, WORLD.width, WORLD.height);
         }
 
-        class Herbivore {
-            constructor(x, y) {
-                this.x = x;
-                this.y = y;
-                this.size = 8;
-                this.color = "blue";
-                this.energy = 100;
-                this.speed = 2;
-                this.reproductionRate = 0.005;
-            }
-
-            draw() {
-                ctx.fillStyle = this.color;
-                ctx.beginPath();
-                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
-                ctx.fill();
-            }
-
-            move() {
-                this.x += (Math.random() - 0.5) * this.speed;
-                this.y += (Math.random() - 0.5) * this.speed;
-                this.energy -= 0.1;
-            }
-
-            eat(plant) {
-                if (Math.hypot(this.x - plant.x, this.y - plant.y) < this.size + plant.size) {
-                    this.energy += 20;
-                    plant.energy = 0;
-                }
-            }
-
-            reproduce() {
-                if (this.energy >= 100 && Math.random() < this.reproductionRate) {
-                    herbivores.push(new Herbivore(this.x + (Math.random() - 0.5) * 50, this.y + (Math.random() - 0.5) * 50));
-                    this.energy = 50;
-                }
-            }
+        for (const plant of this.plants) plant.draw(ctx);
+        for (const animal of this.herbivores) animal.draw(ctx, animal === this.selected);
+        for (const animal of this.carnivores) animal.draw(ctx, animal === this.selected);
+        if (this.selected instanceof Plant) {
+          ctx.strokeStyle = "#ffffff"; ctx.lineWidth = 1.4; ctx.beginPath(); ctx.arc(this.selected.x, this.selected.y, this.selected.size + 4, 0, TAU); ctx.stroke();
         }
+      }
+    }
 
-        class Carnivore {
-            constructor(x, y) {
-                this.x = x;
-                this.y = y;
-                this.size = 10;
-                this.color = "red";
-                this.energy = 100;
-                this.speed = 3;
-                this.reproductionRate = 0.003;
-            }
+    const sim = new EcosystemSimulation();
 
-            draw() {
-                ctx.fillStyle = this.color;
-                ctx.beginPath();
-                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
-                ctx.fill();
-            }
+    function syncControlLabels() {
+      document.getElementById("plantCountValue").textContent = ui.plantCount.value;
+      document.getElementById("herbivoreCountValue").textContent = ui.herbivoreCount.value;
+      document.getElementById("carnivoreCountValue").textContent = ui.carnivoreCount.value;
+      document.getElementById("timeScaleValue").textContent = `${Number(ui.timeScale.value).toFixed(1)}×`;
+      document.getElementById("mutationRateValue").textContent = `${Math.round(Number(ui.mutationRate.value) * 100)}%`;
+      document.getElementById("seasonalityValue").textContent = `${Math.round(Number(ui.seasonality.value) * 100)}%`;
+    }
 
-            move() {
-                this.x += (Math.random() - 0.5) * this.speed;
-                this.y += (Math.random() - 0.5) * this.speed;
-                this.energy -= 0.2;
-            }
+    function updateDashboard() {
+      const env = sim.environment;
+      ui.plantStats.textContent = sim.plants.length;
+      ui.herbivoreStats.textContent = sim.herbivores.length;
+      ui.carnivoreStats.textContent = sim.carnivores.length;
+      ui.generationStats.textContent = sim.maxGeneration;
+      ui.seasonStats.textContent = env.season;
+      ui.weatherStats.textContent = env.weather;
+      ui.tempStats.textContent = `${env.temperature.toFixed(1)}°C`;
+      ui.timeStats.textContent = `${env.day.toFixed(1)} d`;
+      ui.birthStats.textContent = sim.totalBirths;
+      ui.deathStats.textContent = sim.totalDeaths;
 
-            eat(herbivore) {
-                if (Math.hypot(this.x - herbivore.x, this.y - herbivore.y) < this.size + herbivore.size) {
-                    this.energy += 50;
-                    herbivore.energy = 0;
-                }
-            }
+      const health = sim.herbivores.length === 0 || sim.plants.length < 10 ? "Fragile" : sim.carnivores.length === 0 ? "Predator-free" : sim.plants.length > 500 ? "Overgrown" : "Functioning";
+      ui.healthStats.textContent = health;
+      ui.healthStats.style.color = health === "Functioning" ? "#8bf4bd" : health === "Fragile" ? "#ff9393" : "#ffd86b";
+      renderInspector();
+      drawHistory();
+    }
 
-            reproduce() {
-                if (this.energy >= 100 && Math.random() < this.reproductionRate) {
-                    carnivores.push(new Carnivore(this.x + (Math.random() - 0.5) * 50, this.y + (Math.random() - 0.5) * 50));
-                    this.energy = 50;
-                }
-            }
-        }
+    function renderInspector() {
+      const entity = sim.selected;
+      if (!entity || entity.dead || !(sim.plants.includes(entity) || sim.herbivores.includes(entity) || sim.carnivores.includes(entity))) {
+        sim.selected = null;
+        ui.inspector.classList.add("empty");
+        ui.selectedName.textContent = "Select an organism";
+        ui.selectedBody.textContent = "Click flora, herbivores, or carnivores in the world to reveal their current condition and inherited traits.";
+        return;
+      }
+      ui.inspector.classList.remove("empty");
+      const info = entity.summary();
+      ui.selectedName.textContent = `${info.type} · generation ${entity.generation}`;
+      const energyRatio = clamp(info.energy / info.maxEnergy, 0, 1);
+      const traits = Object.entries(info.traits)
+        .map(([name, value]) => `<div class="trait"><span>${name}</span><span>${value}</span></div>`)
+        .join("");
+      ui.selectedBody.innerHTML = `<div class="small" style="margin-bottom:7px">Condition <b style="color:${energyRatio > .55 ? '#8bf4bd' : '#ffca67'}">${Math.round(energyRatio * 100)}%</b></div>${traits}`;
+    }
 
-        function initializeEcosystem() {
-            plants = [];
-            herbivores = [];
-            carnivores = [];
+    function drawHistory() {
+      const w = historyCanvas.width;
+      const h = historyCanvas.height;
+      historyCtx.clearRect(0, 0, w, h);
+      historyCtx.fillStyle = "rgba(255,255,255,.02)";
+      historyCtx.fillRect(0, 0, w, h);
+      if (sim.history.length < 2) return;
+      const peak = Math.max(40, ...sim.history.flatMap(row => [row.plants, row.herbivores, row.carnivores]));
+      const drawLine = (key, color) => {
+        historyCtx.beginPath();
+        sim.history.forEach((row, index) => {
+          const x = 8 + index / (CONFIG.maxHistory - 1) * (w - 16);
+          const y = h - 12 - row[key] / peak * (h - 24);
+          if (index === 0) historyCtx.moveTo(x, y); else historyCtx.lineTo(x, y);
+        });
+        historyCtx.lineWidth = 4;
+        historyCtx.strokeStyle = color;
+        historyCtx.stroke();
+      };
+      for (let i = 1; i < 4; i++) {
+        const y = i / 4 * h;
+        historyCtx.strokeStyle = "rgba(255,255,255,.07)";
+        historyCtx.lineWidth = 1;
+        historyCtx.beginPath(); historyCtx.moveTo(0, y); historyCtx.lineTo(w, y); historyCtx.stroke();
+      }
+      drawLine("plants", "#63dd81");
+      drawLine("herbivores", "#74baff");
+      drawLine("carnivores", "#ff7f78");
+      historyCtx.fillStyle = "rgba(235,245,247,.68)";
+      historyCtx.font = "20px system-ui";
+      historyCtx.fillText(`peak ${peak}`, 12, 24);
+    }
 
-            const plantCount = parseInt(document.getElementById("plantCount").value);
-            const herbivoreCount = parseInt(document.getElementById("herbivoreCount").value);
-            const carnivoreCount = parseInt(document.getElementById("carnivoreCount").value);
+    let noticeTimer = null;
+    function showNotice(text) {
+      ui.notice.textContent = text;
+      ui.notice.classList.add("show");
+      clearTimeout(noticeTimer);
+      noticeTimer = setTimeout(() => ui.notice.classList.remove("show"), 1100);
+    }
 
-            for (let i = 0; i < plantCount; i++) {
-                plants.push(new Plant(Math.random() * canvas.width, Math.random() * canvas.height));
-            }
+    for (const element of [ui.plantCount, ui.herbivoreCount, ui.carnivoreCount, ui.timeScale, ui.mutationRate, ui.seasonality]) {
+      element.addEventListener("input", syncControlLabels);
+    }
+    ui.preset.addEventListener("change", () => sim.reset(ui.preset.value));
+    ui.pauseBtn.addEventListener("click", () => {
+      sim.paused = !sim.paused;
+      ui.pauseBtn.textContent = sim.paused ? "Resume" : "Pause";
+      ui.pauseBtn.classList.toggle("primary", !sim.paused);
+    });
+    ui.resetBtn.addEventListener("click", () => sim.reset(ui.preset.value));
+    ui.stepBtn.addEventListener("click", () => { sim.update(0.16); updateDashboard(); });
+    ui.seedBtn.addEventListener("click", () => sim.seedPlants());
 
-            for (let i = 0; i < herbivoreCount; i++) {
-                herbivores.push(new Herbivore(Math.random() * canvas.width, Math.random() * canvas.height));
-            }
+    canvas.addEventListener("click", event => {
+      const rect = canvas.getBoundingClientRect();
+      const x = event.clientX - rect.left;
+      const y = event.clientY - rect.top;
+      sim.selected = sim.entityAt(x, y);
+      if (!sim.selected) showNotice("No organism selected");
+      renderInspector();
+    });
 
-            for (let i = 0; i < carnivoreCount; i++) {
-                carnivores.push(new Carnivore(Math.random() * canvas.width, Math.random() * canvas.height));
-            }
-        }
+    window.addEventListener("resize", resize);
+    resize();
+    syncControlLabels();
+    sim.reset("balanced");
 
-        function updateWeather() {
-            const weatherStates = ["Sunny", "Rainy", "Stormy"];
-            if (Math.random() < 0.01) {
-                weather = weatherStates[Math.floor(Math.random() * weatherStates.length)];
-            }
-
-            if (weather === "Sunny") {
-                temperature = 20 + Math.random() * 10;
-            } else if (weather === "Rainy") {
-                temperature = 15 + Math.random() * 5;
-            } else if (weather === "Stormy") {
-                temperature = 10 + Math.random() *5;
-            }
-
-            document.getElementById("weatherStats").textContent = weather;
-            document.getElementById("tempStats").textContent = temperature.toFixed(1);
-        }
-
-        function updateEcosystem() {
-            time += 0.1;
-
-            // Update weather
-            updateWeather();
-
-            // Update plants
-            for (let plant of plants) {
-                plant.grow();
-                plant.reproduce();
-            }
-
-            // Update herbivores
-            for (let herbivore of herbivores) {
-                herbivore.move();
-                for (let plant of plants) {
-                    herbivore.eat(plant);
-                }
-                if (herbivore.energy <= 0) {
-                    herbivores.splice(herbivores.indexOf(herbivore), 1);
-                } else {
-                    herbivore.reproduce();
-                }
-            }
-
-            // Update carnivores
-            for (let carnivore of carnivores) {
-                carnivore.move();
-                for (let herbivore of herbivores) {
-                    carnivore.eat(herbivore);
-                }
-                if (carnivore.energy <= 0) {
-                    carnivores.splice(carnivores.indexOf(carnivore), 1);
-                } else {
-                    carnivore.reproduce();
-                }
-            }
-
-            // Remove dead plants
-            plants = plants.filter(plant => plant.energy > 0);
-
-            // Update stats
-            document.getElementById("plantStats").textContent = plants.length;
-            document.getElementById("herbivoreStats").textContent = herbivores.length;
-            document.getElementById("carnivoreStats").textContent = carnivores.length;
-            document.getElementById("timeStats").textContent = time.toFixed(1);
-
-            // Update population metrics
-            const maxPlants = 100;
-            const maxHerbivores = 50;
-            const maxCarnivores = 20;
-
-            document.getElementById("plantBar").style.width = `${(plants.length / maxPlants) * 100}%`;
-            document.getElementById("herbivoreBar").style.width = `${(herbivores.length / maxHerbivores) * 100}%`;
-            document.getElementById("carnivoreBar").style.width = `${(carnivores.length / maxCarnivores) * 100}%`;
-        }
-
-        function renderEcosystem() {
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-            // Draw terrain (optional: add visual effects based on weather)
-            if (weather === "Rainy") {
-                ctx.fillStyle = "rgba(0, 0, 255, 0.1)";
-                ctx.fillRect(0, 0, canvas.width, canvas.height);
-            } else if (weather === "Stormy") {
-                ctx.fillStyle = "rgba(0, 0, 0, 0.2)";
-                ctx.fillRect(0, 0, canvas.width, canvas.height);
-            }
-
-            // Draw entities
-            for (let plant of plants) {
-                plant.draw();
-            }
-
-            for (let herbivore of herbivores) {
-                herbivore.draw();
-            }
-
-            for (let carnivore of carnivores) {
-                carnivore.draw();
-            }
-        }
-
-        function resetEcosystem() {
-            initializeEcosystem();
-            time = 0;
-            weather = "Sunny";
-            temperature = 20;
-        }
-
-        function loop() {
-            updateEcosystem();
-            renderEcosystem();
-            requestAnimationFrame(loop);
-        }
-
-        // Initialize and start the ecosystem
-        initializeEcosystem();
-        loop();
-    </script>
+    let previous = performance.now();
+    let dashboardClock = 0;
+    function frame(now) {
+      const elapsed = clamp((now - previous) / 1000, 0, 0.05);
+      previous = now;
+      if (!sim.paused) {
+        const scaled = elapsed * Number(ui.timeScale.value);
+        // Substeps keep interaction outcomes stable at higher speed settings.
+        const steps = Math.max(1, Math.ceil(scaled / 0.03));
+        const dt = scaled / steps;
+        for (let i = 0; i < steps; i++) sim.update(dt);
+      }
+      sim.render();
+      dashboardClock += elapsed;
+      if (dashboardClock > 0.15) { dashboardClock = 0; updateDashboard(); }
+      requestAnimationFrame(frame);
+    }
+    requestAnimationFrame(frame);
+  })();
+  </script>
 </body>
 </html>
