@@ -1,55 +1,269 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-<style>
-body {
-  font-family: Arial, sans-serif;
-}
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Desktop App Launcher</title>
 
-form {
-  margin-top: 20px;
-}
+  <style>
+    :root {
+      --bg: #f4f7fb;
+      --card: #ffffff;
+      --text: #172033;
+      --muted: #667085;
+      --primary: #2563eb;
+      --primary-hover: #1d4ed8;
+      --border: #d9e1ee;
+      --success-bg: #ecfdf3;
+      --success-text: #067647;
+      --warning-bg: #fffaeb;
+      --warning-text: #93370d;
+    }
 
-select, input[type="button"] {
-  padding: 10px;
-  font-size: 16px;
-}
+    * {
+      box-sizing: border-box;
+    }
 
-input[type="button"] {
-  background-color: #4CAF50;
-  color: white;
-  border: none;
-  cursor: pointer;
-  margin-top: 10px;
-}
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      padding: 24px;
+      font-family: Arial, sans-serif;
+      background: linear-gradient(135deg, #eef4ff, var(--bg));
+      color: var(--text);
+    }
 
-input[type="button"]:hover {
-  background-color: #45a049;
-}
-</style>
+    .launcher {
+      width: min(100%, 620px);
+      padding: 32px;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      box-shadow: 0 18px 45px rgba(25, 45, 80, 0.12);
+    }
+
+    h1 {
+      margin: 0 0 8px;
+      font-size: clamp(1.7rem, 4vw, 2.2rem);
+    }
+
+    .subtitle {
+      margin: 0 0 28px;
+      color: var(--muted);
+      line-height: 1.55;
+    }
+
+    label {
+      display: block;
+      margin-bottom: 8px;
+      font-weight: 700;
+    }
+
+    select,
+    input {
+      width: 100%;
+      padding: 13px 14px;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      font: inherit;
+      color: var(--text);
+      background: white;
+    }
+
+    select:focus,
+    input:focus {
+      outline: 3px solid rgba(37, 99, 235, 0.2);
+      border-color: var(--primary);
+    }
+
+    .field {
+      margin-bottom: 20px;
+    }
+
+    .hint {
+      display: block;
+      margin-top: 7px;
+      color: var(--muted);
+      font-size: 0.88rem;
+      line-height: 1.45;
+    }
+
+    button {
+      width: 100%;
+      padding: 14px;
+      border: 0;
+      border-radius: 10px;
+      cursor: pointer;
+      font: inherit;
+      font-weight: 700;
+      color: white;
+      background: var(--primary);
+      transition: transform 0.15s ease, background 0.15s ease;
+    }
+
+    button:hover {
+      background: var(--primary-hover);
+      transform: translateY(-1px);
+    }
+
+    button:focus-visible {
+      outline: 3px solid rgba(37, 99, 235, 0.35);
+      outline-offset: 3px;
+    }
+
+    .status {
+      display: none;
+      margin-top: 20px;
+      padding: 14px;
+      border-radius: 10px;
+      line-height: 1.45;
+    }
+
+    .status.show {
+      display: block;
+    }
+
+    .status.success {
+      color: var(--success-text);
+      background: var(--success-bg);
+    }
+
+    .status.warning {
+      color: var(--warning-text);
+      background: var(--warning-bg);
+    }
+  </style>
 </head>
+
 <body>
+  <main class="launcher">
+    <h1>Desktop App Launcher</h1>
+    <p class="subtitle">
+      Open an HTTPS document in its installed Microsoft Office desktop app.
+    </p>
 
-<h2>Launch a Program</h2>
+    <form id="launcherForm">
+      <div class="field">
+        <label for="programs">Application</label>
+        <select id="programs" name="programs">
+          <option value="word">Microsoft Word</option>
+          <option value="excel">Microsoft Excel</option>
+          <option value="powerpoint">Microsoft PowerPoint</option>
+          <option value="notepad">Notepad</option>
+        </select>
+      </div>
 
-<form action="/action_page.php">
-  <label for="programs">Choose a program:</label>
-  <select id="programs" name="programs">
-    <option value="word">Microsoft Word</option>
-    <option value="excel">Microsoft Excel</option>
-    <option value="powerpoint">Microsoft PowerPoint</option>
-    <option value="notepad">Notepad</option>
-  </select>
-  <br><br>
-  <input type="button" value="Launch" onclick="launchProgram()">
-</form>
+      <div class="field" id="documentField">
+        <label for="documentUrl">Document URL</label>
+        <input
+          id="documentUrl"
+          name="documentUrl"
+          type="url"
+          placeholder="https://example.com/report.docx"
+          autocomplete="url"
+        />
+        <small class="hint" id="urlHint">
+          Use a direct HTTPS link to a document your users can access.
+        </small>
+      </div>
 
-<script>
-function launchProgram() {
-  var program = document.getElementById("programs").value;
-  window.location.href = program + "://";
-}
-</script>
+      <button type="submit">Launch selected app</button>
+    </form>
 
+    <div id="status" class="status" role="status" aria-live="polite"></div>
+  </main>
+
+  <script>
+    const form = document.getElementById("launcherForm");
+    const programs = document.getElementById("programs");
+    const documentUrl = document.getElementById("documentUrl");
+    const documentField = document.getElementById("documentField");
+    const statusBox = document.getElementById("status");
+    const urlHint = document.getElementById("urlHint");
+
+    const officeProtocols = {
+      word: "ms-word",
+      excel: "ms-excel",
+      powerpoint: "ms-powerpoint"
+    };
+
+    function showStatus(message, type = "warning") {
+      statusBox.textContent = message;
+      statusBox.className = `status show ${type}`;
+    }
+
+    function updateInterface() {
+      const isNotepad = programs.value === "notepad";
+
+      documentField.style.display = isNotepad ? "none" : "block";
+      documentUrl.required = !isNotepad;
+
+      if (isNotepad) {
+        showStatus(
+          "A browser cannot directly launch Notepad. Use a desktop application, Electron/Tauri app, or a custom registered protocol handler.",
+          "warning"
+        );
+      } else {
+        statusBox.className = "status";
+        urlHint.textContent =
+          "Use a direct HTTPS link to a document your users can access.";
+      }
+    }
+
+    function getSafeHttpsUrl(value) {
+      try {
+        const url = new URL(value);
+
+        if (url.protocol !== "https:") {
+          throw new Error("Only HTTPS URLs are allowed.");
+        }
+
+        return url.href;
+      } catch {
+        return null;
+      }
+    }
+
+    programs.addEventListener("change", updateInterface);
+
+    form.addEventListener("submit", (event) => {
+      event.preventDefault();
+
+      const selectedProgram = programs.value;
+
+      if (selectedProgram === "notepad") {
+        showStatus(
+          "Notepad cannot be launched directly from a normal web page. Configure a custom protocol such as company-launcher://notepad through a native desktop companion app.",
+          "warning"
+        );
+        return;
+      }
+
+      const safeDocumentUrl = getSafeHttpsUrl(documentUrl.value);
+
+      if (!safeDocumentUrl) {
+        showStatus(
+          "Enter a valid HTTPS document URL before launching Office.",
+          "warning"
+        );
+        documentUrl.focus();
+        return;
+      }
+
+      const protocol = officeProtocols[selectedProgram];
+      const officeUri = `${protocol}:ofe|u|${encodeURI(safeDocumentUrl)}`;
+
+      showStatus(
+        "Opening the desktop application. Your browser may ask for permission.",
+        "success"
+      );
+
+      window.open(officeUri, "_blank", "noopener");
+    });
+
+    updateInterface();
+  </script>
 </body>
 </html>
