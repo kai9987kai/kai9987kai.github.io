@@ -42,9 +42,10 @@
     .hint { color:var(--muted); font-size:10px; line-height:1.4; margin:9px 0 0; }
     #metrics { position:absolute; right:18px; top:18px; width:246px; padding:14px; }
     .metrics-grid { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
-    .metric { border:1px solid rgba(129,157,218,.15); border-radius:10px; padding:8px; background:rgba(5,12,29,.38); }
+    .metric { border:1px solid rgba(129,157,218,.15); border-radius:10px; padding:8px; background:rgba(5,12,29,.38); position: relative; overflow: hidden; }
     .metric b { display:block; color:#ebf5ff; font-size:17px; line-height:1.1; font-variant-numeric:tabular-nums; }
     .metric span { color:var(--muted); font-size:9px; font-weight:750; letter-spacing:.07em; text-transform:uppercase; }
+    .spark { width: 100%; height: 24px; margin-top: 4px; display: block; opacity: 0.8; }
     #log { position:absolute; right:18px; bottom:18px; width:316px; padding:13px; }
     #events { max-height:160px; overflow:auto; margin:0; padding:0; list-style:none; }
     #events li { font-size:11px; color:#c7d4ec; padding:7px 0; border-bottom:1px solid rgba(140,169,228,.1); line-height:1.35; }
@@ -69,11 +70,11 @@
   <div class="hud">
     <header id="header" class="panel">
       <h1>Chrono-Gravity Learning Box</h1>
-      <p class="subtitle">A local, interactive 3D multi-agent sandbox. “Time portals” are counterfactual replay branches; “4D” is a visual W-axis projection and traversal rule, not a claim of physical time travel or extra dimensions.</p>
+      <p class="subtitle">A local, interactive 3D multi-agent sandbox enhanced with Attention-MARL and Intrinsic Curiosity. “Time portals” are counterfactual replay branches; “4D” is a visual W-axis projection and traversal rule, not a claim of physical time travel or extra dimensions.</p>
       <div class="badge-row">
         <span class="badge">3D bounded world</span>
-        <span class="badge">counterfactual replay</span>
-        <span class="badge">gravity fields</span>
+        <span class="badge">attention comm</span>
+        <span class="badge">intrinsic curiosity</span>
         <span class="badge warn">experimental simulator</span>
       </div>
     </header>
@@ -99,18 +100,18 @@
       <div class="control-row"><label for="gravity">Gravity field strength</label><output id="gravityOut">1.00×</output><input id="gravity" type="range" min="0" max="2.5" value="1" step="0.05"></div>
       <div class="control-row"><label for="wAxis">4D W-axis influence</label><output id="wAxisOut">55%</output><input id="wAxis" type="range" min="0" max="1" value="0.55" step="0.01"></div>
       <div class="control-row"><label for="simRate">Simulation rate</label><output id="simRateOut">1.0×</output><input id="simRate" type="range" min="0.25" max="2" value="1" step="0.05"></div>
-      <p class="hint">Drag to orbit the camera. Scroll to zoom. Agents share Q-values locally, imagine short action rollouts, use gravity as a learned environmental variable, and can enter portal-triggered replay branches.</p>
+      <p class="hint">Drag to orbit the camera. Scroll to zoom. Agents share Q-values via distance-based attention, imagine short action rollouts, use intrinsic curiosity for novel states, and can enter portal-triggered replay branches.</p>
     </aside>
 
-    <section id="metrics" class="panel">
+    <section id="metrics" class="panel" role="status" aria-live="polite">
       <div class="section-title">Live learning metrics</div>
       <div class="metrics-grid">
         <div class="metric"><b id="mAgents">0</b><span>alive agents</span></div>
         <div class="metric"><b id="mFps">0</b><span>frame rate</span></div>
-        <div class="metric"><b id="mReward">0.00</b><span>mean reward</span></div>
+        <div class="metric"><b id="mReward">0.00</b><canvas class="spark" id="sparkReward"></canvas><span>mean reward</span></div>
         <div class="metric"><b id="mBranches">0</b><span>replay branches</span></div>
-        <div class="metric"><b id="mKnowledge">0</b><span>shared states</span></div>
-        <div class="metric"><b id="mStability">0%</b><span>world stability</span></div>
+        <div class="metric"><b id="mKnowledge">0</b><span>attention states</span></div>
+        <div class="metric"><b id="mStability">0%</b><canvas class="spark" id="sparkStability"></canvas><span>world stability</span></div>
       </div>
       <p class="hint" id="modelStatus">Collective planner: initialising world-model rollouts…</p>
     </section>
@@ -152,6 +153,10 @@
   <script type="module">
     import * as THREE from 'three';
     import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+    import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+    import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+    import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+    import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 
     const CONFIG = {
       bounds: new THREE.Vector3(20, 12, 20),
@@ -175,7 +180,8 @@
       'toggleRun','reset','addPortal','addGravity','branch','exportTrace','cycleInnovation',
       'agentCount','speed','entropy','replay','gravity','wAxis','simRate',
       'agentCountOut','speedOut','entropyOut','replayOut','gravityOut','wAxisOut','simRateOut',
-      'mAgents','mFps','mReward','mBranches','mKnowledge','mStability','modelStatus','events'
+      'mAgents','mFps','mReward','mBranches','mKnowledge','mStability','modelStatus','events',
+      'sparkReward','sparkStability'
     ].map(id => [id, document.getElementById(id)]));
 
     const scene = new THREE.Scene();
@@ -190,6 +196,13 @@
     renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     document.body.insertBefore(renderer.domElement, document.body.firstChild);
+
+    // Post-processing setup for high-tech glow
+    const composer = new EffectComposer(renderer);
+    composer.addPass(new RenderPass(scene, camera));
+    const bloomPass = new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), 1.2, 0.5, 0.1);
+    composer.addPass(bloomPass);
+    composer.addPass(new OutputPass());
 
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.target.set(0, 0, 0);
@@ -227,7 +240,8 @@
     const world = {
       agents: [], threats: [], objectives: [], shelters: [], portals: [], anomalies: [], events: [], history: [],
       sharedQ: new Map(), branchCount: 0, cumulativeReward: 0, rewardSamples: 0, running: true,
-      simTime: 0, snapshotTimer: 0, knowledgeExchanges: 0, innovationIndex: 0
+      simTime: 0, snapshotTimer: 0, knowledgeExchanges: 0, innovationIndex: 0, totalCuriosityHits: 0,
+      rewardHistory: [], stabilityHistory: [], metricTick: 0
     };
 
     const palette = {
@@ -249,9 +263,70 @@
       halo: new THREE.SphereGeometry(1, 22, 16)
     };
 
+    // Shaders for advanced visuals
+    const auraVertexShader = `
+      varying vec3 vNormal;
+      varying vec3 vViewPosition;
+      void main() {
+        vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+        vNormal = normalize(normalMatrix * normal);
+        vViewPosition = -mvPosition.xyz;
+        gl_Position = projectionMatrix * mvPosition;
+      }
+    `;
+    const auraFragmentShader = `
+      uniform vec3 uColor;
+      uniform float uIntensity;
+      varying vec3 vNormal;
+      varying vec3 vViewPosition;
+      void main() {
+        vec3 viewDir = normalize(vViewPosition);
+        float fresnel = pow(1.0 - abs(dot(vNormal, viewDir)), 2.5);
+        gl_FragColor = vec4(uColor * fresnel * uIntensity, fresnel);
+      }
+    `;
+
+    const portalVertexShader = `
+      varying vec2 vUv;
+      void main() {
+        vUv = uv;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      }
+    `;
+    const portalFragmentShader = `
+      uniform float uTime;
+      uniform vec3 uColor;
+      varying vec2 vUv;
+      void main() {
+        vec2 p = vUv - 0.5;
+        float r = length(p);
+        float a = atan(p.y, p.x);
+        float swirl = sin(a * 5.0 + uTime * 4.0 - r * 12.0) * 0.5 + 0.5;
+        float swirl2 = cos(a * 3.0 - uTime * 2.0 - r * 8.0) * 0.5 + 0.5;
+        float mask = smoothstep(0.5, 0.45, r) * smoothstep(0.1, 0.15, r);
+        vec3 col = uColor * (swirl * swirl2 * 1.5 + 0.2);
+        gl_FragColor = vec4(col, mask);
+      }
+    `;
+
     function makeMaterial(color, opts = {}) {
       return new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: opts.emissive ?? .45, roughness: .3, metalness: .25, transparent: opts.transparent ?? false, opacity: opts.opacity ?? 1 });
     }
+    
+    function makeAuraMaterial(color) {
+      return new THREE.ShaderMaterial({
+        uniforms: {
+          uColor: { value: new THREE.Color(color) },
+          uIntensity: { value: 1.0 }
+        },
+        vertexShader: auraVertexShader,
+        fragmentShader: auraFragmentShader,
+        transparent: true,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false
+      });
+    }
+
     function randomPos(margin = 1) {
       return new THREE.Vector3(
         THREE.MathUtils.randFloat(-CONFIG.bounds.x + margin, CONFIG.bounds.x - margin),
@@ -283,7 +358,7 @@
       const mesh = new THREE.Mesh(geometries.agent, makeMaterial(palette.agent, { emissive: .6 }));
       mesh.castShadow = false;
       root.add(mesh);
-      const aura = new THREE.Mesh(geometries.halo, new THREE.MeshBasicMaterial({ color: palette.agent, transparent: true, opacity: .07, depthWrite: false }));
+      const aura = new THREE.Mesh(geometries.halo, makeAuraMaterial(palette.agent));
       aura.scale.setScalar(1.35);
       root.add(aura);
       return {
@@ -293,7 +368,8 @@
         energy: THREE.MathUtils.randFloat(68, 100), health: 100, q: new Map(), action: 'EXPLORE',
         lastState: null, lastAction: null, lastReward: 0, age: 0, portalCooldown: 0,
         branch: 0, knowledge: 0, history: [], target: null, phase: Math.random() * Math.PI * 2,
-        colourSeed: Math.random()
+        colourSeed: Math.random(),
+        commPulse: 0, curiosityHits: 0, visitedStates: new Set()
       };
     }
     function createObjective() {
@@ -316,11 +392,23 @@
     function createPortal(position = randomPos(2)) {
       const group = new THREE.Group();
       const ring = new THREE.Mesh(geometries.portal, new THREE.MeshBasicMaterial({ color: palette.portal, transparent: true, opacity:.86 }));
-      const inner = new THREE.Mesh(new THREE.CircleGeometry(1.05, 40), new THREE.MeshBasicMaterial({ color: 0x8158ee, transparent:true, opacity:.12, side:THREE.DoubleSide, depthWrite:false }));
+      
+      // Custom shader disk for vortex effect
+      const innerMat = new THREE.ShaderMaterial({
+        uniforms: { uTime: { value: 0 }, uColor: { value: new THREE.Color(0x8158ee) } },
+        vertexShader: portalVertexShader,
+        fragmentShader: portalFragmentShader,
+        transparent: true,
+        side: THREE.DoubleSide,
+        depthWrite: false,
+        blending: THREE.AdditiveBlending
+      });
+      const inner = new THREE.Mesh(new THREE.CircleGeometry(1.05, 40), innerMat);
       inner.rotation.y = Math.PI / 2;
+      
       const point = new THREE.PointLight(0xa57bff, 8, 9, 2);
       group.add(ring, inner, point); group.position.copy(position); root.add(group);
-      const portal = { group, pos: group.position, partner: null, age: 0, historyOffset: THREE.MathUtils.randFloat(3.5, CONFIG.replaySeconds), uses: 0 };
+      const portal = { group, pos: group.position, partner: null, age: 0, historyOffset: THREE.MathUtils.randFloat(3.5, CONFIG.replaySeconds), uses: 0, innerMat };
       world.portals.push(portal);
       return portal;
     }
@@ -391,7 +479,6 @@
       for (const action of actions) {
         const local = agent.q.get(qKey(state, action)) ?? 0;
         const collective = world.sharedQ.get(qKey(state, action)) ?? 0;
-        // A tiny model-based rollout score: heuristic evaluation substitutes for an expensive learned dynamics net.
         const imagined = actionHeuristic(agent, action);
         const consensus = .58 * local + .22 * collective + .78 * imagined;
         if (consensus > best) { best = consensus; choice = action; }
@@ -437,26 +524,42 @@
         const d2 = Math.max(1.2, offset.lengthSq());
         const scale = anomaly.polarity * anomaly.strength * CONFIG.gravityScale * 6 / d2;
         force.addScaledVector(offset.normalize(), scale);
-        // W-axis coupling turns spatial anomalies into a learnable extra state variable.
         agent.wVel += anomaly.polarity * Math.sin(world.simTime + anomaly.phase) * CONFIG.wInfluence * .018 / Math.sqrt(d2);
       }
       agent.vel.addScaledVector(force, delta);
     }
+    
+    // Attention-based communication
     function communicate(agent) {
       let exchanges = 0;
       for (const other of world.agents) {
-        if (other === agent || agent.pos.distanceToSquared(other.pos) > 34) continue;
-        if (Math.random() > .055) continue;
-        for (const [key, value] of agent.q) {
-          const existing = other.q.get(key);
-          if (existing === undefined) other.q.set(key, value);
-          else other.q.set(key, existing * .7 + value * .3);
+        if (other === agent) continue;
+        const dist = agent.pos.distanceTo(other.pos);
+        if (dist > 8.0) continue; // Local attention radius
+        
+        // Attention weight: exponential decay based on distance
+        const attn = Math.exp(-dist / 3.0);
+        if (Math.random() > attn * 0.5) continue;
+        
+        for (const [key, value] of other.q) {
+          const existing = agent.q.get(key);
+          if (existing === undefined) {
+            agent.q.set(key, value * attn);
+          } else {
+            // Attention-weighted Q-mixing
+            const blend = attn * 0.15;
+            agent.q.set(key, existing * (1 - blend) + value * blend);
+          }
         }
         exchanges++;
       }
-      agent.knowledge += exchanges;
-      world.knowledgeExchanges += exchanges;
+      if (exchanges > 0) {
+        agent.knowledge += exchanges;
+        world.knowledgeExchanges += exchanges;
+        agent.commPulse = 1.0; // trigger visual pulse
+      }
     }
+    
     function findSnapshot(secondsAgo) {
       const target = world.simTime - secondsAgo;
       for (let i = world.history.length - 1; i >= 0; i--) if (world.history[i].time <= target) return world.history[i];
@@ -522,6 +625,19 @@
       if (portal && (action === 'SEEK_PORTAL' || Math.random() < .03)) enterPortal(agent, portal.target);
       if (agent.energy < 6) { agent.health = Math.max(0, agent.health - delta * 3.2); reward -= .1; }
 
+      // Intrinsic Curiosity Module: Reward novel states to encourage exploration
+      if (!agent.visitedStates.has(state)) {
+        agent.visitedStates.add(state);
+        if (agent.visitedStates.size > 150) {
+          const it = agent.visitedStates.values();
+          agent.visitedStates.delete(it.next().value); // Prune old states
+        }
+        const curiosity_bonus = 0.15 * Math.exp(-world.simTime / 180); // Decays over 3 minutes
+        reward += curiosity_bonus;
+        agent.curiosityHits++;
+        world.totalCuriosityHits++;
+      }
+
       const nextState = getState(agent);
       updateQ(agent, agent.lastState, agent.lastAction, reward + agent.lastReward, nextState);
       agent.lastState = state; agent.lastAction = action; agent.lastReward = 0;
@@ -534,16 +650,22 @@
     function renderAgent(agent) {
       const wNorm = (agent.w + 2.5) / 5;
       const color = new THREE.Color().setHSL(.49 + wNorm * .26, .92, .56);
-      agent.mesh.material.color.copy(color); agent.mesh.material.emissive.copy(color);
+      agent.mesh.material.color.copy(color); 
+      agent.mesh.material.emissive.copy(color);
       agent.mesh.position.copy(agent.pos);
       agent.mesh.rotation.x += .03 + agent.vel.length() * .01;
       agent.mesh.rotation.z += .02;
       const scale = .75 + Math.min(1.1, agent.energy / 100) * .35 + Math.abs(agent.w) * .06;
       agent.mesh.scale.setScalar(scale);
+      
       agent.aura.position.copy(agent.pos);
-      agent.aura.material.color.copy(color);
-      agent.aura.material.opacity = .03 + Math.min(.15, Math.abs(agent.w) * .045 + (agent.branch ? .025 : 0));
-      agent.aura.scale.setScalar(1.05 + Math.abs(agent.w) * .45);
+      agent.aura.material.uniforms.uColor.value.copy(color);
+      
+      // Dynamic pulse based on communication and branch history
+      const pulse = agent.commPulse;
+      agent.aura.material.uniforms.uIntensity.value = 1.2 + pulse * 2.0 + Math.abs(agent.w) * 0.5;
+      agent.aura.scale.setScalar(1.05 + Math.abs(agent.w) * .45 + pulse * 0.2);
+      agent.commPulse *= 0.95; // decay pulse
     }
     function updateThreat(threat, delta) {
       const candidate = world.agents.reduce((best, a) => !best || a.energy < best.energy ? a : best, null);
@@ -569,7 +691,7 @@
         portal.age += delta;
         portal.group.rotation.y += delta * .72;
         portal.group.rotation.x = Math.sin(portal.age * .6) * .2;
-        portal.group.children[1].material.opacity = .08 + .06 * (1 + Math.sin(portal.age * 2.2)) / 2;
+        portal.innerMat.uniforms.uTime.value = portal.age;
       }
       for (const anomaly of world.anomalies) {
         anomaly.group.rotation.y += delta * .7;
@@ -578,7 +700,7 @@
     }
 
     // 4D tesseract: project 16 hypercube vertices from x/y/z/w into 3D.
-    const tesseract = { geometry: new THREE.BufferGeometry(), material: new THREE.LineBasicMaterial({ color: 0x996eff, transparent:true, opacity:.24 }), lines: null, angle: 0 };
+    const tesseract = { geometry: new THREE.BufferGeometry(), material: new THREE.LineBasicMaterial({ color: 0x996eff, transparent:true, opacity:.5, blending: THREE.AdditiveBlending, depthWrite: false }), lines: null, angle: 0 };
     const fourDVertices = [];
     for (let i = 0; i < 16; i++) fourDVertices.push([i & 1 ? 1 : -1, i & 2 ? 1 : -1, i & 4 ? 1 : -1, i & 8 ? 1 : -1]);
     const fourDEdges = [];
@@ -603,7 +725,7 @@
         tesseractPositions[p++] = points[b].x; tesseractPositions[p++] = points[b].y; tesseractPositions[p++] = points[b].z;
       }
       tesseract.geometry.attributes.position.needsUpdate = true;
-      tesseract.material.opacity = .13 + CONFIG.wInfluence * .22;
+      tesseract.material.opacity = .3 + CONFIG.wInfluence * .4;
     }
 
     function snapshot() {
@@ -626,7 +748,8 @@
     }
     function resetWorld() {
       removeWorldEntities();
-      world.history.length = 0; world.sharedQ.clear(); world.branchCount = 0; world.cumulativeReward = 0; world.rewardSamples = 0; world.simTime = 0; world.snapshotTimer = 0; world.knowledgeExchanges = 0;
+      world.history.length = 0; world.sharedQ.clear(); world.branchCount = 0; world.cumulativeReward = 0; world.rewardSamples = 0; world.simTime = 0; world.snapshotTimer = 0; world.knowledgeExchanges = 0; world.totalCuriosityHits = 0;
+      world.rewardHistory.length = 0; world.stabilityHistory.length = 0;
       for (let i=0; i<CONFIG.agentCount; i++) world.agents.push(createAgent(i));
       for (let i=0; i<CONFIG.objectiveCount; i++) world.objectives.push(createObjective());
       for (let i=0; i<CONFIG.threatCount; i++) world.threats.push(createThreat());
@@ -642,10 +765,10 @@
     }
 
     const innovationCards = [
-      ['Counterfactual replay', 'Portals replay a stored local state, then perturb W-position and compare survival/energy outcomes.'],
-      ['Gravity curriculum', 'Agents first observe fields, then learn avoidance, sheltering, and gravitational slingshot behaviours.'],
-      ['Collective state fusion', 'Nearby agents merge learned values and contribute slowly to an experiment-wide shared table.'],
-      ['Uncertainty calibration', 'The entropy slider deliberately widens exploration; lower values favour learned action estimates.']
+      ['Attention MARL', 'Nearby agents weight Q-value sharing by distance, mimicking local graph attention networks for scalable communication.'],
+      ['Intrinsic Curiosity', 'Agents gain transient reward for visiting novel states. Exploration decays over time as the world model matures.'],
+      ['Counterfactual Replay', 'Portals replay a stored local state, then perturb W-position and compare survival/energy outcomes.'],
+      ['Gravity Curriculum', 'Agents first observe fields, then learn avoidance, sheltering, and gravitational slingshot behaviours.']
     ];
     function cycleInnovation(event) {
       event.preventDefault();
@@ -687,10 +810,10 @@
         title: 'Chrono-Gravity Learning Box Trace', exportedAt: new Date().toISOString(),
         disclaimer: 'Counterfactual portals and 4D imagery are simulated learning mechanics, not real-world time travel or physics claims.',
         config: { ...CONFIG, bounds: CONFIG.bounds.toArray() },
-        metrics: { branches:world.branchCount, agents:world.agents.length, sharedStates:world.sharedQ.size, cumulativeReward:world.cumulativeReward, knowledgeExchanges:world.knowledgeExchanges },
+        metrics: { branches:world.branchCount, agents:world.agents.length, sharedStates:world.sharedQ.size, cumulativeReward:world.cumulativeReward, knowledgeExchanges:world.knowledgeExchanges, curiosityHits:world.totalCuriosityHits },
         recentEvents: world.events,
         collectiveQ: Object.fromEntries([...world.sharedQ.entries()].slice(0, 600)),
-        agentSummary: world.agents.map(a => ({ id:a.id, energy:+a.energy.toFixed(2), health:+a.health.toFixed(2), w:+a.w.toFixed(3), branch:a.branch, action:a.action, learnedStates:a.q.size })),
+        agentSummary: world.agents.map(a => ({ id:a.id, energy:+a.energy.toFixed(2), health:+a.health.toFixed(2), w:+a.w.toFixed(3), branch:a.branch, action:a.action, learnedStates:a.q.size, curiosityHits:a.curiosityHits })),
         research: [
           { title:'DIMA: Diffusion-Inspired Multi-Agent World Model', url:'https://arxiv.org/abs/2505.20922' },
           { title:'GAWM: Global-Aware World Model', url:'https://arxiv.org/abs/2501.10116' },
@@ -712,6 +835,36 @@
     els.exportTrace.addEventListener('click', exportTrace);
     els.cycleInnovation.addEventListener('click', cycleInnovation);
 
+    function drawSparkline(canvas, data, color) {
+      if (!canvas) return;
+      const ctx = canvas.getContext('2d');
+      const w = canvas.width = canvas.offsetWidth;
+      const h = canvas.height = canvas.offsetHeight;
+      ctx.clearRect(0, 0, w, h);
+      if (data.length < 2) return;
+      
+      const min = Math.min(...data);
+      const max = Math.max(...data);
+      const range = max - min || 1;
+      
+      ctx.beginPath();
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 1.5;
+      data.forEach((v, i) => {
+          const x = (i / (data.length - 1)) * w;
+          const y = h - ((v - min) / range) * h * 0.8 - h * 0.1;
+          if (i === 0) ctx.moveTo(x, y);
+          else ctx.lineTo(x, y);
+      });
+      ctx.stroke();
+      
+      ctx.lineTo(w, h);
+      ctx.lineTo(0, h);
+      ctx.closePath();
+      ctx.fillStyle = color + '22'; // alpha hex
+      ctx.fill();
+    }
+
     function updateMetrics(delta) {
       const avgReward = world.rewardSamples ? world.cumulativeReward / world.rewardSamples : 0;
       const health = world.agents.length ? world.agents.reduce((s,a) => s+a.health, 0) / world.agents.length : 0;
@@ -722,7 +875,19 @@
       els.mBranches.textContent = world.branchCount;
       els.mKnowledge.textContent = world.sharedQ.size;
       els.mStability.textContent = `${Math.round(stability)}%`;
-      els.modelStatus.textContent = `Collective planner: ${world.sharedQ.size} learned state-action values · ${world.knowledgeExchanges} nearby knowledge exchanges · W influence ${Math.round(CONFIG.wInfluence*100)}%.`;
+      els.modelStatus.textContent = `Attention MARL: ${world.knowledgeExchanges} local exchanges · Curiosity: ${world.totalCuriosityHits} novel states · W influence ${Math.round(CONFIG.wInfluence*100)}%.`;
+      
+      // Throttle sparkline updates for performance
+      world.metricTick++;
+      if (world.metricTick % 10 === 0) {
+        world.rewardHistory.push(avgReward);
+        if (world.rewardHistory.length > 50) world.rewardHistory.shift();
+        drawSparkline(els.sparkReward, world.rewardHistory, '#68f6ff');
+        
+        world.stabilityHistory.push(stability);
+        if (world.stabilityHistory.length > 50) world.stabilityHistory.shift();
+        drawSparkline(els.sparkStability, world.stabilityHistory, '#79ffa7');
+      }
     }
 
     function animate() {
@@ -751,10 +916,15 @@
       updateTesseract(raw);
       controls.update();
       updateMetrics(raw);
-      renderer.render(scene, camera);
+      composer.render();
     }
 
-    addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); });
+    addEventListener('resize', () => { 
+      camera.aspect = innerWidth / innerHeight; 
+      camera.updateProjectionMatrix(); 
+      renderer.setSize(innerWidth, innerHeight); 
+      composer.setSize(innerWidth, innerHeight);
+    });
     restoreSettings();
     resetWorld();
     animate();
