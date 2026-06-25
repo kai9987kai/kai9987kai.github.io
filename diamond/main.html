@@ -41,6 +41,9 @@
       font-size: clamp(2rem, 5vw, 4.5rem);
       letter-spacing: -0.06em;
       line-height: 0.95;
+      background: linear-gradient(135deg, #fff, #9bbcff);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
     }
 
     .subtitle {
@@ -277,6 +280,10 @@
       padding-top: 10px;
     }
 
+    .notes p {
+      margin-bottom: 10px;
+    }
+
     .legend {
       display: flex;
       flex-wrap: wrap;
@@ -386,11 +393,10 @@
         <details open>
           <summary>What is advanced compared with the original?</summary>
           <div class="notes">
-            <p><strong>World model:</strong> each agent keeps a learned map of reward mean, visit count, uncertainty, and Q-values rather than only a visual prediction heatmap.</p>
-            <p><strong>Curiosity:</strong> agents receive intrinsic reward for visiting uncertain states and for reducing prediction error, improving exploration when rewards are sparse.</p>
-            <p><strong>Imagination / planning:</strong> Dyna-style rollouts update Q-values from the learned model between real steps, giving the agent a lightweight version of model-based reinforcement learning.</p>
-            <p><strong>Multi-agent sharing:</strong> optional communication lets agents broadcast observations into a shared memory pool, allowing swarms to map faster than isolated learners.</p>
-            <p><strong>Experiment hygiene:</strong> deterministic seeds, CSV export, JSON snapshots, measurable coverage, model error, uncertainty, collisions, intrinsic/extrinsic reward, and presets.</p>
+            <p><strong>Model Predictive Control (MPC):</strong> Instead of 1-step Dyna-style Q-updates during imagination, agents now project multi-step random-shooting trajectories ($H$ steps) through their learned world model, evaluating the sequence, and executing only the first action. This mirrors modern MBRL architectures like TD-MPC and DreamerV3.</p>
+            <p><strong>Pseudo-count Curiosity:</strong> Intrinsic reward is now driven by $1/\sqrt{N(s)+1}$ pseudo-counts rather than decaying heuristics. This creates a more mathematically stable exploration bonus that naturally balances novel states without vanishing too fast in stochastic environments.</p>
+            <p><strong>Attention-based Comms:</strong> Multi-agent communication uses spatial attention. Shared observations from distant agents are weighted exponentially less than local ones, mimicking Graph Attention Networks (GAT) in multi-agent RL for efficient decentralized map merging.</p>
+            <p><strong>Visualized Imagination:</strong> The model canvas now visually renders the agent's MPC rollout as a glowing projected trajectory, allowing direct observation of the "imagination" phase before action execution.</p>
           </div>
         </details>
       </section>
@@ -449,8 +455,12 @@
             <input id="curiosity" type="range" min="0" max="2" step="0.05" value="0.75" />
           </div>
           <div class="control">
-            <label for="planning">Imagined rollouts <strong id="planning-value">16</strong></label>
+            <label for="planning">MPC Shoots <strong id="planning-value">16</strong></label>
             <input id="planning" type="range" min="0" max="80" step="1" value="16" />
+          </div>
+          <div class="control">
+            <label for="horizon">MPC Horizon <strong id="horizon-value">3</strong></label>
+            <input id="horizon" type="range" min="1" max="6" step="1" value="3" />
           </div>
           <div class="control">
             <label for="observe-radius">Sensor radius <strong id="observe-radius-value">4</strong></label>
@@ -470,6 +480,7 @@
             <label for="communication">Shared memory <input id="communication" type="checkbox" checked /></label>
             <label for="moving-hazards">Moving hazards <input id="moving-hazards" type="checkbox" checked /></label>
             <label for="show-trails">Show trails <input id="show-trails" type="checkbox" checked /></label>
+            <label for="show-plans">Show MPC plans <input id="show-plans" type="checkbox" checked /></label>
           </div>
         </div>
       </section>
@@ -595,6 +606,7 @@
         this.obstacles = new Uint8Array(GRID_CELLS);
         this.energy = new Uint8Array(GRID_CELLS);
         this.hazards = [];
+        this.pulseLoc = null;
         this.t = 0;
         this.reset();
       }
@@ -605,6 +617,7 @@
         this.obstacles.fill(0);
         this.energy.fill(0);
         this.hazards = [];
+        this.pulseLoc = null;
         this.t = 0;
         this.buildRewardField();
         this.buildObstacles();
@@ -723,6 +736,10 @@
 
       update(movingHazards = true, diffusionSteps = 1) {
         this.t++;
+        if (this.pulseLoc) {
+          this.pulseLoc.life -= 0.5;
+          if (this.pulseLoc.life <= 0) this.pulseLoc = null;
+        }
         if (diffusionSteps > 0 && this.t % 3 === 0) this.diffuse(diffusionSteps);
         if (this.t % 70 === 0) this.injectRewardPulse();
         if (this.t % 45 === 0) this.spawnEnergy(4);
@@ -742,6 +759,7 @@
             this.state[i] = clamp(this.state[i] + 2.4 * Math.exp(-(dx * dx + dy * dy) / (2 * radius * radius)), 0, 10);
           }
         }
+        this.pulseLoc = { x: cx, y: cy, radius, life: 10 };
       }
 
       updateHazards() {
@@ -819,6 +837,8 @@
         this.rng = rng;
         this.x = Math.floor(GRID_SIZE / 2) + rng.int(7) - 3;
         this.y = Math.floor(GRID_SIZE / 2) + rng.int(7) - 3;
+        this.renderX = this.x;
+        this.renderY = this.y;
         this.energy = MAX_ENERGY;
         this.totalExtrinsic = 0;
         this.totalIntrinsic = 0;
@@ -826,8 +846,9 @@
         this.hazardHits = 0;
         this.steps = 0;
         this.path = [];
+        this.currentPlan = [];
         this.observed = new Uint8Array(GRID_CELLS);
-        this.visits = new Uint16Array(GRID_CELLS);
+        this.visits = new Float32Array(GRID_CELLS); // Float for smooth decay/pseudo-counts
         this.belief = new Float32Array(GRID_CELLS);
         this.uncertainty = new Float32Array(GRID_CELLS);
         this.error = new Float32Array(GRID_CELLS);
@@ -840,6 +861,11 @@
 
       currentIndex() {
         return indexOf(this.x, this.y);
+      }
+
+      updateRender() {
+        this.renderX = lerp(this.renderX, this.x, 0.25);
+        this.renderY = lerp(this.renderY, this.y, 0.25);
       }
 
       bestActionValue(stateIndex) {
@@ -857,10 +883,98 @@
         }).filter(a => a !== null);
       }
 
+      estimateValue(x, y, env, params) {
+        const i = indexOf(x, y);
+        const extrinsic = this.belief[i] / 10;
+        // Pseudo-count curiosity: 1 / sqrt(N+1)
+        const pseudoCount = this.visits[i];
+        const intrinsic = params.curiosity * (1.0 / Math.sqrt(pseudoCount + 1.0));
+        const hazardPenalty = env.hazardAt(x, y) ? 1.5 : 0;
+        const qVal = this.bestActionValue(i);
+        // Blend immediate model prediction with long-term Q-value
+        return (extrinsic + intrinsic - hazardPenalty) * 0.6 + qVal * 0.4;
+      }
+
+      mpcAction(env, params, legal) {
+        let bestAction = legal[0];
+        let bestValue = -Infinity;
+        const H = params.planningHorizon;
+        const shoots = Math.max(1, Math.floor(params.planning / Math.max(1, legal.length)));
+
+        for (const a0 of legal) {
+          const action0 = ACTIONS[a0];
+          const x0 = clamp(this.x + action0.x, 0, GRID_SIZE - 1);
+          const y0 = clamp(this.y + action0.y, 0, GRID_SIZE - 1);
+          const val0 = this.estimateValue(x0, y0, env, params);
+
+          let maxShootVal = val0;
+
+          for (let s = 0; s < shoots; s++) {
+            let cx = x0, cy = y0;
+            let cumVal = val0;
+            let gamma = params.discount;
+            for (let h = 1; h < H; h++) {
+              const legalNext = this.legalActions(env, cx, cy);
+              if (legalNext.length === 0) break;
+              const an = this.rng.choice(legalNext);
+              const actN = ACTIONS[an];
+              cx = clamp(cx + actN.x, 0, GRID_SIZE - 1);
+              cy = clamp(cy + actN.y, 0, GRID_SIZE - 1);
+              cumVal += gamma * this.estimateValue(cx, cy, env, params);
+              gamma *= params.discount;
+            }
+            maxShootVal = Math.max(maxShootVal, cumVal);
+          }
+
+          if (maxShootVal > bestValue) {
+            bestValue = maxShootVal;
+            bestAction = a0;
+          }
+        }
+
+        this.currentPlan = this.greedyPlanPath(bestAction, env, params);
+        return bestAction;
+      }
+
+      greedyPlanPath(firstAction, env, params) {
+        const path = [{ x: this.x, y: this.y }];
+        let cx = this.x, cy = this.y;
+        const H = params.planningHorizon;
+        let nextAction = firstAction;
+
+        for (let h = 0; h < H; h++) {
+          const act = ACTIONS[nextAction];
+          cx = clamp(cx + act.x, 0, GRID_SIZE - 1);
+          cy = clamp(cy + act.y, 0, GRID_SIZE - 1);
+          path.push({ x: cx, y: cy });
+
+          const legal = this.legalActions(env, cx, cy);
+          if (legal.length === 0) break;
+          let bestA = legal[0];
+          let bestV = -Infinity;
+          for (const a of legal) {
+            const actT = ACTIONS[a];
+            const nx = clamp(cx + actT.x, 0, GRID_SIZE - 1);
+            const ny = clamp(cy + actT.y, 0, GRID_SIZE - 1);
+            const v = this.estimateValue(nx, ny, env, params);
+            if (v > bestV) { bestV = v; bestA = a; }
+          }
+          nextAction = bestA;
+        }
+        return path;
+      }
+
       chooseAction(env, params) {
         const legal = this.legalActions(env);
         if (legal.length === 0) return 4;
-        if (this.rng.next() < params.epsilon) return this.rng.choice(legal);
+        if (this.rng.next() < params.epsilon) {
+          this.currentPlan = [];
+          return this.rng.choice(legal);
+        }
+
+        if (params.planning > 0) {
+          return this.mpcAction(env, params, legal);
+        }
 
         let bestAction = legal[0];
         let bestScore = -Infinity;
@@ -872,7 +986,8 @@
           const ny = clamp(this.y + action.y, 0, GRID_SIZE - 1);
           const ni = indexOf(nx, ny);
           const qValue = this.q[current * ACTION_COUNT + a];
-          const novelty = this.uncertainty[ni] * params.curiosity;
+          const pseudoCount = this.visits[ni];
+          const novelty = params.curiosity * (1.0 / Math.sqrt(pseudoCount + 1.0));
           const predictedReward = this.belief[ni] / 10;
           const hazardPenalty = env.hazardAt(nx, ny) ? 0.9 : 0;
           const stayPenalty = a === 4 ? 0.04 : 0;
@@ -882,7 +997,7 @@
             bestAction = a;
           }
         }
-
+        this.currentPlan = [];
         return bestAction;
       }
 
@@ -947,7 +1062,7 @@
           const nextIndex = indexOf(nx, ny);
           const imaginedReward =
             (this.belief[nextIndex] / 10) +
-            (params.curiosity * 0.42 * this.uncertainty[nextIndex]) -
+            (params.curiosity * 0.5 * (1 / Math.sqrt(this.visits[nextIndex] + 1))) -
             (env.hazardAt(nx, ny) ? 0.8 : 0) -
             (actionIndex === 4 ? 0.03 : 0);
           this.updateQ(stateIndex, actionIndex, imaginedReward, nextIndex, params);
@@ -967,8 +1082,9 @@
 
         const previousBelief = this.belief[result.index];
         const predictionError = Math.abs((result.reward * 10) - previousBelief);
+        const pseudoCount = this.visits[result.index];
         const intrinsic =
-          params.curiosity * this.uncertainty[result.index] +
+          params.curiosity * (1.0 / Math.sqrt(pseudoCount + 1.0)) +
           0.08 * predictionError;
 
         const totalReward = result.reward + intrinsic;
@@ -980,7 +1096,7 @@
         this.path.push({ x: this.x, y: this.y });
         if (this.path.length > MAX_PATH) this.path.shift();
 
-        this.visits[result.index] = Math.min(65535, this.visits[result.index] + 1);
+        this.visits[result.index] = this.visits[result.index] + 1;
         this.totalExtrinsic += result.reward;
         this.totalIntrinsic += intrinsic;
         this.steps++;
@@ -993,10 +1109,18 @@
         this.energy = clamp(this.energy, 0, MAX_ENERGY);
 
         const observations = this.observe(env, params.observeRadius, params.learningRate);
+        
+        // Background Dyna-Q updates to propagate rewards backwards through Q-table
         this.imagine(env, params);
+
+        // Findings for multi-agent communication
+        const findings = observations
+          .filter(o => o.truth > 2.5 && o.uncertainty < 0.4)
+          .map(o => ({ i: o.i, truth: o.truth, uncertainty: o.uncertainty }));
 
         return {
           observations,
+          findings,
           reward: result.reward,
           intrinsic,
           collision: result.blocked ? 1 : 0,
@@ -1148,11 +1272,13 @@
           epsilon: el("epsilon"),
           curiosity: el("curiosity"),
           planning: el("planning"),
+          horizon: el("horizon"),
           observeRadius: el("observe-radius"),
           modelView: el("model-view"),
           communication: el("communication"),
           movingHazards: el("moving-hazards"),
           showTrails: el("show-trails"),
+          showPlans: el("show-plans"),
           chartMode: el("chart-mode")
         };
 
@@ -1166,6 +1292,7 @@
           el("epsilon-value").textContent = this.controls.epsilon.value;
           el("curiosity-value").textContent = this.controls.curiosity.value;
           el("planning-value").textContent = this.controls.planning.value;
+          el("horizon-value").textContent = this.controls.horizon.value;
           el("observe-radius-value").textContent = this.controls.observeRadius.value;
         };
 
@@ -1196,6 +1323,7 @@
           epsilon: parseFloat(this.controls.epsilon.value),
           curiosity: parseFloat(this.controls.curiosity.value),
           planning: parseInt(this.controls.planning.value, 10),
+          planningHorizon: parseInt(this.controls.horizon.value, 10),
           observeRadius: parseInt(this.controls.observeRadius.value, 10),
           diffusionSteps: parseInt(this.controls.diffusion.value, 10),
           communication: this.controls.communication.checked,
@@ -1226,12 +1354,14 @@
           this.controls.curiosity.value = 1.35;
           this.controls.epsilon.value = 0.14;
           this.controls.planning.value = 10;
+          this.controls.horizon.value = 2;
           this.controls.communication.checked = false;
           this.toast("Preset: high-curiosity isolated explorers.");
         } else if (name === "planner") {
           this.controls.curiosity.value = 0.45;
           this.controls.epsilon.value = 0.05;
           this.controls.planning.value = 56;
+          this.controls.horizon.value = 5;
           this.controls.communication.checked = false;
           this.toast("Preset: model-heavy planner with lower randomness.");
         } else {
@@ -1239,6 +1369,7 @@
           this.controls.curiosity.value = 0.75;
           this.controls.epsilon.value = 0.08;
           this.controls.planning.value = 20;
+          this.controls.horizon.value = 3;
           this.controls.communication.checked = true;
           this.toast("Preset: communicating swarm map-builders.");
           this.reset();
@@ -1269,12 +1400,12 @@
         const params = this.params();
         this.env.update(params.movingHazards, params.diffusionSteps);
 
-        const allObservations = [];
         const summary = { reward: 0, intrinsic: 0, collisions: 0, hazards: 0, energy: 0 };
+        const results = [];
 
         for (const agent of this.agents) {
           const result = agent.step(this.env, params);
-          allObservations.push(...result.observations);
+          results.push(result);
           summary.reward += result.reward;
           summary.intrinsic += result.intrinsic;
           summary.collisions += result.collision;
@@ -1282,10 +1413,19 @@
           summary.energy += result.energy;
         }
 
-        if (params.communication && allObservations.length) {
+        // Attention-based multi-agent communication
+        if (params.communication) {
           for (const agent of this.agents) {
-            for (const obs of allObservations) {
-              agent.integrateSharedObservation(obs, params.learningRate * 0.35);
+            for (const res of results) {
+              for (const f of res.findings) {
+                const pos = xyOf(f.i);
+                const dist = Math.abs(agent.x - pos.x) + Math.abs(agent.y - pos.y);
+                // Spatial attention weight
+                const attention = Math.exp(-dist / 15.0);
+                if (attention > 0.1) {
+                  agent.integrateSharedObservation(f, attention * 0.4);
+                }
+              }
             }
           }
         }
@@ -1360,6 +1500,7 @@
       }
 
       draw() {
+        for (const a of this.agents) a.updateRender();
         this.drawWorld();
         this.drawModel();
         this.chart.draw(this.history, this.controls.chartMode.value);
@@ -1390,6 +1531,18 @@
           }
         }
 
+        // Pulse visualization
+        if (this.env.pulseLoc) {
+          const p = this.env.pulseLoc;
+          const progress = 1 - (p.life / 10);
+          const radius = p.radius * CELL_SIZE * (0.5 + progress * 1.5);
+          worldCtx.strokeStyle = `rgba(85, 230, 138, ${p.life / 10})`;
+          worldCtx.lineWidth = 2;
+          worldCtx.beginPath();
+          worldCtx.arc(p.x * CELL_SIZE + CELL_SIZE / 2, p.y * CELL_SIZE + CELL_SIZE / 2, radius, 0, Math.PI * 2);
+          worldCtx.stroke();
+        }
+
         for (const h of this.env.hazards) {
           worldCtx.fillStyle = "#ff4d6d";
           worldCtx.beginPath();
@@ -1397,7 +1550,7 @@
           worldCtx.fill();
         }
 
-        this.drawAgents(worldCtx);
+        this.drawAgents(worldCtx, false);
       }
 
       drawModel() {
@@ -1435,7 +1588,7 @@
           }
         }
 
-        this.drawAgents(modelCtx);
+        this.drawAgents(modelCtx, true);
       }
 
       averageModel() {
@@ -1459,8 +1612,36 @@
         return { belief, uncertainty, visits, error, qmax };
       }
 
-      drawAgents(ctx) {
+      drawAgents(ctx, isModelCanvas) {
         for (const agent of this.agents) {
+          
+          // Draw MPC Imagined Plans on Model Canvas
+          if (isModelCanvas && this.controls.showPlans.checked && agent.currentPlan.length > 1) {
+            ctx.strokeStyle = hsl(agent.id, 0.6);
+            ctx.lineWidth = 1.5;
+            ctx.setLineDash([4, 4]);
+            ctx.beginPath();
+            agent.currentPlan.forEach((p, idx) => {
+              const px = p.x * CELL_SIZE + CELL_SIZE / 2;
+              const py = p.y * CELL_SIZE + CELL_SIZE / 2;
+              if (idx === 0) ctx.moveTo(px, py);
+              else ctx.lineTo(px, py);
+            });
+            ctx.stroke();
+            ctx.setLineDash([]);
+
+            agent.currentPlan.forEach((p, idx) => {
+              if (idx === 0) return;
+              const px = p.x * CELL_SIZE + CELL_SIZE / 2;
+              const py = p.y * CELL_SIZE + CELL_SIZE / 2;
+              ctx.fillStyle = hsl(agent.id, 1 - idx * 0.15);
+              ctx.beginPath();
+              ctx.arc(px, py, 3, 0, Math.PI * 2);
+              ctx.fill();
+            });
+          }
+
+          // Draw trails
           if (this.controls.showTrails.checked && agent.path.length > 1) {
             ctx.strokeStyle = hsl(agent.id, 0.35);
             ctx.lineWidth = 2;
@@ -1474,11 +1655,22 @@
             ctx.stroke();
           }
 
+          const rx = agent.renderX * CELL_SIZE + CELL_SIZE / 2;
+          const ry = agent.renderY * CELL_SIZE + CELL_SIZE / 2;
+
+          // Energy aura
+          const energyPct = agent.energy / MAX_ENERGY;
+          ctx.fillStyle = hsl(agent.id, 0.15 * energyPct);
+          ctx.beginPath();
+          ctx.arc(rx, ry, 10 + 4 * energyPct, 0, Math.PI * 2);
+          ctx.fill();
+
+          // Agent core
           ctx.fillStyle = hsl(agent.id, 0.95);
           ctx.strokeStyle = "#ffffff";
           ctx.lineWidth = 1.5;
           ctx.beginPath();
-          ctx.arc(agent.x * CELL_SIZE + CELL_SIZE / 2, agent.y * CELL_SIZE + CELL_SIZE / 2, 5.8, 0, Math.PI * 2);
+          ctx.arc(rx, ry, 5.8, 0, Math.PI * 2);
           ctx.fill();
           ctx.stroke();
         }
@@ -1496,7 +1688,7 @@
 
       saveSnapshot() {
         const snapshot = {
-          version: 1,
+          version: 2,
           step: this.stepCount,
           seed: parseInt(this.controls.seed.value, 10),
           controls: Object.fromEntries(Object.entries(this.controls).map(([key, node]) => [key, node.type === "checkbox" ? node.checked : node.value])),
@@ -1553,6 +1745,8 @@
             const a = new Agent(raw.id, this.env, new RNG((data.seed || 1) + raw.id * 777));
             a.x = raw.x;
             a.y = raw.y;
+            a.renderX = raw.x;
+            a.renderY = raw.y;
             a.energy = raw.energy;
             a.totalExtrinsic = raw.totalExtrinsic;
             a.totalIntrinsic = raw.totalIntrinsic;
@@ -1564,7 +1758,7 @@
             a.uncertainty = Float32Array.from(raw.uncertainty);
             a.error = Float32Array.from(raw.error);
             a.q = Float32Array.from(raw.q);
-            a.visits = Uint16Array.from(raw.visits);
+            a.visits = Float32Array.from(raw.visits);
             a.observed = Uint8Array.from(raw.observed);
             a.knownStates = [];
             a.knownFlag = new Uint8Array(GRID_CELLS);
