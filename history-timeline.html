@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>Advanced Historical Timeline Tool — Research Edition</title>
-<meta name="description" content="Single-file historical timeline builder with BCE/CE dates, tags, categories, source links, confidence, import/export, undo/redo, local autosave, stats and multiple views." />
+<title>Historical Timeline Research Studio — Advanced Edition</title>
+<meta name="description" content="Offline-first historical research studio with BCE/CE dates, evidence auditing, event relationships, batch tools, advanced search, dashboards, import/export, snapshots and multiple views." />
 <style>
   *,*::before,*::after{box-sizing:border-box}
   html,body{height:100%;margin:0}
@@ -76,7 +76,9 @@
   textarea{resize:vertical;min-height:86px}
   .hidden{display:none!important}
 
-  .grid{display:grid;grid-template-columns:280px 1fr;gap:14px;align-items:start}
+  .grid{display:grid;grid-template-columns:280px minmax(0,1fr);gap:14px;align-items:start}
+  main{min-width:0}
+  .timeline-wrap{min-width:0}
   .panel{background:var(--panel);border:1px solid var(--border);box-shadow:var(--shadow-soft);border-radius:var(--radius-sm);padding:12px}
   .panel h2{margin:0 0 10px;font-size:1rem;letter-spacing:-.01em}
   .filter-grid{display:grid;gap:10px}
@@ -160,6 +162,54 @@
   .toast{background:var(--panel);color:var(--text);border:1px solid var(--border);box-shadow:var(--shadow);border-radius:12px;padding:10px 12px;min-width:220px;animation:pop .18s ease-out}
   @keyframes pop{from{transform:translateY(8px);opacity:0}to{transform:translateY(0);opacity:1}}
 
+
+  .sr-only{position:absolute!important;width:1px!important;height:1px!important;padding:0!important;margin:-1px!important;overflow:hidden!important;clip:rect(0,0,0,0)!important;white-space:nowrap!important;border:0!important}
+  .status-badge{display:inline-flex;align-items:center;gap:5px;border-radius:999px;padding:3px 7px;font-size:.74rem;font-weight:850;border:1px solid var(--border);background:var(--soft);text-transform:capitalize}
+  .status-badge.reviewed{color:var(--accent-2)}
+  .status-badge.disputed{color:var(--danger)}
+  .status-badge.draft{color:var(--warning)}
+  .select-box{position:absolute;left:8px;top:8px;z-index:4;width:19px;height:19px;accent-color:var(--accent)}
+  .event-card.has-check{padding-top:38px}
+  .event-card.batch-selected{outline:3px solid color-mix(in srgb,var(--purple) 35%,transparent);box-shadow:0 16px 34px color-mix(in srgb,var(--purple) 18%,transparent)}
+  .batch-bar{display:none;position:sticky;top:8px;z-index:15;margin:0 0 10px;padding:9px 10px;border:1px solid color-mix(in srgb,var(--purple) 35%,var(--border));border-radius:12px;background:color-mix(in srgb,var(--panel) 90%,var(--purple) 10%);box-shadow:var(--shadow-soft);align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
+  .batch-bar.show{display:flex}
+  .dashboard-view{display:none;background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:14px;box-shadow:var(--shadow-soft)}
+  .dashboard-view.show{display:block}
+  .dashboard-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
+  .metric-card{background:var(--panel-2);border:1px solid var(--border);border-radius:14px;padding:12px}
+  .metric-card b{display:block;font-size:1.45rem;letter-spacing:-.04em}
+  .metric-card span{color:var(--muted);font-size:.8rem;font-weight:800;text-transform:uppercase;letter-spacing:.04em}
+  .dashboard-columns{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px}
+  .chart-box,.audit-box{background:var(--panel-2);border:1px solid var(--border);border-radius:14px;padding:12px}
+  .chart-box h3,.audit-box h3{margin:0 0 9px;font-size:.95rem}
+  .bar-row{display:grid;grid-template-columns:minmax(82px,130px) 1fr auto;gap:8px;align-items:center;margin:7px 0;font-size:.84rem}
+  .bar-track{height:10px;border-radius:999px;background:var(--soft);overflow:hidden;border:1px solid var(--border)}
+  .bar-fill{height:100%;border-radius:999px;background:linear-gradient(90deg,var(--accent),var(--accent-2))}
+  .issue-list{display:grid;gap:7px;max-height:300px;overflow:auto}
+  .issue-item{display:flex;align-items:flex-start;justify-content:space-between;gap:8px;border:1px solid var(--border);background:var(--panel);border-radius:10px;padding:8px}
+  .issue-item button{flex:0 0 auto}
+  .relation-list{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+  .relation-link{background:var(--soft);color:var(--accent);border:1px solid var(--border);box-shadow:none;padding:5px 8px;font-size:.8rem}
+  .quick-date{display:grid;grid-template-columns:1fr auto;gap:7px}
+  .palette-backdrop{position:fixed;inset:0;z-index:90;display:none;align-items:flex-start;justify-content:center;padding:10vh 16px;background:rgba(4,8,14,.58);backdrop-filter:blur(8px)}
+  .palette-backdrop.show{display:flex}
+  .palette{width:min(680px,100%);background:var(--panel);border:1px solid var(--border);border-radius:18px;box-shadow:0 28px 80px rgba(0,0,0,.35);overflow:hidden}
+  .palette input{width:100%;border:0;border-bottom:1px solid var(--border);border-radius:0;padding:15px 16px;font-size:1.05rem;box-shadow:none}
+  .palette-list{max-height:420px;overflow:auto;padding:7px}
+  .palette-item{width:100%;display:flex;justify-content:space-between;align-items:center;gap:12px;background:transparent;color:var(--text);border:1px solid transparent;box-shadow:none;text-align:left;padding:10px 11px}
+  .palette-item:hover,.palette-item.active{background:var(--soft);border-color:var(--border);transform:none}
+  .palette-item small{color:var(--muted)}
+  .help-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .help-card{border:1px solid var(--border);background:var(--panel-2);border-radius:12px;padding:10px}
+  .help-card h3{margin:0 0 6px;font-size:.95rem}
+  .help-card p{margin:4px 0;color:var(--muted);font-size:.88rem}
+  .progress-ring{font-weight:900;color:var(--accent)}
+  .storage-warning{display:none;margin-bottom:10px;padding:9px 10px;border-radius:10px;background:color-mix(in srgb,var(--warning) 18%,var(--panel));border:1px solid color-mix(in srgb,var(--warning) 45%,var(--border));font-size:.86rem}
+  .storage-warning.show{display:block}
+  @media (max-width:900px){.dashboard-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.dashboard-columns{grid-template-columns:1fr}}
+  @media (max-width:620px){.dashboard-grid{grid-template-columns:1fr}.help-grid{grid-template-columns:1fr}.quick-date{grid-template-columns:1fr}}
+  @media (prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto!important;animation:none!important;transition:none!important}}
+
   .print-title{display:none}
   @media (max-width:980px){
     header{grid-template-columns:1fr}
@@ -191,11 +241,13 @@
 <div class="app" id="app">
   <header>
     <div>
-      <h1><span aria-hidden="true">🕰️</span> Historical Timeline Tool <span class="chip">Research Edition</span></h1>
-      <div class="subtitle">BCE/CE timelines, event evidence, categories, tags, confidence, local autosave, undo/redo, import/export and multiple views. Shortcuts: <span class="kbd">N</span> new, <span class="kbd">Del</span> delete, <span class="kbd">Ctrl/⌘ Z</span> undo, <span class="kbd">/</span> search.</div>
+      <h1><span aria-hidden="true">🕰️</span> Historical Timeline Research Studio <span class="chip">v3 Advanced</span></h1>
+      <div class="subtitle">Offline-first research timelines with evidence auditing, relationships, advanced filters, batch tools and dashboards. Shortcuts: <span class="kbd">N</span> new, <span class="kbd">Ctrl/⌘ K</span> commands, <span class="kbd">/</span> search, <span class="kbd">?</span> help.</div>
     </div>
     <div class="top-actions">
       <button id="btnAdd">Add Event</button>
+      <button id="btnCommand" class="secondary small" title="Open command palette">⌘ Commands</button>
+      <button id="btnHelp" class="secondary small" title="Keyboard shortcuts and search help">? Help</button>
       <button id="btnUndo" class="secondary small" title="Undo">↶ Undo</button>
       <button id="btnRedo" class="secondary small" title="Redo">↷ Redo</button>
       <button id="btnTheme" class="secondary small" title="Toggle theme">🌙 Theme</button>
@@ -256,6 +308,8 @@
           <div class="stat"><b id="statTotal">0</b><span>total</span></div>
           <div class="stat"><b id="statSpan">—</b><span>year span</span></div>
           <div class="stat"><b id="statAvgConfidence">—</b><span>avg confidence</span></div>
+          <div class="stat"><b id="statSelected">0</b><span>selected</span></div>
+          <div class="stat"><b id="statIssues">0</b><span>research issues</span></div>
         </div>
         <div class="category-list" id="categoryList" aria-label="Category summary"></div>
       </section>
@@ -267,6 +321,17 @@
           <button id="btnClearSnapshots" class="ghost small">Clear</button>
         </div>
         <div class="snapshot-list" id="snapshotList"></div>
+      </section>
+
+      <section class="panel" style="margin-top:12px;">
+        <h2>Research Toolkit</h2>
+        <div class="toolbar">
+          <button id="btnAudit" class="secondary small">Run Audit</button>
+          <button id="btnDuplicates" class="secondary small">Find Duplicates</button>
+          <button id="btnNormalizeTags" class="secondary small">Clean Tags</button>
+          <button id="btnSelectVisible" class="ghost small">Select Visible</button>
+        </div>
+        <div class="hint">Search operators: <b>category:</b>, <b>tag:</b>, <b>status:</b>, <b>person:</b>, <b>after:</b>, <b>before:</b>, <b>confidence:&gt;=</b>, <b>has:source</b>, <b>is:issue</b>.</div>
       </section>
     </aside>
 
@@ -291,14 +356,29 @@
               <button id="tabTimeline" class="active" role="tab" aria-selected="true">Timeline</button>
               <button id="tabList" role="tab" aria-selected="false">List</button>
               <button id="tabStory" role="tab" aria-selected="false">Story</button>
+              <button id="tabDashboard" role="tab" aria-selected="false">Dashboard</button>
             </div>
             <button id="btnExportJSON" class="secondary small">Export JSON</button>
             <button id="btnExportCSV" class="secondary small">Export CSV</button>
             <button id="btnExportMarkdown" class="secondary small">Markdown</button>
+            <button id="btnExportHTML" class="secondary small">HTML Report</button>
+            <button id="btnCopyReport" class="secondary small">Copy Summary</button>
             <label class="file-like secondary small" for="fileImport">Import<input id="fileImport" type="file" class="hidden" accept="application/json,text/csv,text/markdown,.json,.csv,.md" /></label>
           </div>
         </div>
 
+        <div id="storageWarning" class="storage-warning" role="alert"></div>
+        <div id="batchBar" class="batch-bar" aria-live="polite">
+          <b><span id="batchCount">0</span> events selected</b>
+          <div class="toolbar">
+            <button id="btnBatchPin" class="secondary small">Pin</button>
+            <button id="btnBatchStatus" class="secondary small">Set Status</button>
+            <button id="btnBatchCategory" class="secondary small">Set Category</button>
+            <button id="btnMergeSelected" class="secondary small">Merge Two</button>
+            <button id="btnBatchDelete" class="danger small">Delete</button>
+            <button id="btnClearSelection" class="ghost small">Clear</button>
+          </div>
+        </div>
         <h2 class="print-title">Historical Timeline</h2>
         <div id="timelineView" class="timeline" tabindex="0" aria-live="polite" aria-label="Event timeline: drag empty space to scroll; drag cards to reorder in manual sort.">
           <div id="axis" class="axis" aria-hidden="true"></div>
@@ -306,6 +386,7 @@
         </div>
         <div id="listView" class="list-view" aria-label="Event list"></div>
         <div id="storyView" class="story-view" aria-label="Narrative story view"></div>
+        <div id="dashboardView" class="dashboard-view" aria-label="Research dashboard"></div>
         <div id="emptyState" class="empty hidden">No events match your current filters. Clear filters or add a new event.</div>
 
         <div id="details" class="details" aria-hidden="true">
@@ -318,6 +399,10 @@
               <div class="detail-box"><span>Location</span><b id="detailLocation">—</b></div>
               <div class="detail-box"><span>Tags</span><b id="detailTags">—</b></div>
               <div class="detail-box"><span>Evidence confidence</span><b id="detailConfidence">—</b></div>
+              <div class="detail-box"><span>Research status</span><b id="detailStatus">—</b></div>
+              <div class="detail-box"><span>People / entities</span><b id="detailPeople">—</b></div>
+              <div class="detail-box"><span>Related events</span><div id="detailRelations" class="relation-list">—</div></div>
+              <div class="detail-box"><span>Evidence note</span><b id="detailCertaintyNote">—</b></div>
             </div>
           </div>
           <div>
@@ -327,6 +412,11 @@
             <div class="detail-box" style="margin-top:8px;">
               <span>Source / citation</span>
               <div id="detailSource">—</div>
+              <div class="muted" id="detailCitation" style="margin-top:5px;"></div>
+            </div>
+            <div class="detail-box" style="margin-top:8px;">
+              <span>Key quotation / extract</span>
+              <div id="detailQuote">—</div>
             </div>
             <div class="toolbar detail-actions" style="margin-top:10px;">
               <button id="btnEditSelected" class="secondary small">Edit</button>
@@ -348,6 +438,11 @@
         <div class="field">
           <label for="evtTitle">Title</label>
           <input id="evtTitle" type="text" placeholder="e.g. Battle of Hastings" />
+        </div>
+        <div class="field wide">
+          <label for="evtQuickDate">Quick date parser</label>
+          <div class="quick-date"><input id="evtQuickDate" type="text" placeholder="15 March 44 BCE, c. 1450, or 1914–1918" /><button id="btnParseDate" type="button" class="secondary small">Parse</button></div>
+          <div class="hint">Parses common BCE/CE, approximate and year-range formats into the fields below.</div>
         </div>
         <div class="field">
           <label for="evtCategory">Category</label>
@@ -411,9 +506,38 @@
           <label for="evtConfidence">Evidence confidence</label>
           <input id="evtConfidence" type="range" min="0" max="100" value="75" />
         </div>
+        <div class="field">
+          <label for="evtStatus">Research status</label>
+          <select id="evtStatus"><option value="draft">Draft</option><option value="reviewed">Reviewed</option><option value="disputed">Disputed</option></select>
+        </div>
+        <div class="field">
+          <label for="evtSourceType">Source type</label>
+          <select id="evtSourceType"><option value="unknown">Unknown</option><option value="primary">Primary</option><option value="secondary">Secondary</option><option value="tertiary">Tertiary</option></select>
+        </div>
         <div class="field wide">
-          <label for="evtSource">Source / citation link</label>
+          <label for="evtPeople">People / entities</label>
+          <input id="evtPeople" type="text" placeholder="comma separated: Julius Caesar, Roman Senate" />
+        </div>
+        <div class="field wide">
+          <label for="evtRelatedIds">Related events</label>
+          <select id="evtRelatedIds" multiple size="4"></select>
+          <div class="hint">Use Ctrl/⌘ to select multiple related events.</div>
+        </div>
+        <div class="field wide">
+          <label for="evtSource">Source link</label>
           <input id="evtSource" type="url" placeholder="https://..." />
+        </div>
+        <div class="field wide">
+          <label for="evtCitation">Full citation</label>
+          <input id="evtCitation" type="text" placeholder="Author, title, publisher/archive, year, page or catalogue reference" />
+        </div>
+        <div class="field wide">
+          <label for="evtQuote">Key quotation / source extract</label>
+          <textarea id="evtQuote" rows="3" placeholder="A short extract supporting this event..."></textarea>
+        </div>
+        <div class="field wide">
+          <label for="evtCertaintyNote">Uncertainty / evidence note</label>
+          <textarea id="evtCertaintyNote" rows="3" placeholder="Conflicting dates, disputed attribution, limits of the evidence..."></textarea>
         </div>
         <div class="field wide">
           <label for="evtDesc">Description / notes</label>
@@ -430,38 +554,61 @@
     </div>
   </div>
 
-  <footer class="subtitle" style="margin-top:14px;">Data is stored locally in your browser. Export JSON for full backups, CSV for spreadsheets, or Markdown for documentation.</footer>
+  <footer class="subtitle" style="margin-top:14px;">Offline-first: data stays in this browser unless you export it. Use versioned JSON for complete backups, or export CSV, Markdown and standalone HTML reports.</footer>
 </div>
 <div id="toastWrap" class="toast-wrap" aria-live="polite"></div>
+
+  <div id="paletteBackdrop" class="palette-backdrop" aria-hidden="true">
+    <div class="palette" role="dialog" aria-modal="true" aria-label="Command palette">
+      <input id="paletteInput" type="search" placeholder="Type a command…" autocomplete="off" />
+      <div id="paletteList" class="palette-list"></div>
+    </div>
+  </div>
+  <div id="helpBackdrop" class="modal-backdrop" role="dialog" aria-modal="true" aria-hidden="true">
+    <div class="modal" role="document" style="width:min(760px,100%);">
+      <h2>Research Studio Help</h2>
+      <div class="help-grid">
+        <div class="help-card"><h3>Keyboard</h3><p><span class="kbd">N</span> new event</p><p><span class="kbd">Ctrl/⌘ K</span> command palette</p><p><span class="kbd">/</span> search</p><p><span class="kbd">Del</span> delete selected event</p><p><span class="kbd">Ctrl/⌘ Z</span> undo</p></div>
+        <div class="help-card"><h3>Advanced search</h3><p><b>category:Science</b></p><p><b>tag:space status:reviewed</b></p><p><b>after:1800 before:1900</b></p><p><b>confidence:&gt;=80 has:source</b></p><p><b>is:issue</b> finds events needing research.</p></div>
+        <div class="help-card"><h3>Batch workflow</h3><p>Use checkboxes on cards or list rows, then pin, categorise, change status, merge two records, or delete them together.</p></div>
+        <div class="help-card"><h3>Evidence workflow</h3><p>Record source type, full citation, quotation, confidence, uncertainty note, people/entities and links between related events. The dashboard audits gaps.</p></div>
+      </div>
+      <div class="modal-actions"><span></span><button id="btnCloseHelp" class="secondary">Close</button></div>
+    </div>
+  </div>
+
 
 <script>
 (() => {
   'use strict';
 
-  const STORAGE_KEY = 'advanced_historical_timeline_v2';
-  const SNAPSHOT_KEY = 'advanced_historical_timeline_v2_snapshots';
-  const SETTINGS_KEY = 'advanced_historical_timeline_v2_settings';
+  const APP_VERSION = 3;
+  const STORAGE_KEY = 'historical_timeline_research_studio_v3';
+  const LEGACY_STORAGE_KEY = 'advanced_historical_timeline_v2';
+  const SNAPSHOT_KEY = 'historical_timeline_research_studio_v3_snapshots';
+  const SETTINGS_KEY = 'historical_timeline_research_studio_v3_settings';
 
   const $ = (id) => document.getElementById(id);
   const els = {
     app: $('app'),
-    btnAdd: $('btnAdd'), btnUndo: $('btnUndo'), btnRedo: $('btnRedo'), btnTheme: $('btnTheme'), btnPrint: $('btnPrint'), btnDensity: $('btnDensity'),
-    btnExportJSON: $('btnExportJSON'), btnExportCSV: $('btnExportCSV'), btnExportMarkdown: $('btnExportMarkdown'), fileImport: $('fileImport'),
+    btnAdd: $('btnAdd'), btnCommand: $('btnCommand'), btnHelp: $('btnHelp'), btnUndo: $('btnUndo'), btnRedo: $('btnRedo'), btnTheme: $('btnTheme'), btnPrint: $('btnPrint'), btnDensity: $('btnDensity'),
+    btnExportJSON: $('btnExportJSON'), btnExportCSV: $('btnExportCSV'), btnExportMarkdown: $('btnExportMarkdown'), btnExportHTML: $('btnExportHTML'), btnCopyReport: $('btnCopyReport'), fileImport: $('fileImport'),
     searchInput: $('searchInput'), filterFromYear: $('filterFromYear'), filterToYear: $('filterToYear'), categoryFilter: $('categoryFilter'), tagFilter: $('tagFilter'), minConfidence: $('minConfidence'), minImportance: $('minImportance'), clearFilters: $('clearFilters'), btnShowPinned: $('btnShowPinned'),
     zoomRange: $('zoomRange'), sortSelect: $('sortSelect'),
-    timelineView: $('timelineView'), axis: $('axis'), eventTrack: $('eventTrack'), listView: $('listView'), storyView: $('storyView'), emptyState: $('emptyState'),
-    tabTimeline: $('tabTimeline'), tabList: $('tabList'), tabStory: $('tabStory'),
-    details: $('details'), detailTitle: $('detailTitle'), detailDate: $('detailDate'), detailDesc: $('detailDesc'), detailCategory: $('detailCategory'), detailLocation: $('detailLocation'), detailTags: $('detailTags'), detailConfidence: $('detailConfidence'), detailIcon: $('detailIcon'), detailSource: $('detailSource'),
+    timelineView: $('timelineView'), axis: $('axis'), eventTrack: $('eventTrack'), listView: $('listView'), storyView: $('storyView'), dashboardView: $('dashboardView'), emptyState: $('emptyState'),
+    tabTimeline: $('tabTimeline'), tabList: $('tabList'), tabStory: $('tabStory'), tabDashboard: $('tabDashboard'),
+    details: $('details'), detailTitle: $('detailTitle'), detailDate: $('detailDate'), detailDesc: $('detailDesc'), detailCategory: $('detailCategory'), detailLocation: $('detailLocation'), detailTags: $('detailTags'), detailConfidence: $('detailConfidence'), detailStatus: $('detailStatus'), detailPeople: $('detailPeople'), detailRelations: $('detailRelations'), detailCertaintyNote: $('detailCertaintyNote'), detailIcon: $('detailIcon'), detailSource: $('detailSource'), detailCitation: $('detailCitation'), detailQuote: $('detailQuote'),
     btnEditSelected: $('btnEditSelected'), btnPinSelected: $('btnPinSelected'), btnCenterSelected: $('btnCenterSelected'), btnDuplicateSelected: $('btnDuplicateSelected'), btnDeleteSelected: $('btnDeleteSelected'),
     modalBackdrop: $('modalBackdrop'), modalTitle: $('modalTitle'), modalDelete: $('modalDelete'), modalCancel: $('modalCancel'), modalSave: $('modalSave'),
-    evtTitle: $('evtTitle'), evtCategory: $('evtCategory'), evtYear: $('evtYear'), evtMonth: $('evtMonth'), evtDay: $('evtDay'), evtEndYear: $('evtEndYear'), evtPrecision: $('evtPrecision'), evtDateLabel: $('evtDateLabel'), evtIcon: $('evtIcon'), evtColor: $('evtColor'), evtLocation: $('evtLocation'), evtTags: $('evtTags'), evtImportance: $('evtImportance'), evtConfidence: $('evtConfidence'), evtSource: $('evtSource'), evtDesc: $('evtDesc'), categoryOptions: $('categoryOptions'),
-    statVisible: $('statVisible'), statTotal: $('statTotal'), statSpan: $('statSpan'), statAvgConfidence: $('statAvgConfidence'), categoryList: $('categoryList'),
-    btnSnapshot: $('btnSnapshot'), btnClearSnapshots: $('btnClearSnapshots'), snapshotList: $('snapshotList'), toastWrap: $('toastWrap')
+    evtTitle: $('evtTitle'), evtQuickDate: $('evtQuickDate'), btnParseDate: $('btnParseDate'), evtCategory: $('evtCategory'), evtYear: $('evtYear'), evtMonth: $('evtMonth'), evtDay: $('evtDay'), evtEndYear: $('evtEndYear'), evtPrecision: $('evtPrecision'), evtDateLabel: $('evtDateLabel'), evtIcon: $('evtIcon'), evtColor: $('evtColor'), evtLocation: $('evtLocation'), evtTags: $('evtTags'), evtImportance: $('evtImportance'), evtConfidence: $('evtConfidence'), evtStatus: $('evtStatus'), evtSourceType: $('evtSourceType'), evtPeople: $('evtPeople'), evtRelatedIds: $('evtRelatedIds'), evtSource: $('evtSource'), evtCitation: $('evtCitation'), evtQuote: $('evtQuote'), evtCertaintyNote: $('evtCertaintyNote'), evtDesc: $('evtDesc'), categoryOptions: $('categoryOptions'),
+    statVisible: $('statVisible'), statTotal: $('statTotal'), statSpan: $('statSpan'), statAvgConfidence: $('statAvgConfidence'), statSelected: $('statSelected'), statIssues: $('statIssues'), categoryList: $('categoryList'),
+    btnSnapshot: $('btnSnapshot'), btnClearSnapshots: $('btnClearSnapshots'), snapshotList: $('snapshotList'), btnAudit: $('btnAudit'), btnDuplicates: $('btnDuplicates'), btnNormalizeTags: $('btnNormalizeTags'), btnSelectVisible: $('btnSelectVisible'), batchBar: $('batchBar'), batchCount: $('batchCount'), btnBatchPin: $('btnBatchPin'), btnBatchStatus: $('btnBatchStatus'), btnBatchCategory: $('btnBatchCategory'), btnMergeSelected: $('btnMergeSelected'), btnBatchDelete: $('btnBatchDelete'), btnClearSelection: $('btnClearSelection'), storageWarning: $('storageWarning'), paletteBackdrop: $('paletteBackdrop'), paletteInput: $('paletteInput'), paletteList: $('paletteList'), helpBackdrop: $('helpBackdrop'), btnCloseHelp: $('btnCloseHelp'), toastWrap: $('toastWrap')
   };
 
   const state = {
     events: [],
     selectedId: null,
+    selectedIds: new Set(),
     editingId: null,
     undo: [],
     redo: [],
@@ -470,25 +617,44 @@
     zoom: 1,
     settings: { theme: 'light', density: 'comfortable' },
     dragScroll: { active:false, startX:0, scrollLeft:0, pointerId:null },
-    dndId: null
+    dndId: null,
+    paletteIndex: 0
   };
 
   const uid = () => 'e_' + Math.random().toString(36).slice(2,10) + Date.now().toString(36).slice(-4);
   const clamp = (n,min,max) => Math.max(min, Math.min(max, Number(n)||0));
   const isUrl = (s) => typeof s === 'string' && /^(https?:|data:image\/)/i.test(s.trim());
+  const safeHref = (s) => { try { const u = new URL(String(s || ''), location.href); return /^https?:$/i.test(u.protocol) ? u.href : ''; } catch { return ''; } };
+  const splitList = (value) => Array.isArray(value) ? value.map(String).map(v=>v.trim()).filter(Boolean) : String(value || '').split(/[,;]+/).map(v=>v.trim()).filter(Boolean);
+  const uniq = (arr) => [...new Set(arr.filter(Boolean))];
+  const normalText = (s='') => String(s).toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/g,' ').trim();
   const escapeHTML = (s='') => String(s).replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[ch]));
   const debounce = (fn, wait=160) => { let t; return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), wait); }; };
 
   function parseLegacyDate(value) {
-    if (!value) return { year:new Date().getFullYear(), month:null, day:null, precision:'year' };
-    const s = String(value).trim();
-    const iso = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
-    if (iso) return { year:Number(iso[1]), month:Number(iso[2]), day:Number(iso[3]), precision:'day' };
+    if (!value) return { year:new Date().getFullYear(), month:null, day:null, endYear:null, precision:'year' };
+    const s = String(value).trim().replace(/[–—]/g,'-');
+    const range = s.match(/(?:c\.\s*)?(\d{1,6})\s*(BCE|BC|CE|AD)?\s*-\s*(\d{1,6})\s*(BCE|BC|CE|AD)?/i);
+    if (range) {
+      const era1 = (range[2] || range[4] || 'CE').toUpperCase();
+      const era2 = (range[4] || range[2] || 'CE').toUpperCase();
+      const sign = e => /^(BCE|BC)$/.test(e) ? -1 : 1;
+      return { year:sign(era1)*Number(range[1]), month:null, day:null, endYear:sign(era2)*Number(range[3]), precision:'range' };
+    }
+    const months = {jan:1,january:1,feb:2,february:2,mar:3,march:3,apr:4,april:4,may:5,jun:6,june:6,jul:7,july:7,aug:8,august:8,sep:9,sept:9,september:9,oct:10,october:10,nov:11,november:11,dec:12,december:12};
+    const named = s.match(/^(?:c\.|circa|about)?\s*(?:(\d{1,2})\s+)?([a-z]+)\s+(-?\d{1,6})\s*(BCE|BC|CE|AD)?$/i);
+    if (named && months[named[2].toLowerCase()]) {
+      let year = Number(named[3]);
+      if (/^(BCE|BC)$/i.test(named[4] || '')) year = -Math.abs(year);
+      return { year, month:months[named[2].toLowerCase()], day:named[1] ? Number(named[1]) : null, endYear:null, precision:named[1] ? 'day' : 'month' };
+    }
+    const iso = s.match(/^(-?\d{1,6})-(\d{2})-(\d{2})$/);
+    if (iso) return { year:Number(iso[1]), month:Number(iso[2]), day:Number(iso[3]), endYear:null, precision:'day' };
     const bce = s.match(/(\d+)\s*(BCE|BC)/i);
-    if (bce) return { year:-Number(bce[1]), month:null, day:null, precision:'year' };
-    const ce = s.match(/(-?\d{1,6})/);
-    if (ce) return { year:Number(ce[1]), month:null, day:null, precision:'year' };
-    return { year:new Date().getFullYear(), month:null, day:null, precision:'approx' };
+    if (bce) return { year:-Number(bce[1]), month:null, day:null, endYear:null, precision:/^(c\.|circa|about)/i.test(s) ? 'approx' : 'year' };
+    const ce = s.match(/-?\d{1,6}/);
+    if (ce) return { year:Number(ce[0]), month:null, day:null, endYear:null, precision:/^(c\.|circa|about)/i.test(s) ? 'approx' : 'year' };
+    return { year:new Date().getFullYear(), month:null, day:null, endYear:null, precision:'approx' };
   }
 
   function normalizeEvent(raw={}, idx=0) {
@@ -497,7 +663,8 @@
     const month = raw.month === '' || raw.month == null ? legacy.month : Number(raw.month);
     const day = raw.day === '' || raw.day == null ? legacy.day : Number(raw.day);
     const precision = raw.precision || legacy.precision || 'year';
-    const endYear = raw.endYear === '' || raw.endYear == null ? null : Number(raw.endYear);
+    const endYearValue = raw.endYear === '' || raw.endYear == null ? legacy.endYear : raw.endYear;
+    const endYear = endYearValue === '' || endYearValue == null ? null : Number(endYearValue);
     const title = String(raw.title || raw.name || raw.event || `Event ${idx+1}`).trim() || `Event ${idx+1}`;
     const tags = Array.isArray(raw.tags) ? raw.tags : String(raw.tags || raw.tag || '').split(',').map(t => t.trim()).filter(Boolean);
     const ev = {
@@ -513,7 +680,14 @@
       color: raw.color || colorForCategory(raw.category || 'General'),
       category: String(raw.category || raw.type || 'General').trim() || 'General',
       location: String(raw.location || raw.place || '').trim(),
-      tags,
+      tags: uniq(tags),
+      people: uniq(splitList(raw.people || raw.entities)),
+      relatedIds: uniq(splitList(raw.relatedIds || raw.relations)).filter(id => id !== raw.id),
+      status: ['draft','reviewed','disputed'].includes(raw.status) ? raw.status : 'draft',
+      sourceType: ['primary','secondary','tertiary','unknown'].includes(raw.sourceType) ? raw.sourceType : 'unknown',
+      citation: String(raw.citation || '').trim(),
+      quote: String(raw.quote || raw.extract || '').trim(),
+      certaintyNote: String(raw.certaintyNote || raw.uncertainty || '').trim(),
       importance: clamp(raw.importance ?? 3,1,5),
       confidence: clamp(raw.confidence ?? 75,0,100),
       source: String(raw.source || raw.url || raw.citation || '').trim(),
@@ -567,19 +741,22 @@
   function load() {
     state.settings = {...state.settings, ...safeJSON(localStorage.getItem(SETTINGS_KEY), {})};
     applySettings();
-    const raw = safeJSON(localStorage.getItem(STORAGE_KEY), null);
-    if (Array.isArray(raw) && raw.length) state.events = raw.map(normalizeEvent);
+    const current = safeJSON(localStorage.getItem(STORAGE_KEY), null);
+    const legacy = safeJSON(localStorage.getItem(LEGACY_STORAGE_KEY), null);
+    const payload = Array.isArray(current) ? current : (current?.events || (Array.isArray(legacy) ? legacy : null));
+    if (Array.isArray(payload) && payload.length) state.events = payload.map(normalizeEvent);
     else state.events = sampleEvents();
+    repairRelations();
     reindex();
     persist();
   }
 
   function sampleEvents() {
     return [
-      normalizeEvent({title:'Sample: Foundation of Rome', year:-753, precision:'approx', icon:'🏛️', category:'Ancient history', location:'Rome', tags:['myth','city-state'], importance:4, confidence:35, color:'#8b5cf6', desc:'Traditional foundation date. Useful demo event showing approximate BCE support.'}, 0),
-      normalizeEvent({title:'Sample: Assassination of Julius Caesar', year:-44, month:3, day:15, precision:'day', icon:'🗡️', category:'Politics', location:'Rome', tags:['republic','rome'], importance:5, confidence:88, color:'#ef4444', desc:'A major turning point in the late Roman Republic.'}, 1),
-      normalizeEvent({title:'Sample: Printing press spreads in Europe', year:1450, precision:'approx', icon:'📜', category:'Technology', location:'Mainz', tags:['printing','knowledge'], importance:5, confidence:80, color:'#2ecc71', desc:'Demo event for technology and knowledge transmission timelines.'}, 2),
-      normalizeEvent({title:'Sample: Apollo 11 Moon landing', year:1969, month:7, day:20, precision:'day', icon:'🚀', category:'Science', location:'Moon', tags:['space','nasa'], importance:5, confidence:99, color:'#2276d2', source:'https://www.nasa.gov/', desc:'Demo event with a source link and high confidence.'}, 3)
+      normalizeEvent({title:'Sample: Foundation of Rome', year:-753, precision:'approx', icon:'🏛️', category:'Ancient history', location:'Rome', tags:['myth','city-state'], importance:4, confidence:35, status:'disputed', sourceType:'secondary', people:['Romulus'], certaintyNote:'Traditional date derived from later Roman literary tradition.', color:'#8b5cf6', desc:'Traditional foundation date. Useful demo event showing approximate BCE support.'}, 0),
+      normalizeEvent({title:'Sample: Assassination of Julius Caesar', year:-44, month:3, day:15, precision:'day', icon:'🗡️', category:'Politics', location:'Rome', tags:['republic','rome'], importance:5, confidence:88, status:'reviewed', sourceType:'primary', people:['Julius Caesar','Roman Senate'], citation:'Suetonius, The Twelve Caesars; Plutarch, Life of Caesar.', color:'#ef4444', desc:'A major turning point in the late Roman Republic.'}, 1),
+      normalizeEvent({title:'Sample: Printing press spreads in Europe', year:1450, precision:'approx', icon:'📜', category:'Technology', location:'Mainz', tags:['printing','knowledge'], importance:5, confidence:80, status:'draft', sourceType:'secondary', people:['Johannes Gutenberg'], color:'#2ecc71', desc:'Demo event for technology and knowledge transmission timelines.'}, 2),
+      normalizeEvent({title:'Sample: Apollo 11 Moon landing', year:1969, month:7, day:20, precision:'day', icon:'🚀', category:'Science', location:'Moon', tags:['space','nasa'], importance:5, confidence:99, status:'reviewed', sourceType:'primary', people:['Neil Armstrong','Buzz Aldrin','Michael Collins'], citation:'NASA Apollo 11 mission records.', color:'#2276d2', source:'https://www.nasa.gov/', desc:'Demo event with a source link and high confidence.'}, 3)
     ];
   }
 
@@ -588,8 +765,22 @@
   }
 
   function persist() {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state.events));
-    localStorage.setItem(SETTINGS_KEY, JSON.stringify(state.settings));
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({version:APP_VERSION,savedAt:new Date().toISOString(),events:state.events}));
+      localStorage.setItem(SETTINGS_KEY, JSON.stringify(state.settings));
+      els.storageWarning?.classList.remove('show');
+    } catch (err) {
+      if (els.storageWarning) {
+        els.storageWarning.textContent = 'Browser storage is full or blocked. Export JSON now to avoid losing recent work.';
+        els.storageWarning.classList.add('show');
+      }
+      console.error(err);
+    }
+  }
+
+  function repairRelations() {
+    const ids = new Set(state.events.map(e=>e.id));
+    state.events.forEach(ev => ev.relatedIds = uniq(ev.relatedIds || []).filter(id => ids.has(id) && id !== ev.id));
   }
 
   function snapshotBeforeChange() {
@@ -601,7 +792,9 @@
   function commit(mutator, message='Saved') {
     snapshotBeforeChange();
     mutator();
+    repairRelations();
     reindex();
+    state.selectedIds = new Set([...state.selectedIds].filter(id => state.events.some(e=>e.id===id)));
     persist();
     render();
     toast(message);
@@ -613,6 +806,7 @@
     if (!state.undo.length) return toast('Nothing to undo');
     state.redo.push(JSON.stringify(state.events));
     state.events = JSON.parse(state.undo.pop()).map(normalizeEvent);
+    repairRelations(); state.selectedIds.clear();
     persist(); render(); toast('Undo complete');
   }
 
@@ -620,7 +814,84 @@
     if (!state.redo.length) return toast('Nothing to redo');
     state.undo.push(JSON.stringify(state.events));
     state.events = JSON.parse(state.redo.pop()).map(normalizeEvent);
+    repairRelations(); state.selectedIds.clear();
     persist(); render(); toast('Redo complete');
+  }
+
+  function auditEvent(ev) {
+    const issues = [];
+    if (!ev.desc || ev.desc.length < 30) issues.push('thin description');
+    if (!ev.source && !ev.citation) issues.push('missing source');
+    if (ev.confidence < 50) issues.push('low confidence');
+    if (ev.precision === 'range' && (ev.endYear == null || ev.endYear < ev.year)) issues.push('invalid range');
+    if (ev.status === 'reviewed' && (!ev.source && !ev.citation)) issues.push('reviewed without citation');
+    if (ev.relatedIds.some(id => !state.events.some(e => e.id === id))) issues.push('broken relation');
+    return issues;
+  }
+
+  function searchTokens(query) {
+    const tokens = String(query || '').match(/(?:[^\s"]+|"[^"]*")+/g) || [];
+    const rules = [];
+    const terms = [];
+    for (const raw of tokens) {
+      const token = raw.replace(/^"|"$/g,'');
+      const m = token.match(/^([a-z]+):(.*)$/i);
+      if (!m) { terms.push(token.toLowerCase()); continue; }
+      rules.push([m[1].toLowerCase(), m[2].replace(/^"|"$/g,'')]);
+    }
+    return {rules, terms};
+  }
+
+  function passesAdvancedSearch(ev, q) {
+    const {rules, terms} = searchTokens(q);
+    const hay = [ev.title, ev.desc, ev.category, ev.location, ev.source, ev.citation, ev.quote, ev.certaintyNote, formatDate(ev), ev.tags.join(' '), ev.people.join(' '), ev.status, ev.sourceType].join(' ').toLowerCase();
+    if (terms.some(t => !hay.includes(t))) return false;
+    for (const [key,valueRaw] of rules) {
+      const value = valueRaw.toLowerCase();
+      if (key === 'category' && !ev.category.toLowerCase().includes(value)) return false;
+      if (key === 'tag' && !ev.tags.some(t=>t.toLowerCase().includes(value))) return false;
+      if (key === 'status' && ev.status !== value) return false;
+      if (key === 'source' && ev.sourceType !== value) return false;
+      if (key === 'person' && !ev.people.some(p=>p.toLowerCase().includes(value))) return false;
+      if (key === 'location' && !ev.location.toLowerCase().includes(value)) return false;
+      if (key === 'after' && dateKey(ev) < Number(value)) return false;
+      if (key === 'before' && dateKey(ev) > Number(value)) return false;
+      if (key === 'year' && Number(ev.year) !== Number(value)) return false;
+      if (key === 'pinned' && ev.pinned !== ['true','yes','1'].includes(value)) return false;
+      if (key === 'has' && value === 'source' && !(ev.source || ev.citation)) return false;
+      if (key === 'has' && value === 'quote' && !ev.quote) return false;
+      if (key === 'has' && value === 'relations' && !ev.relatedIds.length) return false;
+      if (key === 'is' && value === 'issue' && !auditEvent(ev).length) return false;
+      if (key === 'confidence' || key === 'importance') {
+        const actual = key === 'confidence' ? ev.confidence : ev.importance;
+        const cm = value.match(/^(>=|<=|>|<|=)?\s*(-?\d+(?:\.\d+)?)$/);
+        if (cm) {
+          const op = cm[1] || '='; const target = Number(cm[2]);
+          if ({'>':actual>target,'<':actual<target,'>=':actual>=target,'<=':actual<=target,'=':actual===target}[op] !== true) return false;
+        }
+      }
+    }
+    return true;
+  }
+
+  function duplicateGroups(events=state.events) {
+    const groups = [];
+    const used = new Set();
+    for (let i=0;i<events.length;i++) {
+      if (used.has(events[i].id)) continue;
+      const group = [events[i]];
+      for (let j=i+1;j<events.length;j++) {
+        const sameYear = Math.abs(dateKey(events[i]) - dateKey(events[j])) < 1;
+        const a = normalText(events[i].title), b = normalText(events[j].title);
+        const exact = a && a === b;
+        const wordsA = new Set(a.split(' ').filter(w=>w.length>3));
+        const wordsB = new Set(b.split(' ').filter(w=>w.length>3));
+        const overlap = [...wordsA].filter(w=>wordsB.has(w)).length / Math.max(1, Math.min(wordsA.size, wordsB.size));
+        if (sameYear && (exact || overlap >= .75)) { group.push(events[j]); used.add(events[j].id); }
+      }
+      if (group.length > 1) { groups.push(group); group.forEach(e=>used.add(e.id)); }
+    }
+    return groups;
   }
 
   function getFilters() {
@@ -639,8 +910,7 @@
   function visibleEvents() {
     const f = getFilters();
     let arr = state.events.filter(ev => {
-      const hay = [ev.title, ev.desc, ev.category, ev.location, ev.source, formatDate(ev), ev.tags.join(' ')].join(' ').toLowerCase();
-      if (f.q && !hay.includes(f.q)) return false;
+      if (f.q && !passesAdvancedSearch(ev, f.q)) return false;
       if (f.from !== null && dateKey(ev) < f.from) return false;
       if (f.to !== null && dateKey(ev) > f.to) return false;
       if (f.category && ev.category !== f.category) return false;
@@ -669,6 +939,8 @@
     renderTimelineCards(arr);
     renderList(arr);
     renderStory(arr);
+    renderDashboard(arr);
+    renderBatchBar();
     renderDetails();
     renderSnapshots();
     setView(state.view);
@@ -706,7 +978,7 @@
 
     arr.forEach((ev, idx) => {
       const card = document.createElement('article');
-      card.className = 'event-card';
+      card.className = 'event-card has-check';
       card.dataset.id = ev.id;
       card.draggable = true;
       card.style.borderLeftColor = ev.color;
@@ -714,12 +986,14 @@
       card.style.maxWidth = `${340 * state.zoom}px`;
       if (ev.id === state.selectedId) card.classList.add('selected');
       if (ev.pinned) card.classList.add('pinned');
+      if (state.selectedIds.has(ev.id)) card.classList.add('batch-selected');
       if (useDateSpacing && idx > 0) {
         const prev = arr[idx-1];
         const relativeGap = ((dateKey(ev) - dateKey(prev)) / span) * 420 * state.zoom;
         card.style.marginLeft = `${Math.min(220 * state.zoom, Math.max(0, relativeGap))}px`;
       }
       card.innerHTML = `
+        <input class="select-box" data-select-id="${escapeHTML(ev.id)}" type="checkbox" ${state.selectedIds.has(ev.id) ? 'checked' : ''} aria-label="Select ${escapeHTML(ev.title)}" />
         <div class="event-head">
           <div class="event-icon">${iconHTML(ev)}</div>
           <div>
@@ -732,6 +1006,7 @@
           <span class="tag">${escapeHTML(ev.category)}</span>
           ${ev.tags.slice(0,3).map(t => `<span class="tag">#${escapeHTML(t)}</span>`).join('')}
           <span class="tag">★ ${ev.importance}/5</span>
+          <span class="status-badge ${escapeHTML(ev.status)}">${escapeHTML(ev.status)}</span>
         </div>
         <div class="confidence" title="Evidence confidence ${ev.confidence}%"><span style="width:${ev.confidence}%"></span></div>
         <div class="card-actions">
@@ -740,8 +1015,11 @@
           <button class="icon-btn" data-act="delete" title="Delete">×</button>
         </div>`;
       card.addEventListener('click', (e) => {
+        const select = e.target.closest('[data-select-id]');
+        if (select) { e.stopPropagation(); return toggleBatchSelect(ev.id, select.checked); }
         const action = e.target.closest('[data-act]')?.dataset.act;
         if (action) return handleCardAction(action, ev.id);
+        if (e.ctrlKey || e.metaKey || e.shiftKey) return toggleBatchSelect(ev.id);
         selectEvent(ev.id);
       });
       card.addEventListener('dblclick', () => centerCard(card));
@@ -770,16 +1048,23 @@
   function renderList(arr) {
     if (!arr.length) { els.listView.innerHTML = '<div class="empty">No events to list.</div>'; return; }
     els.listView.innerHTML = `<table class="list-table">
-      <thead><tr><th>Date</th><th>Title</th><th>Category</th><th>Tags</th><th>Confidence</th><th>Source</th></tr></thead>
+      <thead><tr><th>Select</th><th>Date</th><th>Title</th><th>Status</th><th>Category</th><th>Tags / people</th><th>Confidence</th><th>Source</th></tr></thead>
       <tbody>${arr.map(ev => `<tr data-id="${escapeHTML(ev.id)}">
+        <td><input type="checkbox" data-select-id="${escapeHTML(ev.id)}" ${state.selectedIds.has(ev.id)?'checked':''} aria-label="Select ${escapeHTML(ev.title)}"></td>
         <td><b>${escapeHTML(formatDate(ev))}</b></td>
         <td>${ev.pinned ? '★ ' : ''}<b>${escapeHTML(ev.title)}</b><br><span class="muted">${escapeHTML(ev.desc.slice(0,140))}${ev.desc.length > 140 ? '…' : ''}</span></td>
+        <td><span class="status-badge ${escapeHTML(ev.status)}">${escapeHTML(ev.status)}</span></td>
         <td>${escapeHTML(ev.category)}</td>
-        <td>${ev.tags.map(t => `<span class="tag">#${escapeHTML(t)}</span>`).join(' ') || '—'}</td>
+        <td>${ev.tags.map(t => `<span class="tag">#${escapeHTML(t)}</span>`).join(' ') || '—'}<br><span class="muted">${escapeHTML(ev.people.join(', '))}</span></td>
         <td>${ev.confidence}%</td>
-        <td>${ev.source ? `<a class="source-link" href="${escapeHTML(ev.source)}" target="_blank" rel="noopener noreferrer">open</a>` : '—'}</td>
+        <td>${safeHref(ev.source) ? `<a class="source-link" href="${escapeHTML(safeHref(ev.source))}" target="_blank" rel="noopener noreferrer">open</a>` : (ev.citation ? 'citation' : '—')}</td>
       </tr>`).join('')}</tbody></table>`;
-    els.listView.querySelectorAll('tr[data-id]').forEach(row => row.addEventListener('click', () => selectEvent(row.dataset.id)));
+    els.listView.querySelectorAll('tr[data-id]').forEach(row => row.addEventListener('click', (e) => {
+      const box = e.target.closest('[data-select-id]');
+      if (box) { e.stopPropagation(); return toggleBatchSelect(row.dataset.id, box.checked); }
+      if (e.ctrlKey || e.metaKey || e.shiftKey) return toggleBatchSelect(row.dataset.id);
+      selectEvent(row.dataset.id);
+    }));
   }
 
   function renderStory(arr) {
@@ -789,10 +1074,44 @@
       <div>
         <h3>${escapeHTML(ev.icon || '📌')} ${escapeHTML(ev.title)}</h3>
         <p>${escapeHTML(ev.desc || 'No notes yet.')}</p>
-        <div class="event-meta" style="margin-top:8px;"><span class="tag">${escapeHTML(ev.category)}</span>${ev.tags.map(t=>`<span class="tag">#${escapeHTML(t)}</span>`).join('')}</div>
+        <div class="event-meta" style="margin-top:8px;"><span class="tag">${escapeHTML(ev.category)}</span><span class="status-badge ${escapeHTML(ev.status)}">${escapeHTML(ev.status)}</span>${ev.tags.map(t=>`<span class="tag">#${escapeHTML(t)}</span>`).join('')}</div>${ev.people.length ? `<div class="muted" style="margin-top:6px">People/entities: ${escapeHTML(ev.people.join(', '))}</div>` : ''}
       </div>
     </article>`).join('');
     els.storyView.querySelectorAll('[data-id]').forEach(row => row.addEventListener('click', () => selectEvent(row.dataset.id)));
+  }
+
+  function renderDashboard(arr) {
+    const allIssues = state.events.flatMap(ev => auditEvent(ev).map(issue => ({ev,issue})));
+    const avg = arr.length ? Math.round(arr.reduce((s,e)=>s+e.confidence,0)/arr.length) : 0;
+    const sourced = arr.filter(e=>e.source || e.citation).length;
+    const reviewed = arr.filter(e=>e.status === 'reviewed').length;
+    const categoryCounts = [...arr.reduce((m,e)=>m.set(e.category,(m.get(e.category)||0)+1),new Map()).entries()].sort((a,b)=>b[1]-a[1]).slice(0,10);
+    const centuryCounts = [...arr.reduce((m,e)=>{ const c = e.year < 0 ? `${Math.ceil(Math.abs(e.year)/100)}c BCE` : `${Math.floor(e.year/100)+1}c`; m.set(c,(m.get(c)||0)+1); return m; },new Map()).entries()].sort((a,b)=>b[1]-a[1]).slice(0,12);
+    const bars = (items) => { const max = Math.max(1,...items.map(x=>x[1])); return items.map(([label,count])=>`<div class="bar-row"><span title="${escapeHTML(label)}">${escapeHTML(label)}</span><div class="bar-track"><div class="bar-fill" style="width:${count/max*100}%"></div></div><b>${count}</b></div>`).join('') || '<div class="muted">No data.</div>'; };
+    els.dashboardView.innerHTML = `
+      <div class="dashboard-grid">
+        <div class="metric-card"><b>${arr.length}</b><span>visible records</span></div>
+        <div class="metric-card"><b>${avg}%</b><span>average confidence</span></div>
+        <div class="metric-card"><b>${arr.length ? Math.round(sourced/arr.length*100) : 0}%</b><span>with sources</span></div>
+        <div class="metric-card"><b>${arr.length ? Math.round(reviewed/arr.length*100) : 0}%</b><span>reviewed</span></div>
+      </div>
+      <div class="dashboard-columns">
+        <div class="chart-box"><h3>Events by category</h3>${bars(categoryCounts)}</div>
+        <div class="chart-box"><h3>Events by century</h3>${bars(centuryCounts)}</div>
+      </div>
+      <div class="dashboard-columns">
+        <div class="audit-box"><h3>Research quality audit</h3><div class="issue-list">${allIssues.slice(0,60).map(({ev,issue})=>`<div class="issue-item"><span><b>${escapeHTML(ev.title)}</b><br><span class="muted">${escapeHTML(issue)} · ${escapeHTML(formatDate(ev))}</span></span><button class="secondary small" data-audit-id="${escapeHTML(ev.id)}">Open</button></div>`).join('') || '<div class="muted">No obvious issues found.</div>'}</div></div>
+        <div class="audit-box"><h3>Potential duplicate groups</h3><div class="issue-list">${duplicateGroups().map(group=>`<div class="issue-item"><span><b>${group.length} similar records</b><br><span class="muted">${escapeHTML(group.map(e=>e.title).join(' · '))}</span></span><button class="secondary small" data-duplicate-ids="${escapeHTML(group.map(e=>e.id).join(','))}">Select</button></div>`).join('') || '<div class="muted">No likely duplicates found.</div>'}</div></div>
+      </div>`;
+    els.dashboardView.querySelectorAll('[data-audit-id]').forEach(btn=>btn.addEventListener('click',()=>{ selectEvent(btn.dataset.auditId); setView('timeline'); centerSelected(); }));
+    els.dashboardView.querySelectorAll('[data-duplicate-ids]').forEach(btn=>btn.addEventListener('click',()=>{ state.selectedIds = new Set(btn.dataset.duplicateIds.split(',')); render(); setView('list'); }));
+  }
+
+  function renderBatchBar() {
+    const count = state.selectedIds.size;
+    els.batchCount.textContent = count;
+    els.batchBar.classList.toggle('show', count > 0);
+    els.btnMergeSelected.disabled = count !== 2;
   }
 
   function renderDetails() {
@@ -811,15 +1130,25 @@
     els.detailLocation.textContent = ev.location || '—';
     els.detailTags.textContent = ev.tags.length ? ev.tags.map(t => `#${t}`).join(' ') : '—';
     els.detailConfidence.textContent = `${ev.confidence}% · importance ${ev.importance}/5`;
+    els.detailStatus.innerHTML = `<span class="status-badge ${escapeHTML(ev.status)}">${escapeHTML(ev.status)}</span> · ${escapeHTML(ev.sourceType)} source`;
+    els.detailPeople.textContent = ev.people.length ? ev.people.join(', ') : '—';
+    els.detailCertaintyNote.textContent = ev.certaintyNote || '—';
+    els.detailRelations.innerHTML = ev.relatedIds.length ? ev.relatedIds.map(id => { const rel = state.events.find(e=>e.id===id); return rel ? `<button class="relation-link" data-rel-id="${escapeHTML(id)}">${escapeHTML(rel.title)}</button>` : ''; }).join('') : '—';
+    els.detailRelations.querySelectorAll?.('[data-rel-id]').forEach(btn=>btn.addEventListener('click',()=>selectEvent(btn.dataset.relId)));
     els.detailIcon.innerHTML = iconHTML(ev);
-    if (ev.source) els.detailSource.innerHTML = `<a class="source-link" href="${escapeHTML(ev.source)}" target="_blank" rel="noopener noreferrer">${escapeHTML(ev.source)}</a>`;
-    else els.detailSource.textContent = '—';
+    const href = safeHref(ev.source);
+    if (href) els.detailSource.innerHTML = `<a class="source-link" href="${escapeHTML(href)}" target="_blank" rel="noopener noreferrer">${escapeHTML(ev.source)}</a>`;
+    else els.detailSource.textContent = ev.source || '—';
+    els.detailCitation.textContent = ev.citation || '';
+    els.detailQuote.textContent = ev.quote || '—';
     els.btnPinSelected.textContent = ev.pinned ? 'Unpin' : 'Pin';
   }
 
   function renderStats(arr) {
     els.statVisible.textContent = arr.length;
     els.statTotal.textContent = state.events.length;
+    els.statSelected.textContent = state.selectedIds.size;
+    els.statIssues.textContent = state.events.reduce((n,e)=>n+auditEvent(e).length,0);
     if (arr.length) {
       const keys = arr.map(dateKey);
       els.statSpan.textContent = `${Math.round(Math.max(...keys) - Math.min(...keys))}`;
@@ -843,6 +1172,10 @@
     els.categoryFilter.innerHTML = '<option value="">All categories</option>' + cats.map(c => `<option value="${escapeHTML(c)}">${escapeHTML(c)}</option>`).join('');
     if (cats.includes(current)) els.categoryFilter.value = current;
     els.categoryOptions.innerHTML = cats.map(c => `<option value="${escapeHTML(c)}"></option>`).join('');
+    const currentRelations = new Set([...els.evtRelatedIds.selectedOptions].map(o=>o.value));
+    const excluded = state.editingId;
+    els.evtRelatedIds.innerHTML = state.events.filter(e=>e.id!==excluded).sort((a,b)=>dateKey(a)-dateKey(b)).map(e=>`<option value="${escapeHTML(e.id)}">${escapeHTML(formatDate(e))} — ${escapeHTML(e.title)}</option>`).join('');
+    [...els.evtRelatedIds.options].forEach(o=>o.selected=currentRelations.has(o.value));
   }
 
   function handleCardAction(action, id) {
@@ -856,6 +1189,37 @@
     render();
     const selected = els.eventTrack.querySelector(`[data-id="${CSS.escape(id)}"]`);
     if (selected) selected.classList.add('selected');
+  }
+
+  function toggleBatchSelect(id, force) {
+    const shouldSelect = force === undefined ? !state.selectedIds.has(id) : Boolean(force);
+    if (shouldSelect) state.selectedIds.add(id); else state.selectedIds.delete(id);
+    render();
+  }
+
+  function clearSelection() { state.selectedIds.clear(); render(); }
+
+  function selectVisible() { visibleEvents().forEach(ev=>state.selectedIds.add(ev.id)); render(); toast(`${state.selectedIds.size} events selected`); }
+
+  function batchUpdate(kind) {
+    const ids = new Set(state.selectedIds); if (!ids.size) return toast('Select events first');
+    if (kind === 'pin') commit(()=>state.events.forEach(e=>{ if(ids.has(e.id)) e.pinned=true; }), 'Selected events pinned');
+    if (kind === 'status') { const v = prompt('Status: draft, reviewed, or disputed', 'reviewed'); if (!['draft','reviewed','disputed'].includes(v)) return; commit(()=>state.events.forEach(e=>{ if(ids.has(e.id)) e.status=v; }), 'Status updated'); }
+    if (kind === 'category') { const v = prompt('New category'); if (!v?.trim()) return; commit(()=>state.events.forEach(e=>{ if(ids.has(e.id)) { e.category=v.trim(); e.color=colorForCategory(v.trim()); } }), 'Category updated'); }
+    if (kind === 'delete') { if (!confirm(`Delete ${ids.size} selected events? You can undo this.`)) return; commit(()=>{ state.events=state.events.filter(e=>!ids.has(e.id)); state.selectedIds.clear(); if(ids.has(state.selectedId)) state.selectedId=null; }, 'Selected events deleted'); }
+  }
+
+  function mergeSelected() {
+    const ids=[...state.selectedIds]; if(ids.length!==2) return toast('Select exactly two events');
+    const [a,b]=ids.map(id=>state.events.find(e=>e.id===id)); if(!a||!b) return;
+    const keep = confirm(`Merge “${b.title}” into “${a.title}”? Press Cancel to merge in the opposite direction.`) ? a : b;
+    const remove = keep===a ? b : a;
+    commit(()=>{
+      keep.tags=uniq([...keep.tags,...remove.tags]); keep.people=uniq([...keep.people,...remove.people]); keep.relatedIds=uniq([...keep.relatedIds,...remove.relatedIds]).filter(id=>id!==keep.id&&id!==remove.id);
+      keep.desc=[keep.desc,remove.desc].filter(Boolean).join('\n\n'); keep.citation=[keep.citation,remove.citation].filter(Boolean).join(' | '); keep.quote=[keep.quote,remove.quote].filter(Boolean).join('\n'); keep.certaintyNote=[keep.certaintyNote,remove.certaintyNote].filter(Boolean).join('\n');
+      keep.source=keep.source||remove.source; keep.confidence=Math.max(keep.confidence,remove.confidence); keep.importance=Math.max(keep.importance,remove.importance); keep.updatedAt=new Date().toISOString();
+      state.events=state.events.filter(e=>e.id!==remove.id); state.events.forEach(e=>e.relatedIds=e.relatedIds.map(id=>id===remove.id?keep.id:id)); state.selectedIds=new Set([keep.id]); state.selectedId=keep.id;
+    }, 'Events merged');
   }
 
   function openAddModal() {
@@ -878,6 +1242,7 @@
 
   function fillModal(ev) {
     els.evtTitle.value = ev.title === 'Event 1' ? '' : ev.title;
+    els.evtQuickDate.value = '';
     els.evtCategory.value = ev.category || 'General';
     els.evtYear.value = ev.year ?? '';
     els.evtMonth.value = ev.month ?? '';
@@ -891,7 +1256,15 @@
     els.evtTags.value = ev.tags.join(', ');
     els.evtImportance.value = ev.importance || 3;
     els.evtConfidence.value = ev.confidence ?? 75;
+    els.evtStatus.value = ev.status || 'draft';
+    els.evtSourceType.value = ev.sourceType || 'unknown';
+    els.evtPeople.value = ev.people.join(', ');
+    updateSelectOptions();
+    [...els.evtRelatedIds.options].forEach(o=>o.selected=ev.relatedIds.includes(o.value));
     els.evtSource.value = ev.source || '';
+    els.evtCitation.value = ev.citation || '';
+    els.evtQuote.value = ev.quote || '';
+    els.evtCertaintyNote.value = ev.certaintyNote || '';
     els.evtDesc.value = ev.desc || '';
   }
 
@@ -920,11 +1293,26 @@
       tags: els.evtTags.value.split(',').map(t => t.trim()).filter(Boolean),
       importance: Number(els.evtImportance.value),
       confidence: Number(els.evtConfidence.value),
+      status: els.evtStatus.value,
+      sourceType: els.evtSourceType.value,
+      people: splitList(els.evtPeople.value),
+      relatedIds: [...els.evtRelatedIds.selectedOptions].map(o=>o.value),
       source: els.evtSource.value.trim(),
+      citation: els.evtCitation.value.trim(),
+      quote: els.evtQuote.value.trim(),
+      certaintyNote: els.evtCertaintyNote.value.trim(),
       desc: els.evtDesc.value.trim()
     });
     if (ev.precision === 'range' && ev.endYear === null) throw new Error('Range precision needs an end year.');
     return ev;
+  }
+
+  function applyQuickDate() {
+    const value = els.evtQuickDate.value.trim(); if(!value) return toast('Enter a date to parse');
+    const p = parseLegacyDate(value);
+    els.evtYear.value = p.year ?? ''; els.evtMonth.value = p.month ?? ''; els.evtDay.value = p.day ?? ''; els.evtEndYear.value = p.endYear ?? ''; els.evtPrecision.value = p.precision || 'year';
+    els.evtDateLabel.value = value;
+    toast('Date parsed');
   }
 
   function saveModal() {
@@ -983,7 +1371,8 @@
   function togglePin(id = state.selectedId) {
     const ev = state.events.find(x => x.id === id);
     if (!ev) return;
-    commit(() => { ev.pinned = !ev.pinned; ev.updatedAt = new Date().toISOString(); state.selectedId = id; }, ev.pinned ? 'Event unpinned' : 'Event pinned');
+    const next = !ev.pinned;
+    commit(() => { ev.pinned = next; ev.updatedAt = new Date().toISOString(); state.selectedId = id; }, next ? 'Event pinned' : 'Event unpinned');
   }
 
   function reorderByDrop(srcId, dstId) {
@@ -1030,34 +1419,53 @@
     const isTimeline = view === 'timeline';
     const isList = view === 'list';
     const isStory = view === 'story';
+    const isDashboard = view === 'dashboard';
     els.timelineView.classList.toggle('hidden', !isTimeline);
     els.listView.classList.toggle('show', isList);
     els.storyView.classList.toggle('show', isStory);
-    for (const [btn, active] of [[els.tabTimeline,isTimeline],[els.tabList,isList],[els.tabStory,isStory]]) {
+    els.dashboardView.classList.toggle('show', isDashboard);
+    for (const [btn, active] of [[els.tabTimeline,isTimeline],[els.tabList,isList],[els.tabStory,isStory],[els.tabDashboard,isDashboard]]) {
       btn.classList.toggle('active', active);
       btn.setAttribute('aria-selected', active ? 'true' : 'false');
     }
   }
 
   function exportJSON() {
-    downloadFile('timeline-research-export.json', JSON.stringify(state.events, null, 2), 'application/json');
+    const payload = {schema:'historical-timeline-research-studio',version:APP_VERSION,exportedAt:new Date().toISOString(),events:state.events};
+    downloadFile('timeline-research-studio-v3.json', JSON.stringify(payload, null, 2), 'application/json');
   }
 
   function exportCSV() {
-    const headers = ['id','title','year','month','day','endYear','precision','dateLabel','icon','color','category','location','tags','importance','confidence','source','desc','order','pinned'];
-    const rows = [headers, ...state.events.map(ev => headers.map(h => h === 'tags' ? ev.tags.join('; ') : ev[h] ?? ''))];
-    const csv = rows.map(row => row.map(csvCell).join(',')).join('\n');
-    downloadFile('timeline-research-export.csv', csv, 'text/csv');
+    const headers = ['id','title','year','month','day','endYear','precision','dateLabel','icon','color','category','location','tags','people','relatedIds','status','sourceType','importance','confidence','source','citation','quote','certaintyNote','desc','order','pinned','createdAt','updatedAt'];
+    const rows = [headers, ...state.events.map(ev => headers.map(h => ['tags','people','relatedIds'].includes(h) ? ev[h].join('; ') : ev[h] ?? ''))];
+    const csv = '\uFEFF' + rows.map(row => row.map(csvCell).join(',')).join('\n');
+    downloadFile('timeline-research-studio.csv', csv, 'text/csv;charset=utf-8');
   }
 
   function exportMarkdown() {
     const arr = visibleEvents();
-    const md = ['# Historical Timeline', '', `Exported: ${new Date().toLocaleString()}`, '', ...arr.map(ev => {
+    const md = ['# Historical Timeline Research Report', '', `Exported: ${new Date().toLocaleString()}`, '', ...arr.map(ev => {
       const tags = ev.tags.length ? `\n**Tags:** ${ev.tags.map(t => `#${t}`).join(' ')}` : '';
+      const people = ev.people.length ? `\n**People/entities:** ${ev.people.join(', ')}` : '';
       const source = ev.source ? `\n**Source:** ${ev.source}` : '';
-      return `## ${formatDate(ev)} — ${ev.title}\n\n**Category:** ${ev.category}  \n**Location:** ${ev.location || '—'}  \n**Importance:** ${ev.importance}/5  \n**Confidence:** ${ev.confidence}%${tags}${source}\n\n${ev.desc || ''}\n`;
+      const citation = ev.citation ? `\n**Citation:** ${ev.citation}` : '';
+      const quote = ev.quote ? `\n\n> ${ev.quote.replace(/\n/g,'\n> ')}` : '';
+      return `## ${formatDate(ev)} — ${ev.title}\n\n**Category:** ${ev.category}  \n**Status:** ${ev.status}  \n**Location:** ${ev.location || '—'}  \n**Importance:** ${ev.importance}/5  \n**Confidence:** ${ev.confidence}%${tags}${people}${source}${citation}\n\n${ev.desc || ''}${quote}\n${ev.certaintyNote ? `\n**Evidence note:** ${ev.certaintyNote}\n` : ''}`;
     })].join('\n');
-    downloadFile('timeline.md', md, 'text/markdown');
+    downloadFile('timeline-research-report.md', md, 'text/markdown');
+  }
+
+  function reportHTML(arr=visibleEvents()) {
+    const items = arr.map(ev=>`<article><header><h2>${escapeHTML(formatDate(ev))} — ${escapeHTML(ev.title)}</h2><span>${escapeHTML(ev.status)} · ${ev.confidence}% confidence</span></header><p>${escapeHTML(ev.desc || '').replace(/\n/g,'<br>')}</p><dl><dt>Category</dt><dd>${escapeHTML(ev.category)}</dd><dt>Location</dt><dd>${escapeHTML(ev.location||'—')}</dd><dt>People/entities</dt><dd>${escapeHTML(ev.people.join(', ')||'—')}</dd><dt>Tags</dt><dd>${escapeHTML(ev.tags.join(', ')||'—')}</dd><dt>Citation</dt><dd>${escapeHTML(ev.citation||ev.source||'—')}</dd></dl>${ev.quote?`<blockquote>${escapeHTML(ev.quote)}</blockquote>`:''}${ev.certaintyNote?`<aside><b>Evidence note:</b> ${escapeHTML(ev.certaintyNote)}</aside>`:''}</article>`).join('');
+    return `<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Historical Timeline Research Report</title><style>body{font:16px/1.55 system-ui;max-width:980px;margin:40px auto;padding:0 20px;color:#172033}h1{font-size:2.2rem}article{border:1px solid #d9e0ea;border-left:7px solid #3178c6;border-radius:14px;padding:18px;margin:18px 0;break-inside:avoid}article header{display:flex;justify-content:space-between;gap:20px;align-items:start}h2{margin:0;font-size:1.25rem}header span{color:#667085;white-space:nowrap}dl{display:grid;grid-template-columns:130px 1fr;gap:5px 12px}dt{font-weight:800}dd{margin:0}blockquote,aside{background:#f4f7fb;border-radius:10px;padding:12px}@media print{body{margin:0}article{box-shadow:none}}</style><body><h1>Historical Timeline Research Report</h1><p>Generated ${escapeHTML(new Date().toLocaleString())} · ${arr.length} events</p>${items}</body></html>`;
+  }
+
+  function exportHTML() { downloadFile('timeline-research-report.html', reportHTML(), 'text/html'); }
+
+  async function copyReport() {
+    const text = visibleEvents().map(ev=>`${formatDate(ev)} — ${ev.title}\n${ev.desc}\nConfidence: ${ev.confidence}% · Status: ${ev.status}`).join('\n\n');
+    try { await navigator.clipboard.writeText(text); toast('Visible report copied'); }
+    catch { const ta=document.createElement('textarea'); ta.value=text; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove(); toast('Visible report copied'); }
   }
 
   function csvCell(value) {
@@ -1117,7 +1525,7 @@
       const cells = parseCSVLine(line);
       const obj = {};
       headers.forEach((h,i) => obj[h] = cells[i] ?? '');
-      if (typeof obj.tags === 'string') obj.tags = obj.tags.split(/[;,]/).map(t=>t.trim()).filter(Boolean);
+      for (const key of ['tags','people','relatedIds']) if (typeof obj[key] === 'string') obj[key] = obj[key].split(/[;,]/).map(t=>t.trim()).filter(Boolean);
       return obj;
     });
   }
@@ -1152,7 +1560,7 @@
 
   function saveSnapshot() {
     const snaps = getSnapshots();
-    snaps.unshift({ id: uid(), createdAt: new Date().toISOString(), count: state.events.length, events: state.events });
+    snaps.unshift({ id: uid(), version:APP_VERSION, createdAt: new Date().toISOString(), count: state.events.length, events: JSON.parse(JSON.stringify(state.events)) });
     localStorage.setItem(SNAPSHOT_KEY, JSON.stringify(snaps.slice(0,12)));
     renderSnapshots();
     toast('Snapshot saved');
@@ -1177,6 +1585,41 @@
     renderSnapshots();
     toast('Snapshots cleared');
   }
+
+  function runAudit() { setView('dashboard'); render(); toast(`${state.events.reduce((n,e)=>n+auditEvent(e).length,0)} research issues found`); }
+
+  function findDuplicatesTool() {
+    const groups=duplicateGroups();
+    if(!groups.length) return toast('No likely duplicates found');
+    state.selectedIds=new Set(groups.flat().map(e=>e.id)); setView('list'); render(); toast(`${groups.length} duplicate group${groups.length===1?'':'s'} selected`);
+  }
+
+  function normalizeTags() {
+    commit(()=>state.events.forEach(ev=>{ ev.tags=uniq(ev.tags.map(t=>t.trim().toLowerCase()).filter(Boolean)).sort(); ev.people=uniq(ev.people.map(p=>p.trim()).filter(Boolean)).sort((a,b)=>a.localeCompare(b)); }), 'Tags and entity names cleaned');
+  }
+
+  const commandActions = () => [
+    {label:'Add a new event', hint:'N', run:openAddModal},
+    {label:'Focus search', hint:'/', run:()=>els.searchInput.focus()},
+    {label:'Open research dashboard', hint:'Audit', run:runAudit},
+    {label:'Find possible duplicates', hint:'Data quality', run:findDuplicatesTool},
+    {label:'Select all visible events', hint:'Batch', run:selectVisible},
+    {label:'Clear selected events', hint:'Batch', run:clearSelection},
+    {label:'Normalize tags and people', hint:'Cleanup', run:normalizeTags},
+    {label:'Save recovery snapshot', hint:'Backup', run:saveSnapshot},
+    {label:'Export versioned JSON', hint:'Backup', run:exportJSON},
+    {label:'Export standalone HTML report', hint:'Report', run:exportHTML},
+    {label:'Toggle light/dark theme', hint:'Appearance', run:toggleTheme},
+    {label:'Print current view', hint:'Report', run:()=>window.print()},
+    {label:'Show help', hint:'?', run:openHelp}
+  ];
+
+  function openPalette() { state.paletteIndex=0; els.paletteBackdrop.classList.add('show'); els.paletteBackdrop.setAttribute('aria-hidden','false'); els.paletteInput.value=''; renderPalette(); setTimeout(()=>els.paletteInput.focus(),20); }
+  function closePalette() { els.paletteBackdrop.classList.remove('show'); els.paletteBackdrop.setAttribute('aria-hidden','true'); }
+  function renderPalette() { const q=els.paletteInput.value.toLowerCase(); const acts=commandActions().filter(a=>`${a.label} ${a.hint}`.toLowerCase().includes(q)); state.paletteIndex=Math.min(state.paletteIndex,Math.max(0,acts.length-1)); els.paletteList.innerHTML=acts.map((a,i)=>`<button class="palette-item ${i===state.paletteIndex?'active':''}" data-command-index="${i}"><span>${escapeHTML(a.label)}</span><small>${escapeHTML(a.hint)}</small></button>`).join('')||'<div class="empty">No matching commands.</div>'; els.paletteList.querySelectorAll('[data-command-index]').forEach(btn=>btn.addEventListener('click',()=>{ const action=acts[Number(btn.dataset.commandIndex)]; closePalette(); action?.run(); })); }
+  function executePalette() { const q=els.paletteInput.value.toLowerCase(); const acts=commandActions().filter(a=>`${a.label} ${a.hint}`.toLowerCase().includes(q)); const action=acts[state.paletteIndex]; if(action){closePalette();action.run();} }
+  function openHelp(){ els.helpBackdrop.classList.add('show'); els.helpBackdrop.setAttribute('aria-hidden','false'); }
+  function closeHelp(){ els.helpBackdrop.classList.remove('show'); els.helpBackdrop.setAttribute('aria-hidden','true'); }
 
   function applySettings() {
     document.documentElement.dataset.theme = state.settings.theme;
@@ -1205,6 +1648,8 @@
 
   function bind() {
     els.btnAdd.addEventListener('click', openAddModal);
+    els.btnCommand.addEventListener('click', openPalette);
+    els.btnHelp.addEventListener('click', openHelp);
     els.btnUndo.addEventListener('click', undo);
     els.btnRedo.addEventListener('click', redo);
     els.btnTheme.addEventListener('click', toggleTheme);
@@ -1213,9 +1658,22 @@
     els.btnExportJSON.addEventListener('click', exportJSON);
     els.btnExportCSV.addEventListener('click', exportCSV);
     els.btnExportMarkdown.addEventListener('click', exportMarkdown);
+    els.btnExportHTML.addEventListener('click', exportHTML);
+    els.btnCopyReport.addEventListener('click', copyReport);
     els.fileImport.addEventListener('change', e => importFile(e.target.files[0]));
     els.btnSnapshot.addEventListener('click', saveSnapshot);
     els.btnClearSnapshots.addEventListener('click', clearSnapshots);
+    els.btnAudit.addEventListener('click', runAudit);
+    els.btnDuplicates.addEventListener('click', findDuplicatesTool);
+    els.btnNormalizeTags.addEventListener('click', normalizeTags);
+    els.btnSelectVisible.addEventListener('click', selectVisible);
+    els.btnBatchPin.addEventListener('click', ()=>batchUpdate('pin'));
+    els.btnBatchStatus.addEventListener('click', ()=>batchUpdate('status'));
+    els.btnBatchCategory.addEventListener('click', ()=>batchUpdate('category'));
+    els.btnBatchDelete.addEventListener('click', ()=>batchUpdate('delete'));
+    els.btnMergeSelected.addEventListener('click', mergeSelected);
+    els.btnClearSelection.addEventListener('click', clearSelection);
+    els.btnParseDate.addEventListener('click', applyQuickDate);
 
     const filterRender = debounce(render, 120);
     [els.searchInput, els.filterFromYear, els.filterToYear, els.categoryFilter, els.tagFilter, els.minConfidence, els.minImportance, els.zoomRange, els.sortSelect].forEach(el => el.addEventListener('input', filterRender));
@@ -1232,6 +1690,7 @@
     els.tabTimeline.addEventListener('click', () => setView('timeline'));
     els.tabList.addEventListener('click', () => setView('list'));
     els.tabStory.addEventListener('click', () => setView('story'));
+    els.tabDashboard.addEventListener('click', () => setView('dashboard'));
 
     els.btnEditSelected.addEventListener('click', () => state.selectedId ? openEditModal(state.selectedId) : toast('No event selected'));
     els.btnPinSelected.addEventListener('click', () => togglePin());
@@ -1243,16 +1702,23 @@
     els.modalSave.addEventListener('click', saveModal);
     els.modalDelete.addEventListener('click', () => deleteEvent(state.editingId));
     els.modalBackdrop.addEventListener('click', (e) => { if (e.target === els.modalBackdrop) closeModal(); });
+    els.paletteBackdrop.addEventListener('click', e=>{ if(e.target===els.paletteBackdrop) closePalette(); });
+    els.paletteInput.addEventListener('input', renderPalette);
+    els.paletteInput.addEventListener('keydown', e=>{ const count=els.paletteList.querySelectorAll('[data-command-index]').length; if(e.key==='ArrowDown'){e.preventDefault();state.paletteIndex=Math.min(count-1,state.paletteIndex+1);renderPalette();} if(e.key==='ArrowUp'){e.preventDefault();state.paletteIndex=Math.max(0,state.paletteIndex-1);renderPalette();} if(e.key==='Enter'){e.preventDefault();executePalette();} if(e.key==='Escape')closePalette(); });
+    els.btnCloseHelp.addEventListener('click', closeHelp);
+    els.helpBackdrop.addEventListener('click', e=>{if(e.target===els.helpBackdrop)closeHelp();});
 
     document.addEventListener('keydown', (e) => {
       const tag = document.activeElement?.tagName;
       const typing = ['INPUT','TEXTAREA','SELECT'].includes(tag);
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); return openPalette(); }
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') { e.preventDefault(); return e.shiftKey ? redo() : undo(); }
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'y') { e.preventDefault(); return redo(); }
       if (!typing && e.key.toLowerCase() === 'n') openAddModal();
       if (!typing && e.key === '/') { e.preventDefault(); els.searchInput.focus(); }
+      if (!typing && e.key === '?') { e.preventDefault(); openHelp(); }
       if (!typing && e.key === 'Delete') deleteEvent();
-      if (e.key === 'Escape') closeModal();
+      if (e.key === 'Escape') { closeModal(); closePalette(); closeHelp(); }
     });
 
     els.timelineView.addEventListener('pointerdown', (e) => {
@@ -1273,7 +1739,7 @@
 
     window.addEventListener('dragover', e => e.preventDefault());
     window.addEventListener('drop', e => {
-      if (e.dataTransfer.files?.length) return;
+      if (e.dataTransfer.files?.length) { importFile(e.dataTransfer.files[0]); return; }
       const text = e.dataTransfer.getData('text/plain');
       if (!text || e.target.closest('.event-card')) return;
       try {
@@ -1292,9 +1758,11 @@
   window.TimelineTool = {
     addEvent: (obj) => { let id; commit(() => { const ev = normalizeEvent(obj, state.events.length); ev.id = uid(); state.events.push(ev); id = ev.id; state.selectedId = id; }, 'Event added by API'); return id; },
     getEvents: () => JSON.parse(JSON.stringify(state.events)),
-    setEvents: (arr) => { if (!Array.isArray(arr)) throw new Error('setEvents expects an array'); commit(() => { state.events = arr.map(normalizeEvent); state.selectedId = null; }, 'Events replaced'); },
+    setEvents: (arr) => { if (!Array.isArray(arr)) throw new Error('setEvents expects an array'); commit(() => { state.events = arr.map(normalizeEvent); state.selectedId = null; state.selectedIds.clear(); }, 'Events replaced'); },
     reset: () => { if (confirm('Reset timeline to sample data?')) commit(() => { state.events = sampleEvents(); state.selectedId = null; }, 'Timeline reset'); },
-    exportJSON: () => JSON.stringify(state.events, null, 2)
+    audit: () => state.events.map(ev=>({id:ev.id,title:ev.title,issues:auditEvent(ev)})).filter(x=>x.issues.length),
+    findDuplicates: () => duplicateGroups().map(g=>g.map(e=>({id:e.id,title:e.title,year:e.year}))),
+    exportJSON: () => JSON.stringify({schema:'historical-timeline-research-studio',version:APP_VERSION,events:state.events}, null, 2)
   };
 
   load();
