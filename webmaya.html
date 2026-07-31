@@ -3,7 +3,24 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>WebMaya Advanced Studio v5</title>
+  <title>WebMaya Advanced Studio v6 — Component Studio</title>
+  <meta name="description" content="A browser-based 3D modeling, sculpting, material, and animation studio with topology-aware component editing." />
+  <meta property="og:type" content="website" />
+  <meta property="og:title" content="WebMaya v6 — Component Studio" />
+  <meta property="og:description" content="Topology-aware multi-selection, shared-pivot editing, and true face-region extrusion in the browser." />
+  <meta property="og:image" id="og-image" content="og.png" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="WebMaya v6 — Component Studio" />
+  <meta name="twitter:description" content="Topology-aware multi-selection and region modeling, entirely in the browser." />
+  <meta name="twitter:image" id="twitter-image" content="og.png" />
+  <script>
+    // Keep social image metadata absolute on every host, including local previews and deployments.
+    document.addEventListener('DOMContentLoaded', () => {
+      const image = new URL('og.png', window.location.href).href;
+      document.getElementById('og-image').content = image;
+      document.getElementById('twitter-image').content = image;
+    });
+  </script>
   <style>
     :root {
       --bg:#171717; --panel:#202020; --panel2:#252525; --header:#2c2c2c; --accent:#007fd4;
@@ -83,6 +100,36 @@
     .cmdk-item.active { background:var(--accent); color:#fff; }
     .cmdk-item.active .ci-grp, .cmdk-item.active .ci-hint { color:rgba(255,255,255,.8); }
     .cmdk-empty { padding:20px; text-align:center; color:#777; font-size:12px; }
+    /* Component Studio */
+    .selection-summary { display:flex; align-items:center; justify-content:space-between; gap:8px; min-height:26px; margin:7px 0; padding:5px 7px; background:#171717; border:1px solid #333; border-radius:5px; font-size:10px; }
+    .selection-summary strong { color:#f2f2f2; font-size:11px; }
+    .selection-summary .selection-kind { color:var(--hot); text-transform:uppercase; letter-spacing:.06em; font-weight:800; }
+    .selection-options { margin-top:8px; padding-top:8px; border-top:1px solid #343434; }
+    #marquee-btn.active { background:var(--hot); border-color:var(--hot); color:#111; font-weight:800; }
+    #viewport.marquee-armed { cursor:crosshair; }
+    #marquee-box { position:absolute; display:none; z-index:12; pointer-events:none; border:1px solid #68c8ff; background:rgba(0,127,212,.16); box-shadow:0 0 0 1px rgba(0,0,0,.45) inset; }
+    #component-hud { position:absolute; right:10px; top:10px; z-index:5; display:none; align-items:center; gap:7px; padding:5px 8px; border:1px solid rgba(255,255,255,.14); border-radius:999px; background:rgba(17,17,17,.78); backdrop-filter:blur(5px); color:#ddd; font-size:10px; pointer-events:none; }
+    #component-hud.visible { display:flex; }
+    #component-hud strong { color:var(--hot); }
+    .mobile-panel-toggle { display:none; }
+    @media (max-width:1100px) {
+      #app { grid-template-columns:46px 230px minmax(360px,1fr) 255px; }
+      .timeline-tools { gap:4px; padding:0 6px; }
+      .timeline-tools .hint { display:none; }
+    }
+    @media (max-width:900px) {
+      #app { grid-template-columns:46px minmax(0,1fr); grid-template-rows:36px 1fr 170px 25px; }
+      #header { overflow-x:auto; scrollbar-width:thin; white-space:nowrap; }
+      .mobile-panel-toggle { display:block; }
+      #modes { grid-column:1/2; grid-row:2/4; }
+      #viewport { grid-column:2/3; grid-row:2/3; min-width:0; }
+      #timeline { grid-column:2/3; grid-row:3/4; min-width:0; }
+      .timeline-tools { overflow-x:auto; flex:0 0 34px; }
+      #left-panel, #right-panel { position:fixed; top:36px; bottom:25px; z-index:80; width:min(295px,calc(100vw - 46px)); visibility:hidden; pointer-events:none; box-shadow:0 18px 50px rgba(0,0,0,.65); transition:transform .2s ease, visibility 0s linear .2s; }
+      #left-panel { left:46px; transform:translateX(-110%); }
+      #right-panel { right:0; transform:translateX(110%); }
+      body.show-left-panel #left-panel, body.show-right-panel #right-panel { visibility:visible; pointer-events:auto; transform:translateX(0); transition-delay:0s; }
+    }
   </style>
   <script type="importmap">
     {
@@ -99,7 +146,9 @@
 <body>
 <div id="app">
   <div id="header">
-    <div class="brand">WEBMAYA v5</div>
+    <div class="brand">WEBMAYA v6</div>
+    <div class="menu-btn mobile-panel-toggle" id="show-tools-btn" onclick="Editor.togglePanel('left')" aria-controls="left-panel" aria-expanded="false">Tools</div>
+    <div class="menu-btn mobile-panel-toggle" id="show-inspector-btn" onclick="Editor.togglePanel('right')" aria-controls="right-panel" aria-expanded="false">Inspect</div>
     <div class="menu-btn" onclick="Palette.open()" title="Command palette (Ctrl+K)">⌘ <span class="kbd">Ctrl K</span></div>
     <span style="color:#555">|</span>
     <div class="menu-btn" onclick="Editor.newScene()">New</div>
@@ -127,7 +176,7 @@
     <div class="mode-icon" id="m-sculpt" onclick="Editor.setMode('sculpt')" title="Sculpt Brush (F11)">🖌</div>
   </div>
 
-  <div class="panel" style="grid-column:2/3; grid-row:2/4;">
+  <div class="panel" id="left-panel" style="grid-column:2/3; grid-row:2/4;">
     <div class="section">
       <div class="section-head">Create</div>
       <div class="grid-2">
@@ -155,12 +204,13 @@
         <button class="btn" onclick="Tools.dropToGround()">To Ground</button>
       </div>
       <div id="tools-face" class="grid-2 hidden">
-        <button class="btn" onclick="Tools.extrudeFace()">Extrude</button>
-        <button class="btn" onclick="Tools.insetFace()">Inset</button>
+        <div class="prop-row" style="grid-column:1/-1; margin-bottom:2px;"><span class="prop-label">Offset</span><input class="prop-input" id="face-offset" type="number" value="0.45" min="-10000" max="10000" step="0.05" /></div>
+        <button class="btn primary" onclick="Tools.extrudeFace()">Extrude Region</button>
+        <button class="btn" onclick="Tools.insetFace()">Inset Each</button>
         <button class="btn" onclick="Tools.subdivideFace()">Subdivide</button>
         <button class="btn" onclick="Tools.pokeFace()">Poke</button>
         <button class="btn" onclick="Tools.flipFace()">Flip Face</button>
-        <button class="btn danger" onclick="Tools.deleteFace()">Del Face</button>
+        <button class="btn danger" onclick="Tools.deleteFace()">Delete Faces</button>
       </div>
       <div id="tools-vertex" class="hidden">
         <div class="grid-2">
@@ -207,6 +257,20 @@
         </div>
         <div class="hint">Drag on the selected mesh. Shift = smooth, Alt = invert, [ ] = brush size. Sculpting is BVH-accelerated. Pick the <b>Mask</b> brush to paint protected zones (red) that resist every brush; Alt erases.</div>
       </div>
+      <div id="component-selection" class="selection-options hidden">
+        <div class="selection-summary"><span><strong id="component-count">0 selected</strong></span><span class="selection-kind" id="component-kind">Face</span></div>
+        <div class="grid-3">
+          <button class="btn" onclick="Selection.selectAll()">All</button>
+          <button class="btn" onclick="Selection.grow()">Grow</button>
+          <button class="btn" onclick="Selection.shrink()">Shrink</button>
+          <button class="btn" onclick="Selection.invert()">Invert</button>
+          <button class="btn" onclick="Selection.connected()">Connected</button>
+          <button class="btn" onclick="Selection.clear()">Clear</button>
+        </div>
+        <div class="prop-row" style="margin-top:7px;"><span class="prop-label">Through</span><input type="checkbox" id="select-through" title="Select components hidden behind the visible surface" /></div>
+        <button class="btn" id="marquee-btn" style="width:100%;" onclick="Selection.armMarquee()">Box Select <span class="kbd">B</span></button>
+        <div class="hint" style="margin-top:6px;">Click to replace · Shift adds/toggles · Ctrl removes · B then drag selects a region. W/E/R transforms the shared component pivot.</div>
+      </div>
     </div>
 
     <div class="section">
@@ -234,8 +298,8 @@
         <button class="btn" onclick="Tools.symmetrize(-1)">Symmetrize −</button>
       </div>
       <div class="prop-row" style="margin-top:8px;"><span class="prop-label">Noise</span>
-        <input class="prop-input mini" id="noise-amt" type="number" value="0.15" step="0.05" title="Amount" />
-        <input class="prop-input mini" id="noise-scale" type="number" value="1.5" step="0.25" title="Scale" />
+        <input class="prop-input mini" id="noise-amt" type="number" value="0.15" min="-1000" max="1000" step="0.05" title="Amount" />
+        <input class="prop-input mini" id="noise-scale" type="number" value="1.5" min="0.001" max="1000" step="0.25" title="Scale" />
         <button class="btn" onclick="Tools.noiseDisplace()">Apply</button>
       </div>
       <div class="prop-row"><span class="prop-label">Array</span>
@@ -256,7 +320,7 @@
           <option value="z">Z</option>
         </select>
         <span class="prop-label" style="width:auto;margin-left:6px;">Amount</span>
-        <input class="prop-input mini" id="deform-amt" type="number" value="60" step="5" title="Degrees for twist/bend · percent for taper" />
+        <input class="prop-input mini" id="deform-amt" type="number" value="60" min="-3600" max="3600" step="5" title="Degrees for twist/bend · percent for taper" />
       </div>
       <div class="grid-3">
         <button class="btn" onclick="Tools.deform('twist')">Twist</button>
@@ -273,8 +337,10 @@
   </div>
 
   <div id="viewport">
-    <div id="overlay-info">Perspective<br />Ctrl+K commands · W/E/R transform · F8-F11 modes · \ shading · K keyframe · Space play · Ctrl+D duplicate · Ctrl snap</div>
+    <div id="overlay-info">Perspective<br />Ctrl+K commands · W/E/R transform · F8-F11 modes · B box select · \ shading · K keyframe · Space play · Ctrl+D duplicate · Ctrl snap</div>
     <div id="brush-ring"></div>
+    <div id="marquee-box"></div>
+    <div id="component-hud"><span id="component-hud-mode">Face</span><strong id="component-hud-count">0 selected</strong></div>
     <div id="drop-hint">Drop GLTF/GLB or WebMaya project here</div>
   </div>
 
@@ -311,7 +377,7 @@
     </div>
   </div>
 
-  <div class="panel panel-right">
+  <div class="panel panel-right" id="right-panel">
     <div class="section">
       <div class="section-head">Transform</div>
       <div class="prop-row"><span class="prop-label">Loc</span><input class="prop-input" id="px" /><input class="prop-input" id="py" /><input class="prop-input" id="pz" /></div>
@@ -324,12 +390,12 @@
     <div class="section">
       <div class="section-head">Material</div>
       <div class="prop-row"><span class="prop-label">Name</span><input class="prop-input" id="obj-name" onchange="Editor.renameSelection()" /></div>
-      <div class="prop-row"><span class="prop-label">Color</span><input type="color" id="mat-col" oninput="Editor.updateMat()" /></div>
-      <div class="prop-row"><span class="prop-label">Metal</span><input type="range" min="0" max="1" step="0.01" id="mat-met" oninput="Editor.updateMat()" /></div>
-      <div class="prop-row"><span class="prop-label">Rough</span><input type="range" min="0" max="1" step="0.01" id="mat-ruf" oninput="Editor.updateMat()" /></div>
-      <div class="prop-row"><span class="prop-label">Emissive</span><input type="range" min="0" max="3" step="0.05" id="mat-emi" value="0" oninput="Editor.updateMat()" /></div>
-      <div class="prop-row"><span class="prop-label">Opacity</span><input type="range" min="0.05" max="1" step="0.01" id="mat-opa" value="1" oninput="Editor.updateMat()" /></div>
-      <div class="prop-row"><span class="prop-label">Wire</span><input type="checkbox" id="mat-wir" onchange="Editor.updateMat()" /></div>
+      <div class="prop-row"><span class="prop-label">Color</span><input type="color" id="mat-col" oninput="Editor.updateMat()" onchange="Editor.commitMaterial()" /></div>
+      <div class="prop-row"><span class="prop-label">Metal</span><input type="range" min="0" max="1" step="0.01" id="mat-met" oninput="Editor.updateMat()" onchange="Editor.commitMaterial()" /></div>
+      <div class="prop-row"><span class="prop-label">Rough</span><input type="range" min="0" max="1" step="0.01" id="mat-ruf" oninput="Editor.updateMat()" onchange="Editor.commitMaterial()" /></div>
+      <div class="prop-row"><span class="prop-label">Emissive</span><input type="range" min="0" max="3" step="0.05" id="mat-emi" value="0" oninput="Editor.updateMat()" onchange="Editor.commitMaterial()" /></div>
+      <div class="prop-row"><span class="prop-label">Opacity</span><input type="range" min="0.05" max="1" step="0.01" id="mat-opa" value="1" oninput="Editor.updateMat()" onchange="Editor.commitMaterial()" /></div>
+      <div class="prop-row"><span class="prop-label">Wire</span><input type="checkbox" id="mat-wir" onchange="Editor.updateMat(); Editor.commitMaterial()" /></div>
       <button class="btn" style="width:100%; margin-top:4px" onclick="document.getElementById('tex-upl').click()">Load Texture</button>
       <input type="file" id="tex-upl" accept="image/*" style="display:none" onchange="Editor.loadTexture(this)" />
       <div class="grid-3" style="margin-top:6px;">
@@ -386,15 +452,15 @@
   </div>
 
   <div id="status">
-    <span id="status-msg">Ready.</span>
+    <span id="status-msg" aria-live="polite">Ready.</span>
     <span class="right"><span id="perf-msg"></span><span id="autosave-msg">Autosave on</span></span>
   </div>
 </div>
 
-<div id="cmdk">
+<div id="cmdk" role="dialog" aria-modal="true" aria-label="Command palette">
   <div class="cmdk-box">
-    <input id="cmdk-input" type="text" placeholder="Type a command…  (↑↓ to navigate, Enter to run, Esc to close)" autocomplete="off" spellcheck="false" />
-    <div id="cmdk-list"></div>
+    <input id="cmdk-input" type="text" role="combobox" aria-controls="cmdk-list" aria-expanded="false" aria-autocomplete="list" placeholder="Type a command…  (↑↓ to navigate, Enter to run, Esc to close)" autocomplete="off" spellcheck="false" />
+    <div id="cmdk-list" role="listbox" aria-label="Commands"></div>
   </div>
 </div>
 
@@ -537,15 +603,113 @@ const App = {
 
 const State = {
   mode:'object', selection:null, faceIndex:-1, vertexIndex:-1,
+  selectedFaces:new Set(), selectedVertexGroups:new Set(),
   undoStack:[], redoStack:[], maxUndo:30, suppressHistory:false,
-  pendingBoolean:null
+  pendingBoolean:null, marqueeArmed:false
+};
+
+// Every editor-authored snapshot must remain loadable. Geometry-growing commands use the
+// same limits as project restore, so an import or modifier can never create an autosave
+// that the next reload refuses to open.
+const ProjectLimits = {
+  maxObjects:2500,
+  maxCornersPerMesh:1200000,
+  maxCornersTotal:3000000,
+  maxCoordinate:1e12,
+  corners(geometry) {
+    if (!geometry?.attributes?.position) return 0;
+    return geometry.index ? geometry.index.count : geometry.attributes.position.count;
+  },
+  validateGeometry(geometry) {
+    const position=geometry?.attributes?.position, index=geometry?.index;
+    if (!position || position.itemSize!==3 || !Number.isInteger(position.count) || position.count<0)
+      throw new Error('A mesh has invalid triangle geometry.');
+    for (let i=0;i<position.count;i++) {
+      const values=[position.getX(i),position.getY(i),position.getZ(i)];
+      if (!values.every(Number.isFinite)||values.some(value=>Math.abs(value)>this.maxCoordinate))
+        throw new Error('A mesh contains unsafe vertex positions.');
+    }
+    if (index) {
+      if (index.itemSize!==1 || index.count%3!==0) throw new Error('A mesh has an invalid triangle index.');
+      for (let i=0;i<index.count;i++) {
+        const value=index.getX(i);
+        if (!Number.isInteger(value)||value<0||value>=position.count) throw new Error('A mesh has an out-of-range triangle index.');
+      }
+    } else if (position.count%3!==0) throw new Error('A mesh has an incomplete triangle.');
+    const validateAttribute=(name,attribute) => {
+      if (!attribute||!Number.isInteger(attribute.itemSize)||attribute.itemSize<1||attribute.itemSize>16||attribute.count!==position.count)
+        throw new Error('Mesh attribute "'+name+'" has an invalid layout.');
+      const array=attribute.isInterleavedBufferAttribute?attribute.data?.array:attribute.array;
+      const stride=attribute.isInterleavedBufferAttribute?attribute.data?.stride:attribute.itemSize;
+      const offset=attribute.isInterleavedBufferAttribute?attribute.offset:0;
+      if (!array||!Number.isInteger(stride)) throw new Error('Mesh attribute "'+name+'" is unreadable.');
+      for (let i=0;i<attribute.count;i++) for (let c=0;c<attribute.itemSize;c++) {
+        if (!Number.isFinite(array[i*stride+offset+c])) throw new Error('Mesh attribute "'+name+'" contains non-finite values.');
+      }
+    };
+    Object.entries(geometry.attributes).forEach(([name,attribute]) => { if (name!=='position') validateAttribute(name,attribute); });
+    Object.entries(geometry.morphAttributes||{}).forEach(([name,attributes]) => attributes.forEach(attribute=>validateAttribute('morph '+name,attribute)));
+    return index ? index.count : position.count;
+  },
+  sceneCorners(except=null) {
+    return App.objects.reduce((sum,o) => sum + (o === except || o.userData?.isLight ? 0 : this.corners(o.geometry)), 0);
+  },
+  assertObjectCount(add=0) {
+    if (App.objects.length + add > this.maxObjects) throw new Error('The project object limit would be exceeded.');
+  },
+  assertGeometry(corners, replacing=null, additionalTotal=0) {
+    if (!Number.isInteger(corners) || corners < 0 || corners > this.maxCornersPerMesh)
+      throw new Error('The mesh exceeds the safe editor geometry limit.');
+    const total = this.sceneCorners(replacing) + corners + additionalTotal;
+    if (total > this.maxCornersTotal) throw new Error('The project geometry limit would be exceeded.');
+  },
+  validateObjectTransform(object) {
+    const position=object.position.toArray(), scale=object.scale.toArray(), quaternion=object.quaternion.toArray();
+    if (position.some(v=>!Number.isFinite(v)||Math.abs(v)>this.maxCoordinate)||
+        scale.some(v=>!Number.isFinite(v)||Math.abs(v)>1000000||Math.abs(v)<1e-8)||
+        quaternion.some(v=>!Number.isFinite(v))||object.quaternion.lengthSq()<1e-12)
+      throw new Error('An object transform exceeds the safe editor range.');
+    return true;
+  }
+};
+
+// Texture-aware recursive disposal shared by deletion, project replacement, and CSG.
+// Surviving scene objects are inspected first so shared imported resources stay alive.
+const Resources = {
+  collectTextures(value, out, seen=new Set(), depth=0) {
+    if (!value || depth > 3 || seen.has(value)) return;
+    if (value.isTexture) { out.add(value); return; }
+    if (typeof value !== 'object' || ArrayBuffer.isView(value)) return;
+    seen.add(value);
+    if (Array.isArray(value)) value.forEach(v => this.collectTextures(v,out,seen,depth+1));
+    else Object.values(value).forEach(v => this.collectTextures(v,out,seen,depth+1));
+  },
+  collect(roots) {
+    const geometries=new Set(), materials=new Set(), textures=new Set();
+    roots.filter(Boolean).forEach(root => root.traverse?.(o => {
+      if (o.geometry) geometries.add(o.geometry);
+      const mats=Array.isArray(o.material) ? o.material : o.material ? [o.material] : [];
+      mats.forEach(m => { materials.add(m); this.collectTextures(m,textures); });
+    }));
+    return { geometries, materials, textures };
+  },
+  dispose(roots, survivors=[]) {
+    const targets=this.collect(Array.isArray(roots)?roots:[roots]);
+    const keep=this.collect(Array.isArray(survivors)?survivors:[survivors]);
+    targets.geometries.forEach(g => {
+      if (keep.geometries.has(g)) return;
+      g.disposeBoundsTree?.(); g.dispose?.();
+    });
+    targets.textures.forEach(t => { if (!keep.textures.has(t)) t.dispose?.(); });
+    targets.materials.forEach(m => { if (!keep.materials.has(m)) m.dispose?.(); });
+  }
 };
 
 const History = {
   autosaveTimer:null,
   snapshot() {
     return JSON.stringify({
-      version:3,
+      version:4,
       objects:Editor.getSceneData(),
       bg:App.scene.background?.isColor ? App.scene.background.getHexString() : '111111',
       settings:{
@@ -565,7 +729,9 @@ const History = {
   },
   push(label='change') {
     if (State.suppressHistory) return;
-    const snap = this.snapshot();
+    let snap;
+    try { snap=this.snapshot(); }
+    catch (e) { console.error(e); status('Change could not be saved safely: '+e.message); return; }
     if (State.undoStack[State.undoStack.length - 1] === snap) return;
     State.undoStack.push(snap);
     if (State.undoStack.length > State.maxUndo) State.undoStack.shift();
@@ -605,13 +771,34 @@ const Topo = {
       groupOf[i] = g;
     }
     const neighbors = groups.map(() => new Set());
-    for (let t=0;t<n;t+=3) {
-      const a=groupOf[t], b=groupOf[t+1], c=groupOf[t+2];
-      neighbors[a].add(b); neighbors[a].add(c);
-      neighbors[b].add(a); neighbors[b].add(c);
-      neighbors[c].add(a); neighbors[c].add(b);
+    const vertexFaces = groups.map(() => new Set());
+    const faceVerts = [];
+    const faceNeighbors = Array.from({ length:Math.floor(n/3) }, () => new Set());
+    const edges = new Map();
+    for (let i=0; i<n; i+=3) {
+      const face = (i/3)|0;
+      const fv = [groupOf[i], groupOf[i+1], groupOf[i+2]];
+      faceVerts.push(fv);
+      fv.forEach(g => vertexFaces[g].add(face));
+      const addEdge = (from, to, fromIndex, toIndex) => {
+        neighbors[from].add(to); neighbors[to].add(from);
+        const key = from < to ? from + '_' + to : to + '_' + from;
+        let edge = edges.get(key);
+        if (!edge) { edge = { a:Math.min(from,to), b:Math.max(from,to), faces:[], halfEdges:[] }; edges.set(key, edge); }
+        edge.faces.push(face);
+        edge.halfEdges.push({ face, from, to, fromIndex, toIndex });
+      };
+      addEdge(fv[0], fv[1], i, i+1);
+      addEdge(fv[1], fv[2], i+1, i+2);
+      addEdge(fv[2], fv[0], i+2, i);
     }
-    return { groupOf, groups, neighbors };
+    edges.forEach(edge => {
+      for (let i=0; i<edge.faces.length; i++) for (let j=i+1; j<edge.faces.length; j++) {
+        faceNeighbors[edge.faces[i]].add(edge.faces[j]);
+        faceNeighbors[edge.faces[j]].add(edge.faces[i]);
+      }
+    });
+    return { groupOf, groups, neighbors, vertexFaces, faceVerts, faceNeighbors, edges };
   }
 };
 
@@ -647,12 +834,14 @@ const Env = {
     const url = URL.createObjectURL(file);
     new RGBELoader().load(url, tex => {
       tex.mapping = THREE.EquirectangularReflectionMapping;
+      const previous=this.hdriTex;
       this.hdriTex = tex;
       $('env-sel').value = 'hdri';
       this.apply();
+      if (previous&&previous!==tex) previous.dispose();
       URL.revokeObjectURL(url);
       status('HDRI environment loaded.');
-    }, undefined, () => status('HDRI load failed.'));
+    }, undefined, () => { URL.revokeObjectURL(url); status('HDRI load failed.'); });
     input.value = '';
   },
   updateExposure() { App.renderer.toneMappingExposure = parseFloat($('exposure').value); },
@@ -765,6 +954,8 @@ const Editor = {
     App.renderer.toneMappingExposure = 1;
     App.renderer.shadowMap.enabled = true;
     App.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    App.renderer.domElement.tabIndex = 0;
+    App.renderer.domElement.setAttribute('aria-label','3D viewport. Use the mouse to orbit and select, or press Ctrl K for commands.');
     vp.appendChild(App.renderer.domElement);
 
     App.raycaster.firstHitOnly = true;
@@ -774,16 +965,23 @@ const Editor = {
 
     App.transform = new TransformControls(App.camera, App.renderer.domElement);
     App.transform.setSize(0.86);
-    App.transform.addEventListener('dragging-changed', e => App.orbit.enabled = !e.value);
+    App.transform.addEventListener('dragging-changed', e => App.orbit.enabled = !e.value && !State.marqueeArmed && !App.sculpting);
     App.transform.addEventListener('mouseDown', () => {
-      if (State.mode === 'vertex' && State.selection && State.vertexIndex >= 0) Tools.beginVertexDrag();
+      if ((State.mode === 'vertex' || State.mode === 'face') && State.selection && Selection.componentGroups().size) Tools.beginComponentDrag();
     });
     App.transform.addEventListener('objectChange', () => {
-      if (State.mode === 'vertex') Tools.commitVertexHandle();
-      Editor.syncUI(); Helpers.updateSelectionBox();
+      if (Tools.componentDrag) Tools.commitComponentHandle();
+      else {
+        try { if (App.transform.object) ProjectLimits.validateObjectTransform(App.transform.object); }
+        catch (e) {
+          App.transform.reset?.(); App.transform.dragging=false; App.transform.axis=null; App.orbit.enabled=true;
+          status(e.message+' Transform cancelled.'); return;
+        }
+        Editor.syncUI(); Helpers.updateSelectionBox();
+      }
     });
     App.transform.addEventListener('mouseUp', () => {
-      if (State.mode === 'vertex') return Tools.endVertexDrag();
+      if (State.mode === 'vertex' || State.mode === 'face') return Tools.endComponentDrag();
       if ($('autokey').checked && State.selection && State.mode === 'object') Anim.recordKey();
       else History.push('transform');
     });
@@ -805,6 +1003,12 @@ const Editor = {
 
   bindEvents() {
     const vp = $('viewport');
+    $$('.menu-btn, .mode-icon').forEach(el => {
+      if (el.tagName === 'BUTTON') return;
+      el.tabIndex=0; el.setAttribute('role','button');
+      if (el.classList.contains('mode-icon')) el.setAttribute('aria-pressed',el.classList.contains('active')?'true':'false');
+      el.addEventListener('keydown',e=>{ if (e.key==='Enter'||e.key===' ') { e.preventDefault(); e.stopPropagation(); el.click(); } });
+    });
     window.addEventListener('resize', () => this.onResize());
     window.addEventListener('keydown', e => this.onKey(e));
     window.addEventListener('keyup', e => {
@@ -813,7 +1017,9 @@ const Editor = {
     });
     vp.addEventListener('pointerdown', e => this.onPointerDown(e));
     vp.addEventListener('pointermove', e => this.onPointerMove(e));
-    window.addEventListener('pointerup', () => this.onPointerUp());
+    window.addEventListener('pointerup', e => this.onPointerUp(e));
+    vp.addEventListener('pointercancel', e => this.onPointerCancel(e));
+    App.renderer.domElement.addEventListener('lostpointercapture', e => this.onLostPointerCapture(e));
 
     vp.addEventListener('dragover', e => { e.preventDefault(); $('drop-hint').style.display='flex'; });
     vp.addEventListener('dragleave', () => $('drop-hint').style.display='none');
@@ -837,7 +1043,11 @@ const Editor = {
 
   prepareMesh(mesh, namePrefix='mesh') {
     if (!mesh.geometry) return null;
-    mesh.geometry = mesh.geometry.index ? mesh.geometry.toNonIndexed() : mesh.geometry;
+    if (mesh.geometry.index) {
+      const indexed=mesh.geometry;
+      mesh.geometry=indexed.toNonIndexed();
+      indexed.disposeBoundsTree?.(); indexed.dispose();
+    }
     // Keep smooth normals copied from indexed geometry; only compute when missing
     // (computeVertexNormals on non-indexed soup produces faceted shading).
     if (!mesh.geometry.attributes.normal) mesh.geometry.computeVertexNormals();
@@ -853,6 +1063,8 @@ const Editor = {
   },
 
   addPrimitive(type) {
+    try { ProjectLimits.assertObjectCount(1); }
+    catch (e) { return status(e.message); }
     let geo;
     const seg = 24;
     if (type === 'cube') geo = new THREE.BoxGeometry(2,2,2,4,4,4);
@@ -865,6 +1077,8 @@ const Editor = {
     if (type === 'knot') geo = new THREE.TorusKnotGeometry(0.9,0.28,120,20);
     if (type === 'capsule') geo = new THREE.CapsuleGeometry(0.8,1.0,12,24);
     geo = geo.toNonIndexed();
+    try { ProjectLimits.assertGeometry(ProjectLimits.corners(geo)); }
+    catch (e) { geo.dispose(); return status(e.message); }
     const mat = new THREE.MeshStandardMaterial({ color:0x888888, roughness:.55, metalness:.08, side:THREE.DoubleSide });
     const mesh = new THREE.Mesh(geo, mat);
     mesh.name = type + '_' + App.objects.length;
@@ -875,6 +1089,8 @@ const Editor = {
   },
 
   addLight() {
+    try { ProjectLimits.assertObjectCount(1); }
+    catch (e) { return status(e.message); }
     const light = new THREE.PointLight(0xffffff, 1.6, 20);
     const bulb = new THREE.Mesh(new THREE.SphereGeometry(.16,16,8), new THREE.MeshBasicMaterial({ color:0xffee99 }));
     bulb.name = 'PointLight_' + App.objects.length;
@@ -888,8 +1104,10 @@ const Editor = {
   lightOf(obj) { return obj?.children?.find(c => c.isLight) || null; },
 
   select(obj) {
-    if (State.selection === obj && State.mode !== 'vertex') return;
+    if (State.selection === obj) return;
+    Selection.cancelMarquee(true);
     State.selection = obj || null; State.faceIndex = -1; State.vertexIndex = -1;
+    State.selectedFaces.clear(); State.selectedVertexGroups.clear();
     Anim.selectedKeyFrame = null;            // stale ease/highlight would otherwise bleed across objects
     Helpers.clearEditHelpers(); Helpers.hideMask();
     App.transform.detach();
@@ -899,26 +1117,66 @@ const Editor = {
       if (State.mode === 'sculpt') Helpers.showMask(obj);
       status('Selected ' + obj.name);
     } else status('Selection cleared.');
-    this.syncUI(); this.updateOutliner(); Helpers.updateSelectionBox(); Anim.renderKeys();
+    this.syncUI(); this.updateOutliner(); Helpers.updateSelectionBox(); Anim.renderKeys(); Selection.updateUI();
   },
 
   setMode(mode) {
+    Selection.cancelMarquee(true);
     State.mode = mode;
+    State.faceIndex = -1; State.vertexIndex = -1;
+    State.selectedFaces.clear(); State.selectedVertexGroups.clear();
     $$('.mode-icon').forEach(e => e.classList.remove('active'));
+    $$('.mode-icon').forEach(e => e.setAttribute('aria-pressed','false'));
     $('m-' + mode).classList.add('active');
+    $('m-' + mode).setAttribute('aria-pressed','true');
     $('mode-label').textContent = mode[0].toUpperCase() + mode.slice(1);
     ['object','face','vertex','sculpt'].forEach(m => $('tools-' + m)?.classList.add('hidden'));
     $('tools-' + mode).classList.remove('hidden');
+    $('component-selection').classList.toggle('hidden', mode !== 'face' && mode !== 'vertex');
     Helpers.clearEditHelpers(); App.transform.detach();
     if (mode === 'object' && State.selection) App.transform.attach(State.selection);
     if (mode === 'vertex' && State.selection) Helpers.showVertices(State.selection);
     if (mode === 'sculpt' && State.selection) Helpers.showMask(State.selection); else Helpers.hideMask();
     if (mode === 'sculpt' && !State.selection) status('Select a mesh, then drag to sculpt.');
-    this.syncUI();
+    this.syncUI(); Selection.updateUI();
+  },
+
+  sanitizeAnimationTrack(track,camera=false) {
+    const clean={};
+    if (!track||typeof track!=='object'||Array.isArray(track)) return clean;
+    const vector=(value,length,max=ProjectLimits.maxCoordinate) => {
+      if (!Array.isArray(value)||value.length<length) return null;
+      const out=value.slice(0,length).map(Number);
+      return out.every(v=>Number.isFinite(v)&&Math.abs(v)<=max)?out:null;
+    };
+    const entries=Object.entries(track).slice(0,10000);
+    entries.forEach(([rawFrame,key]) => {
+      const frame=Number(rawFrame);
+      if (!Number.isInteger(frame)||frame<0||frame>10000||!key||typeof key!=='object'||Array.isArray(key)) return;
+      const ease=Object.hasOwn(EASE,key.ease)?key.ease:'linear';
+      if (camera) {
+        const p=vector(key.p,3), t=vector(key.t,3), fov=Number(key.fov);
+        if (p&&t&&Number.isFinite(fov)&&fov>=1&&fov<=179) clean[frame]={p,t,fov,ease};
+        return;
+      }
+      const p=vector(key.p,3), s=vector(key.s,3,1000000);
+      const q=vector(key.q,4,1e6), r=vector(key.r,3,1e6);
+      if (!p||!s||s.some(v=>Math.abs(v)<1e-8)||(!q&&!r)) return;
+      const record={p,s,ease};
+      if (q&&q.some(v=>Math.abs(v)>1e-12)) {
+        const normalized=new THREE.Quaternion().fromArray(q).normalize();
+        record.q=normalized.toArray();
+      } else if (r) record.r=r;
+      else return;
+      if (r) record.r=r;
+      clean[frame]=record;
+    });
+    return clean;
   },
 
   getSceneData() {
     return App.objects.map(o => {
+      ProjectLimits.validateObjectTransform(o);
       const light = this.lightOf(o);
       return {
         name:o.name, uuid:o.uuid, type:light ? 'light-bulb' : 'mesh',
@@ -933,6 +1191,68 @@ const Editor = {
   restoreState(jsonString) {
     const parsed = typeof jsonString === 'string' ? JSON.parse(jsonString) : jsonString;
     const data = Array.isArray(parsed) ? { objects:parsed } : parsed;
+    if (!data || typeof data !== 'object' || !Array.isArray(data.objects)) throw new Error('Project must contain an objects array.');
+    if (data.objects.length > ProjectLimits.maxObjects) throw new Error('Project contains too many objects.');
+    if (data.bg !== undefined && !/^[0-9a-f]{6}$/i.test(String(data.bg))) throw new Error('Project background color is invalid.');
+    const staged = [];
+    const geoLoader = new THREE.BufferGeometryLoader(), matLoader = new THREE.MaterialLoader();
+    let totalVertices = 0;
+    let stagingObject = null;
+    try {
+      data.objects.forEach(d => {
+        if (!d || typeof d !== 'object') throw new Error('Project contains an invalid object record.');
+        let mesh;
+        if (d.type === 'light-bulb') {
+          mesh = new THREE.Mesh(new THREE.SphereGeometry(.16,16,8), new THREE.MeshBasicMaterial({ color:0xffee99 }));
+          const ld = d.userData?.light || {};
+          const light = new THREE.PointLight(ld.color ?? 0xffffff, Number.isFinite(ld.intensity) ? ld.intensity : 1.6, Number.isFinite(ld.distance) ? ld.distance : 20);
+          mesh.userData.isLight = true; mesh.add(light);
+        } else {
+          if (!d.geo || typeof d.geo !== 'object') throw new Error('A mesh is missing geometry.');
+          const geo = geoLoader.parse(d.geo);
+          let cornerCount;
+          try { cornerCount=ProjectLimits.validateGeometry(geo); }
+          catch (e) { geo.dispose(); throw e; }
+          totalVertices += cornerCount;
+          if (cornerCount > ProjectLimits.maxCornersPerMesh || totalVertices > ProjectLimits.maxCornersTotal) { geo.dispose(); throw new Error('Project geometry exceeds the safe editor limit.'); }
+          let mat;
+          try {
+            if (d.mat) {
+              const objectLoader = new THREE.ObjectLoader();
+              const images = objectLoader.parseImages(d.mat.images || [], () => {});
+              const textures = objectLoader.parseTextures(d.mat.textures || [], images);
+              matLoader.setTextures(textures);
+              mat = matLoader.parse(d.mat);
+            } else mat = new THREE.MeshStandardMaterial({ color:0x888888 });
+          }
+          catch (_) { mat = new THREE.MeshStandardMaterial({ color:0x888888 }); }
+          mesh = new THREE.Mesh(geo,mat);
+        }
+        stagingObject = mesh;
+        const finiteArray = (value, length, fallback, max=ProjectLimits.maxCoordinate) => {
+          if (value === undefined) return fallback;
+          if (!Array.isArray(value)||value.length<length||value.slice(0,length).some(v=>!Number.isFinite(Number(v))||Math.abs(Number(v))>max)) throw new Error('An object has an invalid transform.');
+          return value.slice(0,length).map(Number);
+        };
+        mesh.name = String(d.name || 'object').slice(0,256);
+        if (typeof d.uuid === 'string' && d.uuid.length <= 64) mesh.uuid = d.uuid;
+        mesh.position.fromArray(finiteArray(d.pos,3,[0,0,0]));
+        mesh.rotation.fromArray(finiteArray(d.rot,3,[0,0,0],1000000));
+        mesh.scale.fromArray(finiteArray(d.scl,3,[1,1,1],1000000));
+        if ([mesh.scale.x,mesh.scale.y,mesh.scale.z].some(v=>Math.abs(v)<1e-8)) throw new Error('An object has a zero scale.');
+        ProjectLimits.validateObjectTransform(mesh);
+        mesh.visible=d.visible!==false;
+        mesh.userData.anim=this.sanitizeAnimationTrack(d.userData?.anim);
+        mesh.userData.editor=d.userData?.editor && typeof d.userData.editor==='object' ? d.userData.editor : {editable:true};
+        if (d.type !== 'light-bulb') { this.prepareMesh(mesh); MeshOps.refreshWireOverlay(mesh); }
+        staged.push(mesh);
+        stagingObject = null;
+      });
+    } catch (err) {
+      Resources.dispose([stagingObject,...staged]);
+      throw err;
+    }
+
     State.suppressHistory = true;
     try {
       App.transform.detach(); Helpers.clearEditHelpers(); Helpers.hideMask();
@@ -940,40 +1260,10 @@ const Editor = {
       this.select(null);
       App.objects.forEach(o => {
         App.scene.remove(o);
-        o.geometry?.disposeBoundsTree?.(); o.geometry?.dispose?.();
-        if (o.material) { o.material.map?.dispose?.(); o.material.dispose?.(); }
       });
-      App.objects = [];
-      const geoLoader = new THREE.BufferGeometryLoader();
-      const matLoader = new THREE.MaterialLoader();
-      (data.objects || []).forEach(d => {
-        let mesh;
-        if (d.type === 'light-bulb') {
-          mesh = new THREE.Mesh(new THREE.SphereGeometry(.16,16,8), new THREE.MeshBasicMaterial({ color:0xffee99 }));
-          const ld = d.userData?.light || {};
-          const light = new THREE.PointLight(ld.color ?? 0xffffff, ld.intensity ?? 1.6, ld.distance ?? 20);
-          mesh.userData.isLight = true;
-          mesh.add(light);
-        } else {
-          const geo = geoLoader.parse(d.geo);
-          let mat;
-          try { mat = matLoader.parse(d.mat); } catch(e) { mat = new THREE.MeshStandardMaterial({ color:0x888888 }); }
-          mesh = new THREE.Mesh(geo, mat);
-        }
-        mesh.name = d.name || 'object'; mesh.uuid = d.uuid || mesh.uuid;
-        mesh.position.fromArray(d.pos || [0,0,0]); mesh.rotation.fromArray(d.rot || [0,0,0]); mesh.scale.fromArray(d.scl || [1,1,1]);
-        mesh.visible = d.visible !== false;
-        mesh.userData.anim = d.userData?.anim || {};
-        mesh.userData.editor = d.userData?.editor || { editable:true };
-        if (d.type !== 'light-bulb') {
-          this.prepareMesh(mesh);
-          if (mesh.userData.editor?.wireOverlay) {
-            const wire = new THREE.LineSegments(new THREE.WireframeGeometry(mesh.geometry), new THREE.LineBasicMaterial({ color:0x111111, transparent:true, opacity:.35 }));
-            wire.name = 'wire_overlay'; mesh.add(wire);
-          }
-        }
-        App.scene.add(mesh); App.objects.push(mesh);
-      });
+      Resources.dispose(App.objects);
+      App.objects=staged;
+      staged.forEach(mesh=>App.scene.add(mesh));
       if (data.bg) { App.scene.background = new THREE.Color('#' + data.bg); $('bg-col').value = '#' + data.bg; }
       if (data.settings) this.applySettings(data.settings);
     } finally {
@@ -985,15 +1275,15 @@ const Editor = {
   applySettings(s) {
     if (s.env) $('env-sel').value = s.env === 'hdri' ? 'studio' : s.env;
     if (s.envBg !== undefined) $('env-bg').checked = s.envBg;
-    if (s.exposure !== undefined) $('exposure').value = s.exposure;
+    if (Number.isFinite(Number(s.exposure))) $('exposure').value = clamp(Number(s.exposure),.2,2.5);
     if (s.bloom !== undefined) $('bloom-toggle').checked = s.bloom;
-    if (s.bloomStrength !== undefined) $('bloom-strength').value = s.bloomStrength;
+    if (Number.isFinite(Number(s.bloomStrength))) $('bloom-strength').value = clamp(Number(s.bloomStrength),0,2.5);
     if (s.shadows !== undefined) $('shadow-toggle').checked = s.shadows;
     if (s.grid !== undefined) { $('grid-toggle').checked = s.grid; App.grid.visible = s.grid; }
     if (s.axes !== undefined) { $('axes-toggle').checked = s.axes; App.axes.visible = s.axes; }
-    if (s.fps) $('fps-val').value = s.fps;
-    if (s.maxFrame) Anim.setRange(s.maxFrame);
-    Anim.camTrack = s.camTrack || {}; Anim.renderKeys();
+    if (Number.isFinite(Number(s.fps))) $('fps-val').value = clamp(Number(s.fps),1,60);
+    if (Number.isFinite(Number(s.maxFrame))) Anim.setRange(clamp(Math.round(Number(s.maxFrame)),1,10000));
+    Anim.camTrack = this.sanitizeAnimationTrack(s.camTrack,true); Anim.renderKeys();
     Env.apply(); Env.updateExposure(); Env.updateBloom(); Env.updateShadows();
   },
 
@@ -1008,19 +1298,29 @@ const Editor = {
 
   undo() {
     if (State.undoStack.length <= 1) return status('Nothing to undo.');
-    const current = State.undoStack.pop(); State.redoStack.push(current);
-    const previous = State.undoStack[State.undoStack.length - 1];
-    this.restoreState(previous);
-    History.scheduleAutosave(previous);
-    status('Undo.');
+    const current = State.undoStack[State.undoStack.length - 1];
+    const previous = State.undoStack[State.undoStack.length - 2];
+    try {
+      this.restoreState(previous);
+      State.undoStack.pop(); State.redoStack.push(current);
+      History.scheduleAutosave(previous);
+      status('Undo.');
+    } catch (e) {
+      console.error(e); status('Undo failed safely: ' + e.message);
+    }
   },
 
   redo() {
     if (!State.redoStack.length) return status('Nothing to redo.');
-    const next = State.redoStack.pop(); State.undoStack.push(next);
-    this.restoreState(next);
-    History.scheduleAutosave(next);
-    status('Redo.');
+    const next = State.redoStack[State.redoStack.length - 1];
+    try {
+      this.restoreState(next);
+      State.redoStack.pop(); State.undoStack.push(next);
+      History.scheduleAutosave(next);
+      status('Redo.');
+    } catch (e) {
+      console.error(e); status('Redo failed safely: ' + e.message);
+    }
   },
 
   exportGLTF(binary=false) {
@@ -1086,18 +1386,63 @@ const Editor = {
   importGLTFFile(file) {
     const url = URL.createObjectURL(file);
     new GLTFLoader().load(url, gltf => {
-      const added=[];
-      gltf.scene.traverse(c => {
-        if (c.isMesh) {
-          const mesh = this.prepareMesh(c.clone(), c.name || 'import');
-          mesh.applyMatrix4(c.matrixWorld);
-          App.scene.add(mesh); App.objects.push(mesh); added.push(mesh);
+      const staged=[]; let committed=false;
+      try {
+        gltf.scene.updateMatrixWorld(true);
+        const sourceMeshes=[];
+        gltf.scene.traverse(c => {
+          if (c.isSkinnedMesh) throw new Error('Skinned GLTF meshes must be baked before import.');
+          if (c.isInstancedMesh) {
+            ProjectLimits.assertObjectCount(sourceMeshes.length+c.count);
+            const instance=new THREE.Matrix4();
+            for (let i=0;i<c.count;i++) {
+              c.getMatrixAt(i,instance);
+              sourceMeshes.push({source:c,matrix:c.matrixWorld.clone().multiply(instance),name:(c.name||'instance')+'_'+i});
+            }
+          } else if (c.isMesh) {
+            ProjectLimits.assertObjectCount(sourceMeshes.length+1);
+            sourceMeshes.push({source:c,matrix:c.matrixWorld.clone(),name:c.name||'import'});
+          }
+        });
+        ProjectLimits.assertObjectCount(sourceMeshes.length);
+        let stagedCorners=0;
+        sourceMeshes.forEach(entry => {
+          const c=entry.source;
+          const corners=ProjectLimits.validateGeometry(c.geometry);
+          if (corners > ProjectLimits.maxCornersPerMesh) throw new Error('An imported mesh exceeds the safe editor geometry limit.');
+          stagedCorners += corners;
+          if (ProjectLimits.sceneCorners() + stagedCorners > ProjectLimits.maxCornersTotal)
+            throw new Error('The import would exceed the project geometry limit.');
+          const material=(Array.isArray(c.material)?c.material[0]:c.material)?.clone?.()||new THREE.MeshStandardMaterial({color:0x888888});
+          const mesh = new THREE.Mesh(c.geometry.clone(),material);
+          mesh.name=entry.name;
+          staged.push(mesh);
+          mesh.position.set(0,0,0); mesh.quaternion.identity(); mesh.scale.set(1,1,1); mesh.updateMatrix();
+          mesh.geometry.applyMatrix4(entry.matrix);
+          this.prepareMesh(mesh,entry.name);
+          ProjectLimits.validateGeometry(mesh.geometry);
+        });
+        if (!staged.length) throw new Error('No mesh geometry was found.');
+        staged.forEach(mesh => { App.scene.add(mesh); App.objects.push(mesh); });
+        committed=true;
+        this.select(staged[0]);
+        History.push('import'); this.updateOutliner(); this.updateStats(); status('Imported ' + staged.length + ' mesh(es).');
+      } catch (e) {
+        if (committed) {
+          staged.forEach(mesh=>App.scene.remove(mesh));
+          App.objects=App.objects.filter(object=>!staged.includes(object));
+          if (staged.includes(State.selection)) this.select(null);
         }
-      });
+        Resources.dispose(staged,App.objects);
+        status('Import refused safely: ' + e.message);
+        console.error(e);
+      } finally {
+        URL.revokeObjectURL(url);
+      }
+    }, undefined, err => {
       URL.revokeObjectURL(url);
-      if (added[0]) this.select(added[0]);
-      History.push('import'); this.updateOutliner(); this.updateStats(); status('Imported ' + added.length + ' mesh(es).');
-    }, undefined, err => status('Import failed: ' + err.message));
+      status('Import failed: ' + err.message);
+    });
   },
 
   saveProjectFile() {
@@ -1125,9 +1470,8 @@ const Editor = {
     App.transform.detach(); Helpers.clearEditHelpers(); Helpers.hideMask();
     App.objects.forEach(o => {
       App.scene.remove(o);
-      o.geometry?.disposeBoundsTree?.(); o.geometry?.dispose?.();
-      if (o.material) { o.material.map?.dispose?.(); o.material.dispose?.(); }
     });
+    Resources.dispose(App.objects);
     App.objects=[]; this.select(null);
     Anim.camTrack = {}; Anim.renderKeys();
     localStorage.removeItem('webmaya_scene_v2'); localStorage.removeItem('webmaya_scene');
@@ -1142,6 +1486,13 @@ const Editor = {
     if (src.geometry) clone.geometry = src.geometry.clone();
     if (src.material) clone.material = src.material.clone();
     clone.position.x += 2; clone.name = src.name + '_copy';
+    try {
+      ProjectLimits.assertObjectCount(1);
+      if (!this.lightOf(clone)) ProjectLimits.assertGeometry(ProjectLimits.corners(clone.geometry));
+      ProjectLimits.validateObjectTransform(clone);
+    } catch (e) {
+      Resources.dispose(clone,App.objects); return status(e.message);
+    }
     clone.userData = { ...clone.userData, anim:{} };
     App.scene.add(clone); App.objects.push(clone); this.select(clone); History.push('duplicate'); this.updateStats();
   },
@@ -1150,13 +1501,17 @@ const Editor = {
     if (!State.selection) return;
     const o = State.selection;
     App.scene.remove(o); App.objects = App.objects.filter(x => x !== o);
-    // Dispose only resources no surviving object shares (multi-mesh GLTF imports can share geometry/material).
-    if (o.geometry && !App.objects.some(x => x.geometry === o.geometry)) { o.geometry.disposeBoundsTree?.(); o.geometry.dispose(); }
-    if (o.material && !App.objects.some(x => x.material === o.material)) {
-      if (o.material.map && !App.objects.some(x => x.material?.map === o.material.map)) o.material.map.dispose();
-      o.material.dispose();
-    }
+    Resources.dispose(o,App.objects);
     this.select(null); History.push('delete'); this.updateStats();
+  },
+
+  deleteActiveSelection() {
+    if (State.mode === 'face') {
+      if (!State.selectedFaces.size) return status('Select one or more faces to delete.');
+      return Tools.deleteFace();
+    }
+    if (State.mode === 'vertex') return status('Vertex deletion is disabled; delete the adjacent faces instead.');
+    this.deleteSelection();
   },
 
   focusSelection() {
@@ -1186,16 +1541,32 @@ const Editor = {
   },
 
   onPointerDown(e) {
+    if (window.innerWidth <= 900) {
+      document.body.classList.remove('show-left-panel','show-right-panel');
+      this.syncResponsivePanels();
+    }
     if (App.transform.dragging) return;
+    if ((State.mode === 'face' || State.mode === 'vertex') && State.marqueeArmed) {
+      Selection.beginMarquee(e);
+      return;
+    }
     this.updateMouse(e);
     if (State.mode === 'sculpt') {
+      if (e.button !== 0 || e.isPrimary === false) return;
       if (!State.selection?.isMesh) { status('Select a mesh first, then sculpt.'); return; }
       const hit = App.raycaster.intersectObject(State.selection, false)[0];
       if (!hit) return;
+      App.orbit.enabled = false;
+      try { App.renderer.domElement.setPointerCapture(e.pointerId); } catch (_) {}
       App.sculpting = true; App.dirtySinceStroke = false;
       const brush = e.shiftKey ? 'smooth' : $('brush-mode').value;
-      if (brush === 'grab') Sculpt.beginGrab(State.selection, hit, e);
-      else Sculpt.stroke(State.selection, hit, e);
+      if (brush === 'grab') {
+        if (!Sculpt.beginGrab(State.selection, hit, e)) {
+          App.sculpting = false; App.orbit.enabled = true;
+          try { App.renderer.domElement.releasePointerCapture(e.pointerId); } catch (_) {}
+          status('No vertices are inside the Grab brush.');
+        }
+      } else Sculpt.stroke(State.selection, hit, e);
       return;
     }
     const hit = this.pick();
@@ -1204,13 +1575,24 @@ const Editor = {
       else { State.pendingBoolean = null; status('Boolean cancelled.'); }
       return;
     }
-    if (!hit) { if (State.mode === 'object') this.select(null); return; }
+    if (!hit) {
+      if (State.mode === 'object') this.select(null);
+      else if (State.mode === 'face' || State.mode === 'vertex') Selection.clear();
+      return;
+    }
     if (State.mode === 'object') this.select(hit.object);
-    if (State.mode === 'face') { this.select(hit.object); State.faceIndex = hit.faceIndex; Helpers.highlightFace(hit.object, hit.faceIndex); status('Face ' + hit.faceIndex + ' selected.'); }
-    if (State.mode === 'vertex') { this.select(hit.object); Helpers.selectClosestVertex(hit); }
+    if (State.mode === 'face') {
+      if (State.selection !== hit.object) this.select(hit.object);
+      Selection.selectFace(hit.object, hit.faceIndex, e);
+    }
+    if (State.mode === 'vertex') {
+      if (State.selection !== hit.object) this.select(hit.object);
+      Selection.selectClosestVertex(hit, e);
+    }
   },
 
   onPointerMove(e) {
+    if (Selection.marquee) { Selection.moveMarquee(e); return; }
     const ring = $('brush-ring');
     ring.style.left = e.offsetX + 'px'; ring.style.top = e.offsetY + 'px';
     ring.style.display = State.mode === 'sculpt' ? 'block' : 'none';
@@ -1231,10 +1613,45 @@ const Editor = {
     }
   },
 
-  onPointerUp() {
+  onPointerUp(e) {
+    if (Selection.marquee) { Selection.endMarquee(e); return; }
+    const wasSculpting=App.sculpting;
     if (Sculpt.grab) Sculpt.endGrab();
     else if (App.sculpting && App.dirtySinceStroke) Sculpt.endStroke();
     App.sculpting = false; App.dirtySinceStroke = false;
+    if (wasSculpting) {
+      try { App.renderer.domElement.releasePointerCapture(e?.pointerId); } catch (_) {}
+      App.orbit.enabled = true;
+    }
+  },
+  onPointerCancel(e) {
+    if (Selection.marquee) { Selection.endMarquee(e, true); return; }
+    if (this.cancelTransformDrag('Transform cancelled.')) return;
+    if (Sculpt.grab) Sculpt.endGrab();
+    else if (App.sculpting && App.dirtySinceStroke) Sculpt.endStroke();
+    App.sculpting = false; App.dirtySinceStroke = false; App.orbit.enabled = true;
+  },
+  onLostPointerCapture(e) {
+    if (Selection.marquee) Selection.endMarquee(e, true);
+    if (this.cancelTransformDrag('Transform cancelled.')) return;
+    if (App.sculpting || Sculpt.grab) {
+      if (Sculpt.grab) Sculpt.endGrab(); else if (App.dirtySinceStroke) Sculpt.endStroke();
+      App.sculpting = false; App.dirtySinceStroke = false; App.orbit.enabled = true;
+    }
+  },
+
+  cancelTransformDrag(message) {
+    if (!App.transform?.dragging && !Tools.componentDrag) return false;
+    if (Tools.componentDrag) Tools.cancelComponentDrag();
+    else {
+      App.transform.reset?.();
+      App.transform.dragging = false;
+      App.transform.axis = null;
+      App.orbit.enabled = true;
+      Editor.syncUI(); Helpers.updateSelectionBox();
+    }
+    if (message) status(message);
+    return true;
   },
 
   updateMouse(e) {
@@ -1247,25 +1664,32 @@ const Editor = {
   pick() { return App.raycaster.intersectObjects(App.objects.filter(o=>o.visible), false)[0]; },
 
   onKey(e) {
-    if (['INPUT','TEXTAREA','SELECT'].includes(e.target.tagName)) return;
+    if ($('cmdk').classList.contains('open')) return;
+    if (['INPUT','TEXTAREA','SELECT','BUTTON'].includes(e.target.tagName) || e.target.isContentEditable || e.target.closest?.('[role="button"]')) return;
     const k = e.key.toLowerCase();
     const mod = e.ctrlKey || e.metaKey;
+    if ((App.transform.dragging||Tools.componentDrag) && k!=='escape' && k!=='control') {
+      e.preventDefault(); return;
+    }
     if (e.key === 'Control' && !App.ctrlHeld) { App.ctrlHeld = true; this.updateSnapping(); }
     if (mod && k === 'z' && !e.shiftKey) return (e.preventDefault(), this.undo());
     if ((mod && k === 'y') || (mod && e.shiftKey && k === 'z')) return (e.preventDefault(), this.redo());
     if (mod && k === 'd') return (e.preventDefault(), this.duplicate());
     if (k === 'escape') {
-      if (State.pendingBoolean) { State.pendingBoolean = null; status('Boolean cancelled.'); }
+      if (this.cancelTransformDrag('Transform cancelled.')) { e.preventDefault(); return; }
+      if (Selection.marquee || State.marqueeArmed) Selection.cancelMarquee();
+      else if (State.pendingBoolean) { State.pendingBoolean = null; status('Boolean cancelled.'); }
       else this.select(null);
       return;
     }
-    if (k === 'delete' || k === 'backspace') this.deleteSelection();
+    if (k === 'delete' || k === 'backspace') { e.preventDefault(); this.deleteActiveSelection(); }
     if (k === 'w') App.transform.setMode('translate');
     if (k === 'e') App.transform.setMode('rotate');
     if (k === 'r') App.transform.setMode('scale');
     if (k === 'k') Anim.recordKey();
     if (k === ' ') { e.preventDefault(); Anim.toggle(); }
     if (k === 'f') this.focusSelection();
+    if (k === 'b' && !mod && (State.mode === 'face' || State.mode === 'vertex') && !e.repeat) { e.preventDefault(); Selection.armMarquee(); }
     if (k === '[') { const s=$('sculpt-size'); s.value = Math.max(parseFloat(s.min), parseFloat(s.value) - 0.1); }
     if (k === ']') { const s=$('sculpt-size'); s.value = Math.min(parseFloat(s.max), parseFloat(s.value) + 0.1); }
     if (k === '\\' && !mod) Display.cycle();
@@ -1283,6 +1707,7 @@ const Editor = {
     App.camera.updateProjectionMatrix();
     App.renderer.setSize(div.clientWidth, div.clientHeight);
     App.composer.setSize(div.clientWidth, div.clientHeight);
+    this.syncResponsivePanels();
   },
 
   syncUI() {
@@ -1299,21 +1724,32 @@ const Editor = {
       $('mat-met').value = o.material.metalness ?? 0;
       $('mat-ruf').value = o.material.roughness ?? .5;
       $('mat-wir').checked = !!o.material.wireframe;
-      $('mat-emi').value = o.material.emissiveIntensity ?? 0;
+      $('mat-emi').value = o.material.emissive?.getHex?.() ? (o.material.emissiveIntensity ?? 0) : 0;
       $('mat-opa').value = o.material.opacity ?? 1;
     }
     const verts = o.geometry?.attributes?.position?.count || 0;
     const faces = Math.floor(verts / 3);
     const bvh = o.geometry?.boundsTree ? 'yes' : 'no';
-    $('diagnostics').innerHTML = `Name: ${o.name}<br>Vertices: ${verts}<br>Triangles: ${faces}<br>BVH: ${bvh}<br>Mode: ${State.mode}<br>Selected face: ${State.faceIndex}<br>Selected vertex: ${State.vertexIndex}`;
+    const componentCount = State.mode === 'face' ? State.selectedFaces.size : State.mode === 'vertex' ? State.selectedVertexGroups.size : 0;
+    const diagnostics = $('diagnostics');
+    diagnostics.replaceChildren();
+    [`Name: ${o.name}`,`Vertices: ${verts}`,`Triangles: ${faces}`,`BVH: ${bvh}`,`Mode: ${State.mode}`,`Components: ${componentCount}`].forEach((line,i) => {
+      if (i) diagnostics.appendChild(document.createElement('br'));
+      diagnostics.appendChild(document.createTextNode(line));
+    });
   },
 
   applyTransformUI() {
     if(!State.selection) return;
-    const o=State.selection, n=id=>parseFloat($(id).value || 0);
-    o.position.set(n('px'), n('py'), n('pz'));
-    o.rotation.set(THREE.MathUtils.degToRad(n('rx')), THREE.MathUtils.degToRad(n('ry')), THREE.MathUtils.degToRad(n('rz')));
-    o.scale.set(parseFloat($('sx').value||1), parseFloat($('sy').value||1), parseFloat($('sz').value||1));
+    const o=State.selection;
+    const values=['px','py','pz','rx','ry','rz','sx','sy','sz'].map(id=>parseFloat($(id).value));
+    if (!values.every(Number.isFinite)||values.slice(0,3).some(v=>Math.abs(v)>ProjectLimits.maxCoordinate)||
+        values.slice(3,6).some(v=>Math.abs(v)>1000000)||values.slice(6).some(v=>Math.abs(v)<1e-8||Math.abs(v)>1000000))
+      return status('Transform rejected: enter values inside the safe editor range.');
+    o.position.set(values[0],values[1],values[2]);
+    o.rotation.set(THREE.MathUtils.degToRad(values[3]),THREE.MathUtils.degToRad(values[4]),THREE.MathUtils.degToRad(values[5]));
+    o.scale.set(values[6],values[7],values[8]);
+    if (State.mode==='face'||State.mode==='vertex') Selection.refresh();
     Helpers.updateSelectionBox(); History.push('transform UI');
   },
 
@@ -1326,7 +1762,8 @@ const Editor = {
     m.color.set($('mat-col').value);
     if (m.isMeshStandardMaterial) {
       m.metalness=parseFloat($('mat-met').value); m.roughness=parseFloat($('mat-ruf').value);
-      m.emissive.set($('mat-col').value); m.emissiveIntensity=parseFloat($('mat-emi').value || 0);
+      const emissive=parseFloat($('mat-emi').value || 0);
+      m.emissive.set(emissive > 0 ? $('mat-col').value : 0x000000); m.emissiveIntensity=emissive;
     }
     m.wireframe=$('mat-wir').checked;
     const opacity = parseFloat($('mat-opa').value || 1);
@@ -1335,6 +1772,7 @@ const Editor = {
     if (light) light.color.set($('mat-col').value);
     m.needsUpdate=true; Helpers.updateSelectionBox();
   },
+  commitMaterial() { if (State.selection?.material) History.push('material'); },
   materialPreset(p) {
     if (!State.selection?.material) return;
     if (p === 'clay') Object.assign(State.selection.material, { metalness:0, roughness:.78, transparent:false, opacity:1 });
@@ -1347,9 +1785,14 @@ const Editor = {
     const url = URL.createObjectURL(file);
     // Capture mat now — the object may be deleted/changed before this async load resolves.
     new THREE.TextureLoader().load(url, tex => {
+      if (!Resources.collect(App.objects).materials.has(mat)) {
+        tex.dispose(); URL.revokeObjectURL(url); status('Texture target no longer exists.'); return;
+      }
       tex.colorSpace = THREE.SRGBColorSpace;
-      mat.map?.dispose();           // free the texture we are replacing
-      mat.map = tex; mat.needsUpdate = true; URL.revokeObjectURL(url); History.push('texture');
+      const previous=mat.map;
+      mat.map = tex; mat.needsUpdate = true;
+      if (previous&&!Resources.collect(App.objects).textures.has(previous)) previous.dispose();
+      URL.revokeObjectURL(url); History.push('texture');
     }, undefined, () => { URL.revokeObjectURL(url); status('Texture load failed.'); });
     input.value = '';
   },
@@ -1370,6 +1813,28 @@ const Editor = {
     App.transform.setSpace(sp);
     $('space-btn').textContent = 'Gizmo Space: ' + (sp[0].toUpperCase() + sp.slice(1));
     status('Transform gizmo in ' + sp + ' space.');
+  },
+  togglePanel(side) {
+    const left=side==='left' && !document.body.classList.contains('show-left-panel');
+    const right=side==='right' && !document.body.classList.contains('show-right-panel');
+    document.body.classList.toggle('show-left-panel',left);
+    document.body.classList.toggle('show-right-panel',right);
+    this.syncResponsivePanels(side);
+  },
+  syncResponsivePanels(focusSide=null) {
+    const mobile=window.innerWidth<=900;
+    const states=[
+      { side:'left', panel:$('left-panel'), button:$('show-tools-btn'), open:mobile&&document.body.classList.contains('show-left-panel') },
+      { side:'right', panel:$('right-panel'), button:$('show-inspector-btn'), open:mobile&&document.body.classList.contains('show-right-panel') }
+    ];
+    if (!mobile) document.body.classList.remove('show-left-panel','show-right-panel');
+    states.forEach(({side,panel,button,open}) => {
+      if (mobile&&!open&&panel.contains(document.activeElement)) button.focus();
+      panel.inert = mobile && !open;
+      if (mobile) panel.setAttribute('aria-hidden',open?'false':'true'); else panel.removeAttribute('aria-hidden');
+      button.setAttribute('aria-expanded',open?'true':'false');
+      if (focusSide===side && open) requestAnimationFrame(() => panel.querySelector('button,input,select,[tabindex]:not([tabindex="-1"])')?.focus());
+    });
   },
 
   updateOutliner() {
@@ -1441,58 +1906,645 @@ const Helpers = {
     App.maskOverlay.geometry.dispose(); App.maskOverlay.material.dispose();
     App.maskOverlay = null;
   },
-  highlightFace(mesh, idx) {
-    this.clearEditHelpers(); if (!mesh?.geometry || idx < 0) return;
-    const pos = mesh.geometry.attributes.position; const i = idx * 3;
-    if (i + 2 >= pos.count) return;
-    const a = new THREE.Vector3().fromBufferAttribute(pos, i);
-    const b = new THREE.Vector3().fromBufferAttribute(pos, i+1);
-    const c = new THREE.Vector3().fromBufferAttribute(pos, i+2);
+  highlightFaces(mesh, indices=State.selectedFaces) {
+    this.clearEditHelpers(); if (!mesh?.geometry || !indices?.size) return;
+    mesh.updateMatrixWorld(true);
+    const pos = mesh.geometry.attributes.position, verts = [], v = new THREE.Vector3();
+    [...indices].sort((a,b)=>a-b).forEach(face => {
+      const base = face * 3;
+      if (base < 0 || base + 2 >= pos.count) return;
+      for (let i=0; i<3; i++) {
+        v.fromBufferAttribute(pos, base+i).applyMatrix4(mesh.matrixWorld);
+        verts.push(v.x, v.y, v.z);
+      }
+    });
+    if (!verts.length) return;
     const geo = new THREE.BufferGeometry();
-    geo.setAttribute('position', new THREE.Float32BufferAttribute([...a.toArray(), ...b.toArray(), ...c.toArray()], 3));
-    const mat = new THREE.MeshBasicMaterial({ color:0xff9900, transparent:true, opacity:.45, depthTest:false, side:THREE.DoubleSide });
-    const tri = new THREE.Mesh(geo, mat); tri.applyMatrix4(mesh.matrixWorld); tri.renderOrder = 997;
-    App.helpers.add(tri);
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(verts, 3));
+    const mat = new THREE.MeshBasicMaterial({ color:0xff9900, transparent:true, opacity:.42, depthTest:false, side:THREE.DoubleSide });
+    const selected = new THREE.Mesh(geo, mat); selected.renderOrder = 997;
+    App.helpers.add(selected);
+  },
+  highlightFace(mesh, idx) {
+    const set = new Set(); if (idx >= 0) set.add(idx);
+    this.highlightFaces(mesh, set);
   },
   showVertices(mesh) {
     this.clearEditHelpers(); if (!mesh?.geometry) return;
-    const geo = mesh.geometry.clone(); geo.applyMatrix4(mesh.matrixWorld);
-    const pts = new THREE.Points(geo, new THREE.PointsMaterial({ color:0x00aaff, size:.075, depthTest:false }));
-    pts.renderOrder = 996; App.helpers.add(pts);
-  },
-  selectClosestVertex(hit) {
-    const mesh = hit.object; const pos = mesh.geometry.attributes.position;
-    const base = hit.faceIndex * 3; let best = base; let bestD = Infinity;
-    for (let i = base; i < base + 3; i++) {
-      const w = new THREE.Vector3().fromBufferAttribute(pos, i).applyMatrix4(mesh.matrixWorld);
-      const d = w.distanceTo(hit.point); if (d < bestD) { bestD=d; best=i; }
+    mesh.updateMatrixWorld(true);
+    const topo = Topo.get(mesh.geometry), pos = mesh.geometry.attributes.position;
+    const verts = [], colors = [], v = new THREE.Vector3();
+    for (let g=0; g<topo.groups.length; g++) {
+      v.fromBufferAttribute(pos, topo.groups[g][0]).applyMatrix4(mesh.matrixWorld);
+      verts.push(v.x, v.y, v.z);
+      if (State.selectedVertexGroups.has(g)) colors.push(1, .6, 0);
+      else colors.push(0, .55, 1);
     }
-    State.vertexIndex = best;
-    const world = new THREE.Vector3().fromBufferAttribute(pos, best).applyMatrix4(mesh.matrixWorld);
-    App.vertexHandle.position.copy(world); App.vertexHandle.visible = true;
-    App.transform.attach(App.vertexHandle); App.transform.setMode('translate');
-    status('Vertex ' + best + ' selected.'); Editor.syncUI();
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(verts, 3));
+    geo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+    const pts = new THREE.Points(geo, new THREE.PointsMaterial({ vertexColors:true, size:.082, depthTest:false }));
+    pts.renderOrder = 996; App.helpers.add(pts);
+  }
+};
+
+// ---- Component Studio: welded multi-selection, topology traversal, shared pivot and marquee ----
+const Selection = {
+  marquee:null,
+
+  updateUI() {
+    const componentMode = State.mode === 'face' || State.mode === 'vertex';
+    const count = State.mode === 'face' ? State.selectedFaces.size : State.selectedVertexGroups.size;
+    const kind = State.mode === 'face' ? 'Face' : 'Vertex';
+    const label = count + ' ' + (State.mode === 'face' ? (count === 1 ? 'face' : 'faces') : (count === 1 ? 'vertex' : 'vertices'));
+    $('component-count').textContent = label + ' selected';
+    $('component-kind').textContent = kind;
+    $('component-hud-mode').textContent = kind;
+    $('component-hud-count').textContent = label;
+    $('component-hud').classList.toggle('visible', componentMode && !!State.selection);
+    $('marquee-btn').classList.toggle('active', State.marqueeArmed);
+    $('viewport').classList.toggle('marquee-armed', State.marqueeArmed);
+  },
+
+  componentGroups(mesh=State.selection) {
+    const out = new Set();
+    if (!mesh?.geometry) return out;
+    if (State.mode === 'vertex') return new Set(State.selectedVertexGroups);
+    if (State.mode === 'face') {
+      const topo = Topo.get(mesh.geometry);
+      State.selectedFaces.forEach(f => topo.faceVerts[f]?.forEach(g => out.add(g)));
+    }
+    return out;
+  },
+
+  updateHandle(mesh=State.selection) {
+    const groups = this.componentGroups(mesh);
+    if (!mesh?.geometry || !groups.size) {
+      App.vertexHandle.visible = false;
+      if (Display._saved) Display._saved.vh = false;
+      if (App.transform.object === App.vertexHandle) App.transform.detach();
+      return;
+    }
+    const topo = Topo.get(mesh.geometry), pos = mesh.geometry.attributes.position;
+    const box = new THREE.Box3(), p = new THREE.Vector3();
+    groups.forEach(g => {
+      const vi = topo.groups[g]?.[0];
+      if (vi !== undefined) box.expandByPoint(p.fromBufferAttribute(pos, vi));
+    });
+    if (box.isEmpty()) return;
+    mesh.updateMatrixWorld(true);
+    box.getCenter(p).applyMatrix4(mesh.matrixWorld);
+    App.vertexHandle.position.copy(p);
+    mesh.getWorldQuaternion(App.vertexHandle.quaternion);
+    App.vertexHandle.scale.set(1,1,1);
+    App.vertexHandle.updateMatrixWorld(true);
+    App.vertexHandle.visible = Display.mode === 'solid';
+    if (Display._saved) Display._saved.vh = true;
+    App.transform.attach(App.vertexHandle);
+  },
+
+  refresh(message) {
+    const mesh = State.selection;
+    if (State.mode === 'face') Helpers.highlightFaces(mesh);
+    else if (State.mode === 'vertex') Helpers.showVertices(mesh);
+    this.updateHandle(mesh);
+    this.updateUI();
+    Editor.syncUI();
+    if (message) status(message);
+  },
+
+  clear(silent=false) {
+    State.selectedFaces.clear(); State.selectedVertexGroups.clear();
+    State.faceIndex = -1; State.vertexIndex = -1;
+    if (State.mode === 'face' || State.mode === 'vertex') this.refresh(silent ? null : 'Component selection cleared.');
+    else this.updateUI();
+  },
+
+  selectFace(mesh, face, event={}) {
+    if (!mesh?.geometry || face < 0 || face >= mesh.geometry.attributes.position.count/3) return;
+    const remove = event.ctrlKey || event.metaKey;
+    const toggle = event.shiftKey && !remove;
+    if (!remove && !toggle) State.selectedFaces.clear();
+    if (remove) State.selectedFaces.delete(face);
+    else if (toggle && State.selectedFaces.has(face)) State.selectedFaces.delete(face);
+    else State.selectedFaces.add(face);
+    State.faceIndex = State.selectedFaces.has(face) ? face : (State.selectedFaces.values().next().value ?? -1);
+    this.refresh(State.selectedFaces.size + ' face' + (State.selectedFaces.size === 1 ? '' : 's') + ' selected.');
+  },
+
+  selectClosestVertex(hit, event={}) {
+    const mesh = hit.object, pos = mesh?.geometry?.attributes.position;
+    if (!pos) return;
+    const topo = Topo.get(mesh.geometry), base = hit.faceIndex * 3;
+    let best = base, bestD = Infinity;
+    for (let i=base; i<base+3; i++) {
+      const w = new THREE.Vector3().fromBufferAttribute(pos, i).applyMatrix4(mesh.matrixWorld);
+      const d = w.distanceTo(hit.point);
+      if (d < bestD) { bestD = d; best = i; }
+    }
+    const group = topo.groupOf[best];
+    const remove = event.ctrlKey || event.metaKey;
+    const toggle = event.shiftKey && !remove;
+    if (!remove && !toggle) State.selectedVertexGroups.clear();
+    if (remove) State.selectedVertexGroups.delete(group);
+    else if (toggle && State.selectedVertexGroups.has(group)) State.selectedVertexGroups.delete(group);
+    else State.selectedVertexGroups.add(group);
+    const active = State.selectedVertexGroups.has(group) ? group : (State.selectedVertexGroups.values().next().value ?? -1);
+    State.vertexIndex = active >= 0 ? topo.groups[active][0] : -1;
+    this.refresh(State.selectedVertexGroups.size + ' welded ' + (State.selectedVertexGroups.size === 1 ? 'vertex' : 'vertices') + ' selected.');
+  },
+
+  selectAll() {
+    const mesh = State.selection; if (!mesh?.geometry) return status('Select a mesh first.');
+    if (State.mode === 'face') {
+      State.selectedFaces = new Set(Array.from({ length:mesh.geometry.attributes.position.count/3 }, (_,i)=>i));
+      State.faceIndex = State.selectedFaces.size ? 0 : -1;
+    } else if (State.mode === 'vertex') {
+      const topo = Topo.get(mesh.geometry);
+      State.selectedVertexGroups = new Set(Array.from({ length:topo.groups.length }, (_,i)=>i));
+      State.vertexIndex = topo.groups[0]?.[0] ?? -1;
+    }
+    this.refresh('Selected all components.');
+  },
+
+  invert() {
+    const mesh = State.selection; if (!mesh?.geometry) return status('Select a mesh first.');
+    if (State.mode === 'face') {
+      const next = new Set();
+      for (let f=0; f<mesh.geometry.attributes.position.count/3; f++) if (!State.selectedFaces.has(f)) next.add(f);
+      State.selectedFaces = next; State.faceIndex = next.values().next().value ?? -1;
+    } else if (State.mode === 'vertex') {
+      const topo = Topo.get(mesh.geometry), next = new Set();
+      for (let g=0; g<topo.groups.length; g++) if (!State.selectedVertexGroups.has(g)) next.add(g);
+      State.selectedVertexGroups = next;
+      const g = next.values().next().value; State.vertexIndex = g === undefined ? -1 : topo.groups[g][0];
+    }
+    this.refresh('Component selection inverted.');
+  },
+
+  grow() {
+    const mesh = State.selection; if (!mesh?.geometry) return status('Select a mesh first.');
+    const topo = Topo.get(mesh.geometry);
+    if (State.mode === 'face') {
+      const next = new Set(State.selectedFaces);
+      State.selectedFaces.forEach(f => topo.faceNeighbors[f]?.forEach(n => next.add(n)));
+      State.selectedFaces = next; State.faceIndex = next.values().next().value ?? -1;
+    } else if (State.mode === 'vertex') {
+      const next = new Set(State.selectedVertexGroups);
+      State.selectedVertexGroups.forEach(g => topo.neighbors[g]?.forEach(n => next.add(n)));
+      State.selectedVertexGroups = next;
+      const g = next.values().next().value; State.vertexIndex = g === undefined ? -1 : topo.groups[g][0];
+    }
+    this.refresh('Selection grown.');
+  },
+
+  shrink() {
+    const mesh = State.selection; if (!mesh?.geometry) return status('Select a mesh first.');
+    const topo = Topo.get(mesh.geometry);
+    if (State.mode === 'face') {
+      const current = State.selectedFaces, next = new Set(current);
+      current.forEach(f => { if ([...(topo.faceNeighbors[f] || [])].some(n => !current.has(n))) next.delete(f); });
+      State.selectedFaces = next; State.faceIndex = next.values().next().value ?? -1;
+    } else if (State.mode === 'vertex') {
+      const current = State.selectedVertexGroups, next = new Set(current);
+      current.forEach(g => { if ([...(topo.neighbors[g] || [])].some(n => !current.has(n))) next.delete(g); });
+      State.selectedVertexGroups = next;
+      const g = next.values().next().value; State.vertexIndex = g === undefined ? -1 : topo.groups[g][0];
+    }
+    this.refresh('Selection shrunk.');
+  },
+
+  connected() {
+    const mesh = State.selection; if (!mesh?.geometry) return status('Select a mesh first.');
+    const topo = Topo.get(mesh.geometry);
+    const source = State.mode === 'face' ? State.selectedFaces : State.selectedVertexGroups;
+    const seeds = [...source];
+    if (!seeds.length) return status('Select a component first.');
+    const out = new Set(seeds), queue = [...seeds];
+    while (queue.length) {
+      const cur = queue.shift();
+      const neighbors = State.mode === 'face' ? topo.faceNeighbors[cur] : topo.neighbors[cur];
+      neighbors?.forEach(n => { if (!out.has(n)) { out.add(n); queue.push(n); } });
+    }
+    if (State.mode === 'face') { State.selectedFaces = out; State.faceIndex = seeds[0]; }
+    else { State.selectedVertexGroups = out; State.vertexIndex = topo.groups[seeds[0]][0]; }
+    this.refresh('Connected component selection expanded.');
+  },
+
+  setFaces(faces, message) {
+    State.selectedFaces = new Set(faces);
+    State.faceIndex = State.selectedFaces.values().next().value ?? -1;
+    this.refresh(message);
+  },
+
+  armMarquee() {
+    if (State.marqueeArmed) { this.cancelMarquee(); return; }
+    if ((State.mode !== 'face' && State.mode !== 'vertex') || !State.selection?.geometry)
+      return status('Select a mesh in Face or Vertex mode first.');
+    State.marqueeArmed = true;
+    App.orbit.enabled = false;
+    this.updateUI();
+    status('Box select armed — drag in the viewport. Esc cancels.');
+  },
+
+  beginMarquee(e) {
+    if (!State.marqueeArmed || e.button !== 0) return false;
+    e.preventDefault();
+    const bounds = $('viewport').getBoundingClientRect();
+    const x = clamp(e.clientX - bounds.left, 0, bounds.width);
+    const y = clamp(e.clientY - bounds.top, 0, bounds.height);
+    this.marquee = {
+      pointerId:e.pointerId, bounds, start:{x,y}, current:{x,y},
+      operation:(e.ctrlKey || e.metaKey) ? 'remove' : e.shiftKey ? 'add' : 'replace'
+    };
+    const box = $('marquee-box');
+    box.style.display = 'block'; box.style.left = x+'px'; box.style.top = y+'px'; box.style.width = box.style.height = '0px';
+    try { App.renderer.domElement.setPointerCapture(e.pointerId); } catch (_) {}
+    return true;
+  },
+
+  moveMarquee(e) {
+    const m = this.marquee; if (!m) return;
+    m.current.x = clamp(e.clientX - m.bounds.left, 0, m.bounds.width);
+    m.current.y = clamp(e.clientY - m.bounds.top, 0, m.bounds.height);
+    const x = Math.min(m.start.x, m.current.x), y = Math.min(m.start.y, m.current.y);
+    const box = $('marquee-box');
+    box.style.left=x+'px'; box.style.top=y+'px';
+    box.style.width=Math.abs(m.current.x-m.start.x)+'px'; box.style.height=Math.abs(m.current.y-m.start.y)+'px';
+  },
+
+  cleanupMarquee(m, message) {
+    this.marquee = null; State.marqueeArmed = false;
+    $('marquee-box').style.display = 'none';
+    try {
+      if (m && App.renderer.domElement.hasPointerCapture?.(m.pointerId)) App.renderer.domElement.releasePointerCapture(m.pointerId);
+    } catch (_) {}
+    App.orbit.enabled = !App.transform.dragging && !App.sculpting;
+    this.updateUI();
+    if (message) status(message);
+  },
+
+  cancelMarquee(silent=false) {
+    if (!State.marqueeArmed && !this.marquee) return;
+    const m = this.marquee;
+    this.cleanupMarquee(m, silent ? null : 'Box select cancelled.');
+  },
+
+  endMarquee(e, cancelled=false) {
+    const m = this.marquee; if (!m) return;
+    if (e?.clientX !== undefined) this.moveMarquee(e);
+    const w = Math.abs(m.current.x-m.start.x), h = Math.abs(m.current.y-m.start.y);
+    let message = cancelled ? 'Box select cancelled.' : 'Box selection was too small.';
+    if (!cancelled && w >= 3 && h >= 3) message = this.applyMarquee(m);
+    this.cleanupMarquee(m, message);
+  },
+
+  projectPoint(world, bounds) {
+    const ndc = world.clone().project(App.camera);
+    return { x:(ndc.x+1)*.5*bounds.width, y:(1-ndc.y)*.5*bounds.height, z:ndc.z, ndc };
+  },
+
+  pointInTriangle(p,a,b,c) {
+    const s = (p1,p2,p3) => (p1.x-p3.x)*(p2.y-p3.y)-(p2.x-p3.x)*(p1.y-p3.y);
+    const d1=s(p,a,b), d2=s(p,b,c), d3=s(p,c,a);
+    const neg=d1<0||d2<0||d3<0, pos=d1>0||d2>0||d3>0;
+    return !(neg && pos);
+  },
+
+  segmentsIntersect(a,b,c,d) {
+    const orient=(p,q,r)=>(q.x-p.x)*(r.y-p.y)-(q.y-p.y)*(r.x-p.x);
+    const o1=orient(a,b,c), o2=orient(a,b,d), o3=orient(c,d,a), o4=orient(c,d,b);
+    const eps=1e-8;
+    const on=(p,q,r)=>q.x>=Math.min(p.x,r.x)-eps&&q.x<=Math.max(p.x,r.x)+eps&&q.y>=Math.min(p.y,r.y)-eps&&q.y<=Math.max(p.y,r.y)+eps;
+    if (Math.abs(o1)<eps&&on(a,c,b)) return true;
+    if (Math.abs(o2)<eps&&on(a,d,b)) return true;
+    if (Math.abs(o3)<eps&&on(c,a,d)) return true;
+    if (Math.abs(o4)<eps&&on(c,b,d)) return true;
+    return (o1<0)!==(o2<0) && (o3<0)!==(o4<0);
+  },
+
+  triangleIntersectsRect(tri, rect) {
+    const inside=p=>p.x>=rect.x0&&p.x<=rect.x1&&p.y>=rect.y0&&p.y<=rect.y1;
+    if (tri.some(inside)) return true;
+    const corners=[{x:rect.x0,y:rect.y0},{x:rect.x1,y:rect.y0},{x:rect.x1,y:rect.y1},{x:rect.x0,y:rect.y1}];
+    if (corners.some(p=>this.pointInTriangle(p,tri[0],tri[1],tri[2]))) return true;
+    const te=[[tri[0],tri[1]],[tri[1],tri[2]],[tri[2],tri[0]]];
+    const re=[[corners[0],corners[1]],[corners[1],corners[2]],[corners[2],corners[3]],[corners[3],corners[0]]];
+    return te.some(a=>re.some(b=>this.segmentsIntersect(a[0],a[1],b[0],b[1])));
+  },
+
+  nearestAt(ndc) {
+    App.raycaster.setFromCamera(ndc, App.camera);
+    return App.raycaster.intersectObjects(App.objects.filter(o=>o.visible), false)[0];
+  },
+
+  // Render component IDs against the scene depth buffer, then read only the marquee
+  // rectangle. This scales with visible pixels rather than issuing one raycast per
+  // component, and it gives partially covered faces true screen-space visibility.
+  visibleComponentIds(mesh, topo, rect, bounds) {
+    const width=Math.max(1,Math.floor(bounds.width)), height=Math.max(1,Math.floor(bounds.height));
+    const x=Math.max(0,Math.floor(rect.x0)), top=Math.max(0,Math.floor(rect.y0));
+    const readWidth=Math.max(1,Math.min(width-x,Math.ceil(rect.x1)-x));
+    const readHeight=Math.max(1,Math.min(height-top,Math.ceil(rect.y1)-top));
+    const readY=Math.max(0,height-(top+readHeight));
+    const target=new THREE.WebGLRenderTarget(width,height,{
+      minFilter:THREE.NearestFilter,magFilter:THREE.NearestFilter,
+      format:THREE.RGBAFormat,type:THREE.UnsignedByteType,depthBuffer:true,stencilBuffer:false
+    });
+    target.texture.colorSpace=THREE.NoColorSpace;
+    const depthMaterial=new THREE.ShaderMaterial({
+      vertexShader:'void main(){gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}',
+      fragmentShader:'void main(){gl_FragColor=vec4(0.0,0.0,0.0,1.0);}',
+      side:THREE.DoubleSide,depthTest:true,depthWrite:true,toneMapped:false
+    });
+    const idMaterial=new THREE.ShaderMaterial({
+      vertexShader:State.mode==='face'
+        ? 'attribute vec3 componentId; varying vec3 vId; void main(){vId=componentId;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}'
+        : 'attribute vec3 componentId; varying vec3 vId; void main(){vId=componentId;gl_PointSize=9.0;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}',
+      fragmentShader:State.mode==='face'
+        ? 'varying vec3 vId; void main(){gl_FragColor=vec4(vId,1.0);}'
+        : 'varying vec3 vId; void main(){vec2 p=gl_PointCoord-vec2(0.5);if(dot(p,p)>0.25)discard;gl_FragColor=vec4(vId,1.0);}',
+      side:THREE.DoubleSide,depthTest:true,depthWrite:false,depthFunc:THREE.LessEqualDepth,toneMapped:false
+    });
+    const depthScene=new THREE.Scene(), idScene=new THREE.Scene();
+    const idGeometry=new THREE.BufferGeometry();
+    const ids=[];
+    if (State.mode==='face') {
+      const position=mesh.geometry.attributes.position;
+      idGeometry.setAttribute('position',position);
+      for (let f=0;f<position.count/3;f++) {
+        const id=f+1, r=id&255, g=(id>>8)&255, b=(id>>16)&255;
+        for (let c=0;c<3;c++) ids.push(r,g,b);
+      }
+    } else {
+      const source=mesh.geometry.attributes.position, positions=[];
+      topo.groups.forEach((group,g) => {
+        const vi=group[0], id=g+1;
+        positions.push(source.getX(vi),source.getY(vi),source.getZ(vi));
+        ids.push(id&255,(id>>8)&255,(id>>16)&255);
+      });
+      idGeometry.setAttribute('position',new THREE.Float32BufferAttribute(positions,3));
+    }
+    idGeometry.setAttribute('componentId',new THREE.Uint8BufferAttribute(ids,3,true));
+    App.scene.updateMatrixWorld(true);
+    App.objects.filter(o=>o.visible&&o.geometry).forEach(o => {
+      const proxy=new THREE.Mesh(o.geometry,depthMaterial);
+      proxy.matrixAutoUpdate=false; proxy.matrix.copy(o.matrixWorld); proxy.frustumCulled=o.frustumCulled;
+      depthScene.add(proxy);
+    });
+    const idProxy=State.mode==='face' ? new THREE.Mesh(idGeometry,idMaterial) : new THREE.Points(idGeometry,idMaterial);
+    idProxy.matrixAutoUpdate=false; idProxy.matrix.copy(mesh.matrixWorld); idProxy.frustumCulled=false;
+    idScene.add(idProxy);
+    const renderer=App.renderer, previousTarget=renderer.getRenderTarget();
+    const previousColor=renderer.getClearColor(new THREE.Color()).clone(), previousAlpha=renderer.getClearAlpha();
+    const previousAutoClear=renderer.autoClear;
+    const pixels=new Uint8Array(readWidth*readHeight*4), visible=new Set();
+    try {
+      renderer.setRenderTarget(target); renderer.setClearColor(0x000000,1); renderer.autoClear=true;
+      renderer.clear(true,true,true); renderer.render(depthScene,App.camera);
+      renderer.autoClear=false; renderer.render(idScene,App.camera);
+      renderer.readRenderTargetPixels(target,x,readY,readWidth,readHeight,pixels);
+      for (let i=0;i<pixels.length;i+=4) {
+        const id=pixels[i]|(pixels[i+1]<<8)|(pixels[i+2]<<16);
+        if (id) visible.add(id-1);
+      }
+    } finally {
+      renderer.setRenderTarget(previousTarget); renderer.setClearColor(previousColor,previousAlpha); renderer.autoClear=previousAutoClear;
+      target.dispose();
+      if (State.mode==='face') idGeometry.deleteAttribute('position'); // shared with the edited mesh
+      idGeometry.dispose(); depthMaterial.dispose(); idMaterial.dispose();
+    }
+    return visible;
+  },
+
+  applyMarquee(m) {
+    const mesh = State.selection; if (!mesh?.geometry) return 'Select a mesh first.';
+    mesh.updateMatrixWorld(true);
+    const rect = {
+      x0:Math.min(m.start.x,m.current.x), x1:Math.max(m.start.x,m.current.x),
+      y0:Math.min(m.start.y,m.current.y), y1:Math.max(m.start.y,m.current.y)
+    };
+    const through = $('select-through').checked || Display.mode === 'wireframe' || Display.mode === 'xray';
+    const pos = mesh.geometry.attributes.position, topo = Topo.get(mesh.geometry), candidates = [];
+    const v = new THREE.Vector3();
+    let visible=null;
+    if (!through) {
+      try { visible=this.visibleComponentIds(mesh,topo,rect,m.bounds); }
+      catch (e) {
+        console.error(e);
+        return 'Visible box selection failed safely; enable Select Through to select without depth testing.';
+      }
+    }
+    if (State.mode === 'face') {
+      if (!through) visible.forEach(f => { if (f>=0&&f<pos.count/3) candidates.push(f); });
+      else for (let f=0; f<pos.count/3; f++) {
+        const projected = [];
+        for (let c=0; c<3; c++) projected.push(this.projectPoint(v.fromBufferAttribute(pos,f*3+c).applyMatrix4(mesh.matrixWorld),m.bounds));
+        if (projected.some(p=>p.z>=-1&&p.z<=1) && this.triangleIntersectsRect(projected,rect)) candidates.push(f);
+      }
+      if (m.operation === 'replace') State.selectedFaces.clear();
+      candidates.forEach(f => m.operation === 'remove' ? State.selectedFaces.delete(f) : State.selectedFaces.add(f));
+      State.faceIndex = candidates.find(f=>State.selectedFaces.has(f)) ?? State.selectedFaces.values().next().value ?? -1;
+    } else {
+      for (let g=0; g<topo.groups.length; g++) {
+        const world = v.fromBufferAttribute(pos,topo.groups[g][0]).applyMatrix4(mesh.matrixWorld);
+        const p = this.projectPoint(world,m.bounds);
+        if (p.z < -1 || p.z > 1 || p.x < rect.x0 || p.x > rect.x1 || p.y < rect.y0 || p.y > rect.y1) continue;
+        if (!through && !visible.has(g)) continue;
+        candidates.push(g);
+      }
+      if (m.operation === 'replace') State.selectedVertexGroups.clear();
+      candidates.forEach(g => m.operation === 'remove' ? State.selectedVertexGroups.delete(g) : State.selectedVertexGroups.add(g));
+      const g = candidates.find(x=>State.selectedVertexGroups.has(x)) ?? State.selectedVertexGroups.values().next().value;
+      State.vertexIndex = g === undefined ? -1 : topo.groups[g][0];
+    }
+    this.refresh();
+    const count = State.mode === 'face' ? State.selectedFaces.size : State.selectedVertexGroups.size;
+    return 'Box selected ' + count + ' ' + (State.mode === 'face' ? 'face' + (count===1?'':'s') : 'welded ' + (count===1?'vertex':'vertices')) + '.';
   }
 };
 
 const MeshOps = {
+  key(v) { return Math.round(v.x*1e5) + '_' + Math.round(v.y*1e5) + '_' + Math.round(v.z*1e5); },
   getTri(mesh, idx) {
     const p = mesh.geometry.attributes.position; const i = idx * 3;
     return [new THREE.Vector3().fromBufferAttribute(p,i), new THREE.Vector3().fromBufferAttribute(p,i+1), new THREE.Vector3().fromBufferAttribute(p,i+2)];
   },
-  rebuild(mesh, triangles) {
-    const arr = [];
-    triangles.forEach(t => t.forEach(v => arr.push(v.x, v.y, v.z)));
-    mesh.geometry.dispose();
-    mesh.geometry = new THREE.BufferGeometry();
-    mesh.geometry.setAttribute('position', new THREE.Float32BufferAttribute(arr, 3));
-    mesh.geometry.computeVertexNormals(); mesh.geometry.computeBoundingBox(); mesh.geometry.computeBoundingSphere();
+  getSources(idx) { return [idx*3, idx*3+1, idx*3+2]; },
+  blend(...pairs) { return pairs; },
+  allRecords(mesh, excluded=new Set()) {
+    const skip = excluded instanceof Set ? excluded : new Set(excluded < 0 ? [] : [excluded]);
+    const triangles=[], sources=[];
+    const count = mesh.geometry.attributes.position.count/3;
+    for (let f=0; f<count; f++) if (!skip.has(f)) {
+      triangles.push(this.getTri(mesh,f));
+      sources.push(this.getSources(f));
+    }
+    return { triangles, sources };
+  },
+  attributeValue(attr, index, component) {
+    // Read storage values directly so normalized integer attributes retain their full
+    // range when copied into a new attribute (getX/getY return normalized floats).
+    if (attr.isInterleavedBufferAttribute)
+      return attr.data.array[index*attr.data.stride+attr.offset+component];
+    return attr.array[index*attr.itemSize+component];
+  },
+  normalizedStorageValue(array,value) {
+    const v=Number(value)||0;
+    if (array instanceof Uint8Array || array instanceof Uint8ClampedArray) return clamp(v,0,1)*255;
+    if (array instanceof Uint16Array) return clamp(v,0,1)*65535;
+    if (array instanceof Uint32Array) return clamp(v,0,1)*4294967295;
+    if (array instanceof Int8Array) return clamp(v,-1,1)*127;
+    if (array instanceof Int16Array) return clamp(v,-1,1)*32767;
+    if (array instanceof Int32Array) return clamp(v,-1,1)*2147483647;
+    return v;
+  },
+  refreshWireOverlay(mesh) {
+    if (!mesh?.geometry) return;
+    const existing = mesh.getObjectByName('wire_overlay');
+    if (existing) { mesh.remove(existing); Resources.dispose(existing,App.objects.filter(o=>o!==mesh)); }
+    if (!mesh.userData.editor?.wireOverlay) return;
+    const wire = new THREE.LineSegments(
+      new THREE.WireframeGeometry(mesh.geometry),
+      new THREE.LineBasicMaterial({ color:0x111111, transparent:true, opacity:.35 })
+    );
+    wire.name='wire_overlay'; mesh.add(wire);
+  },
+  rebuild(mesh, triangles, sourceTris=[]) {
+    if (!mesh?.geometry) throw new Error('Cannot rebuild a missing mesh.');
+    ProjectLimits.assertGeometry(triangles.length*3,mesh);
+    const old = mesh.geometry, oldPos = old.attributes.position;
+    const positions=[], flatSources=[];
+    triangles.forEach((tri, ti) => tri.forEach((v, ci) => {
+      if (![v.x,v.y,v.z].every(Number.isFinite)) throw new Error('Geometry operation produced a non-finite vertex.');
+      positions.push(v.x,v.y,v.z);
+      flatSources.push(sourceTris[ti]?.[ci] ?? null);
+    }));
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+    ProjectLimits.validateGeometry(geo); // catches finite doubles that overflowed while packing to Float32
+
+    // Preserve every compatible per-corner attribute. Generated corners carry weighted
+    // source descriptors, so UVs, colors and sculpt masks survive topology edits.
+    const oldByPosition = new Map(), p = new THREE.Vector3();
+    for (let i=0; i<oldPos.count; i++) {
+      p.fromBufferAttribute(oldPos,i);
+      const key=this.key(p); if (!oldByPosition.has(key)) oldByPosition.set(key,i);
+    }
+    Object.entries(old.attributes).forEach(([name, attr]) => {
+      if (name === 'position' || name === 'normal' || name === 'tangent' || attr.count !== oldPos.count) return;
+      const SourceArray=attr.isInterleavedBufferAttribute ? attr.data.array.constructor : attr.array.constructor;
+      const out = new SourceArray(flatSources.length * attr.itemSize);
+      const integer = !(out instanceof Float32Array || out instanceof Float64Array);
+      for (let vi=0; vi<flatSources.length; vi++) {
+        const sourceRecord=flatSources[vi];
+        const override=sourceRecord && typeof sourceRecord==='object' && !Array.isArray(sourceRecord) ? sourceRecord.values?.[name] : null;
+        let descriptor=sourceRecord && typeof sourceRecord==='object' && !Array.isArray(sourceRecord) ? sourceRecord.source : sourceRecord;
+        if (override) {
+          for (let c=0;c<attr.itemSize;c++) {
+            let value=override[c]??0;
+            if (attr.normalized&&integer) value=this.normalizedStorageValue(out,value);
+            out[vi*attr.itemSize+c]=integer?Math.round(value):value;
+          }
+          continue;
+        }
+        if (typeof descriptor === 'number') descriptor = [[descriptor,1]];
+        if (!descriptor) {
+          p.set(positions[vi*3],positions[vi*3+1],positions[vi*3+2]);
+          const exact = oldByPosition.get(this.key(p));
+          if (exact !== undefined) descriptor = [[exact,1]];
+        }
+        if (!descriptor) continue;
+        for (let c=0; c<attr.itemSize; c++) {
+          let value=0;
+          descriptor.forEach(([index,weight]) => value += this.attributeValue(attr,index,c)*weight);
+          out[vi*attr.itemSize+c] = integer ? Math.round(value) : value;
+        }
+      }
+      const next = new THREE.BufferAttribute(out, attr.itemSize, attr.normalized);
+      next.name=attr.name; next.gpuType=attr.gpuType; next.setUsage(attr.usage);
+      geo.setAttribute(name,next);
+    });
+    ProjectLimits.validateGeometry(geo);
+    geo.computeVertexNormals();
+    geo.computeBoundingBox(); geo.computeBoundingSphere();
+    old.disposeBoundsTree?.(); old.dispose();
+    mesh.geometry = geo;
+    Sculpt.recomputeNormals(mesh, !mesh.material?.flatShading);
+    this.refreshWireOverlay(mesh);
     Editor.updateStats(); Editor.syncUI(); Helpers.updateSelectionBox();
+    return geo;
   },
   allTriangles(mesh, skip=-1) {
-    const p = mesh.geometry.attributes.position, tris=[];
-    for (let f=0; f<p.count/3; f++) if (f !== skip) tris.push(this.getTri(mesh,f));
-    return tris;
+    return this.allRecords(mesh, skip instanceof Set ? skip : new Set(skip < 0 ? [] : [skip])).triangles;
+  },
+  extrudeRegion(mesh, selectedFaces, amount) {
+    const faceCount = mesh.geometry.attributes.position.count/3;
+    const selected = new Set([...selectedFaces].filter(f=>f>=0&&f<faceCount));
+    if (!selected.size) throw new Error('Select at least one face.');
+    if (!Number.isFinite(amount) || Math.abs(amount) < 1e-6) throw new Error('Use a non-zero finite extrusion offset.');
+    const topo = Topo.get(mesh.geometry), pos = mesh.geometry.attributes.position;
+    const regionOf=new Map(), regions=[];
+    [...selected].sort((x,y)=>x-y).forEach(seed => {
+      if (regionOf.has(seed)) return;
+      const region=regions.length, faces=[], queue=[seed]; regionOf.set(seed,region);
+      while (queue.length) {
+        const face=queue.shift(); faces.push(face);
+        topo.faceNeighbors[face]?.forEach(next => {
+          if (selected.has(next)&&!regionOf.has(next)) { regionOf.set(next,region); queue.push(next); }
+        });
+      }
+      regions.push(faces);
+    });
+    const key=(region,group)=>region+'_'+group;
+    const normals=new Map(), fallback=new Map();
+    const a=new THREE.Vector3(), b=new THREE.Vector3(), c=new THREE.Vector3(), ab=new THREE.Vector3(), ac=new THREE.Vector3(), n=new THREE.Vector3();
+    selected.forEach(f => {
+      a.fromBufferAttribute(pos,f*3); b.fromBufferAttribute(pos,f*3+1); c.fromBufferAttribute(pos,f*3+2);
+      n.crossVectors(ab.subVectors(b,a), ac.subVectors(c,a));
+      const region=regionOf.get(f);
+      topo.faceVerts[f].forEach(g => {
+        const k=key(region,g);
+        if (!normals.has(k)) { normals.set(k,new THREE.Vector3()); fallback.set(k,new THREE.Vector3()); }
+        normals.get(k).add(n); if (fallback.get(k).lengthSq()===0) fallback.get(k).copy(n);
+      });
+    });
+    const lifted = new Map(), rep = new THREE.Vector3();
+    normals.forEach((normal,k) => {
+      const group=Number(k.slice(k.indexOf('_')+1));
+      rep.fromBufferAttribute(pos,topo.groups[group][0]);
+      const direction=normal.lengthSq()>1e-16 ? normal.normalize() : fallback.get(k).normalize();
+      if (direction.lengthSq()<1e-16) direction.set(0,1,0);
+      lifted.set(k,rep.clone().addScaledVector(direction,amount));
+    });
+
+    const records = this.allRecords(mesh,selected);
+    const triangles=records.triangles, sources=records.sources, capFaces=[];
+    [...selected].sort((x,y)=>x-y).forEach(f => {
+      const fv=topo.faceVerts[f], region=regionOf.get(f);
+      capFaces.push(triangles.length);
+      triangles.push([lifted.get(key(region,fv[0])).clone(),lifted.get(key(region,fv[1])).clone(),lifted.get(key(region,fv[2])).clone()]);
+      sources.push(this.getSources(f));
+    });
+    let boundaryCount=0, nonManifold=0;
+    topo.edges.forEach(edge => {
+      const selectedHalf = edge.halfEdges.filter(h=>selected.has(h.face));
+      if (edge.faces.length > 2 && selectedHalf.length) nonManifold++;
+      if (selectedHalf.length !== 1) return;
+      const h=selectedHalf[0], region=regionOf.get(h.face);
+      const av=new THREE.Vector3().fromBufferAttribute(pos,h.fromIndex);
+      const bv=new THREE.Vector3().fromBufferAttribute(pos,h.toIndex);
+      const a2=lifted.get(key(region,h.from)), b2=lifted.get(key(region,h.to));
+      const corner=(source,uv)=>({source,values:{uv,uv1:uv}});
+      triangles.push([av,bv,b2.clone()],[av.clone(),b2.clone(),a2.clone()]);
+      sources.push(
+        [corner(h.fromIndex,[0,0]),corner(h.toIndex,[1,0]),corner(h.toIndex,[1,1])],
+        [corner(h.fromIndex,[0,0]),corner(h.toIndex,[1,1]),corner(h.fromIndex,[0,1])]
+      );
+      boundaryCount++;
+    });
+    this.rebuild(mesh,triangles,sources);
+    return { selectedFaces:capFaces, boundaryCount, nonManifold };
   }
 };
 
@@ -1649,6 +2701,8 @@ const Sculpt = {
           break;
         }
       }
+      if (![out.x,out.y,out.z].every(Number.isFinite)) return;
+      out.clampScalar(-ProjectLimits.maxCoordinate,ProjectLimits.maxCoordinate);
       for (const vi of gverts) pos.setXYZ(vi, out.x, out.y, out.z);
     });
     pos.needsUpdate = true;
@@ -1716,8 +2770,10 @@ const Sculpt = {
 
   endStroke() {
     const mesh = State.selection;
-    if (mesh?.geometry) mesh.geometry.computeBoundingSphere();
+    if (mesh?.geometry) { mesh.geometry.computeBoundingBox(); mesh.geometry.computeBoundingSphere(); }
     if (mesh?.geometry?.attributes.aMask) Helpers.showMask(mesh);  // keep overlay in sync after the stroke
+    MeshOps.refreshWireOverlay(mesh);
+    Helpers.updateSelectionBox();
     History.push('sculpt stroke');
   },
 
@@ -1742,7 +2798,7 @@ const Sculpt = {
       return entries;
     };
     const main = capture(localCenter);
-    if (!main.length) { App.sculpting = false; return; }
+    if (!main.length) return false;
     let sym = null;
     if ($('sculpt-sym').checked && Math.abs(localCenter.x) > 1e-5) {
       const mc = localCenter.clone(); mc.x *= -1;
@@ -1755,6 +2811,7 @@ const Sculpt = {
       invM:mesh.matrixWorld.clone().invert(),
       tris:null
     };
+    return true;
   },
 
   moveGrab() {
@@ -1770,6 +2827,8 @@ const Sculpt = {
     const apply = (entries, delta) => {
       for (const ent of entries) {
         out.copy(ent.orig).addScaledVector(delta, ent.w);
+        if (![out.x,out.y,out.z].every(Number.isFinite)) continue;
+        out.clampScalar(-ProjectLimits.maxCoordinate,ProjectLimits.maxCoordinate);
         for (const vi of topo.groups[ent.g]) pos.setXYZ(vi, out.x, out.y, out.z);
       }
     };
@@ -1789,7 +2848,10 @@ const Sculpt = {
 
   endGrab() {
     if (!this.grab) return;
-    this.grab.mesh.geometry.computeBoundingSphere();
+    const mesh=this.grab.mesh;
+    mesh.geometry.computeBoundingBox(); mesh.geometry.computeBoundingSphere();
+    MeshOps.refreshWireOverlay(mesh);
+    Helpers.updateSelectionBox();
     this.grab = null;
     if (App.dirtySinceStroke) History.push('grab sculpt');
   },
@@ -1826,114 +2888,210 @@ const Sculpt = {
 
 const Tools = {
   ensureMesh() { return State.selection?.isMesh && !Editor.lightOf(State.selection) ? State.selection : null; },
-  ensureFace() { const m=this.ensureMesh(); return (m && State.faceIndex >= 0) ? m : null; },
+  ensureFace() { const m=this.ensureMesh(); return (m && State.selectedFaces.size) ? m : null; },
+  snapshotAttribute(attribute) {
+    return (attribute.isInterleavedBufferAttribute?attribute.data.array:attribute.array).slice();
+  },
+  validatePositionEdit(mesh,attribute,original,label) {
+    try { ProjectLimits.validateGeometry(mesh.geometry); return true; }
+    catch (e) {
+      (attribute.isInterleavedBufferAttribute?attribute.data.array:attribute.array).set(original);
+      attribute.needsUpdate=true; mesh.geometry.boundsTree?.refit();
+      status(label+' refused safely: '+e.message); return false;
+    }
+  },
+  selectedFaces() {
+    const mesh=this.ensureMesh(); if (!mesh) return new Set();
+    const count=mesh.geometry.attributes.position.count/3;
+    return new Set([...State.selectedFaces].filter(f=>f>=0&&f<count));
+  },
+  preflightFaceGrowth(mesh,selected,extraFacesPerSelection) {
+    const current=mesh.geometry.attributes.position.count/3;
+    const predicted=current+selected.size*extraFacesPerSelection;
+    ProjectLimits.assertGeometry(predicted*3,mesh);
+  },
 
-  extrudeFace(amount=.45) {
+  extrudeFace(amount=null) {
     const mesh=this.ensureFace(); if(!mesh) return status('Select a face first.');
-    const [a,b,c]=MeshOps.getTri(mesh, State.faceIndex);
-    const n = new THREE.Triangle(a,b,c).getNormal(new THREE.Vector3());
-    const a2=a.clone().addScaledVector(n,amount), b2=b.clone().addScaledVector(n,amount), c2=c.clone().addScaledVector(n,amount);
-    const tris=MeshOps.allTriangles(mesh);
-    tris.push([a2,b2,c2], [a,b,b2], [a,b2,a2], [b,c,c2], [b,c2,b2], [c,a,a2], [c,a2,c2]);
-    MeshOps.rebuild(mesh,tris); State.faceIndex=tris.length-7; Helpers.highlightFace(mesh,State.faceIndex); History.push('extrude face'); status('Face extruded.');
+    const selected=this.selectedFaces();
+    const offset = clamp(amount === null ? parseFloat($('face-offset').value) : amount,-10000,10000);
+    try {
+      this.preflightFaceGrowth(mesh,selected,6);
+      const result=MeshOps.extrudeRegion(mesh,selected,offset);
+      Selection.setFaces(result.selectedFaces);
+      History.push('extrude face region');
+      const warning=result.nonManifold ? ' · warning: '+result.nonManifold+' non-manifold edge(s)' : '';
+      status(result.selectedFaces.length+' face'+(result.selectedFaces.length===1?'':'s')+' extruded as one region across '+result.boundaryCount+' boundary edge'+(result.boundaryCount===1?'':'s')+warning+'.');
+    } catch (err) { status('Extrude failed: '+err.message); }
   },
 
   insetFace(scale=.72) {
     const mesh=this.ensureFace(); if(!mesh) return status('Select a face first.');
-    const [a,b,c]=MeshOps.getTri(mesh, State.faceIndex);
-    const center=a.clone().add(b).add(c).multiplyScalar(1/3);
-    const ia=center.clone().lerp(a,scale), ib=center.clone().lerp(b,scale), ic=center.clone().lerp(c,scale);
-    const tris=MeshOps.allTriangles(mesh, State.faceIndex);
-    tris.push([ia,ib,ic], [a,b,ib], [a,ib,ia], [b,c,ic], [b,ic,ib], [c,a,ia], [c,ia,ic]);
-    MeshOps.rebuild(mesh,tris); State.faceIndex=tris.length-7; Helpers.highlightFace(mesh,State.faceIndex); History.push('inset face'); status('Face inset.');
+    const selected=this.selectedFaces();
+    try { this.preflightFaceGrowth(mesh,selected,6); } catch (e) { return status('Inset refused: '+e.message); }
+    const records=MeshOps.allRecords(mesh,selected);
+    const tris=records.triangles, sources=records.sources, inner=[];
+    [...selected].sort((x,y)=>x-y).forEach(f => {
+      const [a,b,c]=MeshOps.getTri(mesh,f), [sa,sb,sc]=MeshOps.getSources(f);
+      const center=a.clone().add(b).add(c).multiplyScalar(1/3);
+      const ia=center.clone().lerp(a,scale), ib=center.clone().lerp(b,scale), ic=center.clone().lerp(c,scale);
+      const other=(1-scale)/3;
+      const sia=MeshOps.blend([sa,scale+other],[sb,other],[sc,other]);
+      const sib=MeshOps.blend([sa,other],[sb,scale+other],[sc,other]);
+      const sic=MeshOps.blend([sa,other],[sb,other],[sc,scale+other]);
+      inner.push(tris.length);
+      tris.push([ia,ib,ic],[a,b,ib],[a,ib,ia],[b,c,ic],[b,ic,ib],[c,a,ia],[c,ia,ic]);
+      sources.push([sia,sib,sic],[sa,sb,sib],[sa,sib,sia],[sb,sc,sic],[sb,sic,sib],[sc,sa,sia],[sc,sia,sic]);
+    });
+    MeshOps.rebuild(mesh,tris,sources); Selection.setFaces(inner); History.push('inset faces');
+    status(selected.size+' face'+(selected.size===1?'':'s')+' inset individually.');
   },
 
   subdivideFace() {
     const mesh=this.ensureFace(); if(!mesh) return status('Select a face first.');
-    const [a,b,c]=MeshOps.getTri(mesh, State.faceIndex);
-    const ab=a.clone().lerp(b,.5), bc=b.clone().lerp(c,.5), ca=c.clone().lerp(a,.5);
-    const tris=MeshOps.allTriangles(mesh, State.faceIndex);
-    tris.push([a,ab,ca], [ab,b,bc], [ca,bc,c], [ab,bc,ca]);
-    MeshOps.rebuild(mesh,tris); History.push('subdivide face'); status('Face subdivided.');
+    const selected=this.selectedFaces();
+    try { this.preflightFaceGrowth(mesh,selected,3); } catch (e) { return status('Subdivide refused: '+e.message); }
+    const records=MeshOps.allRecords(mesh,selected);
+    const tris=records.triangles, sources=records.sources, children=[];
+    [...selected].sort((x,y)=>x-y).forEach(f => {
+      const [a,b,c]=MeshOps.getTri(mesh,f), [sa,sb,sc]=MeshOps.getSources(f);
+      const ab=a.clone().lerp(b,.5), bc=b.clone().lerp(c,.5), ca=c.clone().lerp(a,.5);
+      const sab=MeshOps.blend([sa,.5],[sb,.5]), sbc=MeshOps.blend([sb,.5],[sc,.5]), sca=MeshOps.blend([sc,.5],[sa,.5]);
+      const start=tris.length; children.push(start,start+1,start+2,start+3);
+      tris.push([a,ab,ca],[ab,b,bc],[ca,bc,c],[ab,bc,ca]);
+      sources.push([sa,sab,sca],[sab,sb,sbc],[sca,sbc,sc],[sab,sbc,sca]);
+    });
+    MeshOps.rebuild(mesh,tris,sources); Selection.setFaces(children); History.push('subdivide faces');
+    status(selected.size+' face'+(selected.size===1?'':'s')+' subdivided into '+children.length+'.');
   },
 
   pokeFace(height=.16) {
     const mesh=this.ensureFace(); if(!mesh) return status('Select a face first.');
-    const [a,b,c]=MeshOps.getTri(mesh, State.faceIndex);
-    const n = new THREE.Triangle(a,b,c).getNormal(new THREE.Vector3());
-    const center=a.clone().add(b).add(c).multiplyScalar(1/3).addScaledVector(n,height);
-    const tris=MeshOps.allTriangles(mesh, State.faceIndex);
-    tris.push([a,b,center], [b,c,center], [c,a,center]);
-    MeshOps.rebuild(mesh,tris); History.push('poke face'); status('Face poked.');
+    const selected=this.selectedFaces();
+    try { this.preflightFaceGrowth(mesh,selected,2); } catch (e) { return status('Poke refused: '+e.message); }
+    const records=MeshOps.allRecords(mesh,selected);
+    const tris=records.triangles, sources=records.sources, children=[];
+    [...selected].sort((x,y)=>x-y).forEach(f => {
+      const [a,b,c]=MeshOps.getTri(mesh,f), [sa,sb,sc]=MeshOps.getSources(f);
+      const n=new THREE.Triangle(a,b,c).getNormal(new THREE.Vector3());
+      const center=a.clone().add(b).add(c).multiplyScalar(1/3).addScaledVector(n,height);
+      const centerSource=MeshOps.blend([sa,1/3],[sb,1/3],[sc,1/3]);
+      const start=tris.length; children.push(start,start+1,start+2);
+      tris.push([a,b,center],[b,c,center],[c,a,center]);
+      sources.push([sa,sb,centerSource],[sb,sc,centerSource],[sc,sa,centerSource]);
+    });
+    MeshOps.rebuild(mesh,tris,sources); Selection.setFaces(children); History.push('poke faces');
+    status(selected.size+' face'+(selected.size===1?'':'s')+' poked.');
   },
 
   deleteFace() {
     const mesh=this.ensureFace(); if(!mesh) return status('Select a face first.');
-    MeshOps.rebuild(mesh, MeshOps.allTriangles(mesh, State.faceIndex));
-    State.faceIndex=-1; Helpers.clearEditHelpers(); History.push('delete face'); status('Face deleted.');
+    const selected=this.selectedFaces(), records=MeshOps.allRecords(mesh,selected);
+    MeshOps.rebuild(mesh,records.triangles,records.sources);
+    Selection.clear(true); History.push('delete faces');
+    status(selected.size+' face'+(selected.size===1?'':'s')+' deleted.');
   },
 
   flipFace() {
     const mesh=this.ensureFace(); if(!mesh) return status('Select a face first.');
-    const tris=MeshOps.allTriangles(mesh); const t=tris[State.faceIndex]; tris[State.faceIndex]=[t[0],t[2],t[1]];
-    MeshOps.rebuild(mesh,tris); Helpers.highlightFace(mesh,State.faceIndex); History.push('flip face');
+    const selected=this.selectedFaces(), tris=[], sources=[];
+    const count=mesh.geometry.attributes.position.count/3;
+    for (let f=0; f<count; f++) {
+      const tri=MeshOps.getTri(mesh,f), src=MeshOps.getSources(f);
+      if (selected.has(f)) { tris.push([tri[0],tri[2],tri[1]]); sources.push([src[0],src[2],src[1]]); }
+      else { tris.push(tri); sources.push(src); }
+    }
+    MeshOps.rebuild(mesh,tris,sources); Selection.setFaces(selected); History.push('flip faces');
+    status(selected.size+' face'+(selected.size===1?'':'s')+' flipped.');
   },
 
-  // Proportional ("soft") vertex editing. Captured at drag start: the affected welded groups,
-  // their falloff weights, and original local positions. Off => only the picked group moves.
-  vtxDrag:null,
-  beginVertexDrag() {
-    const mesh = State.selection; if (!mesh?.geometry || State.vertexIndex < 0) return;
-    const geo = mesh.geometry, pos = geo.attributes.position, topo = Topo.get(geo);
-    const g0 = topo.groupOf[State.vertexIndex];
-    const origin = new THREE.Vector3().fromBufferAttribute(pos, topo.groups[g0][0]);
-    const affected = [];
-    if ($('vtx-prop').checked) {
-      const radius = parseFloat($('vtx-prop-radius').value) || 1.2;
-      const p = new THREE.Vector3();
-      for (let g = 0; g < topo.groups.length; g++) {
-        p.fromBufferAttribute(pos, topo.groups[g][0]);
-        const d = p.distanceTo(origin);
-        if (d <= radius) affected.push({ g, w:FALLOFF.smooth(clamp(1 - d/radius, 0, 1)), orig:p.clone() });
+  // Shared component-pivot editing. A world-space delta matrix moves, rotates or scales every
+  // selected welded group without tearing duplicated triangle corners.
+  componentDrag:null,
+  beginComponentDrag() {
+    const mesh=State.selection, groups=Selection.componentGroups(mesh);
+    if (!mesh?.geometry || !groups.size) return;
+    const geo=mesh.geometry, pos=geo.attributes.position, topo=Topo.get(geo);
+    const selectedOriginals=new Map(), p=new THREE.Vector3();
+    groups.forEach(g=>selectedOriginals.set(g,p.fromBufferAttribute(pos,topo.groups[g][0]).clone()));
+    const affected=[];
+    const proportional=State.mode==='vertex' && $('vtx-prop').checked;
+    const radius=parseFloat($('vtx-prop-radius').value)||1.2;
+    for (let g=0; g<topo.groups.length; g++) {
+      p.fromBufferAttribute(pos,topo.groups[g][0]);
+      let weight=groups.has(g)?1:0;
+      if (!weight && proportional) {
+        let distance=Infinity;
+        selectedOriginals.forEach(origin=>distance=Math.min(distance,p.distanceTo(origin)));
+        if (distance<=radius) weight=FALLOFF.smooth(clamp(1-distance/radius,0,1));
       }
-    } else {
-      affected.push({ g:g0, w:1, orig:origin.clone() });
+      if (weight>0) affected.push({g,w:weight,orig:p.clone()});
     }
-    this.vtxDrag = { originLocal:origin.clone(), affected };
+    mesh.updateMatrixWorld(true); App.vertexHandle.updateMatrixWorld(true);
+    this.componentDrag={
+      mesh, affected,
+      meshWorld:mesh.matrixWorld.clone(),
+      meshWorldInverse:mesh.matrixWorld.clone().invert(),
+      startHandleInverse:App.vertexHandle.matrixWorld.clone().invert()
+    };
+    App.helpers.visible=false;
+    if (App.selectionBox) App.selectionBox.visible=false;
   },
-  commitVertexHandle() {
-    const mesh = State.selection; if (!mesh || State.vertexIndex < 0) return;
-    const geo = mesh.geometry, pos = geo.attributes.position, topo = Topo.get(geo);
-    const local = mesh.worldToLocal(App.vertexHandle.position.clone());
-    const drag = this.vtxDrag;
-    if (drag) {
-      const delta = local.clone().sub(drag.originLocal), out = new THREE.Vector3();
-      for (const ent of drag.affected) {
-        out.copy(ent.orig).addScaledVector(delta, ent.w);
-        for (const vi of topo.groups[ent.g]) pos.setXYZ(vi, out.x, out.y, out.z);
+  commitComponentHandle() {
+    const drag=this.componentDrag; if (!drag) return;
+    const mesh=drag.mesh, geo=mesh.geometry, pos=geo.attributes.position, topo=Topo.get(geo);
+    App.vertexHandle.updateMatrixWorld(true);
+    const delta=App.vertexHandle.matrixWorld.clone().multiply(drag.startHandleInverse);
+    const world=new THREE.Vector3(), target=new THREE.Vector3();
+    for (const ent of drag.affected) {
+      world.copy(ent.orig).applyMatrix4(drag.meshWorld).applyMatrix4(delta).applyMatrix4(drag.meshWorldInverse);
+      target.copy(ent.orig).lerp(world,ent.w);
+      if (![target.x,target.y,target.z].every(Number.isFinite)||[target.x,target.y,target.z].some(v=>Math.abs(v)>ProjectLimits.maxCoordinate)) {
+        this.cancelComponentDrag(); status('Component transform exceeded the safe coordinate range and was cancelled.'); return;
       }
-    } else {
-      // No drag context (e.g. programmatic): move the whole welded group so the mesh can't tear.
-      const g0 = topo.groupOf[State.vertexIndex];
-      for (const vi of topo.groups[g0]) pos.setXYZ(vi, local.x, local.y, local.z);
+      for (const vi of topo.groups[ent.g]) pos.setXYZ(vi,target.x,target.y,target.z);
     }
-    pos.needsUpdate = true;
-    Sculpt.recomputeNormals(mesh, !mesh.material?.flatShading);
+    pos.needsUpdate=true;
+    Sculpt.recomputeNormals(mesh,!mesh.material?.flatShading);
     geo.boundsTree?.refit();
-    App.vertexHandle.visible = true; App.transform.attach(App.vertexHandle);
   },
-  endVertexDrag() {
-    this.vtxDrag = null;
-    const mesh = State.selection;
-    if (mesh?.geometry) { mesh.geometry.computeBoundingSphere(); Helpers.showVertices(mesh); App.vertexHandle.visible = true; }
-    History.push('edit vertex');
+  endComponentDrag() {
+    const drag=this.componentDrag; if (!drag) return;
+    this.componentDrag=null;
+    const mesh=drag.mesh;
+    mesh.geometry.computeBoundingBox(); mesh.geometry.computeBoundingSphere();
+    MeshOps.refreshWireOverlay(mesh);
+    App.helpers.visible=true;
+    Selection.refresh();
+    Helpers.updateSelectionBox();
+    History.push('transform components');
+    status((State.mode==='face'?State.selectedFaces.size:State.selectedVertexGroups.size)+' components transformed.');
+  },
+  cancelComponentDrag() {
+    const drag=this.componentDrag; if (!drag) return;
+    this.componentDrag=null;
+    App.transform.reset?.();
+    App.transform.dragging=false; App.transform.axis=null; App.orbit.enabled=true;
+    const mesh=drag.mesh, pos=mesh.geometry.attributes.position, topo=Topo.get(mesh.geometry);
+    drag.affected.forEach(ent => {
+      for (const vi of topo.groups[ent.g]) pos.setXYZ(vi,ent.orig.x,ent.orig.y,ent.orig.z);
+    });
+    pos.needsUpdate=true;
+    Sculpt.recomputeNormals(mesh,!mesh.material?.flatShading);
+    mesh.geometry.boundsTree?.refit();
+    mesh.geometry.computeBoundingBox(); mesh.geometry.computeBoundingSphere();
+    MeshOps.refreshWireOverlay(mesh);
+    App.helpers.visible=true;
+    Selection.refresh(); Helpers.updateSelectionBox();
   },
   selectNextVertex(dir=1) {
     const mesh=this.ensureMesh(); if(!mesh) return;
-    const count=mesh.geometry.attributes.position.count;
-    State.vertexIndex = clamp((State.vertexIndex < 0 ? 0 : State.vertexIndex + dir), 0, count-1);
-    const w = new THREE.Vector3().fromBufferAttribute(mesh.geometry.attributes.position, State.vertexIndex).applyMatrix4(mesh.matrixWorld);
-    App.vertexHandle.position.copy(w); App.vertexHandle.visible=true; App.transform.attach(App.vertexHandle); Editor.syncUI();
+    const topo=Topo.get(mesh.geometry), count=topo.groups.length;
+    if (!count) return status('The mesh has no vertices.');
+    const current=State.vertexIndex<0?-1:topo.groupOf[State.vertexIndex];
+    const next=clamp(current<0?0:current+dir,0,count-1);
+    State.selectedVertexGroups=new Set([next]); State.vertexIndex=topo.groups[next][0];
+    Selection.refresh('Welded vertex '+(next+1)+' of '+count+' selected.');
   },
   weldClose() {
     const mesh=this.ensureMesh(); if(!mesh) return;
@@ -1941,7 +3099,8 @@ const Tools = {
     mesh.geometry = BufferGeometryUtils.mergeVertices(old, 0.015).toNonIndexed();
     old.disposeBoundsTree?.(); old.dispose();
     mesh.geometry.computeVertexNormals(); mesh.geometry.computeBoundingBox(); mesh.geometry.computeBoundingSphere();
-    Helpers.showVertices(mesh); Editor.updateStats(); History.push('weld close'); status('Close vertices welded.');
+    MeshOps.refreshWireOverlay(mesh); State.selectedVertexGroups.clear(); State.vertexIndex=-1;
+    Helpers.showVertices(mesh); Selection.updateUI(); Helpers.updateSelectionBox(); Editor.updateStats(); History.push('weld close'); status('Close vertices welded.');
   },
   relaxMesh() {
     const mesh=this.ensureMesh(); if(!mesh) return;
@@ -1961,8 +3120,9 @@ const Tools = {
     }
     pos.needsUpdate=true;
     Sculpt.recomputeNormals(mesh, !mesh.material?.flatShading);
-    geo.boundsTree?.refit(); geo.computeBoundingSphere();
-    Helpers.showVertices(mesh); History.push('relax mesh');
+    geo.boundsTree?.refit(); geo.computeBoundingBox(); geo.computeBoundingSphere();
+    MeshOps.refreshWireOverlay(mesh); Helpers.showVertices(mesh); Selection.updateHandle(mesh); History.push('relax mesh');
+    Helpers.updateSelectionBox();
   },
 
   // ---- Boolean operations (three-bvh-csg) ----
@@ -1976,32 +3136,37 @@ const Tools = {
     State.pendingBoolean = null;
     const a = State.selection, b = target;
     if (!a?.isMesh || !b?.isMesh || Editor.lightOf(b)) return status('Boolean needs two meshes.');
+    let brushA=null, brushB=null, result=null, flat=null;
     try {
       const evaluator = new Evaluator();
       evaluator.attributes = ['position', 'normal']; // both inputs always have these; avoids missing-uv crash
       evaluator.useGroups = false;
       const OPS = { union:ADDITION, subtract:SUBTRACTION, intersect:INTERSECTION };
-      const brushA = new Brush(a.geometry.clone(), a.material);
-      const brushB = new Brush(b.geometry.clone(), b.material);
+      brushA = new Brush(a.geometry.clone(), a.material);
+      brushB = new Brush(b.geometry.clone(), b.material);
       a.updateMatrixWorld(); b.updateMatrixWorld();
       brushA.position.copy(a.position); brushA.quaternion.copy(a.quaternion); brushA.scale.copy(a.scale);
       brushB.position.copy(b.position); brushB.quaternion.copy(b.quaternion); brushB.scale.copy(b.scale);
       brushA.updateMatrixWorld(); brushB.updateMatrixWorld();
-      const result = evaluator.evaluate(brushA, brushB, OPS[op]);
-      const flat = this.flattenGeometry(result.geometry); // trim drawRange, bake to triangle soup
+      result = evaluator.evaluate(brushA, brushB, OPS[op]);
+      flat = this.flattenGeometry(result.geometry); // trim drawRange, bake to triangle soup
+      ProjectLimits.assertGeometry(ProjectLimits.corners(flat),a);
       const oldGeo = a.geometry;
-      a.geometry = flat; oldGeo.dispose();
+      a.geometry = flat; flat=null; oldGeo.disposeBoundsTree?.(); oldGeo.dispose();
+      MeshOps.refreshWireOverlay(a);
       // CSG output is baked in world space — reset transform to identity.
       a.position.set(0,0,0); a.quaternion.identity(); a.scale.set(1,1,1);
       App.scene.remove(b); App.objects = App.objects.filter(o => o !== b);
-      b.geometry.dispose();
-      brushA.geometry.dispose(); brushB.geometry.dispose(); result.geometry.dispose();
+      Resources.dispose(b,App.objects);
       State.selection = null; Editor.select(a);
       Editor.updateStats(); History.push('boolean ' + op);
       status('Boolean ' + op + ' applied.');
     } catch (err) {
       console.error(err);
       status('Boolean failed: ' + err.message);
+    } finally {
+      flat?.dispose?.();
+      brushA?.geometry?.dispose?.(); brushB?.geometry?.dispose?.(); result?.geometry?.dispose?.();
     }
   },
   // Trim a CSG result (oversized buffers + drawRange) into clean non-indexed triangle soup.
@@ -2033,6 +3198,10 @@ const Tools = {
   // ---- Modifiers ----
   modMirror() {
     if(!this.ensureMesh()) return;
+    try {
+      ProjectLimits.assertObjectCount(1);
+      ProjectLimits.assertGeometry(ProjectLimits.corners(State.selection.geometry));
+    } catch (e) { return status(e.message); }
     const clone=State.selection.clone(true); clone.geometry=State.selection.geometry.clone(); clone.material=State.selection.material.clone();
     clone.scale.x*=-1; clone.position.x*=-1; clone.name=State.selection.name+'_mirror'; clone.userData = { ...clone.userData, anim:{} };
     App.scene.add(clone); App.objects.push(clone); Editor.select(clone); History.push('mirror'); Editor.updateStats();
@@ -2040,6 +3209,11 @@ const Tools = {
   modRadialMirror() {
     if(!this.ensureMesh()) return;
     const src=State.selection;
+    try {
+      ProjectLimits.assertObjectCount(5);
+      const corners=ProjectLimits.corners(src.geometry);
+      ProjectLimits.assertGeometry(corners,null,corners*4);
+    } catch (e) { return status(e.message); }
     for(let i=1;i<6;i++){ const c=src.clone(true); c.geometry=src.geometry.clone(); c.material=src.material.clone(); c.rotation.y += i*Math.PI*2/6; c.name=src.name+'_radial_'+i; c.userData = { ...c.userData, anim:{} }; App.scene.add(c); App.objects.push(c); }
     History.push('radial mirror'); Editor.updateOutliner(); Editor.updateStats();
   },
@@ -2059,18 +3233,22 @@ const Tools = {
     const mesh=this.ensureMesh(); if(!mesh) return status('Select a mesh first.');
     const triCount = mesh.geometry.attributes.position.count / 3;
     if (triCount * 4 > 400000) return status('Mesh too dense to subdivide (' + Math.floor(triCount) + ' tris).');
+    try { ProjectLimits.assertGeometry(triCount*4*3,mesh); }
+    catch (e) { return status(e.message); }
     const out = LoopSubdivision.modify(mesh.geometry, 1, { split:true, uvSmooth:true, preserveEdges:false, flatOnly:false, maxTriangles:400000 });
-    mesh.geometry.dispose();
+    mesh.geometry.disposeBoundsTree?.(); mesh.geometry.dispose();
     mesh.geometry = out; // already non-indexed with smoothed normals — do NOT recompute
     out.computeBoundingBox(); out.computeBoundingSphere();
+    MeshOps.refreshWireOverlay(mesh);
+    if (State.mode === 'face' || State.mode === 'vertex') Selection.clear(true);
     Editor.updateStats(); Editor.syncUI(); Helpers.updateSelectionBox();
     History.push('loop subdivide'); status('Loop subdivision applied (' + Math.floor(out.attributes.position.count/3) + ' tris).');
   },
   noiseDisplace() {
     const mesh=this.ensureMesh(); if(!mesh) return status('Select a mesh first.');
-    const amt = parseFloat($('noise-amt').value) || 0.15;
-    const scl = parseFloat($('noise-scale').value) || 1.5;
-    const geo = mesh.geometry, pos = geo.attributes.position, nor = geo.attributes.normal;
+    const amt = clamp(parseFloat($('noise-amt').value) || 0.15,-1000,1000);
+    const scl = clamp(parseFloat($('noise-scale').value) || 1.5,.001,1000);
+    const geo = mesh.geometry, pos = geo.attributes.position, nor = geo.attributes.normal, original=this.snapshotAttribute(pos);
     const topo = Topo.get(geo);
     const rep = new THREE.Vector3(), gn = new THREE.Vector3(), tmp = new THREE.Vector3();
     for (let g=0; g<topo.groups.length; g++) {
@@ -2084,13 +3262,17 @@ const Tools = {
       for (const vi of gverts) pos.setXYZ(vi, rep.x, rep.y, rep.z);
     }
     pos.needsUpdate=true;
+    if (!this.validatePositionEdit(mesh,pos,original,'Noise displacement')) return;
     Sculpt.recomputeNormals(mesh, !mesh.material?.flatShading);
-    geo.boundsTree?.refit(); geo.computeBoundingSphere();
+    geo.boundsTree?.refit(); geo.computeBoundingBox(); geo.computeBoundingSphere();
+    MeshOps.refreshWireOverlay(mesh);
+    if (State.mode==='face'||State.mode==='vertex') Selection.refresh();
+    Helpers.updateSelectionBox();
     History.push('noise displace'); status('Noise displacement applied.');
   },
   shellOffset(amount) {
     const mesh=this.ensureMesh(); if(!mesh) return status('Select a mesh first.');
-    const geo = mesh.geometry, pos = geo.attributes.position, nor = geo.attributes.normal;
+    const geo = mesh.geometry, pos = geo.attributes.position, nor = geo.attributes.normal, original=this.snapshotAttribute(pos);
     const topo = Topo.get(geo);
     const rep = new THREE.Vector3(), gn = new THREE.Vector3(), tmp = new THREE.Vector3();
     for (let g=0; g<topo.groups.length; g++) {
@@ -2103,33 +3285,46 @@ const Tools = {
       for (const vi of gverts) pos.setXYZ(vi, rep.x, rep.y, rep.z);
     }
     pos.needsUpdate=true;
+    if (!this.validatePositionEdit(mesh,pos,original,'Shell offset')) return;
     Sculpt.recomputeNormals(mesh, !mesh.material?.flatShading);
-    geo.boundsTree?.refit(); geo.computeBoundingSphere();
+    geo.boundsTree?.refit(); geo.computeBoundingBox(); geo.computeBoundingSphere();
+    MeshOps.refreshWireOverlay(mesh);
+    if (State.mode==='face'||State.mode==='vertex') Selection.refresh();
+    Helpers.updateSelectionBox();
     History.push(amount > 0 ? 'fatten' : 'shrink'); status(amount > 0 ? 'Fattened.' : 'Shrunk.');
   },
   arrayModifier() {
     const mesh=this.ensureMesh(); if(!mesh) return status('Select a mesh first.');
     const count = clamp(parseInt($('arr-count').value) || 3, 2, 50);
-    const ox = parseFloat($('arr-ox').value) || 0;
-    const oy = parseFloat($('arr-oy').value) || 0;
-    for (let i=1; i<count; i++) {
-      const c = mesh.clone(true);
-      c.geometry = mesh.geometry.clone(); c.material = mesh.material.clone();
-      c.position.x += ox*i; c.position.y += oy*i;
-      c.name = mesh.name + '_arr_' + i; c.userData = { ...c.userData, anim:{} };
-      App.scene.add(c); App.objects.push(c);
-    }
+    const ox = clamp(parseFloat($('arr-ox').value) || 0,-1000000,1000000);
+    const oy = clamp(parseFloat($('arr-oy').value) || 0,-1000000,1000000);
+    try {
+      ProjectLimits.assertObjectCount(count-1);
+      const corners=ProjectLimits.corners(mesh.geometry);
+      ProjectLimits.assertGeometry(corners,null,corners*(count-2));
+    } catch (e) { return status(e.message); }
+    const staged=[];
+    try {
+      for (let i=1; i<count; i++) {
+        const c = mesh.clone(true);
+        c.geometry = mesh.geometry.clone(); c.material = mesh.material.clone();
+        c.position.x += ox*i; c.position.y += oy*i;
+        c.name = mesh.name + '_arr_' + i; c.userData = { ...c.userData, anim:{} };
+        staged.push(c); ProjectLimits.validateObjectTransform(c);
+      }
+    } catch (e) { Resources.dispose(staged,App.objects); return status('Array refused safely: '+e.message); }
+    staged.forEach(c=>{App.scene.add(c);App.objects.push(c);});
     History.push('array'); Editor.updateOutliner(); Editor.updateStats(); status('Array x' + count + ' applied.');
   },
   // ---- Procedural deformers (twist / bend / taper) over welded topology groups ----
   deform(kind) {
     const mesh = this.ensureMesh(); if (!mesh) return status('Select a mesh first.');
-    const amt = parseFloat($('deform-amt').value) || 0;
+    const amt = clamp(parseFloat($('deform-amt').value) || 0,-3600,3600);
     if (!amt) return status('Set a non-zero deform amount.');
     const axis = $('deform-axis').value;
     const ai = axis === 'x' ? 0 : axis === 'y' ? 1 : 2;   // length axis
     const bi = ai === 1 ? 0 : 1;                            // bend/twist plane partner axis
-    const geo = mesh.geometry, pos = geo.attributes.position;
+    const geo = mesh.geometry, pos = geo.attributes.position, original=this.snapshotAttribute(pos);
     const topo = Topo.get(geo);
     geo.computeBoundingBox();
     const bb = geo.boundingBox;
@@ -2168,8 +3363,11 @@ const Tools = {
       for (const vi of gverts) pos.setXYZ(vi, rep.x, rep.y, rep.z);
     }
     pos.needsUpdate = true;
+    if (!this.validatePositionEdit(mesh,pos,original,kind[0].toUpperCase()+kind.slice(1))) return;
     Sculpt.recomputeNormals(mesh, !mesh.material?.flatShading);
     geo.boundsTree?.refit(); geo.computeBoundingBox(); geo.computeBoundingSphere();
+    MeshOps.refreshWireOverlay(mesh);
+    if (State.mode==='face'||State.mode==='vertex') Selection.refresh();
     Editor.syncUI(); Helpers.updateSelectionBox();
     History.push('deform ' + kind);
     status(kind[0].toUpperCase() + kind.slice(1) + ' applied (' + amt + (kind === 'taper' ? '%' : '°') + ').');
@@ -2179,7 +3377,7 @@ const Tools = {
     mesh.userData.editor = mesh.userData.editor || {};
     const existing = mesh.getObjectByName('wire_overlay');
     if (existing) {   // toggle off
-      mesh.remove(existing); existing.geometry.dispose(); existing.material.dispose();
+      mesh.remove(existing); Resources.dispose(existing,App.objects.filter(o=>o!==mesh));
       mesh.userData.editor.wireOverlay = false; History.push('wire overlay off'); status('Wire overlay removed.'); return;
     }
     const wire=new THREE.LineSegments(new THREE.WireframeGeometry(mesh.geometry), new THREE.LineBasicMaterial({ color:0x111111, transparent:true, opacity:.35 }));
@@ -2217,19 +3415,30 @@ const Tools = {
     g.setAttribute('position', new THREE.Float32BufferAttribute(arr, 3));
     const merged = BufferGeometryUtils.mergeVertices(g, 1e-3).toNonIndexed();
     g.dispose();
+    try { ProjectLimits.assertGeometry(ProjectLimits.corners(merged),mesh); }
+    catch (e) { merged.dispose(); return status(e.message); }
     mesh.geometry.disposeBoundsTree?.(); mesh.geometry.dispose();
     mesh.geometry = merged;
     Sculpt.recomputeNormals(mesh, !mesh.material?.flatShading);
     merged.computeBoundingBox(); merged.computeBoundingSphere();
+    MeshOps.refreshWireOverlay(mesh);
+    if (State.mode === 'face' || State.mode === 'vertex') Selection.clear(true);
     Editor.updateStats(); Editor.syncUI(); Helpers.updateSelectionBox();
     History.push('symmetrize'); status('Symmetrized on ' + axis.toUpperCase() + ' (' + Math.floor(merged.attributes.position.count/3) + ' tris).');
   },
   applyTransform() {
     const mesh=State.selection; if(!mesh?.geometry) return;
-    mesh.updateMatrix(); mesh.geometry.applyMatrix4(mesh.matrix); mesh.position.set(0,0,0); mesh.rotation.set(0,0,0); mesh.scale.set(1,1,1);
+    mesh.updateMatrix();
+    const baked=mesh.geometry.clone();
+    try { baked.applyMatrix4(mesh.matrix); ProjectLimits.validateGeometry(baked); }
+    catch (e) { baked.dispose(); return status('Apply Transform refused safely: '+e.message); }
+    const old=mesh.geometry; mesh.geometry=baked; old.disposeBoundsTree?.(); old.dispose();
+    mesh.position.set(0,0,0); mesh.rotation.set(0,0,0); mesh.scale.set(1,1,1);
     Sculpt.recomputeNormals(mesh, !mesh.material?.flatShading);
     mesh.geometry.computeBoundingBox(); mesh.geometry.computeBoundingSphere();
     mesh.geometry.disposeBoundsTree?.();
+    MeshOps.refreshWireOverlay(mesh);
+    if (State.mode==='face'||State.mode==='vertex') Selection.refresh();
     Editor.syncUI(); Helpers.updateSelectionBox(); History.push('apply transform');
   },
   centerPivot() {
@@ -2237,11 +3446,15 @@ const Tools = {
     mesh.geometry.computeBoundingBox(); const c=mesh.geometry.boundingBox.getCenter(new THREE.Vector3());
     mesh.geometry.translate(-c.x,-c.y,-c.z); mesh.position.add(c.applyQuaternion(mesh.quaternion).multiply(mesh.scale));
     mesh.geometry.disposeBoundsTree?.();
+    MeshOps.refreshWireOverlay(mesh);
+    if (State.mode==='face'||State.mode==='vertex') Selection.refresh();
     Editor.syncUI(); Helpers.updateSelectionBox(); History.push('center pivot');
   },
   dropToGround() {
     if(!State.selection) return;
-    const box=new THREE.Box3().setFromObject(State.selection); State.selection.position.y -= box.min.y; Editor.syncUI(); Helpers.updateSelectionBox(); History.push('drop to ground');
+    const box=new THREE.Box3().setFromObject(State.selection); State.selection.position.y -= box.min.y;
+    if (State.mode==='face'||State.mode==='vertex') Selection.refresh();
+    Editor.syncUI(); Helpers.updateSelectionBox(); History.push('drop to ground');
   }
 };
 
@@ -2438,7 +3651,7 @@ const Record = {
 
 // ---- Command palette: fuzzy launcher for every action (Ctrl+K) ----
 const Palette = {
-  commands:[], filtered:[], active:0, recent:[],
+  commands:[], filtered:[], active:0, recent:[], returnFocus:null,
   toggleCheck(id, fn) { const c = $(id); c.checked = !c.checked; fn?.(); return c.checked; }, // history handled by caller
   build() {
     const C = (id, label, group, ico, run, hint) => ({ id, label, group, ico, run, hint });
@@ -2451,9 +3664,20 @@ const Palette = {
       C('mode-face', 'Face Edit Mode', 'Mode', '▰', () => Editor.setMode('face'), 'F9'),
       C('mode-vertex', 'Vertex Edit Mode', 'Mode', '✣', () => Editor.setMode('vertex'), 'F10'),
       C('mode-sculpt', 'Sculpt Mode', 'Mode', '🖌', () => Editor.setMode('sculpt'), 'F11'),
+      C('select-box', 'Box Select Components', 'Selection', '⬚', () => Selection.armMarquee(), 'B'),
+      C('select-all-components', 'Select All Components', 'Selection', '◫', () => Selection.selectAll()),
+      C('select-grow', 'Grow Component Selection', 'Selection', '⊕', () => Selection.grow()),
+      C('select-shrink', 'Shrink Component Selection', 'Selection', '⊖', () => Selection.shrink()),
+      C('select-connected', 'Select Connected Components', 'Selection', '⛓', () => Selection.connected()),
+      C('select-invert', 'Invert Component Selection', 'Selection', '◩', () => Selection.invert()),
+      C('select-through', 'Toggle Select Through', 'Selection', '◌', () => { $('select-through').checked=!$('select-through').checked; status('Select Through '+($('select-through').checked?'on.':'off.')); }),
+      C('face-extrude-region', 'Extrude Selected Face Region', 'Face', '⇧', () => Tools.extrudeFace()),
+      C('face-inset', 'Inset Selected Faces', 'Face', '▣', () => Tools.insetFace()),
+      C('face-subdivide', 'Subdivide Selected Faces', 'Face', '⊞', () => Tools.subdivideFace()),
+      C('face-delete', 'Delete Selected Faces', 'Face', '⌫', () => Tools.deleteFace()),
 
       C('duplicate', 'Duplicate Selection', 'Edit', '⧉', () => Editor.duplicate(), 'Ctrl+D'),
-      C('delete', 'Delete Selection', 'Edit', '🗑', () => Editor.deleteSelection(), 'Del'),
+      C('delete', 'Delete Selection', 'Edit', '🗑', () => Editor.deleteActiveSelection(), 'Del'),
       C('undo', 'Undo', 'Edit', '↶', () => Editor.undo(), 'Ctrl+Z'),
       C('redo', 'Redo', 'Edit', '↷', () => Editor.redo(), 'Ctrl+Y'),
       C('center-pivot', 'Center Pivot', 'Object', '⌖', () => Tools.centerPivot()),
@@ -2540,6 +3764,7 @@ const Palette = {
     this.filtered.forEach((cmd, i) => {
       const row = document.createElement('div');
       row.className = 'cmdk-item' + (i === this.active ? ' active' : '');
+      row.id = 'cmdk-option-' + i; row.setAttribute('role','option'); row.setAttribute('aria-selected',i === this.active ? 'true' : 'false');
       row.innerHTML = `<span class="ci-ico">${cmd.ico}</span><span class="ci-label"></span>` +
         (cmd.hint ? `<span class="ci-hint">${cmd.hint}</span>` : '') + `<span class="ci-grp">${cmd.group}</span>`;
       row.querySelector('.ci-label').textContent = cmd.label;
@@ -2547,6 +3772,7 @@ const Palette = {
       row.addEventListener('mousedown', e => { e.preventDefault(); this.run(cmd); });
       list.appendChild(row);
     });
+    $('cmdk-input').setAttribute('aria-activedescendant','cmdk-option-' + this.active);
     list.children[this.active]?.scrollIntoView({ block:'nearest' });
   },
   filter() {
@@ -2563,10 +3789,15 @@ const Palette = {
   },
   open() {
     if (!this.commands.length) this.build();
+    this.returnFocus = document.activeElement;
     $('cmdk').classList.add('open');
-    const inp = $('cmdk-input'); inp.value = ''; this.filter(); inp.focus();
+    const inp = $('cmdk-input'); inp.value = ''; inp.setAttribute('aria-expanded','true'); this.filter(); inp.focus();
   },
-  close() { $('cmdk').classList.remove('open'); App.renderer?.domElement.focus?.(); },
+  close() {
+    $('cmdk').classList.remove('open'); $('cmdk-input').setAttribute('aria-expanded','false');
+    const target=this.returnFocus; this.returnFocus=null;
+    if (target?.isConnected && typeof target.focus === 'function') target.focus(); else App.renderer?.domElement.focus?.();
+  },
   toggle() { $('cmdk').classList.contains('open') ? this.close() : this.open(); },
   run(cmd) {
     this.recent = [cmd.id, ...this.recent.filter(id => id !== cmd.id)].slice(0, 8);
@@ -2586,16 +3817,21 @@ const Palette = {
     $('cmdk').addEventListener('mousedown', e => { if (e.target.id === 'cmdk') this.close(); });
     window.addEventListener('keydown', e => {
       if ((e.ctrlKey || e.metaKey) && (e.key === 'k' || e.key === 'K')) { e.preventDefault(); this.toggle(); }
+      else if (e.key === 'Escape' && $('cmdk').classList.contains('open')) { e.preventDefault(); this.close(); }
     });
   }
 };
 
 // Expose the runtime for power users / devtools console (e.g. WebMaya.App.scene, WebMaya.objects()).
-window.WebMaya = { App, State, Editor, Tools, Anim, Env, History, Palette, Sculpt, Display, Record, Turntable, objects:() => App.objects };
+window.WebMaya = { App, State, Editor, Tools, Anim, Env, History, Palette, Sculpt, Display, Selection, Record, Turntable, objects:() => App.objects };
 window.Editor=Editor; window.Tools=Tools; window.Anim=Anim; window.Env=Env; window.History=History; window.Palette=Palette;
-window.Sculpt=Sculpt; window.Display=Display; window.Record=Record; window.Turntable=Turntable;
+window.Sculpt=Sculpt; window.Display=Display; window.Selection=Selection; window.Record=Record; window.Turntable=Turntable;
 Palette.init();
-Editor.init();
+Editor.init().catch(err => {
+  console.error(err);
+  $('status-msg').textContent = 'WebMaya could not start: ' + (err?.message || 'WebGL initialization failed.');
+  $('overlay-info').textContent = 'Startup failed. Check WebGL support and your network connection, then reload.';
+});
 </script>
 </body>
 </html>
