@@ -1,0 +1,464 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Realistic 3D Giraffe Enclosure</title>
+<style>
+  :root{
+    --panel:rgba(9,15,21,.82);
+    --border:rgba(255,255,255,.12);
+    --text:#f4f8fb;
+    --muted:#b7c6d2;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#8cbcf0;font-family:Inter,system-ui,-apple-system,"Segoe UI",sans-serif}
+  #app{position:fixed;inset:0}
+  canvas{display:block;width:100%;height:100%}
+  #hud{position:fixed;top:16px;left:16px;width:330px;z-index:20;color:var(--text);background:var(--panel);border:1px solid var(--border);border-radius:16px;padding:15px;backdrop-filter:blur(16px);box-shadow:0 16px 45px rgba(0,0,0,.35)}
+  #hud h1{font-size:18px;margin:0 0 6px}
+  #hud p{font-size:12px;line-height:1.45;color:var(--muted);margin:0 0 12px}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  button,select{width:100%;border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.075);color:#fff;border-radius:10px;padding:10px;font-size:12px;cursor:pointer}
+  button:hover,select:hover{background:rgba(255,255,255,.13)}
+  select{margin-top:8px}
+  #stats{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:10px;font-size:11px;color:#c8d4de}
+  #stats span{background:rgba(255,255,255,.045);padding:7px 8px;border-radius:8px}
+  #tip{position:fixed;left:50%;bottom:15px;transform:translateX(-50%);z-index:20;background:rgba(8,14,20,.76);border:1px solid rgba(255,255,255,.11);border-radius:999px;padding:9px 14px;color:#eef6fc;font-size:12px;backdrop-filter:blur(12px);white-space:nowrap}
+  #loading{position:fixed;inset:0;z-index:50;display:flex;align-items:center;justify-content:center;background:radial-gradient(circle at center,#77aee7,#111b25);color:#fff;transition:opacity .45s,visibility .45s}
+  #loading.hide{opacity:0;visibility:hidden}
+  .loadbox{width:min(420px,calc(100vw - 34px));padding:22px;border-radius:18px;background:rgba(0,0,0,.38);border:1px solid rgba(255,255,255,.1);backdrop-filter:blur(14px)}
+  .loadbox h2{margin:0 0 7px;font-size:19px}.loadbox p{margin:0;color:#cbd8e4;font-size:12px}
+  .bar{height:8px;margin-top:16px;border-radius:999px;background:rgba(255,255,255,.08);overflow:hidden}.bar>div{height:100%;width:0;background:linear-gradient(90deg,#7cd4ff,#ffd27c);transition:width .2s}
+  @media(max-width:700px){#hud{top:8px;left:8px;width:calc(100vw - 16px)}#tip{bottom:8px;max-width:calc(100vw - 16px);white-space:normal;text-align:center}}
+</style>
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://unpkg.com/three@0.165.0/build/three.module.js",
+    "three/addons/": "https://unpkg.com/three@0.165.0/examples/jsm/"
+  }
+}
+</script>
+</head>
+<body>
+<div id="app"></div>
+<div id="loading"><div class="loadbox"><h2>Building realistic giraffe enclosure</h2><p id="loadText">Initialising renderer…</p><div class="bar"><div id="loadBar"></div></div></div></div>
+<div id="hud">
+  <h1>Realistic Giraffe Enclosure</h1>
+  <p>The giraffe has revised anatomy, tapered limbs, joint structure, articulated neck, facial details, mane, ears, ossicones and denser coat patterning.</p>
+  <div class="grid">
+    <button id="resetBtn">Reset camera</button>
+    <button id="tourBtn">Auto tour</button>
+    <button id="giraffeBtn">Focus giraffe</button>
+    <button id="shelterBtn">Focus shelter</button>
+    <button id="walkBtn">Walk mode</button>
+    <button id="shadowBtn">Toggle shadows</button>
+  </div>
+  <select id="qualitySelect">
+    <option value="medium">Medium quality</option>
+    <option value="high" selected>High quality</option>
+    <option value="ultra">Ultra quality</option>
+  </select>
+  <div id="stats">
+    <span>FPS: <b id="fps">0</b></span>
+    <span>Triangles: <b id="tris">0</b></span>
+    <span>Draw calls: <b id="calls">0</b></span>
+    <span>Objects: <b id="objs">0</b></span>
+  </div>
+</div>
+<div id="tip">Drag = orbit • Wheel = zoom • Right drag = pan</div>
+
+<script type="module">
+import * as THREE from "three";
+import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+
+const app = document.getElementById("app");
+const loading = document.getElementById("loading");
+const loadBar = document.getElementById("loadBar");
+const loadText = document.getElementById("loadText");
+const fpsEl = document.getElementById("fps");
+const trisEl = document.getElementById("tris");
+const callsEl = document.getElementById("calls");
+const objsEl = document.getElementById("objs");
+const tip = document.getElementById("tip");
+const resetBtn = document.getElementById("resetBtn");
+const tourBtn = document.getElementById("tourBtn");
+const giraffeBtn = document.getElementById("giraffeBtn");
+const shelterBtn = document.getElementById("shelterBtn");
+const walkBtn = document.getElementById("walkBtn");
+const shadowBtn = document.getElementById("shadowBtn");
+const qualitySelect = document.getElementById("qualitySelect");
+
+function progress(v, text){ loadBar.style.width = `${v}%`; loadText.textContent = text; }
+function rand(a,b){ return a + Math.random()*(b-a); }
+function lerp(a,b,t){ return a+(b-a)*t; }
+function clamp01(v){ return Math.max(0,Math.min(1,v)); }
+
+progress(5,"Creating WebGL renderer…");
+
+const renderer = new THREE.WebGLRenderer({antialias:true,powerPreference:"high-performance"});
+renderer.setSize(innerWidth,innerHeight);
+renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.08;
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+app.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x8fc3f3);
+scene.fog = new THREE.FogExp2(0xbdd4e5,0.0058);
+
+const camera = new THREE.PerspectiveCamera(50,innerWidth/innerHeight,0.1,500);
+camera.position.set(24,10.5,31);
+
+const controls = new OrbitControls(camera,renderer.domElement);
+controls.target.set(0,5.1,5);
+controls.enableDamping = true;
+controls.dampingFactor = 0.045;
+controls.minDistance = 4.5;
+controls.maxDistance = 100;
+controls.maxPolarAngle = Math.PI*0.495;
+controls.update();
+
+function noiseHash(x,y){
+  const n = Math.sin(x*127.1+y*311.7)*43758.5453123;
+  return n-Math.floor(n);
+}
+function noise2(x,y){
+  const ix=Math.floor(x), iy=Math.floor(y), fx=x-ix, fy=y-iy;
+  const u=fx*fx*(3-2*fx), v=fy*fy*(3-2*fy);
+  const a=noiseHash(ix,iy), b=noiseHash(ix+1,iy), c=noiseHash(ix,iy+1), d=noiseHash(ix+1,iy+1);
+  return lerp(lerp(a,b,u),lerp(c,d,u),v);
+}
+function fbm(x,y){
+  let out=0,amp=.5,f=1,total=0;
+  for(let i=0;i<5;i++){ out+=noise2(x*f,y*f)*amp; total+=amp; amp*=.5; f*=2; }
+  return out/total;
+}
+function terrainHeight(x,z){
+  return (fbm(x*.035,z*.035)-.5)*2.25 + (fbm(x*.105+12,z*.105-7)-.5)*.55 + Math.sin(x*.04)*.12;
+}
+
+function canvasTexture(size, painter, repeatX=1, repeatY=1){
+  const c=document.createElement("canvas"); c.width=c.height=size;
+  const ctx=c.getContext("2d"); painter(ctx,size);
+  const tex=new THREE.CanvasTexture(c);
+  tex.wrapS=tex.wrapT=THREE.RepeatWrapping;
+  tex.repeat.set(repeatX,repeatY);
+  tex.colorSpace=THREE.SRGBColorSpace;
+  tex.anisotropy=renderer.capabilities.getMaxAnisotropy();
+  return tex;
+}
+
+const groundTex = canvasTexture(1024,(ctx,s)=>{
+  const g=ctx.createLinearGradient(0,0,0,s); g.addColorStop(0,"#bca872"); g.addColorStop(1,"#877249"); ctx.fillStyle=g; ctx.fillRect(0,0,s,s);
+  for(let i=0;i<38000;i++){
+    const tone=Math.floor(rand(70,170)), a=rand(.015,.085), sz=rand(1,4);
+    ctx.fillStyle=`rgba(${tone},${Math.floor(tone*.82)},${Math.floor(tone*.40)},${a})`;
+    ctx.fillRect(Math.random()*s,Math.random()*s,sz,sz);
+  }
+},16,16);
+
+const woodTex = canvasTexture(512,(ctx,s)=>{
+  ctx.fillStyle="#876e51";ctx.fillRect(0,0,s,s);
+  for(let i=0;i<1400;i++){
+    const y=Math.random()*s;ctx.strokeStyle=`rgba(54,36,22,${rand(.025,.12)})`;ctx.lineWidth=rand(.5,2.5);ctx.beginPath();ctx.moveTo(0,y);ctx.bezierCurveTo(s*.3,y+rand(-5,5),s*.7,y+rand(-5,5),s,y+rand(-4,4));ctx.stroke();
+  }
+},2,2);
+
+function makeGiraffePattern(size=1024){
+  return canvasTexture(size,(ctx,s)=>{
+    ctx.fillStyle="#debF7b".replace('F','f'); ctx.fillRect(0,0,s,s);
+    for(let i=0;i<330;i++){
+      const x=Math.random()*s,y=Math.random()*s,rx=rand(13,48),ry=rand(15,55),points=Math.floor(rand(5,9));
+      ctx.save();ctx.translate(x,y);ctx.rotate(Math.random()*Math.PI);ctx.beginPath();
+      for(let p=0;p<points;p++){
+        const a=p/points*Math.PI*2,j=rand(.72,1.24),px=Math.cos(a)*rx*j,py=Math.sin(a)*ry*j;
+        p===0?ctx.moveTo(px,py):ctx.lineTo(px,py);
+      }
+      ctx.closePath();
+      const grad=ctx.createRadialGradient(0,0,1,0,0,Math.max(rx,ry));grad.addColorStop(0,"#50321f");grad.addColorStop(1,"#68432a");ctx.fillStyle=grad;ctx.fill();
+      ctx.strokeStyle="rgba(49,29,17,.36)";ctx.lineWidth=1.5;ctx.stroke();ctx.restore();
+    }
+    for(let i=0;i<9000;i++){ctx.fillStyle=`rgba(255,255,255,${rand(0,.035)})`;ctx.fillRect(Math.random()*s,Math.random()*s,1,1);}
+  },1,1);
+}
+const giraffeBaseTex = makeGiraffePattern();
+function cloneTexture(repeatX,repeatY){ const t=giraffeBaseTex.clone(); t.needsUpdate=true;t.wrapS=t.wrapT=THREE.RepeatWrapping;t.repeat.set(repeatX,repeatY);return t; }
+
+progress(18,"Building terrain and lighting…");
+
+const hemi = new THREE.HemisphereLight(0xdbefff,0x79684b,1.28); scene.add(hemi);
+const sun = new THREE.DirectionalLight(0xfff3d9,2.65); sun.position.set(45,58,24); sun.castShadow=true; sun.shadow.mapSize.set(2048,2048); sun.shadow.camera.left=-75; sun.shadow.camera.right=75; sun.shadow.camera.top=75; sun.shadow.camera.bottom=-75; sun.shadow.camera.near=1; sun.shadow.camera.far=160; sun.shadow.bias=-.00028; sun.shadow.normalBias=.035; scene.add(sun);
+const fill = new THREE.DirectionalLight(0xa9d2ff,.34); fill.position.set(-35,18,-28); scene.add(fill);
+
+const sky = new THREE.Mesh(new THREE.SphereGeometry(280,48,24),new THREE.ShaderMaterial({side:THREE.BackSide,uniforms:{top:{value:new THREE.Color(0x6ea9ed)},bottom:{value:new THREE.Color(0xe1f0fb)}},vertexShader:`varying vec3 w;void main(){w=(modelMatrix*vec4(position,1.)).xyz;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}`,fragmentShader:`varying vec3 w;uniform vec3 top;uniform vec3 bottom;void main(){float h=max(normalize(w).y,0.);gl_FragColor=vec4(mix(bottom,top,pow(h,.65)),1.);}`})); scene.add(sky);
+
+const terrainGeo = new THREE.PlaneGeometry(180,180,220,220); terrainGeo.rotateX(-Math.PI/2);
+for(let i=0;i<terrainGeo.attributes.position.count;i++){
+  const x=terrainGeo.attributes.position.getX(i), z=terrainGeo.attributes.position.getZ(i);
+  terrainGeo.attributes.position.setY(i,terrainHeight(x,z));
+}
+terrainGeo.computeVertexNormals();
+const terrainMat = new THREE.MeshStandardMaterial({map:groundTex,color:0xb8a16d,roughness:1,metalness:0});
+const terrain = new THREE.Mesh(terrainGeo,terrainMat); terrain.receiveShadow=true; scene.add(terrain);
+
+const woodMat = new THREE.MeshStandardMaterial({map:woodTex,color:0x947857,roughness:.96});
+const darkWoodMat = new THREE.MeshStandardMaterial({map:woodTex,color:0x5e4935,roughness:1});
+const wireMat = new THREE.LineBasicMaterial({color:0x7e878d,transparent:true,opacity:.72});
+
+function shadowify(o){o.traverse(n=>{if(n.isMesh){n.castShadow=true;n.receiveShadow=true;}});return o;}
+function box(w,h,d,mat=woodMat){const m=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),mat);m.castShadow=m.receiveShadow=true;return m;}
+
+progress(30,"Constructing enclosure structures…");
+
+function fenceSection(a,b){
+  const g=new THREE.Group(), length=a.distanceTo(b), steps=Math.max(2,Math.floor(length/4));
+  for(let i=0;i<=steps;i++){
+    const t=i/steps,x=lerp(a.x,b.x,t),z=lerp(a.z,b.z,t),h=3.25+rand(-.1,.2);
+    const post=new THREE.Mesh(new THREE.CylinderGeometry(.11,.15,h,10),darkWoodMat);post.position.set(x,terrainHeight(x,z)+h/2,z);post.rotation.z=rand(-.035,.035);post.castShadow=post.receiveShadow=true;g.add(post);
+  }
+  for(const hh of [.5,1,1.5,2,2.5,2.85]){
+    const pts=[];for(let i=0;i<=steps*4;i++){const t=i/(steps*4),x=lerp(a.x,b.x,t),z=lerp(a.z,b.z,t);pts.push(new THREE.Vector3(x,terrainHeight(x,z)+hh,z));}
+    g.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts),wireMat));
+  }
+  scene.add(g);return g;
+}
+fenceSection(new THREE.Vector3(-62,0,2),new THREE.Vector3(-28,0,1));
+fenceSection(new THREE.Vector3(-28,0,1),new THREE.Vector3(8,0,.2));
+fenceSection(new THREE.Vector3(8,0,.2),new THREE.Vector3(43,0,1));
+fenceSection(new THREE.Vector3(43,0,1),new THREE.Vector3(68,0,5));
+
+function shelter(x,z,w,d,h,deckY){
+  const root=new THREE.Group();root.position.set(x,terrainHeight(x,z),z);
+  const deck=box(w,.28,d);deck.position.y=deckY;root.add(deck);
+  for(const sx of [-1,1]) for(const sz of [-1,1]){const p=box(.28,h,.28,darkWoodMat);p.position.set(sx*(w/2-.28),h/2,sz*(d/2-.28));root.add(p);}
+  const roof=box(w+1.2,.22,d+1.2,new THREE.MeshStandardMaterial({color:0x5d5c59,roughness:.9}));roof.position.y=h;root.add(roof);
+  const lip=box(w+1.35,.07,d+1.35,new THREE.MeshStandardMaterial({color:0x41413f,roughness:.9}));lip.position.y=h+.16;root.add(lip);
+  for(const yy of [deckY+.4,deckY+1.05]){const r=box(w-.35,.1,.1,darkWoodMat);r.position.set(0,yy,d/2-.12);root.add(r);}
+  for(let i=0;i<=8;i++){const p=box(.07,1.15,.07,darkWoodMat);p.position.set(lerp(-w/2+.3,w/2-.3,i/8),deckY+.57,d/2-.12);root.add(p);}
+  scene.add(root);return shadowify(root);
+}
+const leftShelter=shelter(-34,-3.5,10,6.2,6.2,1.9);
+shelter(-17,-1,4,4,4.5,1.3);
+shelter(55,-2,8,6,5,1.1);
+
+progress(40,"Scattering grass, scrub and ground detail…");
+
+const vegGroup=new THREE.Group();scene.add(vegGroup);
+const grassMat=new THREE.MeshStandardMaterial({color:0xad975d,roughness:1,side:THREE.DoubleSide});
+const grassGeo=new THREE.PlaneGeometry(.065,.75,1,2);grassGeo.translate(0,.375,0);
+function grassClump(scale=1){const g=new THREE.Group();for(let i=0,n=Math.floor(rand(6,13));i<n;i++){const b=new THREE.Mesh(grassGeo,grassMat);b.position.set(rand(-.18,.18),0,rand(-.18,.18));b.rotation.set(0,rand(0,Math.PI*2),rand(-.18,.18));b.scale.setScalar(scale*rand(.7,1.2));g.add(b);}return g;}
+for(let i=0;i<300;i++){const x=rand(-78,78),z=rand(-55,65);const g=grassClump(rand(.65,1.2));g.position.set(x,terrainHeight(x,z),z);vegGroup.add(g);}
+const shrubMat=new THREE.MeshStandardMaterial({color:0x6f684c,roughness:1});
+function shrub(scale=1){const g=new THREE.Group();for(let i=0,n=Math.floor(rand(6,12));i<n;i++){const m=new THREE.Mesh(new THREE.IcosahedronGeometry(rand(.18,.4)*scale,1),shrubMat);m.position.set(rand(-.55,.55)*scale,rand(.12,.55)*scale,rand(-.55,.55)*scale);m.castShadow=m.receiveShadow=true;g.add(m);}return g;}
+for(let i=0;i<60;i++){const x=rand(-70,70),z=rand(-8,50),s=shrub(rand(.7,1.6));s.position.set(x,terrainHeight(x,z),z);vegGroup.add(s);}
+
+const rockMat=new THREE.MeshStandardMaterial({color:0xa79e8b,roughness:1});
+for(let i=0;i<60;i++){const x=rand(-75,75),z=rand(-15,65),r=rand(.07,.3);const m=new THREE.Mesh(new THREE.DodecahedronGeometry(r,0),rockMat);m.scale.set(rand(.8,1.5),rand(.55,1),rand(.8,1.5));m.position.set(x,terrainHeight(x,z)+r*.35,z);m.rotation.set(rand(0,Math.PI),rand(0,Math.PI),rand(0,Math.PI));m.castShadow=m.receiveShadow=true;scene.add(m);}
+
+// ------------------------------
+// REALISTIC PROCEDURAL GIRAFFE
+// ------------------------------
+progress(55,"Building anatomically improved giraffe…");
+
+const giraffe=new THREE.Group();
+const coatBody = new THREE.MeshStandardMaterial({map:cloneTexture(1.55,1.25),color:0xe3c47d,roughness:.79,bumpMap:cloneTexture(1.55,1.25),bumpScale:.018});
+const coatNeck = new THREE.MeshStandardMaterial({map:cloneTexture(1.4,2.1),color:0xe2c27b,roughness:.8,bumpMap:cloneTexture(1.4,2.1),bumpScale:.014});
+const coatLeg = new THREE.MeshStandardMaterial({map:cloneTexture(1.1,2.8),color:0xe1c27b,roughness:.82});
+const coatHead = new THREE.MeshStandardMaterial({map:cloneTexture(1.25,1.1),color:0xe3c47e,roughness:.78});
+const cream = new THREE.MeshStandardMaterial({color:0xe7dab7,roughness:.9});
+const muzzleMat = new THREE.MeshStandardMaterial({color:0x9b8065,roughness:.88});
+const dark = new THREE.MeshStandardMaterial({color:0x35251c,roughness:.82});
+const maneMat = new THREE.MeshStandardMaterial({color:0x493022,roughness:.94,side:THREE.DoubleSide});
+const eyeWhite = new THREE.MeshStandardMaterial({color:0xe8ddc4,roughness:.35});
+const eyeBlack = new THREE.MeshPhysicalMaterial({color:0x080706,roughness:.18,clearcoat:.85,clearcoatRoughness:.15});
+const innerEarMat = new THREE.MeshStandardMaterial({color:0x9a6c54,roughness:.88});
+
+function ellipsoid(name,r,sx,sy,sz,pos,mat=coatBody,segments=30){
+  const m=new THREE.Mesh(new THREE.SphereGeometry(r,segments,Math.max(16,Math.floor(segments*.7))),mat);m.name=name;m.scale.set(sx,sy,sz);m.position.copy(pos);m.castShadow=m.receiveShadow=true;giraffe.add(m);return m;
+}
+function jointSphere(pos,r,mat=coatLeg){return ellipsoid("joint",r,1,1,1,pos,mat,20);}
+function segment(name,a,b,ra,rb,mat=coatBody,radial=18){
+  const d=new THREE.Vector3().subVectors(b,a),len=d.length(),mid=new THREE.Vector3().addVectors(a,b).multiplyScalar(.5);
+  const m=new THREE.Mesh(new THREE.CylinderGeometry(rb,ra,len,radial,3,false),mat);m.name=name;m.position.copy(mid);m.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0),d.clone().normalize());m.castShadow=m.receiveShadow=true;giraffe.add(m);return m;
+}
+function orientedEllipsoid(name,pos,scale,rot,mat=coatBody){
+  const m=ellipsoid(name,1,scale.x,scale.y,scale.z,pos,mat,28);m.rotation.set(rot.x,rot.y,rot.z);return m;
+}
+
+// Ribcage, shoulders and pelvis create a much less spherical silhouette.
+orientedEllipsoid("ribcage",new THREE.Vector3(-.05,5.65,0),new THREE.Vector3(2.45,1.18,.92),new THREE.Vector3(0,0,.03),coatBody);
+orientedEllipsoid("shoulders",new THREE.Vector3(1.55,5.9,0),new THREE.Vector3(1.12,1.28,.9),new THREE.Vector3(0,0,-.08),coatBody);
+orientedEllipsoid("pelvis",new THREE.Vector3(-1.95,5.55,0),new THREE.Vector3(1.15,1.07,.95),new THREE.Vector3(0,0,.06),coatBody);
+orientedEllipsoid("belly",new THREE.Vector3(-.15,4.95,0),new THREE.Vector3(1.95,.52,.72),new THREE.Vector3(0,0,.01),cream,24);
+
+// Neck: three tapered segments produce a gentle natural curve instead of one tube.
+const neckA=new THREE.Vector3(1.65,6.45,0), neckB=new THREE.Vector3(2.35,8.35,0), neckC=new THREE.Vector3(3.1,10.05,0), neckD=new THREE.Vector3(3.95,11.05,0);
+segment("lower neck",neckA,neckB,.66,.55,coatNeck,22);
+segment("mid neck",neckB,neckC,.56,.43,coatNeck,22);
+segment("upper neck",neckC,neckD,.44,.34,coatNeck,20);
+// paler ventral throat strip
+segment("throat",new THREE.Vector3(1.93,6.48,.02),new THREE.Vector3(2.62,8.42,.02),.22,.17,cream,14);
+segment("throat",new THREE.Vector3(2.62,8.42,.02),new THREE.Vector3(3.38,10.12,.02),.18,.13,cream,14);
+
+// Head and face
+const skull=orientedEllipsoid("skull",new THREE.Vector3(4.48,11.3,0),new THREE.Vector3(1.02,.60,.56),new THREE.Vector3(0,0,-.13),coatHead);
+const face=orientedEllipsoid("face",new THREE.Vector3(5.18,11.08,0),new THREE.Vector3(.92,.40,.42),new THREE.Vector3(0,0,-.15),coatHead);
+const muzzle=orientedEllipsoid("muzzle",new THREE.Vector3(5.85,10.92,0),new THREE.Vector3(.72,.34,.39),new THREE.Vector3(0,0,-.12),muzzleMat,24);
+orientedEllipsoid("lower jaw",new THREE.Vector3(5.32,10.78,0),new THREE.Vector3(.72,.20,.32),new THREE.Vector3(0,0,-.11),muzzleMat,22);
+
+// Mouth line
+const mouthCurve=new THREE.CatmullRomCurve3([new THREE.Vector3(4.98,10.73,.34),new THREE.Vector3(5.5,10.65,.37),new THREE.Vector3(6.0,10.72,.29)]);
+const mouthTube=new THREE.Mesh(new THREE.TubeGeometry(mouthCurve,20,.018,6,false),dark);mouthTube.castShadow=true;giraffe.add(mouthTube);
+
+// Eyes, brow, nostrils
+for(const side of [-1,1]){
+  const z=side*.49;
+  orientedEllipsoid("eye sclera",new THREE.Vector3(4.62,11.42,z),new THREE.Vector3(.15,.095,.045),new THREE.Vector3(0,0,0),eyeWhite,18);
+  orientedEllipsoid("eye",new THREE.Vector3(4.66,11.43,side*.525),new THREE.Vector3(.085,.07,.038),new THREE.Vector3(0,0,0),eyeBlack,18);
+  orientedEllipsoid("brow",new THREE.Vector3(4.5,11.56,side*.46),new THREE.Vector3(.34,.09,.06),new THREE.Vector3(0,0,side*.08),dark,16);
+  orientedEllipsoid("nostril",new THREE.Vector3(6.12,10.99,side*.24),new THREE.Vector3(.11,.065,.04),new THREE.Vector3(0,0,0),dark,16);
+}
+
+// Ears have an outer leaf and darker inner surface.
+for(const side of [-1,1]){
+  const ear=orientedEllipsoid("ear",new THREE.Vector3(4.0,11.72,side*.58),new THREE.Vector3(.28,.52,.12),new THREE.Vector3(side*.12,0,side*.52),coatHead,22);
+  const inner=orientedEllipsoid("inner ear",new THREE.Vector3(4.01,11.72,side*.64),new THREE.Vector3(.17,.36,.055),new THREE.Vector3(side*.12,0,side*.52),innerEarMat,18);
+  ear.rotation.x=side*.08; inner.rotation.x=side*.08;
+}
+
+// Ossicones and horn caps.
+for(const side of [-1,1]){
+  const base=new THREE.Vector3(4.05,11.72,side*.22), tip=new THREE.Vector3(3.98,12.17,side*.22);
+  segment("ossicone",base,tip,.08,.055,coatHead,12);
+  jointSphere(new THREE.Vector3(3.97,12.2,side*.22),.09,dark);
+}
+
+// Mane as tapered fins along the rear edge of the neck.
+function neckPoint(t){
+  if(t<1/3){const u=t*3;return new THREE.Vector3().lerpVectors(neckA,neckB,u);} 
+  if(t<2/3){const u=(t-1/3)*3;return new THREE.Vector3().lerpVectors(neckB,neckC,u);} 
+  const u=(t-2/3)*3;return new THREE.Vector3().lerpVectors(neckC,neckD,u);
+}
+for(let i=0;i<30;i++){
+  const t=i/29,p=neckPoint(t);p.x-=.27;p.y+=.02;
+  const fin=new THREE.Mesh(new THREE.ConeGeometry(.12,lerp(.34,.18,t),5),maneMat);fin.position.copy(p);fin.rotation.z=Math.PI/2;fin.rotation.y=Math.PI/2;fin.castShadow=true;giraffe.add(fin);
+}
+
+// Legs: explicit shoulder/hip -> knee/hock -> fetlock -> hoof chains.
+function buildLeg(name,points,front,side){
+  const [top,knee,fetlock,hoofCenter]=points;
+  segment(`${name} upper`,top,knee,front?.24:.27,front?.19:.21,coatLeg,16);
+  jointSphere(knee,front?.20:.22,coatLeg);
+  segment(`${name} cannon`,knee,fetlock,.18,.12,cream,14);
+  jointSphere(fetlock,.13,cream);
+  // pastern slopes very slightly forward
+  const pasternEnd=hoofCenter.clone().add(new THREE.Vector3(front?.04:-.03,-.17,0));
+  segment(`${name} pastern`,fetlock,pasternEnd,.105,.09,cream,12);
+  // split-looking hoof formed from two compressed lobes
+  for(const dz of [-.055,.055]){
+    const hoof=orientedEllipsoid("hoof",new THREE.Vector3(hoofCenter.x,hoofCenter.y,hoofCenter.z+dz),new THREE.Vector3(.18,.115,.105),new THREE.Vector3(0,0,front?-.10:.08),dark,16);
+    hoof.scale.x*=1.08;
+  }
+}
+const legZ=.54;
+buildLeg("front near",[new THREE.Vector3(1.45,5.55,legZ),new THREE.Vector3(1.52,3.16,legZ),new THREE.Vector3(1.48,.73,legZ),new THREE.Vector3(1.54,.23,legZ)],true,1);
+buildLeg("front far",[new THREE.Vector3(1.18,5.48,-legZ),new THREE.Vector3(1.08,3.18,-legZ),new THREE.Vector3(1.18,.74,-legZ),new THREE.Vector3(1.22,.23,-legZ)],true,-1);
+buildLeg("rear near",[new THREE.Vector3(-1.85,5.35,legZ),new THREE.Vector3(-1.58,3.18,legZ),new THREE.Vector3(-1.72,.74,legZ),new THREE.Vector3(-1.76,.23,legZ)],false,1);
+buildLeg("rear far",[new THREE.Vector3(-2.12,5.33,-legZ),new THREE.Vector3(-2.28,3.18,-legZ),new THREE.Vector3(-2.08,.74,-legZ),new THREE.Vector3(-2.05,.23,-legZ)],false,-1);
+
+// Tail with darker tuft.
+const tailBase=new THREE.Vector3(-3.05,5.78,0),tailMid=new THREE.Vector3(-3.45,4.75,.03),tailEnd=new THREE.Vector3(-3.62,4.12,.05);
+segment("tail",tailBase,tailMid,.065,.045,coatBody,10);segment("tail",tailMid,tailEnd,.045,.028,cream,9);
+const tuft=orientedEllipsoid("tail tuft",new THREE.Vector3(-3.66,3.92,.05),new THREE.Vector3(.19,.35,.18),new THREE.Vector3(0,0,.2),dark,18);
+
+// Subtle chest/shoulder blending muscles.
+orientedEllipsoid("front shoulder muscle",new THREE.Vector3(1.48,5.4,.54),new THREE.Vector3(.55,.92,.30),new THREE.Vector3(0,0,-.15),coatBody,22);
+orientedEllipsoid("front shoulder muscle",new THREE.Vector3(1.22,5.4,-.54),new THREE.Vector3(.55,.92,.30),new THREE.Vector3(0,0,-.1),coatBody,22);
+orientedEllipsoid("rear thigh",new THREE.Vector3(-1.92,4.85,.54),new THREE.Vector3(.58,.86,.32),new THREE.Vector3(0,0,.18),coatBody,22);
+orientedEllipsoid("rear thigh",new THREE.Vector3(-2.08,4.85,-.54),new THREE.Vector3(.58,.86,.32),new THREE.Vector3(0,0,.16),coatBody,22);
+
+giraffe.position.set(0,terrainHeight(0,8)+.04,8);
+giraffe.rotation.y=THREE.MathUtils.degToRad(-7);
+giraffe.scale.setScalar(.92);
+scene.add(giraffe);
+
+progress(76,"Adding distant trees and enclosure detail…");
+
+function tree(x,z,s){
+  const g=new THREE.Group();const trunk=new THREE.Mesh(new THREE.CylinderGeometry(.12*s,.21*s,2.6*s,8),darkWoodMat);trunk.position.y=1.3*s;g.add(trunk);
+  const fm=new THREE.MeshStandardMaterial({color:0x526648,roughness:1});
+  for(let i=0;i<5;i++){const c=new THREE.Mesh(new THREE.IcosahedronGeometry(rand(.7,1.2)*s,1),fm);c.position.set(rand(-.8,.8)*s,rand(2.3,3.25)*s,rand(-.7,.7)*s);g.add(c);}
+  g.position.set(x,terrainHeight(x,z),z);scene.add(shadowify(g));
+}
+for(let i=0;i<12;i++)tree(rand(-75,75),rand(-48,-28),rand(.8,1.4));
+
+for(let i=0;i<16;i++){
+  const x=rand(43,66),z=rand(5,16),len=rand(1.2,4.2),r=rand(.07,.2);
+  const m=new THREE.Mesh(new THREE.CylinderGeometry(r,r*1.1,len,10),darkWoodMat);m.rotation.z=Math.PI/2;m.rotation.y=rand(-.6,.6);m.position.set(x,terrainHeight(x,z)+r,z);m.castShadow=m.receiveShadow=true;scene.add(m);
+}
+
+progress(86,"Preparing interaction and animation…");
+
+const cameraHome={position:new THREE.Vector3(24,10.5,31),target:new THREE.Vector3(0,5.1,5)};
+function resetCamera(){camera.position.copy(cameraHome.position);controls.target.copy(cameraHome.target);controls.update();}
+function focusObject(o,padding=1.8){const box3=new THREE.Box3().setFromObject(o),center=box3.getCenter(new THREE.Vector3()),size=box3.getSize(new THREE.Vector3()),d=Math.max(size.x,size.y,size.z)*padding;camera.position.copy(center.clone().add(new THREE.Vector3(d*.72,d*.35,d*.86)));controls.target.copy(center);controls.update();}
+
+let autoTour=false,walkMode=false,tourAngle=0;
+const keys={};
+addEventListener("keydown",e=>keys[e.code]=true);addEventListener("keyup",e=>keys[e.code]=false);
+function updateWalk(dt){
+  if(!walkMode)return;
+  const f=new THREE.Vector3();camera.getWorldDirection(f);f.y=0;f.normalize();const r=new THREE.Vector3(f.z,0,-f.x);const speed=7*dt;
+  if(keys.KeyW)camera.position.addScaledVector(f,speed);if(keys.KeyS)camera.position.addScaledVector(f,-speed);if(keys.KeyA)camera.position.addScaledVector(r,-speed);if(keys.KeyD)camera.position.addScaledVector(r,speed);
+  camera.position.y=Math.max(camera.position.y,terrainHeight(camera.position.x,camera.position.z)+1.7);
+}
+
+const headBaseRot=skull.rotation.clone();
+function animateGiraffe(t){
+  giraffe.position.y=terrainHeight(giraffe.position.x,giraffe.position.z)+.04+Math.sin(t*.63)*.018;
+  // very small living motion: head turns and body breathes without cartoon bobbing
+  skull.rotation.y=headBaseRot.y+Math.sin(t*.24)*.045;
+  face.rotation.y=skull.rotation.y*.65;
+  muzzle.rotation.y=skull.rotation.y*.5;
+  giraffe.scale.y=.92*(1+Math.sin(t*.78)*.0018);
+}
+
+resetBtn.onclick=()=>{autoTour=false;walkMode=false;controls.enabled=true;tip.textContent="Drag = orbit • Wheel = zoom • Right drag = pan";resetCamera();};
+tourBtn.onclick=()=>{autoTour=!autoTour;walkMode=false;controls.enabled=true;tip.textContent=autoTour?"Automatic cinematic orbit running":"Drag = orbit • Wheel = zoom • Right drag = pan";};
+giraffeBtn.onclick=()=>{autoTour=false;walkMode=false;controls.enabled=true;focusObject(giraffe,1.65);};
+shelterBtn.onclick=()=>{autoTour=false;walkMode=false;controls.enabled=true;focusObject(leftShelter,1.75);};
+walkBtn.onclick=()=>{walkMode=!walkMode;autoTour=false;controls.enabled=!walkMode;if(walkMode){camera.position.set(8,2.1,24);tip.textContent="Walk mode: W A S D • press Walk Mode again to exit";}else{controls.enabled=true;tip.textContent="Drag = orbit • Wheel = zoom • Right drag = pan";}};
+shadowBtn.onclick=()=>renderer.shadowMap.enabled=!renderer.shadowMap.enabled;
+qualitySelect.onchange=e=>{
+  const q=e.target.value;
+  if(q==="medium"){renderer.setPixelRatio(Math.min(devicePixelRatio,1.25));sun.shadow.mapSize.set(1024,1024);}
+  if(q==="high"){renderer.setPixelRatio(Math.min(devicePixelRatio,2));sun.shadow.mapSize.set(2048,2048);}
+  if(q==="ultra"){renderer.setPixelRatio(Math.min(devicePixelRatio,2.5));sun.shadow.mapSize.set(4096,4096);}
+  if(sun.shadow.map){sun.shadow.map.dispose();sun.shadow.map=null;}renderer.shadowMap.needsUpdate=true;renderer.setSize(innerWidth,innerHeight);
+};
+
+addEventListener("resize",()=>{camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight);});
+renderer.domElement.addEventListener("pointerdown",()=>{if(autoTour){autoTour=false;tip.textContent="Drag = orbit • Wheel = zoom • Right drag = pan";}});
+
+progress(100,"Ready");setTimeout(()=>loading.classList.add("hide"),300);
+
+const clock=new THREE.Clock();let statT=0,statFrames=0;
+function animate(){
+  requestAnimationFrame(animate);
+  const dt=Math.min(clock.getDelta(),.05),t=clock.elapsedTime;
+  if(autoTour){tourAngle+=dt*.18;const center=new THREE.Vector3(0,5.2,7),radius=27;const dest=new THREE.Vector3(center.x+Math.cos(tourAngle)*radius,8.7+Math.sin(tourAngle*.55)*1.8,center.z+Math.sin(tourAngle)*radius*.78);camera.position.lerp(dest,.035);controls.target.lerp(center,.06);} 
+  if(walkMode)updateWalk(dt);else controls.update();
+  animateGiraffe(t);
+  renderer.render(scene,camera);
+  statT+=dt;statFrames++;
+  if(statT>=.5){fpsEl.textContent=Math.round(statFrames/statT);trisEl.textContent=renderer.info.render.triangles.toLocaleString();callsEl.textContent=renderer.info.render.calls.toLocaleString();let n=0;scene.traverse(()=>n++);objsEl.textContent=n.toLocaleString();statT=0;statFrames=0;}
+}
+animate();
+</script>
+</body>
+</html>
