@@ -1,0 +1,1597 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no" />
+  <meta name="theme-color" content="#080b12" />
+  <title>Citadel // Interactive 3D Fortress</title>
+
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #070a10;
+      --panel: rgba(9, 13, 21, 0.86);
+      --panel2: rgba(17, 23, 35, 0.72);
+      --line: rgba(134, 164, 217, 0.18);
+      --line-strong: rgba(116, 200, 255, 0.36);
+      --text: #eef5ff;
+      --muted: #9fb0cb;
+      --blue: #4ed8ff;
+      --orange: #ffac46;
+      --red: #e15252;
+      --green: #63f7a3;
+      --shadow: 0 24px 70px rgba(0, 0, 0, 0.44);
+    }
+
+    * { box-sizing: border-box; }
+    html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; background: var(--bg); }
+    body {
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      color: var(--text);
+      -webkit-font-smoothing: antialiased;
+    }
+
+    button, input, select { font: inherit; }
+    button { user-select: none; }
+
+    #app, #viewport { position: fixed; inset: 0; }
+    #viewport canvas { display: block; width: 100%; height: 100%; outline: none; }
+
+    #vignette {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: 2;
+      background:
+        radial-gradient(circle at 50% 43%, transparent 0 42%, rgba(1, 4, 9, 0.08) 62%, rgba(1, 3, 8, 0.42) 100%),
+        linear-gradient(to bottom, rgba(0,0,0,0.11), transparent 18%, transparent 76%, rgba(0,0,0,0.26));
+      mix-blend-mode: multiply;
+    }
+
+    #crosshair {
+      position: fixed;
+      left: 50%;
+      top: 50%;
+      z-index: 4;
+      width: 18px;
+      height: 18px;
+      transform: translate(-50%, -50%);
+      opacity: .14;
+      pointer-events: none;
+    }
+    #crosshair::before, #crosshair::after {
+      content: "";
+      position: absolute;
+      background: #a6ebff;
+      box-shadow: 0 0 9px rgba(61, 207, 255, .8);
+    }
+    #crosshair::before { width: 1px; height: 18px; left: 8px; top: 0; }
+    #crosshair::after { width: 18px; height: 1px; left: 0; top: 8px; }
+
+    .glass {
+      background: linear-gradient(180deg, rgba(15, 21, 32, .92), rgba(7, 11, 19, .84));
+      border: 1px solid var(--line);
+      box-shadow: var(--shadow), inset 0 1px 0 rgba(255,255,255,.035);
+      backdrop-filter: blur(16px) saturate(120%);
+      -webkit-backdrop-filter: blur(16px) saturate(120%);
+    }
+
+    #panel {
+      position: fixed;
+      z-index: 10;
+      top: 14px;
+      left: 14px;
+      width: min(390px, calc(100vw - 28px));
+      max-height: calc(100vh - 28px);
+      overflow: auto;
+      border-radius: 18px;
+      scrollbar-width: thin;
+      scrollbar-color: rgba(100, 160, 220, .25) transparent;
+      transition: transform .26s ease, opacity .26s ease;
+    }
+    #panel.collapsed { transform: translateX(calc(-100% - 18px)); opacity: .2; pointer-events: none; }
+
+    .panel-head {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 16px 16px 12px;
+      border-bottom: 1px solid rgba(255,255,255,.055);
+    }
+
+    .eyebrow {
+      color: #75dfff;
+      font-size: 10px;
+      letter-spacing: .16em;
+      text-transform: uppercase;
+      font-weight: 800;
+      margin-bottom: 5px;
+    }
+
+    h1 { margin: 0; font-size: 18px; line-height: 1.15; font-weight: 760; letter-spacing: -.015em; }
+    .subtitle { margin-top: 5px; font-size: 11.5px; line-height: 1.45; color: var(--muted); }
+
+    .icon-btn {
+      width: 34px;
+      height: 34px;
+      padding: 0;
+      display: grid;
+      place-items: center;
+      border-radius: 10px;
+      border: 1px solid rgba(255,255,255,.08);
+      background: rgba(255,255,255,.055);
+      color: #d9e7ff;
+      cursor: pointer;
+    }
+    .icon-btn:hover { background: rgba(255,255,255,.09); }
+
+    .section { padding: 13px 14px 14px; border-bottom: 1px solid rgba(255,255,255,.045); }
+    .section:last-child { border-bottom: 0; }
+    .section-title {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 10px;
+      color: #dceaff;
+      font-size: 11px;
+      font-weight: 760;
+      letter-spacing: .07em;
+      text-transform: uppercase;
+    }
+
+    .badge {
+      color: #bfeeff;
+      border: 1px solid rgba(70, 210, 255, .2);
+      background: rgba(70, 210, 255, .06);
+      padding: 3px 6px;
+      border-radius: 999px;
+      font-size: 9px;
+      letter-spacing: .06em;
+    }
+
+    .row { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 10px; margin: 9px 0; }
+    .row.stack { grid-template-columns: 1fr; gap: 7px; }
+    .row:first-child { margin-top: 0; }
+    .row:last-child { margin-bottom: 0; }
+    .label { font-size: 12px; color: #dce6f6; }
+    .subtext { display: block; margin-top: 2px; color: #71829e; font-size: 10px; line-height: 1.35; }
+
+    input[type="range"] { width: 100%; accent-color: var(--blue); }
+    input[type="file"] { width: 100%; color: #b9c6da; font-size: 11px; }
+    select {
+      color: #eaf2ff;
+      border: 1px solid rgba(255,255,255,.08);
+      background: #101723;
+      border-radius: 9px;
+      padding: 7px 9px;
+      outline: none;
+    }
+
+    .switch { position: relative; width: 38px; height: 22px; }
+    .switch input { opacity: 0; width: 0; height: 0; }
+    .switch-track {
+      position: absolute; inset: 0; border-radius: 999px;
+      background: rgba(126,145,170,.2);
+      border: 1px solid rgba(255,255,255,.08);
+      transition: .2s ease;
+      cursor: pointer;
+    }
+    .switch-track::before {
+      content: "";
+      position: absolute;
+      width: 16px;
+      height: 16px;
+      top: 2px;
+      left: 2px;
+      border-radius: 50%;
+      background: #cbd7e7;
+      box-shadow: 0 2px 5px rgba(0,0,0,.3);
+      transition: transform .2s ease, background .2s ease;
+    }
+    .switch input:checked + .switch-track { background: rgba(58,205,255,.22); border-color: rgba(77,218,255,.38); }
+    .switch input:checked + .switch-track::before { transform: translateX(16px); background: #65ddff; }
+
+    .buttons { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+    .buttons.three { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .btn {
+      min-height: 36px;
+      padding: 8px 10px;
+      border: 1px solid rgba(255,255,255,.08);
+      border-radius: 10px;
+      cursor: pointer;
+      color: #e8f3ff;
+      background: rgba(255,255,255,.055);
+      transition: transform .12s ease, background .12s ease, border-color .12s ease;
+      font-size: 11px;
+      font-weight: 690;
+    }
+    .btn:hover { transform: translateY(-1px); background: rgba(255,255,255,.09); border-color: rgba(255,255,255,.13); }
+    .btn.primary { color: #06141b; background: linear-gradient(180deg, #84e7ff, #49ccf2); border-color: rgba(118,228,255,.85); }
+    .btn.warm { color: #1b0d00; background: linear-gradient(180deg, #ffd18c, #f5a844); border-color: rgba(255,192,104,.8); }
+
+    #hud {
+      position: fixed;
+      z-index: 9;
+      right: 14px;
+      top: 14px;
+      width: 218px;
+      border-radius: 15px;
+      padding: 11px;
+      pointer-events: none;
+    }
+    .hud-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .metric { padding: 8px; border-radius: 10px; background: rgba(255,255,255,.035); border: 1px solid rgba(255,255,255,.05); }
+    .metric-name { color: #6f83a2; font-size: 8px; text-transform: uppercase; letter-spacing: .09em; }
+    .metric-value { margin-top: 2px; color: #e8f6ff; font-weight: 720; font-size: 13px; }
+    .metric-value.blue { color: #71e2ff; }
+    .metric-value.orange { color: #ffc26e; }
+
+    #quickbar {
+      position: fixed;
+      z-index: 11;
+      left: 14px;
+      bottom: 14px;
+      display: flex;
+      gap: 8px;
+    }
+    #quickbar button {
+      width: 39px;
+      height: 39px;
+      border-radius: 12px;
+      display: grid;
+      place-items: center;
+      cursor: pointer;
+      border: 1px solid var(--line);
+      color: #dff3ff;
+      background: rgba(7, 11, 19, .77);
+      backdrop-filter: blur(12px);
+      box-shadow: 0 12px 34px rgba(0,0,0,.32);
+    }
+    #quickbar button:hover { border-color: var(--line-strong); background: rgba(15,24,36,.9); }
+
+    #status {
+      position: fixed;
+      z-index: 8;
+      right: 14px;
+      bottom: 14px;
+      width: min(520px, calc(100vw - 28px));
+      padding: 10px 12px;
+      border-radius: 12px;
+      color: #c9d8ed;
+      font-size: 10.5px;
+      line-height: 1.45;
+      pointer-events: none;
+      transition: opacity .25s ease;
+    }
+    #status strong { color: #70dfff; }
+
+    #loader {
+      position: fixed;
+      inset: 0;
+      z-index: 100;
+      display: grid;
+      place-items: center;
+      background:
+        radial-gradient(circle at 50% 35%, rgba(63, 98, 142, .22), transparent 34%),
+        #06090f;
+      transition: opacity .45s ease, visibility .45s ease;
+    }
+    #loader.hidden { opacity: 0; visibility: hidden; pointer-events: none; }
+    .loader-box { width: min(380px, calc(100vw - 40px)); text-align: center; }
+    .loader-logo {
+      width: 70px; height: 70px; margin: 0 auto 18px; border-radius: 50%;
+      border: 2px solid rgba(79,214,255,.18); position: relative;
+      box-shadow: 0 0 40px rgba(56, 199, 255, .12), inset 0 0 22px rgba(56,199,255,.1);
+    }
+    .loader-logo::before {
+      content: ""; position: absolute; inset: 9px; border-radius: 50%;
+      border: 2px solid rgba(255,174,72,.7); border-top-color: transparent;
+      animation: spin 1.1s linear infinite;
+    }
+    .loader-logo::after {
+      content: ""; position: absolute; left: 50%; top: 50%; width: 9px; height: 9px;
+      transform: translate(-50%, -50%); border-radius: 50%; background: #52dbff;
+      box-shadow: 0 0 16px #52dbff;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .loader-title { font-size: 17px; font-weight: 760; }
+    .loader-copy { margin-top: 7px; color: #899ab4; font-size: 11px; line-height: 1.5; }
+    .progress { height: 3px; margin-top: 14px; background: rgba(255,255,255,.07); border-radius: 99px; overflow: hidden; }
+    .progress span { display: block; width: 22%; height: 100%; background: linear-gradient(90deg, #39cfff, #ffae46); border-radius: inherit; animation: scan 1.2s ease-in-out infinite alternate; }
+    @keyframes scan { from { transform: translateX(-30%); } to { transform: translateX(350%); } }
+
+    #fatal {
+      position: fixed;
+      inset: 0;
+      z-index: 150;
+      display: none;
+      place-items: center;
+      background: rgba(4, 6, 11, .96);
+      padding: 22px;
+    }
+    #fatal.show { display: grid; }
+    .fatal-card {
+      width: min(760px, 100%);
+      background: #111722;
+      border: 1px solid rgba(255,84,99,.25);
+      border-radius: 18px;
+      padding: 20px;
+      box-shadow: 0 25px 80px rgba(0,0,0,.5);
+    }
+    .fatal-card h2 { margin: 0 0 8px; color: #ff8d98; font-size: 18px; }
+    .fatal-card p { color: #b6c3d8; line-height: 1.55; font-size: 12px; }
+    .fatal-card pre { max-height: 270px; overflow: auto; white-space: pre-wrap; color: #ffd3d8; background: #090d14; padding: 12px; border-radius: 10px; border: 1px solid rgba(255,255,255,.06); font-size: 11px; }
+
+    @media (max-width: 800px) {
+      #hud { top: auto; bottom: 14px; right: 14px; width: 180px; }
+      #status { display: none; }
+      #panel { max-height: calc(100vh - 76px); }
+    }
+
+    @media (max-width: 580px) {
+      #hud { display: none; }
+      .buttons.three { grid-template-columns: 1fr 1fr; }
+      #quickbar { bottom: 10px; left: 10px; }
+    }
+  </style>
+
+  <script>
+    window.__CITADEL_ERRORS__ = [];
+    window.addEventListener('error', (event) => {
+      const msg = event?.error?.stack || event?.message || 'Unknown script error';
+      window.__CITADEL_ERRORS__.push(msg);
+      const fatal = document.getElementById('fatal');
+      const out = document.getElementById('fatalText');
+      if (fatal && out) {
+        out.textContent = msg;
+        fatal.classList.add('show');
+      }
+    });
+    window.addEventListener('unhandledrejection', (event) => {
+      const msg = event?.reason?.stack || String(event?.reason || 'Unhandled promise rejection');
+      window.__CITADEL_ERRORS__.push(msg);
+      const fatal = document.getElementById('fatal');
+      const out = document.getElementById('fatalText');
+      if (fatal && out) {
+        out.textContent = msg;
+        fatal.classList.add('show');
+      }
+    });
+  </script>
+
+  <!--
+    IMPORTANT: all Three.js imports use the SAME pinned release and CDN.
+    This import map fixes the browser error:
+    "Failed to resolve module specifier 'three'".
+  -->
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.module.js",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.186.0/examples/jsm/"
+    }
+  }
+  </script>
+</head>
+<body>
+  <div id="app"><div id="viewport"></div></div>
+  <div id="vignette"></div>
+  <div id="crosshair"></div>
+
+  <aside id="panel" class="glass">
+    <div class="panel-head">
+      <div>
+        <div class="eyebrow">Interactive reconstruction</div>
+        <h1>Citadel // Fortress 360</h1>
+        <div class="subtitle">Gothic red-brick security architecture with brass ribs, emissive systems, surveillance hardware and a reconstructed 360° exterior.</div>
+      </div>
+      <button class="icon-btn" id="closePanel" title="Hide controls" aria-label="Hide controls">×</button>
+    </div>
+
+    <section class="section">
+      <div class="section-title">Camera <span class="badge">Orbit / Pan / Zoom</span></div>
+      <div class="buttons three">
+        <button class="btn primary" data-view="front">Front</button>
+        <button class="btn" data-view="rear">Rear</button>
+        <button class="btn" data-view="left">Left</button>
+        <button class="btn" data-view="right">Right</button>
+        <button class="btn" data-view="top">Top</button>
+        <button class="btn warm" data-view="hero">Hero</button>
+      </div>
+      <div class="row">
+        <div class="label">Automatic orbit<span class="subtext">Slowly rotates around the full reconstructed building.</span></div>
+        <label class="switch"><input id="autoRotate" type="checkbox"><span class="switch-track"></span></label>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="section-title">Atmosphere <span class="badge">Real-time</span></div>
+      <div class="row">
+        <div class="label">Night mode<span class="subtext">Storm lighting and high-contrast emissive architecture.</span></div>
+        <label class="switch"><input id="nightMode" type="checkbox" checked><span class="switch-track"></span></label>
+      </div>
+      <div class="row">
+        <div class="label">Rain<span class="subtext">GPU point-field rain around the structure.</span></div>
+        <label class="switch"><input id="rainToggle" type="checkbox" checked><span class="switch-track"></span></label>
+      </div>
+      <div class="row">
+        <div class="label">Damage decals<span class="subtext">Scorch impacts and battle damage matching the source language.</span></div>
+        <label class="switch"><input id="damageToggle" type="checkbox" checked><span class="switch-track"></span></label>
+      </div>
+      <div class="row stack">
+        <div class="label">Emissive power <span id="glowValue" class="subtext">3.8×</span></div>
+        <input id="glowRange" type="range" min="0" max="8" step="0.1" value="3.8">
+      </div>
+      <div class="row stack">
+        <div class="label">Bloom <span id="bloomValue" class="subtext">1.05</span></div>
+        <input id="bloomRange" type="range" min="0" max="2.4" step="0.05" value="1.05">
+      </div>
+      <div class="row stack">
+        <div class="label">Exposure <span id="exposureValue" class="subtext">1.12</span></div>
+        <input id="exposureRange" type="range" min="0.45" max="2" step="0.01" value="1.12">
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="section-title">Reference image <span class="badge">Comparison</span></div>
+      <div class="row">
+        <div class="label">Show reference board<span class="subtext">Places the uploaded image beside the model for visual comparison.</span></div>
+        <label class="switch"><input id="referenceToggle" type="checkbox"><span class="switch-track"></span></label>
+      </div>
+      <div class="row stack">
+        <input id="fileInput" type="file" accept="image/*">
+        <span class="subtext">The app first attempts to load <strong>fortress-reference.png</strong> from the same folder.</span>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="section-title">Renderer <span class="badge">Performance</span></div>
+      <div class="row">
+        <div class="label">Quality</div>
+        <select id="qualitySelect">
+          <option value="performance">Performance</option>
+          <option value="balanced" selected>Balanced</option>
+          <option value="ultra">Ultra</option>
+        </select>
+      </div>
+      <div class="row">
+        <div class="label">Shadows</div>
+        <label class="switch"><input id="shadowToggle" type="checkbox" checked><span class="switch-track"></span></label>
+      </div>
+      <div class="buttons">
+        <button class="btn" id="screenshotBtn">Screenshot</button>
+        <button class="btn" id="fullscreenBtn">Fullscreen</button>
+        <button class="btn" id="resetBtn">Reset settings</button>
+        <button class="btn" id="focusGateBtn">Focus gate</button>
+      </div>
+    </section>
+  </aside>
+
+  <aside id="hud" class="glass">
+    <div class="hud-grid">
+      <div class="metric"><div class="metric-name">FPS</div><div id="fps" class="metric-value blue">--</div></div>
+      <div class="metric"><div class="metric-name">Triangles</div><div id="triangles" class="metric-value">--</div></div>
+      <div class="metric"><div class="metric-name">Draw calls</div><div id="drawCalls" class="metric-value">--</div></div>
+      <div class="metric"><div class="metric-name">Mode</div><div id="modeReadout" class="metric-value orange">Night</div></div>
+    </div>
+  </aside>
+
+  <div id="quickbar">
+    <button id="openPanel" title="Controls">☰</button>
+    <button id="quickHero" title="Hero camera">◇</button>
+    <button id="quickFront" title="Front camera">▣</button>
+  </div>
+
+  <div id="status" class="glass"><strong>System:</strong> loading procedural fortress geometry…</div>
+
+  <div id="loader">
+    <div class="loader-box">
+      <div class="loader-logo"></div>
+      <div class="loader-title">Constructing Citadel</div>
+      <div class="loader-copy">Generating procedural masonry, metallic ribs, emissive infrastructure, surveillance towers, weather, damage decals and post-processing.</div>
+      <div class="progress"><span></span></div>
+    </div>
+  </div>
+
+  <div id="fatal">
+    <div class="fatal-card">
+      <h2>3D renderer failed to start</h2>
+      <p>
+        The app uses browser ES modules. Run the folder through a local HTTP server rather than relying on a restricted file URL. Example: <code>python -m http.server 8000</code>, then open <code>http://localhost:8000</code>.
+      </p>
+      <pre id="fatalText">Unknown error.</pre>
+    </div>
+  </div>
+
+  <script type="module">
+    import * as THREE from 'three';
+    import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+    import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+    import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+    import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+    import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+
+    // -------------------------------------------------------------------------
+    // Application state and DOM
+    // -------------------------------------------------------------------------
+    const $ = (id) => document.getElementById(id);
+    const viewport = $('viewport');
+    const statusEl = $('status');
+    const loaderEl = $('loader');
+    const panel = $('panel');
+
+    const ui = {
+      fps: $('fps'),
+      triangles: $('triangles'),
+      drawCalls: $('drawCalls'),
+      modeReadout: $('modeReadout'),
+      autoRotate: $('autoRotate'),
+      nightMode: $('nightMode'),
+      rainToggle: $('rainToggle'),
+      damageToggle: $('damageToggle'),
+      referenceToggle: $('referenceToggle'),
+      glowRange: $('glowRange'),
+      bloomRange: $('bloomRange'),
+      exposureRange: $('exposureRange'),
+      glowValue: $('glowValue'),
+      bloomValue: $('bloomValue'),
+      exposureValue: $('exposureValue'),
+      qualitySelect: $('qualitySelect'),
+      shadowToggle: $('shadowToggle'),
+      fileInput: $('fileInput')
+    };
+
+    const state = {
+      night: true,
+      rain: true,
+      damage: true,
+      reference: false,
+      autoRotate: false,
+      glow: 3.8,
+      bloom: 1.05,
+      exposure: 1.12,
+      quality: 'balanced',
+      shadows: true
+    };
+
+    function status(message) {
+      statusEl.innerHTML = `<strong>System:</strong> ${message}`;
+    }
+
+    // -------------------------------------------------------------------------
+    // Renderer / scene / camera
+    // -------------------------------------------------------------------------
+    if (!window.WebGLRenderingContext && !window.WebGL2RenderingContext) {
+      throw new Error('WebGL is not available in this browser or GPU configuration.');
+    }
+
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x080c13);
+    scene.fog = new THREE.FogExp2(0x0a1018, 0.0105);
+
+    const renderer = new THREE.WebGLRenderer({
+      antialias: true,
+      powerPreference: 'high-performance',
+      preserveDrawingBuffer: true
+    });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.6));
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    renderer.outputColorSpace = THREE.SRGBColorSpace;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = state.exposure;
+    renderer.domElement.tabIndex = 0;
+    viewport.appendChild(renderer.domElement);
+
+    const camera = new THREE.PerspectiveCamera(48, window.innerWidth / window.innerHeight, 0.1, 700);
+    camera.position.set(48, 28, 68);
+
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.055;
+    controls.target.set(0, 20, 0);
+    controls.minDistance = 18;
+    controls.maxDistance = 165;
+    controls.minPolarAngle = 0.09;
+    controls.maxPolarAngle = Math.PI * 0.495;
+    controls.screenSpacePanning = false;
+    controls.autoRotate = false;
+    controls.autoRotateSpeed = 0.52;
+
+    const renderPass = new RenderPass(scene, camera);
+    const bloomPass = new UnrealBloomPass(
+      new THREE.Vector2(window.innerWidth, window.innerHeight),
+      state.bloom,
+      0.55,
+      0.68
+    );
+    bloomPass.threshold = 0.68;
+    bloomPass.strength = state.bloom;
+    bloomPass.radius = 0.55;
+
+    const outputPass = new OutputPass();
+    const composer = new EffectComposer(renderer);
+    composer.addPass(renderPass);
+    composer.addPass(bloomPass);
+    composer.addPass(outputPass);
+
+    const fortress = new THREE.Group();
+    fortress.name = 'CitadelFortress';
+    scene.add(fortress);
+
+    const damageLayer = new THREE.Group();
+    damageLayer.name = 'DamageLayer';
+    fortress.add(damageLayer);
+
+    const detailLayer = new THREE.Group();
+    detailLayer.name = 'DetailLayer';
+    fortress.add(detailLayer);
+
+    const emissiveMaterials = new Set();
+    const animatedEmitters = [];
+    let rain = null;
+    let referenceBoard = null;
+    let referenceTexture = null;
+
+    // -------------------------------------------------------------------------
+    // Utility helpers
+    // -------------------------------------------------------------------------
+    const clamp = THREE.MathUtils.clamp;
+    const lerp = THREE.MathUtils.lerp;
+    const rand = (a, b) => a + Math.random() * (b - a);
+
+    function box(w, h, d, material) {
+      const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), material);
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+      return mesh;
+    }
+
+    function cyl(rt, rb, h, segments, material) {
+      const mesh = new THREE.Mesh(new THREE.CylinderGeometry(rt, rb, h, segments), material);
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+      return mesh;
+    }
+
+    function plane(w, h, material) {
+      const mesh = new THREE.Mesh(new THREE.PlaneGeometry(w, h), material);
+      mesh.receiveShadow = true;
+      return mesh;
+    }
+
+    function addBox(parent, w, h, d, material, x, y, z, rx = 0, ry = 0, rz = 0) {
+      const mesh = box(w, h, d, material);
+      mesh.position.set(x, y, z);
+      mesh.rotation.set(rx, ry, rz);
+      parent.add(mesh);
+      return mesh;
+    }
+
+    function addCyl(parent, rt, rb, h, segments, material, x, y, z, rx = 0, ry = 0, rz = 0) {
+      const mesh = cyl(rt, rb, h, segments, material);
+      mesh.position.set(x, y, z);
+      mesh.rotation.set(rx, ry, rz);
+      parent.add(mesh);
+      return mesh;
+    }
+
+    function canvasTexture(size, draw, options = {}) {
+      const canvas = document.createElement('canvas');
+      canvas.width = size;
+      canvas.height = size;
+      const ctx = canvas.getContext('2d', { alpha: true });
+      draw(ctx, size);
+      const tex = new THREE.CanvasTexture(canvas);
+      tex.colorSpace = options.colorSpace ?? THREE.SRGBColorSpace;
+      tex.wrapS = options.wrapS ?? THREE.RepeatWrapping;
+      tex.wrapT = options.wrapT ?? THREE.RepeatWrapping;
+      tex.anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy());
+      return tex;
+    }
+
+    function noise2D(ctx, size, count, alpha = 0.08, light = true) {
+      for (let i = 0; i < count; i++) {
+        const v = light ? Math.floor(rand(110, 255)) : Math.floor(rand(0, 75));
+        ctx.fillStyle = `rgba(${v},${v},${v},${rand(0.01, alpha)})`;
+        ctx.fillRect(rand(0, size), rand(0, size), rand(1, 4), rand(1, 4));
+      }
+    }
+
+    // -------------------------------------------------------------------------
+    // Procedural PBR textures
+    // -------------------------------------------------------------------------
+    const textures = {};
+
+    function createTextures() {
+      textures.brick = canvasTexture(1024, (ctx, s) => {
+        ctx.fillStyle = '#351114';
+        ctx.fillRect(0, 0, s, s);
+        const bw = 98, bh = 42, mortar = 5;
+        for (let row = 0, y = 0; y < s + bh; row++, y += bh) {
+          const offset = row % 2 ? bw * .5 : 0;
+          for (let x = -bw; x < s + bw; x += bw) {
+            const rr = Math.floor(rand(82, 127));
+            const gg = Math.floor(rand(18, 35));
+            const bb = Math.floor(rand(18, 30));
+            ctx.fillStyle = `rgb(${rr},${gg},${bb})`;
+            ctx.fillRect(x + offset + mortar * .5, y + mortar * .5, bw - mortar, bh - mortar);
+            const g = ctx.createLinearGradient(0, y, 0, y + bh);
+            g.addColorStop(0, 'rgba(255,190,150,.06)');
+            g.addColorStop(1, 'rgba(0,0,0,.12)');
+            ctx.fillStyle = g;
+            ctx.fillRect(x + offset + mortar * .5, y + mortar * .5, bw - mortar, bh - mortar);
+            for (let k = 0; k < 14; k++) {
+              ctx.fillStyle = `rgba(20,5,8,${rand(.02,.1)})`;
+              ctx.fillRect(x + offset + rand(5,bw-8), y + rand(4,bh-6), rand(1,7), rand(1,3));
+            }
+          }
+        }
+        noise2D(ctx, s, 12000, .055, true);
+        noise2D(ctx, s, 7000, .08, false);
+      });
+      textures.brick.repeat.set(1.4, 1.4);
+
+      textures.brickBump = canvasTexture(1024, (ctx, s) => {
+        ctx.fillStyle = '#777';
+        ctx.fillRect(0,0,s,s);
+        const bw = 98, bh = 42, mortar = 5;
+        for (let row=0,y=0; y<s+bh; row++,y+=bh) {
+          const offset = row%2 ? bw*.5 : 0;
+          for (let x=-bw; x<s+bw; x+=bw) {
+            ctx.fillStyle = '#3e3e3e';
+            ctx.fillRect(x+offset, y, bw, mortar);
+            ctx.fillRect(x+offset, y, mortar, bh);
+            const grad = ctx.createLinearGradient(0,y,0,y+bh);
+            grad.addColorStop(0,'#a3a3a3');
+            grad.addColorStop(.25,'#8d8d8d');
+            grad.addColorStop(1,'#737373');
+            ctx.fillStyle = grad;
+            ctx.fillRect(x+offset+mortar, y+mortar, bw-mortar, bh-mortar);
+          }
+        }
+        noise2D(ctx,s,9000,.09,true);
+      }, { colorSpace: THREE.NoColorSpace });
+      textures.brickBump.repeat.copy(textures.brick.repeat);
+
+      textures.metal = canvasTexture(1024, (ctx, s) => {
+        const g = ctx.createLinearGradient(0,0,s,0);
+        g.addColorStop(0,'#343c48');
+        g.addColorStop(.28,'#6a7583');
+        g.addColorStop(.55,'#444e59');
+        g.addColorStop(.8,'#78828f');
+        g.addColorStop(1,'#303944');
+        ctx.fillStyle = g;
+        ctx.fillRect(0,0,s,s);
+        for(let y=0;y<s;y+=6){
+          ctx.fillStyle=`rgba(255,255,255,${rand(.012,.045)})`;
+          ctx.fillRect(0,y,s,1);
+        }
+        for(let i=0;i<4800;i++){
+          ctx.fillStyle=`rgba(0,0,0,${rand(.015,.08)})`;
+          ctx.fillRect(rand(0,s),rand(0,s),rand(3,30),rand(.5,2));
+        }
+      });
+      textures.metal.repeat.set(2,2);
+
+      textures.stone = canvasTexture(1024, (ctx, s) => {
+        ctx.fillStyle='#4b4a4d'; ctx.fillRect(0,0,s,s);
+        for(let i=0;i<9000;i++){
+          const v=Math.floor(rand(50,125));
+          ctx.fillStyle=`rgba(${v},${v},${v+5},${rand(.02,.13)})`;
+          ctx.fillRect(rand(0,s),rand(0,s),rand(1,9),rand(1,5));
+        }
+        for(let y=0;y<s;y+=128){
+          ctx.fillStyle='rgba(0,0,0,.18)'; ctx.fillRect(0,y,s,5);
+          for(let x=(y/128)%2?64:0;x<s;x+=128)ctx.fillRect(x,y,5,128);
+        }
+      });
+      textures.stone.repeat.set(2.5,2.5);
+
+      textures.ground = canvasTexture(1024, (ctx, s) => {
+        ctx.fillStyle='#141820'; ctx.fillRect(0,0,s,s);
+        const t=86;
+        for(let y=0;y<s;y+=t){
+          for(let x=0;x<s;x+=t){
+            const v=Math.floor(rand(18,40));
+            ctx.fillStyle=`rgb(${v},${v+3},${v+7})`;
+            ctx.fillRect(x+2,y+2,t-4,t-4);
+            const sheen=ctx.createLinearGradient(x,y,x+t,y+t);
+            sheen.addColorStop(0,'rgba(145,185,215,.035)');
+            sheen.addColorStop(.5,'rgba(255,255,255,.01)');
+            sheen.addColorStop(1,'rgba(0,0,0,.08)');
+            ctx.fillStyle=sheen; ctx.fillRect(x+2,y+2,t-4,t-4);
+          }
+        }
+        noise2D(ctx,s,11000,.1,true);
+        for(let i=0;i<30;i++){
+          const x=rand(0,s), y=rand(0,s), r=rand(18,90);
+          const g=ctx.createRadialGradient(x,y,0,x,y,r);
+          g.addColorStop(0,'rgba(110,160,220,.12)');
+          g.addColorStop(.55,'rgba(90,130,180,.05)');
+          g.addColorStop(1,'rgba(0,0,0,0)');
+          ctx.fillStyle=g; ctx.beginPath(); ctx.ellipse(x,y,r,r*rand(.18,.42),rand(0,Math.PI),0,Math.PI*2); ctx.fill();
+        }
+      });
+      textures.ground.repeat.set(24,24);
+
+      textures.scorch = canvasTexture(512, (ctx, s) => {
+        ctx.clearRect(0,0,s,s);
+        const cx=s/2, cy=s/2;
+        for(let layer=0; layer<6; layer++){
+          const r=s*(.08+layer*.055);
+          const g=ctx.createRadialGradient(cx,cy,0,cx,cy,r);
+          g.addColorStop(0,`rgba(0,0,0,${.85-layer*.07})`);
+          g.addColorStop(.35,`rgba(15,10,10,${.55-layer*.06})`);
+          g.addColorStop(1,'rgba(0,0,0,0)');
+          ctx.fillStyle=g; ctx.fillRect(0,0,s,s);
+        }
+        ctx.strokeStyle='rgba(10,8,8,.72)';
+        ctx.lineCap='round';
+        for(let i=0;i<34;i++){
+          const a=rand(0,Math.PI*2), len=rand(s*.08,s*.32);
+          ctx.lineWidth=rand(1,4);
+          ctx.beginPath();
+          ctx.moveTo(cx+rand(-6,6),cy+rand(-6,6));
+          ctx.lineTo(cx+Math.cos(a)*len,cy+Math.sin(a)*len);
+          ctx.stroke();
+        }
+      }, { wrapS: THREE.ClampToEdgeWrapping, wrapT: THREE.ClampToEdgeWrapping });
+    }
+
+    createTextures();
+
+    // -------------------------------------------------------------------------
+    // Materials
+    // -------------------------------------------------------------------------
+    const materials = {
+      brick: new THREE.MeshStandardMaterial({ map:textures.brick, bumpMap:textures.brickBump, bumpScale:.12, color:0xffffff, roughness:.88, metalness:.03 }),
+      brickDark: new THREE.MeshStandardMaterial({ map:textures.brick, bumpMap:textures.brickBump, bumpScale:.11, color:0xa87979, roughness:.94, metalness:.02 }),
+      brass: new THREE.MeshStandardMaterial({ color:0xb27c37, roughness:.28, metalness:.93 }),
+      brassDark: new THREE.MeshStandardMaterial({ color:0x735329, roughness:.38, metalness:.88 }),
+      steel: new THREE.MeshStandardMaterial({ map:textures.metal, color:0xb9c1ca, roughness:.42, metalness:.92 }),
+      steelDark: new THREE.MeshStandardMaterial({ map:textures.metal, color:0x39424d, roughness:.6, metalness:.83 }),
+      stone: new THREE.MeshStandardMaterial({ map:textures.stone, color:0xd1d1d4, roughness:.9, metalness:.03 }),
+      ground: new THREE.MeshStandardMaterial({ map:textures.ground, color:0xffffff, roughness:.44, metalness:.23 }),
+      black: new THREE.MeshStandardMaterial({ color:0x090b0f, roughness:.62, metalness:.75 }),
+      glassBlue: new THREE.MeshPhysicalMaterial({ color:0x70dfff, emissive:0x0c4cff, emissiveIntensity:.78, roughness:.15, metalness:.12, transmission:.1, thickness:.55, transparent:true, opacity:.88 }),
+      glowBlue: new THREE.MeshStandardMaterial({ color:0x82eaff, emissive:0x0879ff, emissiveIntensity:state.glow, roughness:.18, metalness:.35 }),
+      glowOrange: new THREE.MeshStandardMaterial({ color:0xffc069, emissive:0xff6a00, emissiveIntensity:state.glow, roughness:.24, metalness:.42 }),
+      glowWarm: new THREE.MeshStandardMaterial({ color:0xffd8a0, emissive:0xff9a1f, emissiveIntensity:state.glow*.72, roughness:.35, metalness:.32 }),
+      darkWindow: new THREE.MeshStandardMaterial({ color:0x09131e, emissive:0x03101e, emissiveIntensity:.2, roughness:.34, metalness:.38 })
+    };
+    emissiveMaterials.add(materials.glowBlue);
+    emissiveMaterials.add(materials.glowOrange);
+    emissiveMaterials.add(materials.glowWarm);
+    emissiveMaterials.add(materials.glassBlue);
+
+    // -------------------------------------------------------------------------
+    // Decorative geometry helpers
+    // -------------------------------------------------------------------------
+    function pointedArchShape(width, height, inset = 0) {
+      const w = width/2 - inset;
+      const h = height - inset;
+      const shape = new THREE.Shape();
+      shape.moveTo(-w, 0);
+      shape.lineTo(-w, h*.54);
+      shape.quadraticCurveTo(-w*.82, h*.78, 0, h);
+      shape.quadraticCurveTo(w*.82, h*.78, w, h*.54);
+      shape.lineTo(w, 0);
+      shape.lineTo(-w, 0);
+      return shape;
+    }
+
+    function pointedArchFrame(width, height, thickness, depth, material) {
+      const outer = pointedArchShape(width, height, 0);
+      const inner = pointedArchShape(width-thickness*2, height-thickness*1.3, 0);
+      const hole = new THREE.Path(inner.getPoints(48));
+      outer.holes.push(hole);
+      const geo = new THREE.ExtrudeGeometry(outer, { depth, bevelEnabled:false, curveSegments:36 });
+      geo.translate(0,0,-depth/2);
+      const mesh = new THREE.Mesh(geo, material);
+      mesh.castShadow = true; mesh.receiveShadow = true;
+      return mesh;
+    }
+
+    function gothicPanel(width, height, depth=0.4, material=materials.brickDark) {
+      const g = new THREE.Group();
+      addBox(g,width,height,depth,material,0,0,0);
+      const edge=.13;
+      addBox(g,edge,height*.93,depth*.75,materials.brassDark,-width*.43,0,depth*.58);
+      addBox(g,edge,height*.93,depth*.75,materials.brassDark,width*.43,0,depth*.58);
+      addBox(g,width*.84,edge,depth*.75,materials.brassDark,0,height*.43,depth*.58);
+      addBox(g,width*.84,edge,depth*.75,materials.brassDark,0,-height*.43,depth*.58);
+      for(const sign of [-1,1]){
+        const rib=addBox(g,edge,height*.7,depth*.75,materials.brassDark,0,0,depth*.62,0,0,sign*.52);
+        rib.position.x = 0;
+      }
+      const ring=new THREE.Mesh(new THREE.TorusGeometry(Math.min(width,height)*.14,.055,8,24),materials.brassDark);
+      ring.position.z=depth*.75; g.add(ring);
+      return g;
+    }
+
+    function glowingStrip(parent, length, axis, material, x,y,z, thickness=.11) {
+      let mesh;
+      if(axis==='x') mesh=addBox(parent,length,thickness,thickness,material,x,y,z);
+      else if(axis==='y') mesh=addBox(parent,thickness,length,thickness,material,x,y,z);
+      else mesh=addBox(parent,thickness,thickness,length,material,x,y,z);
+      animatedEmitters.push({mesh, base:material.emissiveIntensity, phase:rand(0,Math.PI*2), speed:rand(.45,1.05), amp:rand(.03,.09)});
+      return mesh;
+    }
+
+    function createCameraUnit() {
+      const g = new THREE.Group();
+      addBox(g,.16,.16,1.0,materials.steelDark,0,0,-.42);
+      addBox(g,.58,.36,.76,materials.steelDark,0,0,.28);
+      const lens=addCyl(g,.13,.18,.18,18,materials.glowBlue,0,0,.72,Math.PI/2);
+      lens.rotation.x=Math.PI/2;
+      const hood=addBox(g,.7,.12,.6,materials.brassDark,0,.26,.24);
+      hood.rotation.x=.06;
+      return g;
+    }
+
+    function createEnergyLantern() {
+      const g = new THREE.Group();
+      const core = addCyl(g,.38,.38,3.6,18,materials.glassBlue,0,0,0);
+      core.castShadow=false;
+      addCyl(g,.78,.66,.32,12,materials.brass,0,1.98,0);
+      addCyl(g,.66,.78,.32,12,materials.brass,0,-1.98,0);
+      for(let i=0;i<6;i++){
+        const a=i*Math.PI/3;
+        addBox(g,.075,3.75,.075,materials.brass,Math.cos(a)*.65,0,Math.sin(a)*.65);
+      }
+      for(const y of [-1.2,1.2]){
+        const ring=new THREE.Mesh(new THREE.TorusGeometry(.73,.05,8,32),materials.brass);
+        ring.rotation.x=Math.PI/2; ring.position.y=y; g.add(ring);
+      }
+      addBox(g,.22,2.3,1.7,materials.brassDark,0,0,-1.05);
+      glowingStrip(g,3.1,'y',materials.glowBlue,0,0,0,.16);
+      return g;
+    }
+
+    function createTurretTower() {
+      const g=new THREE.Group();
+      addBox(g,3.5,6.4,3.5,materials.brick,0,3.2,0);
+      addBox(g,5.2,.5,5.2,materials.steelDark,0,6.65,0);
+      addBox(g,3.4,1.65,3.4,materials.steelDark,0,7.75,0);
+      addBox(g,3.9,.2,3.9,materials.brassDark,0,7.02,0);
+      for(const sx of [-1,1]) for(const sz of [-1,1]) addBox(g,.16,1.5,.16,materials.steel,sx*1.75,7.4,sz*1.75);
+      addBox(g,.09,2.4,.09,materials.steel,0,9.65,0);
+      addBox(g,1.5,.1,.1,materials.steel,0,9.2,0,0,.5,.15);
+      glowingStrip(g,2.9,'x',materials.glowBlue,0,2.3,1.78,.14);
+      return g;
+    }
+
+    function createCrenellation(parent, x, y, z, width, depth, count, material, facing='z') {
+      const spacing=width/count;
+      for(let i=0;i<count;i++){
+        const center=-width/2+spacing*(i+.5);
+        if(facing==='z') addBox(parent,spacing*.62,1.7,depth,material,x+center,y,z);
+        else addBox(parent,depth,1.7,spacing*.62,material,x,y,z+center);
+      }
+    }
+
+    function createVerticalButtress(parent,x,z,height,sideSign=1){
+      addBox(parent,1.6,height,2.1,materials.brick,x,height/2,z);
+      addBox(parent,2.05,.55,2.55,materials.brass,x,8.2,z);
+      addBox(parent,2.05,.55,2.55,materials.brass,x,24.4,z);
+      addBox(parent,2.05,.55,2.55,materials.brass,x,41.2,z);
+      glowingStrip(parent,height*.87,'y',materials.glowOrange,x,height*.5,z+sideSign*1.08,.12);
+      const fin=addBox(parent,.78,5.2,2.6,materials.brick,x,height+2.3,z);
+      fin.rotation.z=0;
+      addBox(parent,1.1,.25,2.9,materials.brass,x,height+.5,z);
+    }
+
+    function createScorch(x,y,z,scale,rotY=0,flip=false){
+      const mat=new THREE.MeshBasicMaterial({map:textures.scorch,transparent:true,depthWrite:false,blending:THREE.NormalBlending,side:THREE.DoubleSide,toneMapped:false});
+      const m=plane(scale,scale,mat);
+      m.position.set(x,y,z);
+      m.rotation.y=rotY;
+      if(flip) m.rotation.x=Math.PI;
+      m.renderOrder=4;
+      damageLayer.add(m);
+      return m;
+    }
+
+    // -------------------------------------------------------------------------
+    // Fortress construction
+    // -------------------------------------------------------------------------
+    function buildFortress() {
+      status('building fortress shell…');
+
+      // Wet courtyard and foundation.
+      const ground = new THREE.Mesh(new THREE.PlaneGeometry(330,330),materials.ground);
+      ground.rotation.x=-Math.PI/2; ground.position.y=0; ground.receiveShadow=true; fortress.add(ground);
+      addBox(fortress,68,1.35,47,materials.stone,0,.675,-1);
+
+      // Broad stairs, matching the frontal reference silhouette.
+      for(let i=0;i<9;i++){
+        const w=29+i*2.05, d=5.3+i*1.05;
+        const step=addBox(fortress,w,.42,d,materials.brick,0,1.16+i*.41,14.8-i*.48);
+        step.receiveShadow=true;
+        glowingStrip(fortress,d*.90,'z',materials.glowOrange,0,1.39+i*.41,14.75-i*.48,.10);
+      }
+
+      // Main central keep.
+      addBox(fortress,27,51,21,materials.brick,0,26.3,-1.5);
+      addBox(fortress,25.5,45,15.2,materials.brick,0,23.4,6.2);
+      addBox(fortress,29,2.1,22.5,materials.brick,0,52.3,-1.5);
+      createCrenellation(fortress,0,54.1,8.9,27,2.1,11,materials.brick,'z');
+
+      // Top central technological crest.
+      addBox(fortress,14.6,9.4,1.1,materials.steelDark,0,47.1,10.8);
+      addBox(fortress,15.7,.34,1.45,materials.brass,0,52.0,10.95);
+      addBox(fortress,15.7,.34,1.45,materials.brass,0,42.2,10.95);
+      addBox(fortress,.34,9.7,1.45,materials.brass,-7.7,47.1,10.95);
+      addBox(fortress,.34,9.7,1.45,materials.brass,7.7,47.1,10.95);
+      addBox(fortress,.72,5.5,.4,materials.brass,0,47.1,11.7);
+      glowingStrip(fortress,4.3,'y',materials.glowOrange,0,46.6,11.95,.12);
+      const crestRing=new THREE.Mesh(new THREE.TorusGeometry(1.08,.2,14,42),materials.brass);
+      crestRing.position.set(0,46.1,11.75); fortress.add(crestRing);
+      const glowRing=new THREE.Mesh(new THREE.TorusGeometry(.67,.09,10,34),materials.glowOrange);
+      glowRing.position.set(0,46.1,12.02); fortress.add(glowRing);
+      for(const s of [-1,1]){
+        const fork=addBox(fortress,.28,2.0,.34,materials.brass,s*.48,50.2,11.75,0,0,s*.58);
+        fork.castShadow=true;
+      }
+
+      // Central upper windows.
+      addBox(fortress,16.2,11.2,1.1,materials.brass,0,36.6,10.85);
+      addBox(fortress,15.0,10.1,1.35,materials.brickDark,0,36.6,11.1);
+      for(let i=0;i<8;i++){
+        const x=-5.25+i*1.5;
+        addBox(fortress,.66,8.5,.52,materials.brass,x,36.8,11.95);
+        addBox(fortress,.30,7.8,.28,materials.glowBlue,x,36.9,12.24);
+        addBox(fortress,.28,.65,.34,materials.glowOrange,x,32.55,12.25);
+      }
+      addBox(fortress,16.3,.36,.68,materials.brass,0,42.35,11.7);
+      addBox(fortress,16.3,.36,.68,materials.brass,0,30.9,11.7);
+
+      // Decorative lower façade panels.
+      for(let i=0;i<5;i++){
+        const p=gothicPanel(2.35,6.1,.6);
+        p.position.set(-5.6+i*2.8,25.0,11.9);
+        fortress.add(p);
+        glowingStrip(fortress,1.35,'x',materials.glowWarm,-5.6+i*2.8,28.25,12.35,.12);
+      }
+
+      // Main gate arch and deep tunnel.
+      const gable=pointedArchFrame(17.0,12.4,1.3,1.1,materials.brickDark);
+      gable.position.set(0,10.2,11.1); fortress.add(gable);
+      const gableTrim=pointedArchFrame(18.0,13.25,.48,.25,materials.brass);
+      gableTrim.position.set(0,9.8,12.0); fortress.add(gableTrim);
+      const mainArch=pointedArchFrame(12.7,17.2,1.25,1.4,materials.brickDark);
+      mainArch.position.set(0,1.3,12.35); fortress.add(mainArch);
+      const trimArch=pointedArchFrame(13.9,18.35,.46,.34,materials.brass);
+      trimArch.position.set(0,.85,13.25); fortress.add(trimArch);
+      const glowArch=pointedArchFrame(12.15,16.6,.16,.16,materials.glowOrange);
+      glowArch.position.set(0,1.6,13.65); fortress.add(glowArch);
+
+      // Gate and portcullis.
+      addBox(fortress,8.7,11.9,.9,materials.black,0,7.2,11.15);
+      for(let i=0;i<13;i++) addBox(fortress,.14,10.9,.14,materials.steel,-3.6+i*.6,7.1,12.07);
+      for(let i=0;i<5;i++) addBox(fortress,7.3,.14,.14,materials.steel,0,2.8+i*2.1,12.07);
+      for(const s of [-1,1]) addBox(fortress,.28,11.2,.28,materials.brass,s*3.85,7.1,12.18);
+      const lock=new THREE.Mesh(new THREE.TorusGeometry(.62,.14,12,28),materials.glowBlue);
+      lock.position.set(0,3.8,12.35); fortress.add(lock);
+      addBox(fortress,.16,1.25,.18,materials.glowBlue,0,2.75,12.34);
+
+      // Gate lanterns.
+      for(const s of [-1,1]){
+        const lantern=createEnergyLantern();
+        lantern.position.set(s*10.9,10.9,11.8); fortress.add(lantern);
+      }
+
+      // Twin main towers.
+      function buildMainTower(side){
+        const g=new THREE.Group();
+        const sx=side*19.6;
+        addBox(g,12.8,52.5,19.0,materials.brick,0,26.25,0);
+        addBox(g,13.7,2.5,20.0,materials.brick,0,52.6,0);
+        createCrenellation(g,0,54.6,8.6,13.5,2.6,6,materials.brick,'z');
+        createCrenellation(g,0,54.6,-8.6,13.5,2.6,6,materials.brick,'z');
+
+        // Faceted ribs recreate the strong vertical red tower rhythm.
+        const ribs=[-5.5,-3.7,-1.85,0,1.85,3.7,5.5];
+        ribs.forEach((x,i)=>{
+          addBox(g,1.15,48.8,2.15,materials.brickDark,x,25.2,9.25-i%2*.15);
+          addBox(g,.26,47.1,.22,materials.brass,x,25.2,10.39);
+          if(i===1||i===5) glowingStrip(g,43.5,'y',materials.glowOrange,x,25.4,10.57,.12);
+        });
+
+        // Belt armor.
+        for(const y of [8.4,15.4,33.1,42.1]){
+          addBox(g,13.5,.62,19.5,materials.brass,0,y,0);
+          addBox(g,13.8,.18,19.8,materials.brassDark,0,y+.37,0);
+        }
+
+        // Strong outside gold buttress like the source image.
+        addBox(g,2.15,47.0,2.35,materials.brass,side*5.7,27.0,8.45);
+        addBox(g,1.45,44.5,1.85,materials.brick,side*5.7,27.0,8.45);
+        glowingStrip(g,41.5,'y',materials.glowOrange,side*5.7,27.0,9.45,.12);
+        for(const y of [11,31,47]) addBox(g,2.55,2.5,2.8,materials.brass,side*5.7,y,8.45);
+
+        // Narrow armored tower window.
+        addBox(g,1.25,13.5,.82,materials.brass,0,23.0,10.2);
+        addBox(g,.72,12.4,.74,materials.darkWindow,0,23.0,10.7);
+        glowingStrip(g,11.0,'y',materials.glowOrange,0,23.0,11.15,.13);
+
+        // Side inset panels.
+        for(let i=0;i<5;i++){
+          const p=gothicPanel(1.7,5.3,.48);
+          p.position.set(side*4.2,39.0-i*6.0,9.9);
+          g.add(p);
+        }
+
+        // Surveillance cameras.
+        const camA=createCameraUnit(); camA.position.set(side*6.4,36.8,8.6); camA.rotation.y=side<0?-.78:.78; g.add(camA);
+        const camB=createCameraUnit(); camB.position.set(side*6.45,12.4,4.4); camB.rotation.y=side<0?-1.05:1.05; g.add(camB);
+
+        // Tower side ribs to make the unseen sides credible.
+        for(const z of [-7.6,-3.8,0,3.8]){
+          addBox(g,1.05,48.8,1.35,materials.brickDark,side*6.35,25.0,z);
+          addBox(g,.16,45.0,1.5,materials.brassDark,side*6.92,25.0,z);
+        }
+
+        g.position.x=sx;
+        return g;
+      }
+      fortress.add(buildMainTower(-1));
+      fortress.add(buildMainTower(1));
+
+      // Front secondary flanking blocks.
+      for(const s of [-1,1]){
+        addBox(fortress,6.2,30.5,14,materials.brick,s*29.2,15.25,1.5);
+        createCrenellation(fortress,s*29.2,31.4,7.9,6.0,1.7,4,materials.brick,'z');
+        createVerticalButtress(fortress,s*27.2,8.2,29,s);
+        glowingStrip(fortress,25,'y',materials.glowOrange,s*31.2,16.5,8.4,.12);
+      }
+
+      // Full side walls.
+      for(const s of [-1,1]){
+        addBox(fortress,4.0,11.5,72,materials.brick,s*33.2,5.75,-12.0);
+        addBox(fortress,.45,5.2,69.5,materials.steelDark,s*30.9,8.4,-12.0);
+        addBox(fortress,.35,11.0,72.4,materials.brassDark,s*35.3,5.8,-12.0);
+        for(let z=20;z>-43;z-=6.0) glowingStrip(fortress,3.25,'x',materials.glowBlue,s*33.15,3.1,z,.11);
+        for(let z=18;z>-42;z-=8.0){
+          addBox(fortress,.35,5.8,.35,materials.steel,s*30.65,8.3,z);
+          addBox(fortress,4.6,.3,1.2,materials.brassDark,s*33.1,11.1,z);
+        }
+        createCrenellation(fortress,s*33.2,12.55,-12,68,2.4,15,materials.brick,'x');
+      }
+
+      // Reconstructed rear keep and rear gate.
+      addBox(fortress,27,39,16,materials.brick,0,19.5,-14.0);
+      addBox(fortress,30,6.0,18,materials.brick,0,43.0,-14.0);
+      createCrenellation(fortress,0,46.7,-21.8,28.5,2.2,12,materials.brick,'z');
+      addBox(fortress,16.5,10.5,.8,materials.brass,0,34.5,-22.35);
+      addBox(fortress,15.4,9.4,.9,materials.steelDark,0,34.5,-22.8);
+      for(let i=0;i<8;i++){
+        const x=-5.25+i*1.5;
+        addBox(fortress,.58,7.8,.4,materials.brass,x,34.6,-23.45);
+        glowingStrip(fortress,6.9,'y',materials.glowBlue,x,34.6,-23.7,.11);
+      }
+      const rearArch=pointedArchFrame(11.2,14.8,1.0,1.05,materials.brickDark);
+      rearArch.rotation.y=Math.PI;
+      rearArch.position.set(0,1.2,-22.4); fortress.add(rearArch);
+      const rearTrim=pointedArchFrame(12.2,15.8,.38,.25,materials.brass);
+      rearTrim.rotation.y=Math.PI;
+      rearTrim.position.set(0,1.05,-23.25); fortress.add(rearTrim);
+      addBox(fortress,7.7,9.8,.8,materials.black,0,6.3,-22.15);
+      for(let i=0;i<11;i++) addBox(fortress,.14,9.1,.14,materials.steel,-3.1+i*.62,6.3,-23.05);
+      for(const y of [2.8,5.1,7.4,9.7]) addBox(fortress,6.6,.14,.14,materials.steel,0,y,-23.05);
+      glowingStrip(fortress,4.2,'y',materials.glowOrange,0,43.1,-23.15,.12);
+      const rearRing=new THREE.Mesh(new THREE.TorusGeometry(.72,.14,12,30),materials.glowOrange);
+      rearRing.position.set(0,41.8,-23.2); rearRing.rotation.y=Math.PI; fortress.add(rearRing);
+
+      // Perimeter rear wall.
+      addBox(fortress,66,11.5,4.0,materials.brick,0,5.75,-47.0);
+      addBox(fortress,62,5.2,.45,materials.steelDark,0,8.4,-44.7);
+      for(let x=-28;x<=28;x+=7) glowingStrip(fortress,3.5,'x',materials.glowBlue,x,3.1,-47.1,.11);
+      createCrenellation(fortress,0,12.55,-47.0,62,2.4,14,materials.brick,'z');
+
+      // Four watch towers.
+      const towerPositions=[[-33.2,24], [33.2,24], [-33.2,-44.5], [33.2,-44.5]];
+      towerPositions.forEach(([x,z],idx)=>{
+        const wt=createTurretTower(); wt.position.set(x,0,z); fortress.add(wt);
+        const cam=createCameraUnit(); cam.position.set(x,8.7,z+(idx<2?2.1:-2.1)); cam.rotation.y=idx<2?0:Math.PI; fortress.add(cam);
+      });
+
+      // Front wall side arrays, blue security bars.
+      for(const s of [-1,1]){
+        for(let i=0;i<6;i++){
+          addBox(fortress,.22,6.4,.22,materials.steel,s*(36.0+i*.55),7.0,17.0);
+        }
+        for(let y=4.5;y<9.5;y+=1.05) glowingStrip(fortress,4.0,'x',materials.glowBlue,s*38.0,y,17.15,.10);
+      }
+
+      // Additional cameras across the façade and perimeter.
+      const cameras=[
+        [-12.4,47.0,10.8,-.25], [12.4,46.7,10.8,.25],
+        [-31.6,25.0,8.2,-.75], [31.6,25.0,8.2,.75],
+        [-33.0,9.5,-15,-Math.PI/2], [33.0,9.5,-15,Math.PI/2]
+      ];
+      cameras.forEach(([x,y,z,ry])=>{ const c=createCameraUnit(); c.position.set(x,y,z); c.rotation.y=ry; fortress.add(c); });
+
+      // Sentry plinths / abstract robotic guard silhouettes, kept original rather than copying a franchise character.
+      for(const s of [-1,1]){
+        addBox(fortress,2.5,1.2,2.5,materials.stone,s*11.0,2.15,13.0);
+        const guard=new THREE.Group();
+        addBox(guard,1.3,2.3,.72,materials.steelDark,0,3.4,0);
+        addCyl(guard,.45,.42,.7,16,materials.steelDark,0,4.95,0);
+        addBox(guard,.44,2.3,.48,materials.steelDark,-.45,1.6,0,0,0,-.10);
+        addBox(guard,.44,2.3,.48,materials.steelDark,.45,1.6,0,0,0,.10);
+        addBox(guard,.38,2.5,.38,materials.steelDark,-.88,3.0,0,0,0,-.12);
+        addBox(guard,.38,2.5,.38,materials.steelDark,.88,3.0,0,0,0,.12);
+        addBox(guard,.15,1.6,.15,materials.glowOrange,s*.83,2.85,.44,0,0,.08*s);
+        addBox(guard,.92,.12,.12,materials.glowBlue,0,4.98,.44);
+        guard.position.set(s*11.0,2.55,13.0); fortress.add(guard);
+      }
+
+      // Battle damage decals on front and towers.
+      const damageFront=[
+        [-7.8,22.2,13.2,2.5,0], [9.0,31.4,12.3,2.25,0], [-18.9,10.0,10.4,2.4,0],
+        [19.6,18.4,10.4,2.8,0], [-4.4,49.5,11.9,1.9,0], [5.8,13.5,12.7,2.0,0],
+        [-25.4,34.0,10.8,2.4,0], [25.8,8.9,8.7,1.7,0]
+      ];
+      damageFront.forEach(([x,y,z,s,r])=>createScorch(x,y,z,s,r));
+      // Side and rear scorch marks.
+      createScorch(-35.26,22,-9,2.5,Math.PI/2);
+      createScorch(35.26,28,-21,2.8,-Math.PI/2);
+      createScorch(-8,27,-23.25,2.4,Math.PI);
+      createScorch(11,13,-23.25,2.0,Math.PI);
+
+      // Small rubble near front steps.
+      for(let i=0;i<34;i++){
+        const r=rand(.12,.48);
+        const m=addBox(detailLayer,r*rand(.7,1.5),r,r*rand(.8,1.6),Math.random()>.5?materials.stone:materials.brick,
+          rand(-25,25),rand(.15,.65),rand(12,25),rand(0,3),rand(0,3),rand(0,3));
+        m.castShadow=false;
+      }
+
+      // Thin roof aerials.
+      for(const x of [-11,-5,5,11]){
+        addBox(fortress,.08,4.0,.08,materials.steel,x,56.3,-2.0);
+        addBox(fortress,1.35,.08,.08,materials.steel,x,56.9,-2.0,0,0,.32);
+        addBox(fortress,.08,.08,1.1,materials.steel,x,55.8,-2.0);
+      }
+    }
+
+    // -------------------------------------------------------------------------
+    // Lighting / sky / weather
+    // -------------------------------------------------------------------------
+    const lights = {};
+
+    function buildLights(){
+      lights.hemi=new THREE.HemisphereLight(0x7392c3,0x1b1110,.68); scene.add(lights.hemi);
+      lights.moon=new THREE.DirectionalLight(0xbad7ff,2.0);
+      lights.moon.position.set(-42,72,35);
+      lights.moon.castShadow=true;
+      lights.moon.shadow.mapSize.set(2048,2048);
+      lights.moon.shadow.camera.left=-95; lights.moon.shadow.camera.right=95;
+      lights.moon.shadow.camera.top=95; lights.moon.shadow.camera.bottom=-95;
+      lights.moon.shadow.camera.near=1; lights.moon.shadow.camera.far=220;
+      lights.moon.shadow.bias=-0.00025;
+      scene.add(lights.moon);
+
+      lights.front=new THREE.SpotLight(0xff9c35,1200,125,.56,.65,1.3);
+      lights.front.position.set(0,23,45); lights.front.target.position.set(0,16,7);
+      scene.add(lights.front,lights.front.target);
+
+      lights.back=new THREE.SpotLight(0x2c86ff,820,135,.7,.75,1.2);
+      lights.back.position.set(0,30,-65); lights.back.target.position.set(0,17,-10);
+      scene.add(lights.back,lights.back.target);
+
+      lights.left=new THREE.PointLight(0x238cff,420,72,1.7); lights.left.position.set(-32,15,18); scene.add(lights.left);
+      lights.right=new THREE.PointLight(0xff7c20,360,68,1.8); lights.right.position.set(32,18,17); scene.add(lights.right);
+    }
+
+    function createSkyDome(){
+      const skyTex=canvasTexture(1024,(ctx,s)=>{
+        const g=ctx.createLinearGradient(0,0,0,s);
+        g.addColorStop(0,'#111927'); g.addColorStop(.42,'#253348'); g.addColorStop(.7,'#384353'); g.addColorStop(1,'#11151c');
+        ctx.fillStyle=g; ctx.fillRect(0,0,s,s);
+        for(let i=0;i<90;i++){
+          const x=rand(-100,s+100),y=rand(0,s),r=rand(45,190);
+          const cg=ctx.createRadialGradient(x,y,0,x,y,r);
+          const a=rand(.025,.1);
+          cg.addColorStop(0,`rgba(205,220,235,${a})`); cg.addColorStop(.45,`rgba(75,88,110,${a*.6})`); cg.addColorStop(1,'rgba(0,0,0,0)');
+          ctx.fillStyle=cg; ctx.beginPath(); ctx.ellipse(x,y,r,r*.3,rand(0,Math.PI),0,Math.PI*2); ctx.fill();
+        }
+      },{wrapS:THREE.RepeatWrapping,wrapT:THREE.ClampToEdgeWrapping});
+      skyTex.repeat.x=2;
+      const m=new THREE.MeshBasicMaterial({map:skyTex,side:THREE.BackSide,fog:false});
+      const dome=new THREE.Mesh(new THREE.SphereGeometry(280,48,32),m);
+      dome.scale.y=.65; dome.position.y=40; scene.add(dome); return dome;
+    }
+
+    const skyDome=createSkyDome();
+
+    function createRain(){
+      const count=state.quality==='ultra'?5200:state.quality==='balanced'?3200:1800;
+      const pos=new Float32Array(count*3);
+      const vel=new Float32Array(count);
+      for(let i=0;i<count;i++){
+        pos[i*3]=rand(-105,105); pos[i*3+1]=rand(3,92); pos[i*3+2]=rand(-105,105); vel[i]=rand(20,39);
+      }
+      const geo=new THREE.BufferGeometry(); geo.setAttribute('position',new THREE.BufferAttribute(pos,3));
+      const mat=new THREE.PointsMaterial({color:0x9cc5ff,size:state.quality==='performance'?.13:.16,transparent:true,opacity:.38,depthWrite:false,blending:THREE.AdditiveBlending});
+      const pts=new THREE.Points(geo,mat); pts.userData.velocity=vel; pts.frustumCulled=false; scene.add(pts); return pts;
+    }
+
+    function rebuildRain(){
+      if(rain){ scene.remove(rain); rain.geometry.dispose(); rain.material.dispose(); }
+      rain=createRain(); rain.visible=state.rain;
+    }
+
+    // -------------------------------------------------------------------------
+    // Reference image board
+    // -------------------------------------------------------------------------
+    const textureLoader=new THREE.TextureLoader();
+
+    function installReferenceTexture(texture){
+      texture.colorSpace=THREE.SRGBColorSpace;
+      texture.anisotropy=Math.min(8,renderer.capabilities.getMaxAnisotropy());
+      referenceTexture?.dispose?.();
+      referenceTexture=texture;
+      if(referenceBoard){ scene.remove(referenceBoard); referenceBoard.geometry.dispose(); referenceBoard.material.dispose(); }
+      const image=texture.image;
+      const aspect=(image?.width && image?.height)?image.width/image.height:1;
+      const h=28, w=h*aspect;
+      const mat=new THREE.MeshBasicMaterial({map:texture,transparent:true,opacity:.96,side:THREE.DoubleSide,toneMapped:false});
+      referenceBoard=new THREE.Mesh(new THREE.PlaneGeometry(w,h),mat);
+      referenceBoard.position.set(-49,21,28);
+      referenceBoard.rotation.y=.47;
+      referenceBoard.visible=state.reference;
+      scene.add(referenceBoard);
+      status('reference image loaded; toggle the comparison board when needed.');
+    }
+
+    function loadDefaultReference(){
+      textureLoader.load('./fortress-reference.png',installReferenceTexture,undefined,()=>status('model ready; optional fortress-reference.png was not found, but you can load the image using the file picker.'));
+    }
+
+    // -------------------------------------------------------------------------
+    // Modes and quality settings
+    // -------------------------------------------------------------------------
+    function setNight(enabled){
+      state.night=enabled;
+      ui.modeReadout.textContent=enabled?'Night':'Day';
+      if(enabled){
+        scene.background.set(0x080c13); scene.fog.color.set(0x0a1018); scene.fog.density=.0105;
+        lights.hemi.color.set(0x7392c3); lights.hemi.groundColor.set(0x1b1110); lights.hemi.intensity=.68;
+        lights.moon.color.set(0xbad7ff); lights.moon.intensity=2.0;
+        lights.front.intensity=1200; lights.back.intensity=820; lights.left.intensity=420; lights.right.intensity=360;
+        skyDome.material.color.set(0xffffff);
+      } else {
+        scene.background.set(0xaebfd0); scene.fog.color.set(0xb8c6d3); scene.fog.density=.0038;
+        lights.hemi.color.set(0xe8f4ff); lights.hemi.groundColor.set(0x65715d); lights.hemi.intensity=1.35;
+        lights.moon.color.set(0xfff1d2); lights.moon.intensity=3.3;
+        lights.front.intensity=250; lights.back.intensity=170; lights.left.intensity=110; lights.right.intensity=95;
+        skyDome.material.color.set(0xe7f0ff);
+      }
+    }
+
+    function setGlow(v){
+      state.glow=Number(v);
+      materials.glowBlue.emissiveIntensity=state.glow;
+      materials.glowOrange.emissiveIntensity=state.glow;
+      materials.glowWarm.emissiveIntensity=state.glow*.72;
+      materials.glassBlue.emissiveIntensity=Math.max(.25,state.glow*.22);
+      ui.glowValue.textContent=`${state.glow.toFixed(1)}×`;
+    }
+
+    function applyQuality(value){
+      state.quality=value;
+      const dpr=window.devicePixelRatio||1;
+      if(value==='performance') renderer.setPixelRatio(Math.min(dpr,1.0));
+      if(value==='balanced') renderer.setPixelRatio(Math.min(dpr,1.6));
+      if(value==='ultra') renderer.setPixelRatio(Math.min(dpr,2.0));
+      composer.setSize(window.innerWidth,window.innerHeight);
+      bloomPass.radius=value==='performance'?.35:value==='balanced'?.55:.72;
+      renderer.shadowMap.type=value==='ultra'?THREE.PCFSoftShadowMap:THREE.PCFShadowMap;
+      lights.moon.shadow.mapSize.set(value==='ultra'?4096:value==='balanced'?2048:1024,value==='ultra'?4096:value==='balanced'?2048:1024);
+      lights.moon.shadow.map?.dispose?.();
+      detailLayer.visible=value!=='performance';
+      rebuildRain();
+      status(`render quality set to ${value}.`);
+    }
+
+    function setShadows(enabled){
+      state.shadows=enabled;
+      renderer.shadowMap.enabled=enabled;
+      lights.moon.castShadow=enabled;
+      fortress.traverse(o=>{ if(o.isMesh) o.castShadow=enabled; });
+    }
+
+    // -------------------------------------------------------------------------
+    // Camera animation and interaction
+    // -------------------------------------------------------------------------
+    const views={
+      front:{pos:new THREE.Vector3(0,24,75),target:new THREE.Vector3(0,20,2)},
+      rear:{pos:new THREE.Vector3(0,25,-82),target:new THREE.Vector3(0,19,-9)},
+      left:{pos:new THREE.Vector3(-81,25,-6),target:new THREE.Vector3(0,18,-5)},
+      right:{pos:new THREE.Vector3(81,25,-6),target:new THREE.Vector3(0,18,-5)},
+      top:{pos:new THREE.Vector3(.01,112,2),target:new THREE.Vector3(0,10,-7)},
+      hero:{pos:new THREE.Vector3(48,30,68),target:new THREE.Vector3(0,20,0)},
+      gate:{pos:new THREE.Vector3(0,11,36),target:new THREE.Vector3(0,9,11)}
+    };
+    let cameraTween=null;
+
+    function flyTo(name,duration=950){
+      const v=views[name]; if(!v)return;
+      cameraTween={
+        start:performance.now(), duration,
+        p0:camera.position.clone(), p1:v.pos.clone(),
+        t0:controls.target.clone(), t1:v.target.clone()
+      };
+      controls.autoRotate=false; ui.autoRotate.checked=false; state.autoRotate=false;
+    }
+
+    function updateCameraTween(now){
+      if(!cameraTween)return;
+      const raw=clamp((now-cameraTween.start)/cameraTween.duration,0,1);
+      const t=1-Math.pow(1-raw,3);
+      camera.position.lerpVectors(cameraTween.p0,cameraTween.p1,t);
+      controls.target.lerpVectors(cameraTween.t0,cameraTween.t1,t);
+      if(raw>=1) cameraTween=null;
+    }
+
+    // -------------------------------------------------------------------------
+    // UI wiring
+    // -------------------------------------------------------------------------
+    document.querySelectorAll('[data-view]').forEach(btn=>btn.addEventListener('click',()=>flyTo(btn.dataset.view)));
+    $('focusGateBtn').addEventListener('click',()=>flyTo('gate',850));
+    $('quickHero').addEventListener('click',()=>flyTo('hero'));
+    $('quickFront').addEventListener('click',()=>flyTo('front'));
+    $('openPanel').addEventListener('click',()=>panel.classList.remove('collapsed'));
+    $('closePanel').addEventListener('click',()=>panel.classList.add('collapsed'));
+
+    ui.autoRotate.addEventListener('change',()=>{ state.autoRotate=ui.autoRotate.checked; controls.autoRotate=state.autoRotate; });
+    ui.nightMode.addEventListener('change',()=>setNight(ui.nightMode.checked));
+    ui.rainToggle.addEventListener('change',()=>{state.rain=ui.rainToggle.checked;if(rain)rain.visible=state.rain;});
+    ui.damageToggle.addEventListener('change',()=>{state.damage=ui.damageToggle.checked;damageLayer.visible=state.damage;});
+    ui.referenceToggle.addEventListener('change',()=>{state.reference=ui.referenceToggle.checked;if(referenceBoard)referenceBoard.visible=state.reference;});
+    ui.glowRange.addEventListener('input',()=>setGlow(ui.glowRange.value));
+    ui.bloomRange.addEventListener('input',()=>{state.bloom=Number(ui.bloomRange.value);bloomPass.strength=state.bloom;ui.bloomValue.textContent=state.bloom.toFixed(2);});
+    ui.exposureRange.addEventListener('input',()=>{state.exposure=Number(ui.exposureRange.value);renderer.toneMappingExposure=state.exposure;ui.exposureValue.textContent=state.exposure.toFixed(2);});
+    ui.qualitySelect.addEventListener('change',()=>applyQuality(ui.qualitySelect.value));
+    ui.shadowToggle.addEventListener('change',()=>setShadows(ui.shadowToggle.checked));
+
+    ui.fileInput.addEventListener('change',(event)=>{
+      const file=event.target.files?.[0]; if(!file)return;
+      const url=URL.createObjectURL(file);
+      textureLoader.load(url,(texture)=>{ installReferenceTexture(texture); URL.revokeObjectURL(url); },undefined,(err)=>{ URL.revokeObjectURL(url); status(`could not load selected image: ${err?.message||'unknown error'}`); });
+    });
+
+    $('screenshotBtn').addEventListener('click',()=>{
+      composer.render();
+      const a=document.createElement('a');
+      a.download=`citadel-${new Date().toISOString().replace(/[:.]/g,'-')}.png`;
+      a.href=renderer.domElement.toDataURL('image/png');
+      a.click();
+    });
+
+    $('fullscreenBtn').addEventListener('click',async()=>{
+      try{
+        if(!document.fullscreenElement) await document.documentElement.requestFullscreen();
+        else await document.exitFullscreen();
+      }catch(err){status(`fullscreen request failed: ${err.message}`);}
+    });
+
+    $('resetBtn').addEventListener('click',()=>{
+      state.night=true; state.rain=true; state.damage=true; state.reference=false; state.autoRotate=false;
+      state.glow=3.8; state.bloom=1.05; state.exposure=1.12; state.quality='balanced'; state.shadows=true;
+      ui.nightMode.checked=true; ui.rainToggle.checked=true; ui.damageToggle.checked=true; ui.referenceToggle.checked=false; ui.autoRotate.checked=false;
+      ui.glowRange.value='3.8'; ui.bloomRange.value='1.05'; ui.exposureRange.value='1.12'; ui.qualitySelect.value='balanced'; ui.shadowToggle.checked=true;
+      setNight(true); setGlow(3.8); bloomPass.strength=1.05; ui.bloomValue.textContent='1.05'; renderer.toneMappingExposure=1.12; ui.exposureValue.textContent='1.12';
+      damageLayer.visible=true; if(referenceBoard)referenceBoard.visible=false; controls.autoRotate=false; applyQuality('balanced'); setShadows(true); flyTo('hero');
+      status('settings reset to the reference-oriented cinematic preset.');
+    });
+
+    window.addEventListener('keydown',(e)=>{
+      if(e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement)return;
+      const key=e.key.toLowerCase();
+      if(key==='1')flyTo('front');
+      if(key==='2')flyTo('rear');
+      if(key==='3')flyTo('left');
+      if(key==='4')flyTo('right');
+      if(key==='5')flyTo('top');
+      if(key==='h')flyTo('hero');
+      if(key==='g')flyTo('gate');
+      if(key==='r'){ui.rainToggle.checked=!ui.rainToggle.checked;ui.rainToggle.dispatchEvent(new Event('change'));}
+      if(key==='n'){ui.nightMode.checked=!ui.nightMode.checked;ui.nightMode.dispatchEvent(new Event('change'));}
+      if(key==='u')panel.classList.toggle('collapsed');
+    });
+
+    // -------------------------------------------------------------------------
+    // Resize and telemetry
+    // -------------------------------------------------------------------------
+    function resize(){
+      camera.aspect=window.innerWidth/window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth,window.innerHeight);
+      composer.setSize(window.innerWidth,window.innerHeight);
+      bloomPass.setSize(window.innerWidth,window.innerHeight);
+    }
+    window.addEventListener('resize',resize);
+
+    let frames=0, fpsLast=performance.now(), fps=0;
+    function updateTelemetry(now){
+      frames++;
+      if(now-fpsLast>=500){
+        fps=Math.round(frames*1000/(now-fpsLast)); frames=0; fpsLast=now;
+        ui.fps.textContent=String(fps);
+        ui.triangles.textContent=renderer.info.render.triangles.toLocaleString();
+        ui.drawCalls.textContent=renderer.info.render.calls.toLocaleString();
+      }
+    }
+
+    // -------------------------------------------------------------------------
+    // Animation
+    // -------------------------------------------------------------------------
+    const clock=new THREE.Clock();
+    function updateRain(dt){
+      if(!rain || !state.rain || !rain.visible)return;
+      const p=rain.geometry.attributes.position.array;
+      const velocity=rain.userData.velocity;
+      for(let i=0;i<velocity.length;i++){
+        const k=i*3;
+        p[k]+=.55*dt;
+        p[k+1]-=velocity[i]*dt;
+        p[k+2]+=.24*dt;
+        if(p[k+1]<.4){ p[k]=rand(-105,105); p[k+1]=rand(65,95); p[k+2]=rand(-105,105); }
+      }
+      rain.geometry.attributes.position.needsUpdate=true;
+    }
+
+    function animate(now){
+      requestAnimationFrame(animate);
+      const dt=Math.min(clock.getDelta(),.05);
+      updateCameraTween(now);
+      controls.autoRotate=state.autoRotate && !cameraTween;
+      controls.update();
+      updateRain(dt);
+
+      const t=now*.001;
+      for(const e of animatedEmitters){
+        const base=e.mesh.material.emissiveIntensity;
+        e.mesh.userData.pulse=1+Math.sin(t*e.speed+e.phase)*e.amp;
+        // A tiny scale pulse avoids cloning hundreds of materials while still creating live energy detail.
+        const p=e.mesh.userData.pulse;
+        if(e.mesh.scale.y>=e.mesh.scale.x) e.mesh.scale.x=e.mesh.scale.z=p;
+      }
+      lights.front.intensity=(state.night?1200:250)*(1+Math.sin(t*1.7)*.018);
+      skyDome.rotation.y=t*.0022;
+
+      composer.render();
+      updateTelemetry(now);
+    }
+
+    // -------------------------------------------------------------------------
+    // Boot
+    // -------------------------------------------------------------------------
+    try{
+      buildLights();
+      buildFortress();
+      rebuildRain();
+      setNight(true);
+      setGlow(state.glow);
+      applyQuality('balanced');
+      setShadows(true);
+      loadDefaultReference();
+      flyTo('hero',1);
+      status('ready — drag to orbit, wheel to zoom, right-drag to pan. Keys 1–5 switch views; H = hero, G = gate, N = day/night, R = rain.');
+      requestAnimationFrame(animate);
+      setTimeout(()=>loaderEl.classList.add('hidden'),700);
+    }catch(error){
+      console.error(error);
+      $('fatalText').textContent=error?.stack||String(error);
+      $('fatal').classList.add('show');
+    }
+  </script>
+</body>
+</html>
