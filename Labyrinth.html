@@ -1,2399 +1,428 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Cognitive Labyrinth</title>
-  <style>
-    :root{
-      --bg: #0b1020;
-      --bg2:#0e1633;
-      --panel: rgba(255,255,255,0.06);
-      --panel2: rgba(255,255,255,0.09);
-      --stroke: rgba(255,255,255,0.12);
-      --stroke2: rgba(255,255,255,0.18);
-      --text: rgba(255,255,255,0.92);
-      --muted: rgba(255,255,255,0.72);
-      --muted2: rgba(255,255,255,0.58);
-      --good: #4CAF50;
-      --bad: #ff5c7a;
-      --accent: #9b5cff;
-      --accent2:#39d0ff;
-      --warn:#ffcc66;
-      --shadow: 0 18px 50px rgba(0,0,0,0.35);
-      --radius: 18px;
-      --radius2: 12px;
-      --gap: 14px;
-      --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
-      --sans: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
-      --cellGap: 2px;
-      --wall: rgba(255,255,255,0.06);
-      --path: rgba(255,255,255,0.14);
-      --fog: rgba(0,0,0,0.55);
-      --current: #38ff8b;
-      --currentStroke: rgba(0,0,0,0.4);
-      --node: #a855f7;
-      --end:#ff6f61;
-      --visited: rgba(57,208,255,0.16);
-      --hint: rgba(255,204,102,0.55);
-      --solution: rgba(56,255,139,0.22);
-      --scaleDesktop: 0.55;
-    }
-
-    [data-theme="light"]{
-      --bg:#f5f7ff;
-      --bg2:#eef2ff;
-      --panel: rgba(0,0,0,0.035);
-      --panel2: rgba(0,0,0,0.06);
-      --stroke: rgba(0,0,0,0.1);
-      --stroke2: rgba(0,0,0,0.14);
-      --text: rgba(0,0,0,0.88);
-      --muted: rgba(0,0,0,0.68);
-      --muted2: rgba(0,0,0,0.55);
-      --wall: rgba(0,0,0,0.10);
-      --path: rgba(0,0,0,0.04);
-      --fog: rgba(255,255,255,0.72);
-      --shadow: 0 18px 50px rgba(0,0,0,0.10);
-      --currentStroke: rgba(0,0,0,0.12);
-      --visited: rgba(57,208,255,0.14);
-      --solution: rgba(56,255,139,0.16);
-    }
-
-    *{ box-sizing:border-box; }
-    html, body { height:100%; }
-    body{
-      margin:0;
-      font-family: var(--sans);
-      color: var(--text);
-      background:
-        radial-gradient(1000px 600px at 15% 10%, rgba(155,92,255,0.25), transparent 55%),
-        radial-gradient(900px 600px at 85% 20%, rgba(57,208,255,0.25), transparent 60%),
-        radial-gradient(900px 700px at 45% 90%, rgba(56,255,139,0.14), transparent 60%),
-        linear-gradient(180deg, var(--bg), var(--bg2));
-      overflow-x:hidden;
-    }
-
-    /* keep your current desktop scaling behavior, but make it configurable via CSS variable */
-    @media screen and (min-width: 601px){
-      body{
-        transform: scale(var(--scaleDesktop));
-        transform-origin: top left;
-      }
-    }
-    @media screen and (max-width:600px){
-      body{ transform: scale(1); }
-    }
-
-    a{ color:inherit; }
-    .app{
-      width:min(1200px, 96vw);
-      margin: 18px auto 28px;
-      display:flex;
-      flex-direction: column;
-      gap: var(--gap);
-    }
-
-    header{
-      display:flex;
-      gap: var(--gap);
-      flex-wrap: wrap;
-      align-items: flex-start;
-      justify-content: space-between;
-      padding: 16px 16px;
-      border: 1px solid var(--stroke);
-      background: linear-gradient(180deg, var(--panel), transparent);
-      border-radius: var(--radius);
-      box-shadow: var(--shadow);
-      backdrop-filter: blur(10px);
-    }
-
-    .titleBlock{
-      min-width: 260px;
-      flex: 1 1 340px;
-      display:flex;
-      flex-direction: column;
-      gap: 8px;
-    }
-    h1{
-      margin:0;
-      letter-spacing:0.2px;
-      font-size: clamp(20px, 3.2vw, 34px);
-      line-height:1.08;
-    }
-    .subtitle{
-      margin:0;
-      color: var(--muted);
-      font-size: 14.5px;
-      line-height:1.35;
-    }
-
-    .pillRow{
-      display:flex;
-      flex-wrap: wrap;
-      gap: 8px;
-      margin-top: 4px;
-    }
-    .pill{
-      padding: 6px 10px;
-      border: 1px solid var(--stroke);
-      border-radius: 999px;
-      background: rgba(255,255,255,0.05);
-      font-size: 12.5px;
-      color: var(--muted);
-      display:flex;
-      gap: 8px;
-      align-items: center;
-    }
-    .dot{
-      width:8px;height:8px;border-radius: 999px;
-      background: var(--accent2);
-      box-shadow: 0 0 0 3px rgba(57,208,255,0.12);
-    }
-    .dot.warn{ background: var(--warn); box-shadow: 0 0 0 3px rgba(255,204,102,0.18); }
-    .dot.good{ background: var(--good); box-shadow: 0 0 0 3px rgba(76,175,80,0.18); }
-    .dot.bad{ background: var(--bad); box-shadow: 0 0 0 3px rgba(255,92,122,0.18); }
-
-    .topControls{
-      flex: 1 1 420px;
-      display:flex;
-      flex-direction: column;
-      gap: 10px;
-      align-items: stretch;
-      min-width: 320px;
-    }
-
-    .controlGrid{
-      display:grid;
-      grid-template-columns: 1.25fr 0.75fr 0.8fr 0.8fr;
-      gap: 10px;
-    }
-    .controlGrid2{
-      display:grid;
-      grid-template-columns: 1fr 1fr 1fr;
-      gap: 10px;
-    }
-    .controlGrid3{
-      display:grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 10px;
-    }
-
-    label{
-      display:block;
-      font-size: 12px;
-      color: var(--muted2);
-      margin-bottom: 6px;
-    }
-
-    input, select, textarea, button{
-      font: inherit;
-      color: var(--text);
-    }
-    input, select, textarea{
-      width:100%;
-      padding: 10px 12px;
-      background: rgba(0,0,0,0.15);
-      border: 1px solid var(--stroke);
-      border-radius: 12px;
-      outline: none;
-      transition: border-color 120ms ease, background 120ms ease, transform 120ms ease;
-    }
-    [data-theme="light"] input,
-    [data-theme="light"] select,
-    [data-theme="light"] textarea{
-      background: rgba(255,255,255,0.78);
-    }
-    input:focus, select:focus, textarea:focus{
-      border-color: rgba(155,92,255,0.55);
-      box-shadow: 0 0 0 4px rgba(155,92,255,0.16);
-    }
-    textarea{
-      min-height: 86px;
-      resize: vertical;
-      line-height: 1.35;
-    }
-
-    .btn{
-      padding: 11px 12px;
-      border: 1px solid var(--stroke2);
-      border-radius: 12px;
-      background: linear-gradient(180deg, rgba(155,92,255,0.25), rgba(155,92,255,0.08));
-      cursor: pointer;
-      transition: transform 110ms ease, filter 110ms ease, border-color 110ms ease;
-      display:flex;
-      align-items: center;
-      justify-content: center;
-      gap: 10px;
-      user-select: none;
-    }
-    .btn:hover{ filter: brightness(1.05); }
-    .btn:active{ transform: translateY(1px) scale(0.99); }
-    .btn.secondary{
-      background: rgba(255,255,255,0.06);
-      border-color: var(--stroke);
-    }
-    .btn.danger{
-      background: linear-gradient(180deg, rgba(255,92,122,0.22), rgba(255,92,122,0.08));
-    }
-    .btn.good{
-      background: linear-gradient(180deg, rgba(56,255,139,0.22), rgba(56,255,139,0.06));
-    }
-    .btn.small{ padding: 9px 10px; border-radius: 12px; font-size: 13px; }
-    .btnIcon{
-      width: 18px;
-      height: 18px;
-      display:inline-flex;
-      align-items: center;
-      justify-content: center;
-      font-family: var(--mono);
-      font-weight: 700;
-      opacity: 0.85;
-    }
-
-    .main{
-      display:grid;
-      grid-template-columns: 1.2fr 0.8fr;
-      gap: var(--gap);
-      align-items: start;
-    }
-    @media (max-width: 980px){
-      .main{ grid-template-columns: 1fr; }
-    }
-
-    .card{
-      border: 1px solid var(--stroke);
-      border-radius: var(--radius);
-      background: linear-gradient(180deg, var(--panel), rgba(255,255,255,0.02));
-      box-shadow: var(--shadow);
-      backdrop-filter: blur(10px);
-      overflow:hidden;
-    }
-    .cardHeader{
-      padding: 14px 14px 12px;
-      border-bottom: 1px solid var(--stroke);
-      display:flex;
-      flex-wrap: wrap;
-      gap: 10px;
-      align-items: center;
-      justify-content: space-between;
-    }
-    .cardHeader h2{
-      margin:0;
-      font-size: 15px;
-      letter-spacing: 0.2px;
-    }
-    .metaLine{
-      font-size: 12.5px;
-      color: var(--muted);
-      display:flex;
-      gap: 10px;
-      flex-wrap: wrap;
-      align-items: center;
-    }
-    .kv{
-      padding: 4px 8px;
-      border: 1px solid var(--stroke);
-      border-radius: 999px;
-      background: rgba(255,255,255,0.05);
-    }
-
-    #mazeWrap{ padding: 12px; }
-    #maze{
-      display:grid;
-      gap: var(--cellGap);
-      border: 1px solid rgba(255,255,255,0.18);
-      background: rgba(0,0,0,0.22);
-      border-radius: 16px;
-      overflow:hidden;
-      position: relative;
-      touch-action: none; /* helps avoid scroll interference */
-      user-select: none;
-      box-shadow: inset 0 0 0 1px rgba(0,0,0,0.25);
-    }
-    [data-theme="light"] #maze{
-      background: rgba(255,255,255,0.65);
-    }
-
-    .cell{
-      width: 100%;
-      position: relative;
-      background: var(--path);
-      border-radius: 4px;
-      border: 1px solid rgba(255,255,255,0.02);
-      display:flex;
-      align-items:center;
-      justify-content:center;
-      font-size: 11px;
-      font-weight: 800;
-      letter-spacing: 0.4px;
-      color: rgba(255,255,255,0.85);
-      text-transform: uppercase;
-      overflow:hidden;
-    }
-    @supports (aspect-ratio: 1 / 1){
-      .cell{ aspect-ratio: 1 / 1; }
-    }
-    @supports not (aspect-ratio: 1 / 1){
-      .cell{ height: 0; padding-bottom: 100%; }
-      .cell > .label{ position:absolute; inset:0; display:flex; align-items:center; justify-content:center; }
-    }
-
-    .cell.wall{ background: var(--wall); }
-    .cell.end{ background: var(--end); color: white; }
-    .cell.node{ background: var(--node); color: white; }
-    .cell.current{
-      background: var(--current);
-      color: rgba(0,0,0,0.78);
-      border: 2px solid var(--currentStroke);
-      box-shadow: inset 0 0 0 1px rgba(255,255,255,0.28), 0 0 0 3px rgba(56,255,139,0.12);
-      transform: scale(1.02);
-      z-index: 2;
-    }
-    .cell.visited{
-      box-shadow: inset 0 0 0 999px var(--visited);
-    }
-    .cell.nodeDone{
-      background: linear-gradient(180deg, rgba(56,255,139,0.22), rgba(56,255,139,0.06));
-      color: rgba(255,255,255,0.92);
-    }
-    .cell.hint{
-      box-shadow: inset 0 0 0 999px var(--hint);
-    }
-    .cell.solution{
-      box-shadow: inset 0 0 0 999px var(--solution);
-    }
-
-    .cell.hidden{
-      filter: blur(1.2px);
-      background: var(--fog) !important;
-      border-color: rgba(255,255,255,0.04);
-      color: transparent;
-    }
-    .cell.hidden::after{
-      content:"";
-      position:absolute;
-      inset:0;
-      background:
-        radial-gradient(10px 10px at 30% 40%, rgba(255,255,255,0.06), transparent 60%),
-        radial-gradient(14px 14px at 70% 55%, rgba(255,255,255,0.05), transparent 60%);
-      opacity: 0.8;
-    }
-
-    .side{
-      display:flex;
-      flex-direction: column;
-      gap: var(--gap);
-    }
-
-    #promptCard .body{
-      padding: 12px 12px 14px;
-      display:flex;
-      flex-direction: column;
-      gap: 10px;
-    }
-    #promptText{
-      margin:0;
-      padding: 10px 12px;
-      border: 1px solid var(--stroke);
-      background: rgba(255,255,255,0.05);
-      border-radius: 14px;
-      color: var(--text);
-      line-height: 1.35;
-      font-size: 13.5px;
-      min-height: 50px;
-    }
-
-    .row{
-      display:flex;
-      gap: 10px;
-      flex-wrap: wrap;
-      align-items: center;
-    }
-    .row > *{ flex: 1 1 auto; }
-
-    .note{
-      font-size: 12.5px;
-      color: var(--muted);
-      line-height:1.35;
-      padding: 10px 12px;
-      border-radius: 14px;
-      border: 1px dashed var(--stroke);
-      background: rgba(255,255,255,0.04);
-    }
-
-    #controlsCard .body{
-      padding: 12px;
-      display:flex;
-      flex-direction: column;
-      gap: 10px;
-    }
-    #controls{
-      display:grid;
-      grid-template-columns: repeat(4, 1fr);
-      gap: 10px;
-    }
-    .control-btn{
-      background: linear-gradient(180deg, rgba(57,208,255,0.22), rgba(57,208,255,0.06));
-      color: var(--text);
-      padding: 14px 10px;
-      border: 1px solid var(--stroke);
-      border-radius: 16px;
-      font-size: 18px;
-      cursor:pointer;
-      transition: transform 110ms ease, filter 110ms ease;
-      user-select: none;
-    }
-    .control-btn:hover{ filter: brightness(1.05); }
-    .control-btn:active{ transform: translateY(1px) scale(0.99); }
-
-    #winMessage{
-      margin: 0 12px 14px;
-      padding: 10px 12px;
-      border: 1px solid rgba(56,255,139,0.35);
-      background: rgba(56,255,139,0.12);
-      border-radius: 14px;
-      text-align: center;
-      display:none;
-      color: var(--text);
-      line-height:1.35;
-    }
-
-    #journalCard .body{
-      padding: 12px;
-      display:flex;
-      flex-direction: column;
-      gap: 10px;
-      max-height: 360px;
-      overflow:auto;
-    }
-    .entry{
-      padding: 10px 12px;
-      border: 1px solid var(--stroke);
-      border-radius: 14px;
-      background: rgba(255,255,255,0.04);
-      display:flex;
-      flex-direction: column;
-      gap: 6px;
-    }
-    .entryTop{
-      display:flex;
-      gap: 10px;
-      justify-content: space-between;
-      align-items: baseline;
-      flex-wrap: wrap;
-      color: var(--muted);
-      font-size: 12px;
-      font-family: var(--mono);
-    }
-    .entryPrompt{
-      font-size: 12.5px;
-      color: var(--muted);
-      line-height:1.35;
-    }
-    .entryUser{
-      font-size: 13.2px;
-      line-height: 1.4;
-      color: var(--text);
-      white-space: pre-wrap;
-    }
-    .entryAI{
-      font-size: 13.2px;
-      line-height: 1.4;
-      color: rgba(255,255,255,0.92);
-      white-space: pre-wrap;
-      padding-top: 8px;
-      border-top: 1px solid var(--stroke);
-    }
-    [data-theme="light"] .entryAI{
-      color: rgba(0,0,0,0.88);
-    }
-
-    details{
-      border: 1px solid var(--stroke);
-      border-radius: var(--radius);
-      background: rgba(255,255,255,0.03);
-      overflow:hidden;
-    }
-    summary{
-      cursor:pointer;
-      padding: 12px 14px;
-      font-weight: 700;
-      color: var(--text);
-      display:flex;
-      align-items:center;
-      justify-content: space-between;
-      gap: 10px;
-      user-select:none;
-    }
-    details[open] summary{
-      border-bottom: 1px solid var(--stroke);
-      background: rgba(255,255,255,0.04);
-    }
-    .detailsBody{
-      padding: 12px 14px 14px;
-      display:flex;
-      flex-direction: column;
-      gap: 10px;
-      color: var(--muted);
-      font-size: 12.8px;
-      line-height: 1.35;
-    }
-    .codeBox{
-      width:100%;
-      min-height: 220px;
-      font-family: var(--mono);
-      font-size: 12px;
-      line-height: 1.35;
-      padding: 10px 12px;
-      border-radius: 14px;
-      border: 1px solid var(--stroke);
-      background: rgba(0,0,0,0.22);
-      color: rgba(255,255,255,0.88);
-      overflow:auto;
-      white-space: pre;
-    }
-    [data-theme="light"] .codeBox{
-      background: rgba(255,255,255,0.85);
-      color: rgba(0,0,0,0.88);
-    }
-
-    .srOnly{
-      position:absolute;
-      width:1px;height:1px;
-      padding:0;margin:-1px;
-      overflow:hidden;
-      clip:rect(0,0,0,0);
-      white-space:nowrap;
-      border:0;
-    }
-  </style>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="color-scheme" content="dark light">
+<title>Cognitive Labyrinth v4 — Adaptive Reflection Maze</title>
+<style>
+:root{
+  --bg:#07101f;--bg2:#0c1730;--panel:rgba(15,26,50,.78);--panel2:rgba(255,255,255,.055);
+  --stroke:rgba(255,255,255,.12);--stroke2:rgba(255,255,255,.2);--text:#f6f8ff;--muted:#b5bfd5;
+  --muted2:#8390ac;--accent:#8f68ff;--accent2:#39ccff;--good:#40e58f;--warn:#ffc45f;--bad:#ff617f;
+  --wall:#e3e8f5;--cell:#111d37;--cell2:#162543;--fog:#050a14;--node:#a56bff;--end:#ff7867;
+  --current:#46f59a;--shadow:0 18px 54px rgba(0,0,0,.34);--r:18px;--r2:12px;--gap:14px;
+  --mazeZoom:1;--focusRing:0 0 0 3px rgba(57,204,255,.35);--mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  --sans:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;
+}
+[data-theme="light"]{
+  --bg:#edf2ff;--bg2:#f8faff;--panel:rgba(255,255,255,.88);--panel2:rgba(8,18,40,.035);
+  --stroke:rgba(10,20,45,.13);--stroke2:rgba(10,20,45,.21);--text:#10172a;--muted:#4d5a76;--muted2:#6d7891;
+  --wall:#17213a;--cell:#f8faff;--cell2:#edf3ff;--fog:#dce3f1;--shadow:0 16px 40px rgba(44,66,110,.14);
+}
+[data-theme="contrast"]{
+  --bg:#000;--bg2:#000;--panel:#080808;--panel2:#111;--stroke:#fff;--stroke2:#fff;--text:#fff;--muted:#fff;--muted2:#ddd;
+  --accent:#d6b2ff;--accent2:#61e5ff;--good:#69ffab;--warn:#ffe66c;--bad:#ff7994;--wall:#fff;--cell:#000;--cell2:#111;--fog:#000;
+  --shadow:none;
+}
+*{box-sizing:border-box}
+html{min-height:100%;background:var(--bg)}
+body{margin:0;min-height:100%;font-family:var(--sans);color:var(--text);background:
+ radial-gradient(900px 600px at 10% 10%,rgba(143,104,255,.18),transparent 55%),
+ radial-gradient(900px 650px at 88% 15%,rgba(57,204,255,.15),transparent 58%),
+ linear-gradient(180deg,var(--bg),var(--bg2));}
+button,input,select,textarea{font:inherit;color:inherit}button{touch-action:manipulation}.skip{position:fixed;left:8px;top:-80px;z-index:99;background:var(--text);color:var(--bg);padding:8px 12px;border-radius:8px}.skip:focus{top:8px}
+.app{width:min(1480px,96vw);margin:16px auto 28px;display:flex;flex-direction:column;gap:var(--gap)}
+.surface{border:1px solid var(--stroke);background:linear-gradient(180deg,var(--panel),rgba(255,255,255,.015));border-radius:var(--r);box-shadow:var(--shadow);backdrop-filter:blur(12px)}
+header{padding:16px;display:grid;grid-template-columns:minmax(300px,1fr) minmax(520px,1.3fr);gap:16px;align-items:start}
+.brand h1{margin:0;font-size:clamp(25px,3vw,38px);line-height:1.05;letter-spacing:-.7px}.brand p{margin:8px 0 0;color:var(--muted);max-width:760px;line-height:1.45;font-size:14px}
+.pills{display:flex;flex-wrap:wrap;gap:7px;margin-top:12px}.pill{border:1px solid var(--stroke);background:var(--panel2);padding:6px 9px;border-radius:999px;font-size:12px;color:var(--muted);display:inline-flex;align-items:center;gap:7px}.dot{width:8px;height:8px;border-radius:50%;background:var(--accent2);box-shadow:0 0 0 3px color-mix(in srgb,var(--accent2) 18%,transparent)}.dot.good{background:var(--good)}.dot.warn{background:var(--warn)}.dot.bad{background:var(--bad)}
+.toolbar{display:flex;flex-direction:column;gap:10px}.grid4{display:grid;grid-template-columns:1.35fr .72fr .78fr .9fr;gap:9px}.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:9px}.grid2{display:grid;grid-template-columns:repeat(2,1fr);gap:9px}
+label{display:block;color:var(--muted2);font-size:11.5px;margin:0 0 5px}.field{min-width:0}input,select,textarea{width:100%;border:1px solid var(--stroke);background:rgba(0,0,0,.15);border-radius:11px;padding:10px 11px;outline:none;transition:border-color .12s,box-shadow .12s,background .12s}[data-theme="light"] input,[data-theme="light"] select,[data-theme="light"] textarea{background:rgba(255,255,255,.8)}input:focus,select:focus,textarea:focus,button:focus-visible{border-color:var(--accent2);box-shadow:var(--focusRing);outline:none}textarea{min-height:112px;resize:vertical;line-height:1.45}
+.btn{border:1px solid var(--stroke2);border-radius:11px;padding:10px 11px;background:linear-gradient(180deg,color-mix(in srgb,var(--accent) 25%,transparent),color-mix(in srgb,var(--accent) 7%,transparent));cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:42px;font-weight:650;transition:transform .1s,filter .1s,border-color .1s}.btn:hover{filter:brightness(1.08)}.btn:active{transform:translateY(1px)}.btn.secondary{background:var(--panel2)}.btn.good{background:linear-gradient(180deg,color-mix(in srgb,var(--good) 22%,transparent),color-mix(in srgb,var(--good) 5%,transparent))}.btn.danger{background:linear-gradient(180deg,color-mix(in srgb,var(--bad) 22%,transparent),color-mix(in srgb,var(--bad) 5%,transparent))}.btn.small{min-height:35px;padding:7px 9px;font-size:12px}.btn:disabled{opacity:.5;cursor:not-allowed;filter:none}.icon{font-family:var(--mono);font-weight:900;opacity:.9}
+main.layout{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(360px,.65fr);gap:var(--gap);align-items:start}.card{overflow:hidden}.cardHead{padding:12px 14px;border-bottom:1px solid var(--stroke);display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap}.cardHead h2,.cardHead h3{margin:0;font-size:14px;letter-spacing:.2px}.meta{display:flex;gap:6px;flex-wrap:wrap}.kv{border:1px solid var(--stroke);background:var(--panel2);border-radius:999px;padding:4px 8px;font-size:11.5px;color:var(--muted);font-family:var(--mono)}.body{padding:12px 14px}.side{display:flex;flex-direction:column;gap:var(--gap)}
+#mazeWrap{padding:12px;overflow:auto;overscroll-behavior:contain}.mazeFrame{margin:auto;width:calc(100% * var(--mazeZoom));min-width:340px;max-width:1180px}.maze{display:grid;background:var(--wall);border:2px solid var(--wall);border-radius:13px;overflow:hidden;user-select:none;touch-action:none;box-shadow:inset 0 0 0 1px rgba(0,0,0,.25)}
+.cell{position:relative;aspect-ratio:1/1;background:var(--cell);border:1.5px solid transparent;display:flex;align-items:center;justify-content:center;min-width:0;transition:background .13s,filter .13s,box-shadow .13s}.cell.alt{background:var(--cell2)}.cell.wN{border-top-color:var(--wall)}.cell.wE{border-right-color:var(--wall)}.cell.wS{border-bottom-color:var(--wall)}.cell.wW{border-left-color:var(--wall)}.cell.visited{background:color-mix(in srgb,var(--accent2) 12%,var(--cell))}.cell.current{background:var(--current);box-shadow:inset 0 0 0 2px rgba(0,0,0,.5),0 0 0 2px color-mix(in srgb,var(--current) 30%,transparent);z-index:3}.cell.hint{box-shadow:inset 0 0 0 999px color-mix(in srgb,var(--warn) 44%,transparent);z-index:2}.cell.solution{box-shadow:inset 0 0 0 999px color-mix(in srgb,var(--good) 24%,transparent)}.cell.hidden{background:var(--fog)!important;border-color:transparent!important;filter:saturate(.3)}.cell.hidden .marker{opacity:0}.marker{width:42%;height:42%;min-width:4px;min-height:4px;display:grid;place-items:center;transition:opacity .12s}.marker.node{background:var(--node);clip-path:polygon(50% 0,100% 50%,50% 100%,0 50%);box-shadow:0 0 10px color-mix(in srgb,var(--node) 65%,transparent)}.marker.node.done{background:var(--good);clip-path:circle(47%)}.marker.end{background:var(--end);border-radius:2px;box-shadow:0 0 12px color-mix(in srgb,var(--end) 55%,transparent)}.cell.current .marker{transform:scale(.58)}
+.progressStrip{padding:0 12px 12px}.progressTrack{height:8px;border:1px solid var(--stroke);background:rgba(0,0,0,.16);border-radius:99px;overflow:hidden}.progressFill{height:100%;width:0;background:linear-gradient(90deg,var(--accent),var(--accent2),var(--good));transition:width .2s}
+#winMessage{display:none;margin:0 12px 12px;padding:10px 12px;border:1px solid color-mix(in srgb,var(--good) 45%,transparent);background:color-mix(in srgb,var(--good) 12%,transparent);border-radius:12px;line-height:1.4}.promptBox{border:1px solid var(--stroke);background:var(--panel2);padding:11px 12px;border-radius:12px;line-height:1.45;font-size:13.5px;white-space:pre-wrap}.promptTop{display:flex;align-items:center;gap:8px;margin-bottom:8px}.tag{font-size:10.5px;text-transform:uppercase;letter-spacing:.8px;border:1px solid var(--stroke);border-radius:999px;padding:3px 7px;color:var(--accent2);font-weight:800}.subtle{color:var(--muted);font-size:12px;line-height:1.4}.note{border:1px dashed var(--stroke);background:var(--panel2);border-radius:12px;padding:9px 10px;color:var(--muted);font-size:12px;line-height:1.4}
+.coachResult{display:none;border:1px solid var(--stroke);border-radius:12px;overflow:hidden}.coachResult.show{display:block}.coachRow{padding:9px 10px;border-bottom:1px solid var(--stroke);font-size:12.5px;line-height:1.4}.coachRow:last-child{border-bottom:0}.coachRow b{display:block;color:var(--accent2);font-size:10.5px;text-transform:uppercase;letter-spacing:.6px;margin-bottom:3px}.ifthen{color:var(--good)}
+.controls{display:grid;grid-template-columns:repeat(3,1fr);gap:7px;max-width:260px;margin:auto}.moveBtn{min-height:48px;border:1px solid var(--stroke);border-radius:12px;background:linear-gradient(180deg,color-mix(in srgb,var(--accent2) 18%,transparent),color-mix(in srgb,var(--accent2) 4%,transparent));font-size:19px;cursor:pointer}.moveBtn.blank{visibility:hidden}.moveActions{display:grid;grid-template-columns:repeat(3,1fr);gap:7px;margin-top:9px}.metricGrid{display:grid;grid-template-columns:repeat(3,1fr);gap:7px}.metric{border:1px solid var(--stroke);background:var(--panel2);border-radius:11px;padding:8px}.metric strong{display:block;font-family:var(--mono);font-size:15px}.metric span{font-size:10.5px;color:var(--muted2)}canvas#historyChart{width:100%;height:120px;border:1px solid var(--stroke);border-radius:11px;background:var(--panel2);margin-top:9px}
+.journalTools{display:grid;grid-template-columns:1fr auto auto;gap:7px;margin-bottom:8px}.journal{display:flex;flex-direction:column;gap:8px;max-height:430px;overflow:auto}.entry{border:1px solid var(--stroke);background:var(--panel2);border-radius:12px;padding:9px 10px}.entryTop{display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;color:var(--muted2);font-size:10.5px;font-family:var(--mono)}.entryPrompt{color:var(--muted);font-size:11.5px;margin:6px 0}.entryUser{white-space:pre-wrap;font-size:12.5px;line-height:1.4}.entryCoach{margin-top:8px;padding-top:8px;border-top:1px solid var(--stroke);font-size:12px;color:var(--muted);white-space:pre-wrap}.empty{color:var(--muted2);text-align:center;padding:18px;font-size:12px}
+details{border:1px solid var(--stroke);border-radius:12px;overflow:hidden;background:var(--panel2)}summary{padding:10px 11px;cursor:pointer;font-weight:700;font-size:12.5px;display:flex;justify-content:space-between;gap:8px}details[open] summary{border-bottom:1px solid var(--stroke)}.detailsBody{padding:10px 11px;display:flex;flex-direction:column;gap:10px}.codeBox{font-family:var(--mono);font-size:10.8px;line-height:1.35;white-space:pre;overflow:auto;max-height:300px;border:1px solid var(--stroke);background:rgba(0,0,0,.22);border-radius:10px;padding:9px;color:var(--text)}
+.switchRow{display:flex;gap:7px;flex-wrap:wrap}.toggle{border:1px solid var(--stroke);background:var(--panel2);border-radius:999px;padding:7px 10px;cursor:pointer;font-size:11.5px}.toggle[aria-pressed="true"]{border-color:color-mix(in srgb,var(--good) 60%,var(--stroke));background:color-mix(in srgb,var(--good) 13%,transparent)}
+.statusbar{position:sticky;bottom:8px;z-index:20;display:flex;gap:8px;align-items:center;justify-content:space-between;padding:8px 10px;border:1px solid var(--stroke);border-radius:12px;background:color-mix(in srgb,var(--bg2) 86%,transparent);backdrop-filter:blur(14px);font-size:11.5px;color:var(--muted);box-shadow:var(--shadow)}
+.srOnly{position:absolute!important;width:1px!important;height:1px!important;padding:0!important;margin:-1px!important;overflow:hidden!important;clip:rect(0,0,0,0)!important;white-space:nowrap!important;border:0!important}
+.focusMode header,.focusMode #analyticsCard,.focusMode #journalCard,.focusMode #settingsCard{display:none}.focusMode main.layout{grid-template-columns:minmax(0,1fr) minmax(320px,.46fr)}
+@media(max-width:1080px){header{grid-template-columns:1fr}.toolbar{min-width:0}main.layout{grid-template-columns:1fr}.side{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}.side .wide{grid-column:1/-1}}
+@media(max-width:720px){.app{width:min(100% - 14px,1480px);margin:7px auto 18px;gap:8px}.surface{border-radius:14px}header{padding:11px;gap:12px}.grid4,.grid3,.grid2{grid-template-columns:1fr 1fr}.grid4>.field:first-child{grid-column:1/-1}.side{display:flex}.mazeFrame{min-width:300px;width:100%}.metricGrid{grid-template-columns:repeat(2,1fr)}.journalTools{grid-template-columns:1fr 1fr}.journalTools input{grid-column:1/-1}.statusbar{bottom:4px}.focusMode main.layout{grid-template-columns:1fr}}
+@media(max-width:420px){.grid4,.grid3,.grid2{grid-template-columns:1fr}.grid4>.field:first-child{grid-column:auto}.moveActions{grid-template-columns:1fr}.metricGrid{grid-template-columns:repeat(2,1fr)}}
+@media(prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important;scroll-behavior:auto!important}}
+@media(prefers-contrast:more){:root{--stroke:rgba(255,255,255,.35);--stroke2:rgba(255,255,255,.55)}}
+</style>
 </head>
 <body>
-  <div class="app" id="app" data-theme="dark">
-    <header>
-      <div class="titleBlock">
-        <h1>Cognitive Labyrinth</h1>
-        <p class="subtitle">Navigate a procedural maze, trigger reflective nodes, and build a journal. Includes seeded mazes, hints/solver, fog-of-war, analytics, autosave, and an offline “Local Coach” plus OpenAI Responses (proxy recommended).</p>
-        <div class="pillRow">
-          <div class="pill"><span class="dot"></span><span id="pillMode">Mode: Local Coach</span></div>
-          <div class="pill"><span class="dot good"></span><span id="pillSolvable">Solvable: Yes</span></div>
-          <div class="pill"><span class="dot warn"></span><span id="pillFog">Fog: Off</span></div>
-          <div class="pill"><span class="dot"></span><span id="pillSeed">Seed: —</span></div>
-        </div>
-      </div>
-
-      <div class="topControls">
-        <div class="controlGrid">
-          <div>
-            <label for="seedInput">Seed (shareable)</label>
-            <input id="seedInput" type="text" placeholder="e.g. kai9987kai-2026" />
-          </div>
-          <div>
-            <label for="sizeSelect">Maze</label>
-            <select id="sizeSelect">
-              <option value="10">10×10 (mobile)</option>
-              <option value="14">14×14</option>
-              <option value="20" selected>20×20 (desktop)</option>
-              <option value="26">26×26</option>
-              <option value="32">32×32</option>
-            </select>
-          </div>
-          <div>
-            <label for="nodesSelect">Nodes</label>
-            <select id="nodesSelect">
-              <option value="3">3</option>
-              <option value="5" selected>5</option>
-              <option value="7">7</option>
-              <option value="10">10</option>
-            </select>
-          </div>
-          <div>
-            <label for="themeSelect">Theme</label>
-            <select id="themeSelect">
-              <option value="dark" selected>Dark</option>
-              <option value="light">Light</option>
-            </select>
-          </div>
-        </div>
-
-        <div class="controlGrid2">
-          <button class="btn" id="btnNewMaze" type="button"><span class="btnIcon">⟲</span>New Maze</button>
-          <button class="btn secondary" id="btnReset" type="button"><span class="btnIcon">↺</span>Reset</button>
-          <button class="btn secondary" id="btnAutosave" type="button"><span class="btnIcon">⎙</span>Autosave: On</button>
-        </div>
-
-        <div class="controlGrid3">
-          <button class="btn secondary" id="btnFog" type="button"><span class="btnIcon">☁</span>Fog: Off</button>
-          <button class="btn secondary" id="btnSound" type="button"><span class="btnIcon">♪</span>Sound: On</button>
-        </div>
-      </div>
-    </header>
-
-    <div class="main">
-      <div class="card" id="mazeCard">
-        <div class="cardHeader">
-          <h2>Maze</h2>
-          <div class="metaLine">
-            <span class="kv" id="statSteps">Steps: 0</span>
-            <span class="kv" id="statTime">Time: 00:00</span>
-            <span class="kv" id="statNodes">Nodes: 0/0</span>
-            <span class="kv" id="statHints">Hints: 0</span>
-          </div>
-        </div>
-        <div id="mazeWrap">
-          <div id="maze" aria-label="Cognitive Labyrinth Maze" role="application"></div>
-        </div>
-        <div id="winMessage" role="status" aria-live="polite"></div>
-      </div>
-
-      <div class="side">
-        <div class="card" id="promptCard">
-          <div class="cardHeader">
-            <h2>Reflection Node</h2>
-            <div class="metaLine">
-              <span class="kv" id="posLabel">Pos: (0,0)</span>
-              <span class="kv" id="difficultyLabel">Loops: 0%</span>
-            </div>
-          </div>
-          <div class="body">
-            <!-- Kept: API key input (now within settings), prompt text, textarea, submit -->
-            <p id="promptText">Start your journey by moving through the maze.</p>
-
-            <div class="row">
-              <div>
-                <label for="response">Your reflection</label>
-                <textarea id="response" placeholder="Write your reflection here..."></textarea>
-              </div>
-            </div>
-
-            <div class="controlGrid3">
-              <button class="btn good" id="btnSubmit" type="button"><span class="btnIcon">✓</span>Submit</button>
-              <button class="btn secondary" id="btnHint" type="button"><span class="btnIcon">?</span>Hint</button>
-            </div>
-
-            <div class="controlGrid3">
-              <button class="btn secondary" id="btnSolve" type="button"><span class="btnIcon">⌁</span>Show Solution</button>
-              <button class="btn secondary" id="btnExport" type="button"><span class="btnIcon">⇩</span>Export</button>
-            </div>
-
-            <div class="note" id="statusNote">
-              Local Coach is enabled by default (no API needed). For OpenAI, use Proxy mode in Settings to avoid CORS + keep your key safe.
-            </div>
-
-            <details id="settings">
-              <summary>
-                <span>Settings (LLM, difficulty, scale)</span>
-                <span style="opacity:.7;font-family:var(--mono);font-size:12px;">▼</span>
-              </summary>
-              <div class="detailsBody">
-                <div class="controlGrid">
-                  <div>
-                    <label for="llmMode">Coach mode</label>
-                    <select id="llmMode">
-                      <option value="local" selected>Local Coach (offline)</option>
-                      <option value="proxy">OpenAI via Proxy (recommended)</option>
-                      <option value="direct">OpenAI Direct (unsafe + may CORS fail)</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label for="modelSelect">Model</label>
-                    <select id="modelSelect">
-                      <option value="gpt-4.1-mini" selected>gpt-4.1-mini</option>
-                      <option value="gpt-4.1">gpt-4.1</option>
-                      <option value="gpt-4o-mini">gpt-4o-mini</option>
-                      <option value="gpt-5-mini">gpt-5-mini</option>
-                      <option value="gpt-5">gpt-5</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label for="tempInput">Temperature</label>
-                    <input id="tempInput" type="number" min="0" max="2" step="0.05" value="0.7" />
-                  </div>
-                  <div>
-                    <label for="maxOutInput">Max output tokens</label>
-                    <input id="maxOutInput" type="number" min="32" max="2048" step="1" value="220" />
-                  </div>
-                </div>
-
-                <div class="controlGrid2">
-                  <div>
-                    <label for="proxyUrl">Proxy URL (for proxy mode)</label>
-                    <input id="proxyUrl" type="text" placeholder="https://your-domain.com/openai" />
-                  </div>
-                  <div>
-                    <label for="proxyBearer">Proxy Bearer (optional)</label>
-                    <input id="proxyBearer" type="password" placeholder="Optional token for your proxy" />
-                  </div>
-                  <div>
-                    <label for="apiKey">OpenAI API Key (direct mode only)</label>
-                    <input id="apiKey" type="password" placeholder="sk-..." />
-                  </div>
-                </div>
-
-                <div class="controlGrid2">
-                  <div>
-                    <label for="loopsInput">Loopiness (0–60%)</label>
-                    <input id="loopsInput" type="number" min="0" max="60" step="5" value="0" />
-                  </div>
-                  <div>
-                    <label for="visionInput">Fog vision radius (1–4)</label>
-                    <input id="visionInput" type="number" min="1" max="4" step="1" value="2" />
-                  </div>
-                  <button class="btn secondary" id="btnApplySettings" type="button"><span class="btnIcon">⎘</span>Apply</button>
-                </div>
-
-                <div class="controlGrid3">
-                  <button class="btn secondary" id="btnScaleDown" type="button"><span class="btnIcon">−</span>Desktop Scale</button>
-                  <button class="btn secondary" id="btnScaleUp" type="button"><span class="btnIcon">+</span>Desktop Scale</button>
-                </div>
-
-                <details>
-                  <summary><span>Optional: Minimal Proxy (copy/paste)</span><span style="opacity:.7;font-family:var(--mono);font-size:12px;">▼</span></summary>
-                  <div class="detailsBody">
-                    <div>Cloudflare Worker (single file). Sets CORS for your site and keeps your OpenAI key on the server. Put your OpenAI key in the Worker secret <span style="font-family:var(--mono)">OPENAI_API_KEY</span>.</div>
-                    <div class="codeBox" id="proxyWorkerCode"></div>
-                    <div>Node.js (Express) minimal proxy. Put your OpenAI key in <span style="font-family:var(--mono)">OPENAI_API_KEY</span> env var.</div>
-                    <div class="codeBox" id="proxyNodeCode"></div>
-                  </div>
-                </details>
-              </div>
-            </details>
-          </div>
-        </div>
-
-        <div class="card" id="controlsCard">
-          <div class="cardHeader">
-            <h2>Move</h2>
-            <div class="metaLine">
-              <span class="kv">Swipe / Arrow keys / Buttons</span>
-            </div>
-          </div>
-          <div class="body">
-            <div id="controls" aria-label="Movement controls">
-              <button class="control-btn" id="btnUp" type="button" aria-label="Move up">↑</button>
-              <button class="control-btn" id="btnLeft" type="button" aria-label="Move left">←</button>
-              <button class="control-btn" id="btnDown" type="button" aria-label="Move down">↓</button>
-              <button class="control-btn" id="btnRight" type="button" aria-label="Move right">→</button>
-            </div>
-            <div class="controlGrid2">
-              <button class="btn secondary" id="btnUndo" type="button"><span class="btnIcon">↶</span>Undo</button>
-              <button class="btn danger" id="btnClear" type="button"><span class="btnIcon">✕</span>Clear Save</button>
-              <label class="srOnly" for="importFile">Import JSON</label>
-              <input id="importFile" type="file" accept="application/json" />
-            </div>
-          </div>
-        </div>
-
-        <div class="card" id="journalCard">
-          <div class="cardHeader">
-            <h2>Journal</h2>
-            <div class="metaLine">
-              <span class="kv" id="journalCount">Entries: 0</span>
-            </div>
-          </div>
-          <div class="body" id="journal"></div>
-        </div>
-      </div>
+<a class="skip" href="#mazeCard">Skip to maze</a>
+<div class="app" id="app" data-theme="dark">
+<header class="surface">
+  <section class="brand" aria-labelledby="appTitle">
+    <h1 id="appTitle">Cognitive Labyrinth <span style="font-size:.42em;color:var(--accent2);vertical-align:top">v4</span></h1>
+    <p>Procedural navigation meets adaptive reflection: evidence-informed prompts, local-first persistence, richer analytics, deterministic sharing, and optional AI coaching through a secure proxy.</p>
+    <div class="pills">
+      <span class="pill"><span class="dot" id="modeDot"></span><span id="pillMode">Local Coach</span></span>
+      <span class="pill"><span class="dot good"></span><span id="pillSeed">Seed: —</span></span>
+      <span class="pill"><span class="dot warn" id="fogDot"></span><span id="pillFog">Fog: Off</span></span>
+      <span class="pill"><span class="dot"></span><span id="pillComplexity">Complexity: —</span></span>
     </div>
-  </div>
-
-  <script>
-    /**********************************************************************
-     * Cognitive Labyrinth — Advanced Single-File Edition (2026)
-     * Keeps all features from your original and adds:
-     * - Seeded maze generation + share link
-     * - Guaranteed solvable end (connectivity fix)
-     * - Fog-of-war (toggle + vision radius)
-     * - Hints + full solver path overlay
-     * - Loopiness control (adds extra connections)
-     * - Local Coach mode (offline) + OpenAI Responses API (proxy recommended)
-     * - Journal history, autosave, export/import JSON
-     * - Undo, stats, time tracking, mobile haptics, sound feedback
-     **********************************************************************/
-
-    // ---------- DOM ----------
-    const appEl = document.getElementById("app");
-    const mazeEl = document.getElementById("maze");
-    const promptTextEl = document.getElementById("promptText");
-    const responseEl = document.getElementById("response");
-    const winMessageEl = document.getElementById("winMessage");
-
-    const seedInputEl = document.getElementById("seedInput");
-    const sizeSelectEl = document.getElementById("sizeSelect");
-    const nodesSelectEl = document.getElementById("nodesSelect");
-    const themeSelectEl = document.getElementById("themeSelect");
-
-    const statStepsEl = document.getElementById("statSteps");
-    const statTimeEl = document.getElementById("statTime");
-    const statNodesEl = document.getElementById("statNodes");
-    const statHintsEl = document.getElementById("statHints");
-
-    const posLabelEl = document.getElementById("posLabel");
-    const difficultyLabelEl = document.getElementById("difficultyLabel");
-
-    const btnNewMaze = document.getElementById("btnNewMaze");
-    const btnReset = document.getElementById("btnReset");
-    const btnAutosave = document.getElementById("btnAutosave");
-    const btnFog = document.getElementById("btnFog");
-    const btnSound = document.getElementById("btnSound");
-
-    const btnSubmit = document.getElementById("btnSubmit");
-    const btnHint = document.getElementById("btnHint");
-    const btnSolve = document.getElementById("btnSolve");
-    const btnExport = document.getElementById("btnExport");
-
-    const btnUp = document.getElementById("btnUp");
-    const btnDown = document.getElementById("btnDown");
-    const btnLeft = document.getElementById("btnLeft");
-    const btnRight = document.getElementById("btnRight");
-    const btnUndo = document.getElementById("btnUndo");
-    const btnClear = document.getElementById("btnClear");
-    const importFileEl = document.getElementById("importFile");
-
-    const statusNoteEl = document.getElementById("statusNote");
-
-    const llmModeEl = document.getElementById("llmMode");
-    const modelSelectEl = document.getElementById("modelSelect");
-    const tempInputEl = document.getElementById("tempInput");
-    const maxOutInputEl = document.getElementById("maxOutInput");
-    const proxyUrlEl = document.getElementById("proxyUrl");
-    const proxyBearerEl = document.getElementById("proxyBearer");
-    const apiKeyEl = document.getElementById("apiKey");
-    const loopsInputEl = document.getElementById("loopsInput");
-    const visionInputEl = document.getElementById("visionInput");
-    const btnApplySettings = document.getElementById("btnApplySettings");
-    const btnScaleDown = document.getElementById("btnScaleDown");
-    const btnScaleUp = document.getElementById("btnScaleUp");
-
-    const pillModeEl = document.getElementById("pillMode");
-    const pillSolvableEl = document.getElementById("pillSolvable");
-    const pillFogEl = document.getElementById("pillFog");
-    const pillSeedEl = document.getElementById("pillSeed");
-
-    const journalEl = document.getElementById("journal");
-    const journalCountEl = document.getElementById("journalCount");
-
-    const proxyWorkerCodeEl = document.getElementById("proxyWorkerCode");
-    const proxyNodeCodeEl = document.getElementById("proxyNodeCode");
-
-    // ---------- Helpers ----------
-    const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
-    const nowISO = () => new Date().toISOString();
-
-    function fmtTime(ms){
-      const s = Math.floor(ms / 1000);
-      const mm = String(Math.floor(s / 60)).padStart(2, "0");
-      const ss = String(s % 60).padStart(2, "0");
-      return `${mm}:${ss}`;
-    }
-
-    function vibrate(pattern){
-      if (navigator.vibrate) {
-        try { navigator.vibrate(pattern); } catch(_) {}
-      }
-    }
-
-    // ---------- Deterministic PRNG (seeded) ----------
-    function xmur3(str){
-      let h = 1779033703 ^ str.length;
-      for (let i = 0; i < str.length; i++){
-        h = Math.imul(h ^ str.charCodeAt(i), 3432918353);
-        h = (h << 13) | (h >>> 19);
-      }
-      return function(){
-        h = Math.imul(h ^ (h >>> 16), 2246822507);
-        h = Math.imul(h ^ (h >>> 13), 3266489909);
-        h ^= h >>> 16;
-        return h >>> 0;
-      };
-    }
-    function mulberry32(a){
-      return function(){
-        let t = a += 0x6D2B79F5;
-        t = Math.imul(t ^ (t >>> 15), t | 1);
-        t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
-        return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-      };
-    }
-
-    // ---------- Sound (Web Audio) ----------
-    let audioCtx = null;
-    let soundOn = true;
-
-    function ensureAudio(){
-      if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-      if (audioCtx.state === "suspended") audioCtx.resume().catch(()=>{});
-    }
-    function beep(freq, dur=0.06, type="sine", gain=0.06){
-      if (!soundOn) return;
-      ensureAudio();
-      const t0 = audioCtx.currentTime;
-      const o = audioCtx.createOscillator();
-      const g = audioCtx.createGain();
-      o.type = type;
-      o.frequency.setValueAtTime(freq, t0);
-      g.gain.setValueAtTime(0.0001, t0);
-      g.gain.exponentialRampToValueAtTime(gain, t0 + 0.01);
-      g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
-      o.connect(g).connect(audioCtx.destination);
-      o.start(t0);
-      o.stop(t0 + dur + 0.01);
-    }
-
-    // ---------- Core State ----------
-    const STORAGE_KEY = "cognitive_labyrinth_v2026";
-    const URL_PARAMS = new URLSearchParams(location.search);
-
-    const isMobile = window.innerWidth <= 600;
-
-    const state = {
-      size: isMobile ? 10 : 20,
-      seed: "",
-      prng: Math.random,
-      nodesWanted: isMobile ? 3 : 5,
-      loopsPercent: 0, // extra connections
-      maze: [],
-      cellEls: [],
-      player: { x: 0, y: 0 },
-      lastPositions: [],
-      steps: 0,
-      startTime: 0,
-      timerId: null,
-      visited: new Set(),
-      seen: new Set(),
-      nodeCells: new Set(),
-      nodeDone: new Set(),
-      end: { x: 0, y: 0 },
-      win: false,
-      hintCount: 0,
-      hintPath: [],
-      showSolution: false,
-      solutionPath: [],
-      fog: false,
-      visionRadius: 2,
-      autosave: true,
-      theme: "dark",
-      llm: {
-        mode: "local", // local | proxy | direct
-        model: "gpt-4.1-mini",
-        temperature: 0.7,
-        maxOutputTokens: 220,
-        proxyUrl: "",
-        proxyBearer: "",
-        apiKey: "",
-        prevResponseId: null
-      },
-      journal: []
-    };
-
-    // ---------- Prompts (expanded) ----------
-    function getRandomPrompt(prng){
-      const prompts = [
-        "What aspect of your studies are you focusing on right now, and what’s the next concrete milestone?",
-        "Reflect on a recent project challenge—what was the bottleneck: planning, tooling, skill gap, or motivation?",
-        "In game design, what mechanic are you most excited to prototype next, and why is it compelling?",
-        "What are you curious about in creative technology today (AI, audio, rendering, simulation, interaction)?",
-        "What’s one skill in 3D modeling you want to level up in the next 2 weeks, and what’s the practice plan?",
-        "If you could delete one recurring friction from your workflow (exports, naming, UVs, lighting, versioning), which is it?",
-        "What’s one small system you can build to reduce anxiety/stress around deadlines (checklists, timers, templates)?",
-        "What would a ‘good day’ look like for you—measurable outputs, not vibes?",
-        "What is one experiment you can run this week to improve focus/consistency without increasing risk?",
-        "If you had to teach someone your current project in 10 minutes, what would the outline be?",
-        "Which part of your pipeline is ‘fragile’ right now? How can you add one layer of robustness?",
-        "What’s the smallest publishable artifact you can ship today (gif, screenshot set, short demo, README improvement)?"
-      ];
-      return prompts[Math.floor(prng() * prompts.length)];
-    }
-
-    // ---------- Maze Generation (DFS step-2 + connectivity guarantee + loops) ----------
-    function makeEmptyMaze(size){
-      return Array.from({ length: size }, () => Array(size).fill("wall"));
-    }
-
-    function neighborsStep2(x, y, size, maze){
-      const out = [];
-      if (y - 2 >= 0 && maze[y - 2][x] === "wall") out.push({ nx: x, ny: y - 2 });
-      if (y + 2 < size && maze[y + 2][x] === "wall") out.push({ nx: x, ny: y + 2 });
-      if (x - 2 >= 0 && maze[y][x - 2] === "wall") out.push({ nx: x - 2, ny: y });
-      if (x + 2 < size && maze[y][x + 2] === "wall") out.push({ nx: x + 2, ny: y });
-      return out;
-    }
-
-    function carveBetween(x, y, nx, ny, maze){
-      if (x === nx){
-        maze[(y + ny) / 2][x] = "path";
-      } else if (y === ny){
-        maze[y][(x + nx) / 2] = "path";
-      }
-      maze[ny][nx] = "path";
-    }
-
-    function bfsReachable(maze, size, start, passableFn){
-      const q = [];
-      const seen = new Set();
-      const key = (x,y)=>`${x},${y}`;
-      q.push(start);
-      seen.add(key(start.x, start.y));
-      while(q.length){
-        const {x,y} = q.shift();
-        const nbrs = [
-          {x:x+1,y},{x:x-1,y},{x,y:y+1},{x,y:y-1}
-        ];
-        for(const n of nbrs){
-          if(n.x<0||n.y<0||n.x>=size||n.y>=size) continue;
-          if(!passableFn(n.x,n.y)) continue;
-          const k = key(n.x,n.y);
-          if(seen.has(k)) continue;
-          seen.add(k);
-          q.push(n);
-        }
-      }
-      return seen;
-    }
-
-    function drillManhattan(maze, from, to, size){
-      let x = from.x, y = from.y;
-      const sx = (to.x >= x) ? 1 : -1;
-      const sy = (to.y >= y) ? 1 : -1;
-
-      while(x !== to.x){
-        x += sx;
-        if (x<0||x>=size) break;
-        if (maze[y][x] === "wall") maze[y][x] = "path";
-      }
-      while(y !== to.y){
-        y += sy;
-        if (y<0||y>=size) break;
-        if (maze[y][x] === "wall") maze[y][x] = "path";
-      }
-    }
-
-    function addLoops(maze, size, prng, percent){
-      const p = clamp(percent, 0, 60) / 100;
-      if (p <= 0) return;
-
-      const candidates = [];
-      for(let y=1;y<size-1;y++){
-        for(let x=1;x<size-1;x++){
-          if(maze[y][x] !== "wall") continue;
-          const up = maze[y-1][x] !== "wall";
-          const down = maze[y+1][x] !== "wall";
-          const left = maze[y][x-1] !== "wall";
-          const right = maze[y][x+1] !== "wall";
-
-          // carve only if it connects two regions cleanly (opposites or a corner)
-          const opposites = (up && down) || (left && right);
-          const corner = (up && right) || (up && left) || (down && right) || (down && left);
-          if (opposites || corner) candidates.push({x,y});
-        }
-      }
-
-      // shuffle candidates
-      for(let i=candidates.length-1;i>0;i--){
-        const j = Math.floor(prng()* (i+1));
-        [candidates[i], candidates[j]] = [candidates[j], candidates[i]];
-      }
-
-      const carveCount = Math.floor(candidates.length * p);
-      for(let i=0;i<carveCount;i++){
-        const c = candidates[i];
-        maze[c.y][c.x] = "path";
-      }
-    }
-
-    function placeNodes(maze, size, prng, count, start, end){
-      const nodes = new Set();
-      const pathCells = [];
-      for(let y=0;y<size;y++){
-        for(let x=0;x<size;x++){
-          const c = maze[y][x];
-          if(c === "path"){
-            if(x===start.x && y===start.y) continue;
-            if(x===end.x && y===end.y) continue;
-            pathCells.push({x,y});
-          }
-        }
-      }
-
-      // shuffle pathCells
-      for(let i=pathCells.length-1;i>0;i--){
-        const j = Math.floor(prng()* (i+1));
-        [pathCells[i], pathCells[j]] = [pathCells[j], pathCells[i]];
-      }
-
-      const picked = Math.min(count, pathCells.length);
-      for(let i=0;i<picked;i++){
-        const {x,y} = pathCells[i];
-        maze[y][x] = "node";
-        nodes.add(`${x},${y}`);
-      }
-      return nodes;
-    }
-
-    function generateMaze(){
-      const size = state.size;
-      const maze = makeEmptyMaze(size);
-      const stack = [];
-      let current = { x: 0, y: 0 };
-
-      maze[0][0] = "path";
-      stack.push(current);
-
-      while(stack.length){
-        const {x,y} = current;
-        const nbrs = neighborsStep2(x,y,size,maze);
-        if(nbrs.length){
-          stack.push(current);
-          const pick = nbrs[Math.floor(state.prng() * nbrs.length)];
-          carveBetween(x,y,pick.nx,pick.ny,maze);
-          current = { x: pick.nx, y: pick.ny };
-        }else{
-          current = stack.pop();
-        }
-      }
-
-      // choose end at bottom-right (keep your original)
-      const end = { x: size - 1, y: size - 1 };
-      maze[end.y][end.x] = "end";
-
-      // ensure solvable: BFS and drill path from nearest reachable cell to end if needed
-      const passable = (x,y)=> maze[y][x] !== "wall";
-      const reachable = bfsReachable(maze, size, {x:0,y:0}, passable);
-      const endKey = `${end.x},${end.y}`;
-      let solvable = reachable.has(endKey);
-
-      if(!solvable){
-        // pick nearest reachable to end
-        let best = null;
-        let bestD = Infinity;
-        reachable.forEach(k=>{
-          const [rx,ry] = k.split(",").map(Number);
-          const d = Math.abs(end.x-rx) + Math.abs(end.y-ry);
-          if(d < bestD){
-            bestD = d;
-            best = {x:rx,y:ry};
-          }
-        });
-        if(best){
-          drillManhattan(maze, best, end, size);
-          maze[end.y][end.x] = "end";
-          solvable = true;
-        }
-      }
-
-      // add optional loops (extra connections)
-      addLoops(maze, size, state.prng, state.loopsPercent);
-
-      // place nodes
-      const nodes = placeNodes(maze, size, state.prng, state.nodesWanted, {x:0,y:0}, end);
-
-      state.maze = maze;
-      state.end = end;
-      state.nodeCells = nodes;
-
-      // update solvable indicator
-      pillSolvableEl.textContent = `Solvable: ${solvable ? "Yes" : "Unknown"}`;
-      pillSolvableEl.parentElement.querySelector(".dot").className = "dot " + (solvable ? "good" : "bad");
-    }
-
-    // ---------- Rendering ----------
-    function setMazeColumns(){
-      mazeEl.style.gridTemplateColumns = `repeat(${state.size}, 1fr)`;
-    }
-
-    function renderMaze(){
-      setMazeColumns();
-      mazeEl.innerHTML = "";
-      state.cellEls = Array.from({length: state.size}, ()=>Array(state.size));
-
-      for(let y=0;y<state.size;y++){
-        for(let x=0;x<state.size;x++){
-          const cellDiv = document.createElement("div");
-          cellDiv.className = "cell";
-          cellDiv.dataset.x = x;
-          cellDiv.dataset.y = y;
-
-          const type = state.maze[y][x];
-          if(type === "wall") cellDiv.classList.add("wall");
-          else if(type === "end"){
-            cellDiv.classList.add("end");
-            cellDiv.textContent = "END";
-          }
-          else if(type === "node"){
-            cellDiv.classList.add("node");
-            cellDiv.textContent = "NODE";
-          }
-          // else path
-
-          state.cellEls[y][x] = cellDiv;
-          mazeEl.appendChild(cellDiv);
-        }
-      }
-
-      // reset overlays
-      state.hintPath = [];
-      state.solutionPath = [];
-      state.showSolution = false;
-
-      // mark player start
-      markCurrentCell(true);
-      updateVisibility(true);
-    }
-
-    function clearCellOverlays(){
-      for(let y=0;y<state.size;y++){
-        for(let x=0;x<state.size;x++){
-          const el = state.cellEls[y][x];
-          el.classList.remove("hint","solution");
-        }
-      }
-    }
-
-    function markCurrentCell(isInitial=false){
-      // remove current from all? (fast enough at these sizes)
-      for(let y=0;y<state.size;y++){
-        for(let x=0;x<state.size;x++){
-          state.cellEls[y][x].classList.remove("current");
-        }
-      }
-      const {x,y} = state.player;
-      const el = state.cellEls[y][x];
-      el.classList.add("current");
-
-      const k = `${x},${y}`;
-      state.visited.add(k);
-      el.classList.add("visited");
-
-      if (state.nodeDone.has(k)) el.classList.add("nodeDone");
-      posLabelEl.textContent = `Pos: (${x},${y})`;
-
-      if(isInitial){
-        promptTextEl.textContent = "Start your journey by moving through the maze.";
-      }
-    }
-
-    function updateVisibility(force=false){
-      if(!state.fog){
-        for(let y=0;y<state.size;y++){
-          for(let x=0;x<state.size;x++){
-            state.cellEls[y][x].classList.remove("hidden");
-          }
-        }
-        pillFogEl.textContent = "Fog: Off";
-        pillFogEl.parentElement.querySelector(".dot").className = "dot warn";
-        return;
-      }
-
-      const radius = clamp(state.visionRadius, 1, 4);
-      const {x:cx,y:cy} = state.player;
-
-      // mark seen within radius (diamond)
-      for(let dy=-radius; dy<=radius; dy++){
-        for(let dx=-radius; dx<=radius; dx++){
-          const nx = cx + dx;
-          const ny = cy + dy;
-          if(nx<0||ny<0||nx>=state.size||ny>=state.size) continue;
-          if(Math.abs(dx)+Math.abs(dy) <= radius){
-            state.seen.add(`${nx},${ny}`);
-          }
-        }
-      }
-      // always see visited
-      state.visited.forEach(k=>state.seen.add(k));
-
-      for(let y=0;y<state.size;y++){
-        for(let x=0;x<state.size;x++){
-          const el = state.cellEls[y][x];
-          const k = `${x},${y}`;
-          if(state.seen.has(k)) el.classList.remove("hidden");
-          else el.classList.add("hidden");
-        }
-      }
-
-      pillFogEl.textContent = "Fog: On";
-      pillFogEl.parentElement.querySelector(".dot").className = "dot good";
-    }
-
-    // ---------- Solver / Hint ----------
-    function bfsPath(start, goal){
-      const size = state.size;
-      const maze = state.maze;
-      const passable = (x,y)=> maze[y][x] !== "wall";
-      const q = [];
-      const seen = new Set();
-      const parent = new Map();
-      const key = (x,y)=>`${x},${y}`;
-      const sk = key(start.x,start.y);
-      q.push(start);
-      seen.add(sk);
-      parent.set(sk, null);
-
-      while(q.length){
-        const cur = q.shift();
-        if(cur.x===goal.x && cur.y===goal.y) break;
-
-        const nbrs = [
-          {x:cur.x+1,y:cur.y},{x:cur.x-1,y:cur.y},
-          {x:cur.x,y:cur.y+1},{x:cur.x,y:cur.y-1}
-        ];
-        for(const n of nbrs){
-          if(n.x<0||n.y<0||n.x>=size||n.y>=size) continue;
-          if(!passable(n.x,n.y)) continue;
-          const nk = key(n.x,n.y);
-          if(seen.has(nk)) continue;
-          seen.add(nk);
-          parent.set(nk, key(cur.x,cur.y));
-          q.push(n);
-        }
-      }
-
-      const gk = key(goal.x,goal.y);
-      if(!parent.has(gk)) return [];
-
-      // reconstruct
-      const path = [];
-      let curK = gk;
-      while(curK){
-        const [x,y] = curK.split(",").map(Number);
-        path.push({x,y});
-        curK = parent.get(curK);
-      }
-      path.reverse();
-      return path;
-    }
-
-    function showHint(){
-      clearCellOverlays();
-      const path = bfsPath(state.player, state.end);
-      if(path.length < 2){
-        promptTextEl.textContent = "No hint available (already at end or unsolved state).";
-        beep(220, 0.08, "square", 0.07);
-        return;
-      }
-      state.hintCount++;
-      statHintsEl.textContent = `Hints: ${state.hintCount}`;
-
-      const next = path[1];
-      state.cellEls[next.y][next.x].classList.add("hint");
-      state.hintPath = path;
-
-      const dx = next.x - state.player.x;
-      const dy = next.y - state.player.y;
-      const dir = dx === 1 ? "right" : dx === -1 ? "left" : dy === 1 ? "down" : "up";
-      promptTextEl.textContent = `Hint: next step is ${dir.toUpperCase()} toward the end.`;
-      beep(520, 0.05, "triangle", 0.06);
-      vibrate([20]);
-    }
-
-    function toggleSolution(){
-      state.showSolution = !state.showSolution;
-      clearCellOverlays();
-      if(!state.showSolution){
-        btnSolve.textContent = "Show Solution";
-        return;
-      }
-      const path = bfsPath(state.player, state.end);
-      state.solutionPath = path;
-      for(const p of path){
-        state.cellEls[p.y][p.x].classList.add("solution");
-      }
-      btnSolve.textContent = "Hide Solution";
-      promptTextEl.textContent = "Solution overlay enabled (from your current position).";
-      beep(660, 0.06, "sine", 0.06);
-    }
-
-    // ---------- Gameplay ----------
-    function canMoveTo(nx, ny){
-      if(nx<0||ny<0||nx>=state.size||ny>=state.size) return false;
-      return state.maze[ny][nx] !== "wall";
-    }
-
-    function cellType(x,y){
-      return state.maze[y][x];
-    }
-
-    function setWin(){
-      state.win = true;
-      const elapsed = performance.now() - state.startTime;
-      winMessageEl.style.display = "block";
-      winMessageEl.textContent =
-        `Congratulations! You reached the end. Steps: ${state.steps}. Time: ${fmtTime(elapsed)}. Nodes completed: ${state.nodeDone.size}/${state.nodeCells.size}. Export your session anytime.`;
-      promptTextEl.textContent = "Congratulations! You've reached the end of the Cognitive Labyrinth.";
-      beep(880, 0.10, "triangle", 0.08);
-      beep(660, 0.10, "triangle", 0.08);
-      beep(990, 0.12, "triangle", 0.08);
-      vibrate([30, 50, 30]);
-    }
-
-    function updateStats(){
-      statStepsEl.textContent = `Steps: ${state.steps}`;
-      statNodesEl.textContent = `Nodes: ${state.nodeDone.size}/${state.nodeCells.size}`;
-    }
-
-    function startTimer(){
-      if(state.timerId) clearInterval(state.timerId);
-      state.startTime = performance.now();
-      state.timerId = setInterval(()=>{
-        const elapsed = performance.now() - state.startTime;
-        statTimeEl.textContent = `Time: ${fmtTime(elapsed)}`;
-      }, 250);
-    }
-
-    function resetRun(keepMaze=true){
-      state.player = {x:0,y:0};
-      state.lastPositions = [];
-      state.steps = 0;
-      state.visited = new Set();
-      state.seen = new Set();
-      state.nodeDone = new Set();
-      state.win = false;
-      state.hintCount = 0;
-      state.hintPath = [];
-      state.solutionPath = [];
-      state.showSolution = false;
-      winMessageEl.style.display = "none";
-      winMessageEl.textContent = "";
-
-      if(!keepMaze){
-        generateMaze();
-        renderMaze();
-      }else{
-        renderMaze();
-      }
-
-      updateStats();
-      statHintsEl.textContent = "Hints: 0";
-      startTimer();
-      maybeSave();
-    }
-
-    // Keep your original global move(direction) signature
-    function move(direction){
-      if(state.win){
-        promptTextEl.textContent = "You already finished. Press New Maze to start a new run, or Reset to replay this maze.";
-        beep(180,0.08,"square",0.06);
-        return;
-      }
-
-      const {x,y} = state.player;
-      let nx=x, ny=y;
-
-      if(direction==="up") ny--;
-      if(direction==="down") ny++;
-      if(direction==="left") nx--;
-      if(direction==="right") nx++;
-
-      if(!canMoveTo(nx,ny)){
-        promptTextEl.textContent = "You hit a wall! Reflect and try another direction.";
-        beep(130,0.08,"square",0.07);
-        vibrate([10]);
-        return;
-      }
-
-      // movement okay
-      state.lastPositions.push({x,y});
-      if(state.lastPositions.length > 250) state.lastPositions.shift();
-
-      state.player = {x:nx,y:ny};
-      state.steps++;
-      updateStats();
-
-      markCurrentCell();
-      updateVisibility();
-
-      const t = cellType(nx,ny);
-
-      if(nx === state.end.x && ny === state.end.y){
-        setWin();
-      } else if(t === "node"){
-        const k = `${nx},${ny}`;
-        if(!state.nodeDone.has(k)){
-          promptTextEl.textContent = getRandomPrompt(state.prng);
-          beep(540,0.06,"sine",0.06);
-          vibrate([15]);
-        } else {
-          promptTextEl.textContent = "Node revisited: you’ve already reflected here. Keep exploring (or export your journal).";
-          beep(420,0.05,"sine",0.05);
-        }
-      } else {
-        promptTextEl.textContent = "Keep exploring the maze...";
-        beep(260,0.03,"sine",0.03);
-      }
-
-      // clear stale hint if any
-      clearCellOverlays();
-      if(state.showSolution) toggleSolution(); // re-apply from new position (toggleSolution flips, so do manual)
-      if(state.showSolution){
-        state.showSolution = false;
-        toggleSolution();
-      }
-
-      maybeSave();
-    }
-
-    function undo(){
-      if(state.lastPositions.length === 0){
-        promptTextEl.textContent = "Nothing to undo yet.";
-        beep(150,0.06,"square",0.05);
-        return;
-      }
-      const prev = state.lastPositions.pop();
-      state.player = {x:prev.x,y:prev.y};
-      state.steps = Math.max(0, state.steps - 1);
-      updateStats();
-      markCurrentCell();
-      updateVisibility();
-      promptTextEl.textContent = "Undo: moved back one step.";
-      beep(220,0.05,"triangle",0.05);
-      maybeSave();
-    }
-
-    // ---------- Local Coach (offline) ----------
-    function localCoachResponse(prompt, reflection, context){
-      const words = reflection.trim().split(/\s+/).filter(Boolean);
-      const wc = words.length;
-
-      // simple heuristics: detect uncertainty/planning/blocked
-      const lower = reflection.toLowerCase();
-      const signals = {
-        blocked: /(stuck|blocked|can't|cannot|hard|difficult|overwhelmed|confused|lost)/.test(lower),
-        planning: /(plan|next|tomorrow|week|milestone|schedule|deadline|todo|task)/.test(lower),
-        learning: /(learn|study|practice|improve|skill|tutorial|course|lecture)/.test(lower),
-        building: /(build|make|prototype|implement|code|model|render|animate|simulate)/.test(lower),
-        emotions: /(anxious|stress|stressed|worried|afraid|tired|burnout|panic)/.test(lower)
-      };
-
-      const insight =
-        signals.blocked ? "It sounds like friction is showing up as a concrete blocker—good signal to isolate the smallest failing step." :
-        signals.planning ? "You’re thinking in milestones, which is the right abstraction—now tighten it into one measurable next action." :
-        signals.building ? "You’re in ‘maker mode’. The fastest progress usually comes from an ultra-small vertical slice you can finish today." :
-        signals.learning ? "This reads like deliberate practice—if you define the exact micro-skill, your feedback loop gets much faster." :
-        "There’s a real thread here—turn it into a single hypothesis you can test in the next 30 minutes.";
-
-      const question =
-        signals.blocked ? "What is the *very first* step where things go wrong (tool, file, concept, or decision)?" :
-        signals.planning ? "What is the smallest deliverable that would make today a win (one file, one screenshot, one commit)?" :
-        signals.emotions ? "What is one controllable variable you can change in your setup (timebox, environment, checklist) right now?" :
-        "If you had to reduce this to one sentence, what would it be?";
-
-      const action =
-        wc < 10 ? "Action: write 3 bullet points: (1) what you’re doing, (2) what blocks you, (3) what you’ll try next—then take 10 minutes on the first try." :
-        signals.blocked ? "Action: timebox 12 minutes to reproduce the problem, and log 3 observations (what you expected vs what happened)." :
-        signals.planning ? "Action: pick 1 milestone and break it into 3 tasks; do the first task for 15 minutes immediately." :
-        "Action: set a 20-minute timer and produce a tiny artifact (note, sketch, commit, screenshot).";
-
-      const contextLine = `Context: steps=${context.steps}, nodesDone=${context.nodesDone}/${context.nodesTotal}.`;
-
-      return [
-        "Local Coach:",
-        `• Insight: ${insight}`,
-        `• Question: ${question}`,
-        `• ${action}`,
-        `• ${contextLine}`
-      ].join("\n");
-    }
-
-    // ---------- OpenAI Responses API (proxy/direct) ----------
-    function extractOutputText(respJson){
-      // Responses API returns an array in output; we gather any output_text blocks.
-      if(!respJson || !Array.isArray(respJson.output)) return "";
-      const parts = [];
-      for(const item of respJson.output){
-        if(item && item.type === "message" && Array.isArray(item.content)){
-          for(const c of item.content){
-            if(c && c.type === "output_text" && typeof c.text === "string") parts.push(c.text);
-          }
-        }
-      }
-      return parts.join("\n").trim();
-    }
-
-    async function callOpenAIResponses(userText){
-      const mode = state.llm.mode;
-      const model = state.llm.model;
-      const temperature = clamp(Number(state.llm.temperature) || 0.7, 0, 2);
-      const max_output_tokens = clamp(Number(state.llm.maxOutputTokens) || 220, 32, 4096);
-
-      const instructions =
-        "You are a concise, practical reflective coach. Respond in this exact format:\n" +
-        "1) One-sentence insight.\n" +
-        "2) One probing question.\n" +
-        "3) One concrete next action (timeboxed).\n" +
-        "Keep it supportive, non-judgmental, and under 130 words.";
-
-      const input = [
-        {
-          role: "user",
-          content:
-            "Reflection prompt:\n" + promptTextEl.textContent + "\n\n" +
-            "User reflection:\n" + userText + "\n\n" +
-            `Game context: steps=${state.steps}, position=(${state.player.x},${state.player.y}), nodesDone=${state.nodeDone.size}/${state.nodeCells.size}.\n` +
-            "Return the coaching response now."
-        }
-      ];
-
-      const body = {
-        model,
-        instructions,
-        input,
-        temperature,
-        max_output_tokens
-      };
-
-      // keep conversation continuity if we have a previous_response_id
-      if(state.llm.prevResponseId) body.previous_response_id = state.llm.prevResponseId;
-
-      let url = "https://api.openai.com/v1/responses";
-      let headers = { "Content-Type": "application/json" };
-
-      if(mode === "direct"){
-        const apiKey = (apiKeyEl.value || "").trim();
-        if(!apiKey) throw new Error("Missing API key for direct mode.");
-        headers.Authorization = `Bearer ${apiKey}`;
-      } else if(mode === "proxy"){
-        const proxyUrl = (proxyUrlEl.value || "").trim();
-        if(!proxyUrl) throw new Error("Missing Proxy URL for proxy mode.");
-        url = proxyUrl;
-        const proxyBearer = (proxyBearerEl.value || "").trim();
-        if(proxyBearer) headers.Authorization = `Bearer ${proxyBearer}`;
-      } else {
-        throw new Error("OpenAI call attempted while not in proxy/direct mode.");
-      }
-
-      const res = await fetch(url, {
-        method: "POST",
-        headers,
-        body: JSON.stringify(body)
-      });
-
-      const text = await res.text();
-      let data = null;
-      try { data = JSON.parse(text); } catch(e){
-        throw new Error("Non-JSON response from endpoint.");
-      }
-
-      if(!res.ok){
-        const msg = (data && data.error && data.error.message) ? data.error.message : `HTTP ${res.status}`;
-        throw new Error(msg);
-      }
-
-      // store prevResponseId for continuity
-      if(data && typeof data.id === "string") state.llm.prevResponseId = data.id;
-
-      const outText = extractOutputText(data);
-      return outText || "(No text output returned.)";
-    }
-
-    // ---------- Journal / Export / Import ----------
-    function addJournalEntry(entry){
-      state.journal.unshift(entry);
-      if(state.journal.length > 200) state.journal.length = 200;
-      renderJournal();
-    }
-
-    function renderJournal(){
-      journalEl.innerHTML = "";
-      journalCountEl.textContent = `Entries: ${state.journal.length}`;
-      for(const e of state.journal){
-        const div = document.createElement("div");
-        div.className = "entry";
-
-        const top = document.createElement("div");
-        top.className = "entryTop";
-        top.textContent = `${e.time}  |  pos=(${e.pos.x},${e.pos.y})  |  seed=${e.seed}`;
-
-        const p = document.createElement("div");
-        p.className = "entryPrompt";
-        p.textContent = e.prompt;
-
-        const u = document.createElement("div");
-        u.className = "entryUser";
-        u.textContent = e.user;
-
-        div.appendChild(top);
-        div.appendChild(p);
-        div.appendChild(u);
-
-        if(e.ai){
-          const a = document.createElement("div");
-          a.className = "entryAI";
-          a.textContent = e.ai;
-          div.appendChild(a);
-        }
-
-        journalEl.appendChild(div);
-      }
-    }
-
-    function downloadJson(filename, obj){
-      const blob = new Blob([JSON.stringify(obj, null, 2)], {type:"application/json"});
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = filename;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      setTimeout(()=>URL.revokeObjectURL(url), 500);
-    }
-
-    function exportAll(){
-      const payload = {
-        version: "2026.02.14",
-        exported_at: nowISO(),
-        state: {
-          size: state.size,
-          seed: state.seed,
-          nodesWanted: state.nodesWanted,
-          loopsPercent: state.loopsPercent,
-          fog: state.fog,
-          visionRadius: state.visionRadius,
-          theme: state.theme
-        },
-        run: {
-          player: state.player,
-          steps: state.steps,
-          visited: Array.from(state.visited),
-          nodeDone: Array.from(state.nodeDone),
-          hintCount: state.hintCount,
-          win: state.win
-        },
-        maze: state.maze,
-        journal: state.journal
-      };
-      downloadJson(`cognitive_labyrinth_${state.seed || "session"}_${Date.now()}.json`, payload);
-      promptTextEl.textContent = "Exported your full session (maze + run + journal).";
-      beep(620,0.05,"triangle",0.06);
-    }
-
-    function importAll(file){
-      const reader = new FileReader();
-      reader.onload = () => {
-        try{
-          const data = JSON.parse(String(reader.result || "{}"));
-          if(!data || !data.maze || !Array.isArray(data.maze)) throw new Error("Invalid file format.");
-          // restore minimal state
-          state.size = data.state?.size ?? state.size;
-          state.seed = data.state?.seed ?? state.seed;
-          state.nodesWanted = data.state?.nodesWanted ?? state.nodesWanted;
-          state.loopsPercent = data.state?.loopsPercent ?? state.loopsPercent;
-          state.fog = !!data.state?.fog;
-          state.visionRadius = data.state?.visionRadius ?? state.visionRadius;
-          state.theme = data.state?.theme ?? state.theme;
-
-          state.maze = data.maze;
-          state.player = data.run?.player ?? {x:0,y:0};
-          state.steps = data.run?.steps ?? 0;
-          state.visited = new Set(data.run?.visited ?? []);
-          state.nodeDone = new Set(data.run?.nodeDone ?? []);
-          state.hintCount = data.run?.hintCount ?? 0;
-          state.win = !!data.run?.win;
-
-          state.end = { x: state.size - 1, y: state.size - 1 };
-          state.nodeCells = new Set();
-          for(let y=0;y<state.size;y++){
-            for(let x=0;x<state.size;x++){
-              if(state.maze[y][x] === "node") state.nodeCells.add(`${x},${y}`);
-            }
-          }
-
-          // UI sync
-          seedInputEl.value = state.seed;
-          sizeSelectEl.value = String(state.size);
-          nodesSelectEl.value = String(state.nodesWanted);
-          loopsInputEl.value = String(state.loopsPercent);
-          visionInputEl.value = String(state.visionRadius);
-          themeSelectEl.value = state.theme;
-          setTheme(state.theme);
-
-          renderMaze();
-          updateStats();
-          statHintsEl.textContent = `Hints: ${state.hintCount}`;
-
-          state.journal = Array.isArray(data.journal) ? data.journal : [];
-          renderJournal();
-
-          if(state.win) setWin();
-
-          promptTextEl.textContent = "Imported session successfully.";
-          beep(740,0.06,"triangle",0.06);
-          maybeSave(true);
-        }catch(e){
-          promptTextEl.textContent = `Import failed: ${e.message}`;
-          beep(150,0.08,"square",0.07);
-        }
-      };
-      reader.readAsText(file);
-    }
-
-    // ---------- Autosave ----------
-    function maybeSave(force=false){
-      if(!state.autosave && !force) return;
-
-      // Do not store OpenAI API key by default (security); store proxy URL ok.
-      const saveObj = {
-        size: state.size,
-        seed: state.seed,
-        nodesWanted: state.nodesWanted,
-        loopsPercent: state.loopsPercent,
-        maze: state.maze,
-        player: state.player,
-        steps: state.steps,
-        visited: Array.from(state.visited),
-        nodeDone: Array.from(state.nodeDone),
-        hintCount: state.hintCount,
-        win: state.win,
-        fog: state.fog,
-        visionRadius: state.visionRadius,
-        theme: state.theme,
-        journal: state.journal,
-        llm: {
-          mode: state.llm.mode,
-          model: state.llm.model,
-          temperature: state.llm.temperature,
-          maxOutputTokens: state.llm.maxOutputTokens,
-          proxyUrl: state.llm.proxyUrl,
-          // do not persist proxy bearer or apiKey
-          prevResponseId: state.llm.prevResponseId
-        },
-        saved_at: nowISO()
-      };
-      try{
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(saveObj));
-      }catch(_){}
-    }
-
-    function loadSave(){
-      try{
-        const raw = localStorage.getItem(STORAGE_KEY);
-        if(!raw) return false;
-        const data = JSON.parse(raw);
-
-        if(!data || !data.maze || !Array.isArray(data.maze)) return false;
-
-        state.size = Number(data.size) || state.size;
-        state.seed = String(data.seed || "");
-        state.nodesWanted = Number(data.nodesWanted) || state.nodesWanted;
-        state.loopsPercent = Number(data.loopsPercent) || 0;
-        state.maze = data.maze;
-        state.player = data.player || {x:0,y:0};
-        state.steps = Number(data.steps) || 0;
-        state.visited = new Set(data.visited || []);
-        state.nodeDone = new Set(data.nodeDone || []);
-        state.hintCount = Number(data.hintCount) || 0;
-        state.win = !!data.win;
-        state.fog = !!data.fog;
-        state.visionRadius = Number(data.visionRadius) || 2;
-        state.theme = String(data.theme || "dark");
-        state.journal = Array.isArray(data.journal) ? data.journal : [];
-        if(data.llm){
-          state.llm.mode = String(data.llm.mode || "local");
-          state.llm.model = String(data.llm.model || "gpt-4.1-mini");
-          state.llm.temperature = Number(data.llm.temperature ?? 0.7);
-          state.llm.maxOutputTokens = Number(data.llm.maxOutputTokens ?? 220);
-          state.llm.proxyUrl = String(data.llm.proxyUrl || "");
-          state.llm.prevResponseId = data.llm.prevResponseId || null;
-        }
-
-        state.end = { x: state.size - 1, y: state.size - 1 };
-
-        state.nodeCells = new Set();
-        for(let y=0;y<state.size;y++){
-          for(let x=0;x<state.size;x++){
-            if(state.maze[y][x] === "node") state.nodeCells.add(`${x},${y}`);
-          }
-        }
-
-        return true;
-      }catch(_){
-        return false;
-      }
-    }
-
-    function clearSave(){
-      try{ localStorage.removeItem(STORAGE_KEY); }catch(_){}
-      promptTextEl.textContent = "Cleared autosave. Your current run is still active until you refresh.";
-      beep(160,0.08,"square",0.07);
-    }
-
-    // ---------- Settings / Theme / Scale ----------
-    function setTheme(theme){
-      state.theme = theme === "light" ? "light" : "dark";
-      appEl.setAttribute("data-theme", state.theme);
-    }
-
-    function setModeLabel(){
-      const m = state.llm.mode;
-      const label = m === "local" ? "Mode: Local Coach" : (m === "proxy" ? "Mode: OpenAI Proxy" : "Mode: OpenAI Direct");
-      pillModeEl.textContent = label;
-      const dot = pillModeEl.parentElement.querySelector(".dot");
-      dot.className = "dot " + (m === "local" ? "" : (m === "proxy" ? "good" : "warn"));
-    }
-
-    function setSeedLabel(){
-      pillSeedEl.textContent = `Seed: ${state.seed || "—"}`;
-    }
-
-    function applySettingsFromUI(){
-      state.llm.mode = llmModeEl.value;
-      state.llm.model = modelSelectEl.value;
-      state.llm.temperature = clamp(Number(tempInputEl.value) || 0.7, 0, 2);
-      state.llm.maxOutputTokens = clamp(Number(maxOutInputEl.value) || 220, 32, 4096);
-      state.llm.proxyUrl = (proxyUrlEl.value || "").trim();
-      state.llm.proxyBearer = (proxyBearerEl.value || "").trim();
-      state.llm.apiKey = (apiKeyEl.value || "").trim();
-      state.loopsPercent = clamp(Number(loopsInputEl.value) || 0, 0, 60);
-      state.visionRadius = clamp(Number(visionInputEl.value) || 2, 1, 4);
-
-      difficultyLabelEl.textContent = `Loops: ${state.loopsPercent}%`;
-      setModeLabel();
-
-      const modeExplain =
-        state.llm.mode === "local" ? "Local Coach is active. No API or internet required." :
-        state.llm.mode === "proxy" ? "Proxy mode active. Your browser talks to your proxy; your proxy talks to OpenAI." :
-        "Direct mode active. This is unsafe for deployed sites and may fail due to CORS.";
-      statusNoteEl.textContent = modeExplain;
-
-      maybeSave(true);
-    }
-
-    function adjustScale(delta){
-      // modifies CSS variable --scaleDesktop on :root via inline style
-      const root = document.documentElement;
-      const cur = parseFloat(getComputedStyle(root).getPropertyValue("--scaleDesktop")) || 0.55;
-      const next = clamp(cur + delta, 0.35, 0.95);
-      root.style.setProperty("--scaleDesktop", String(next.toFixed(2)));
-      promptTextEl.textContent = `Desktop scale set to ${(next*100).toFixed(0)}%.`;
-      beep(420,0.04,"sine",0.04);
-    }
-
-    // ---------- Seed / Share link ----------
-    function setSeed(seed){
-      state.seed = (seed || "").trim();
-      if(!state.seed){
-        // generate a nice default seed
-        state.seed = `seed-${Math.floor(Math.random()*1e9)}`;
-      }
-      const h = xmur3(state.seed);
-      state.prng = mulberry32(h());
-      setSeedLabel();
-
-      // update URL without reload
-      const p = new URLSearchParams(location.search);
-      p.set("seed", state.seed);
-      p.set("size", String(state.size));
-      p.set("nodes", String(state.nodesWanted));
-      p.set("loops", String(state.loopsPercent));
-      p.set("theme", state.theme);
-      history.replaceState(null, "", `${location.pathname}?${p.toString()}`);
-    }
-
-    // ---------- Submit reflection (kept global submitResponse() name) ----------
-    async function submitResponse(){
-      const userText = (responseEl.value || "").trim();
-      if(!userText){
-        promptTextEl.textContent = "Please write a reflection before submitting.";
-        beep(150,0.08,"square",0.07);
-        return;
-      }
-
-      const curPos = {x: state.player.x, y: state.player.y};
-      const k = `${curPos.x},${curPos.y}`;
-      const onNode = cellType(curPos.x, curPos.y) === "node";
-
-      // record node completion if on a node
-      if(onNode){
-        state.nodeDone.add(k);
-        const el = state.cellEls[curPos.y][curPos.x];
-        el.classList.add("nodeDone");
-        updateStats();
-      }
-
-      // disable button while processing
-      btnSubmit.disabled = true;
-      btnSubmit.style.opacity = "0.7";
-      btnSubmit.textContent = "Submitting...";
-
-      let aiText = "";
-
-      try{
-        if(state.llm.mode === "local"){
-          aiText = localCoachResponse(promptTextEl.textContent, userText, {
-            steps: state.steps,
-            nodesDone: state.nodeDone.size,
-            nodesTotal: state.nodeCells.size
-          });
-          promptTextEl.textContent = aiText;
-          beep(600,0.06,"triangle",0.06);
-        }else{
-          promptTextEl.textContent = "Contacting coach (OpenAI)…";
-          aiText = await callOpenAIResponses(userText);
-          promptTextEl.textContent = aiText;
-          beep(680,0.06,"triangle",0.06);
-        }
-
-        addJournalEntry({
-          time: nowISO(),
-          seed: state.seed,
-          pos: curPos,
-          prompt: promptTextEl.textContent.includes("Reflection prompt:") ? "Node" : (onNode ? "Node prompt" : "Free reflection"),
-          user: userText,
-          ai: aiText
-        });
-
-      }catch(err){
-        const msg = (err && err.message) ? err.message : String(err);
-        promptTextEl.textContent =
-          `Coach error: ${msg}\n` +
-          (state.llm.mode === "direct"
-            ? "Direct mode is commonly blocked by CORS and is unsafe on deployed sites. Use Proxy mode."
-            : "If using Proxy mode, ensure your proxy URL is correct and returns a Responses API-compatible payload.");
-        beep(140,0.09,"square",0.07);
-      }finally{
-        responseEl.value = "";
-        btnSubmit.disabled = false;
-        btnSubmit.style.opacity = "1";
-        btnSubmit.textContent = "Submit";
-        maybeSave();
-      }
-    }
-
-    // Expose globals for compatibility with your existing inline patterns
-    window.move = move;
-    window.submitResponse = submitResponse;
-
-    // ---------- Wire UI ----------
-    btnUp.addEventListener("click", ()=>move("up"));
-    btnDown.addEventListener("click", ()=>move("down"));
-    btnLeft.addEventListener("click", ()=>move("left"));
-    btnRight.addEventListener("click", ()=>move("right"));
-
-    btnNewMaze.addEventListener("click", ()=>{
-      // new maze keeps seed unless user changes it
-      if(!seedInputEl.value.trim()){
-        seedInputEl.value = `kai-${Math.floor(Math.random()*1e9)}`;
-      }
-      setSeed(seedInputEl.value);
-      generateMaze();
-      resetRun(true);
-      promptTextEl.textContent = "New maze generated. Explore and find nodes.";
-      beep(720,0.06,"triangle",0.06);
-      vibrate([20]);
-    });
-
-    btnReset.addEventListener("click", ()=>{
-      resetRun(true);
-      promptTextEl.textContent = "Run reset to start (same maze).";
-      beep(420,0.05,"triangle",0.05);
-    });
-
-    btnAutosave.addEventListener("click", ()=>{
-      state.autosave = !state.autosave;
-      btnAutosave.textContent = state.autosave ? "Autosave: On" : "Autosave: Off";
-      beep(320,0.04,"sine",0.04);
-      if(state.autosave) maybeSave(true);
-    });
-
-    btnFog.addEventListener("click", ()=>{
-      state.fog = !state.fog;
-      btnFog.textContent = state.fog ? "Fog: On" : "Fog: Off";
-      updateVisibility(true);
-      maybeSave();
-      beep(state.fog ? 520 : 260,0.05,"sine",0.05);
-    });
-
-    btnSound.addEventListener("click", ()=>{
-      soundOn = !soundOn;
-      btnSound.textContent = soundOn ? "Sound: On" : "Sound: Off";
-      if(soundOn) beep(520,0.05,"triangle",0.05);
-      maybeSave();
-    });
-
-    btnHint.addEventListener("click", showHint);
-    btnSolve.addEventListener("click", toggleSolution);
-    btnExport.addEventListener("click", exportAll);
-    btnUndo.addEventListener("click", undo);
-    btnClear.addEventListener("click", clearSave);
-    btnSubmit.addEventListener("click", submitResponse);
-
-    importFileEl.addEventListener("change", (e)=>{
-      const file = e.target.files && e.target.files[0];
-      if(file) importAll(file);
-      importFileEl.value = "";
-    });
-
-    btnApplySettings.addEventListener("click", ()=>{
-      applySettingsFromUI();
-      // applying loops affects maze topology -> rebuild maze deterministically from seed
-      setSeed(seedInputEl.value || state.seed);
-      generateMaze();
-      resetRun(true);
-      promptTextEl.textContent = "Settings applied and maze regenerated.";
-      beep(760,0.06,"triangle",0.06);
-    });
-
-    btnScaleDown.addEventListener("click", ()=>adjustScale(-0.05));
-    btnScaleUp.addEventListener("click", ()=>adjustScale(+0.05));
-
-    themeSelectEl.addEventListener("change", ()=>{
-      setTheme(themeSelectEl.value);
-      setSeed(state.seed);
-      maybeSave(true);
-    });
-
-    sizeSelectEl.addEventListener("change", ()=>{
-      state.size = Number(sizeSelectEl.value) || state.size;
-      setSeed(seedInputEl.value || state.seed);
-      generateMaze();
-      resetRun(true);
-      maybeSave(true);
-      beep(520,0.05,"triangle",0.05);
-    });
-
-    nodesSelectEl.addEventListener("change", ()=>{
-      state.nodesWanted = Number(nodesSelectEl.value) || state.nodesWanted;
-      setSeed(seedInputEl.value || state.seed);
-      generateMaze();
-      resetRun(true);
-      maybeSave(true);
-      beep(520,0.05,"triangle",0.05);
-    });
-
-    // ---------- Touch / Swipe (kept + improved) ----------
-    let startX=null, startY=null, endX=null, endY=null;
-
-    function handleTouchStart(ev){
-      if(ev.target.closest("#maze")){
-        ev.preventDefault();
-      }
-      const t = ev.touches[0];
-      startX = t.clientX;
-      startY = t.clientY;
-      endX = startX;
-      endY = startY;
-    }
-    function handleTouchMove(ev){
-      if(ev.target.closest("#maze")){
-        ev.preventDefault();
-      }
-      const t = ev.touches[0];
-      endX = t.clientX;
-      endY = t.clientY;
-    }
-    function handleTouchEnd(ev){
-      if(startX==null||startY==null||endX==null||endY==null) return;
-      const dx = endX - startX;
-      const dy = endY - startY;
-      const ax = Math.abs(dx);
-      const ay = Math.abs(dy);
-
-      // require minimum swipe distance
-      const min = 18;
-      if(ax < min && ay < min){
-        startX=startY=endX=endY=null;
-        return;
-      }
-
-      if(ev.target.closest("#maze")){
-        ev.preventDefault();
-        if(ax > ay){
-          move(dx > 0 ? "right" : "left");
-        }else{
-          move(dy > 0 ? "down" : "up");
-        }
-      }
-      startX=startY=endX=endY=null;
-    }
-
-    document.addEventListener("touchstart", handleTouchStart, {passive:false});
-    document.addEventListener("touchmove", handleTouchMove, {passive:false});
-    document.addEventListener("touchend", handleTouchEnd, {passive:false});
-
-    // ---------- Keyboard (kept) ----------
-    document.addEventListener("keydown", (ev)=>{
-      switch(ev.key){
-        case "ArrowUp": ev.preventDefault(); move("up"); break;
-        case "ArrowDown": ev.preventDefault(); move("down"); break;
-        case "ArrowLeft": ev.preventDefault(); move("left"); break;
-        case "ArrowRight": ev.preventDefault(); move("right"); break;
-        case "h":
-        case "H":
-          showHint(); break;
-        case "u":
-        case "U":
-          undo(); break;
-        case "Enter":
-          if(ev.ctrlKey || ev.metaKey) submitResponse();
-          break;
-      }
-    });
-
-    // ---------- Proxy snippets (real code, not placeholders) ----------
-    proxyWorkerCodeEl.textContent =
-`// Cloudflare Worker (server-side proxy for OpenAI Responses API)
-// 1) wrangler init
-// 2) wrangler secret put OPENAI_API_KEY
-// 3) deploy, then set Proxy URL in the app to your worker URL
+  </section>
+  <section class="toolbar" aria-label="Maze setup">
+    <div class="grid4">
+      <div class="field"><label for="seedInput">Seed</label><input id="seedInput" autocomplete="off" spellcheck="false" placeholder="e.g. kai9987kai-2026"></div>
+      <div class="field"><label for="sizeSelect">Maze size</label><select id="sizeSelect"><option>10</option><option>14</option><option selected>20</option><option>26</option><option>32</option></select></div>
+      <div class="field"><label for="nodesSelect">Reflection nodes</label><select id="nodesSelect"><option>3</option><option selected>5</option><option>7</option><option>10</option><option>12</option></select></div>
+      <div class="field"><label for="algorithmSelect">Generator</label><select id="algorithmSelect"><option value="backtracker" selected>Backtracker</option><option value="prim">Randomized Prim</option></select></div>
+    </div>
+    <div class="grid3">
+      <button class="btn" id="btnNew"><span class="icon">⟳</span>Generate</button>
+      <button class="btn secondary" id="btnDaily"><span class="icon">◫</span>Daily seed</button>
+      <button class="btn secondary" id="btnShare"><span class="icon">↗</span>Copy share link</button>
+    </div>
+    <div class="switchRow" aria-label="Quick toggles">
+      <button class="toggle" id="togFog" aria-pressed="false">Fog</button>
+      <button class="toggle" id="togTrail" aria-pressed="true">Trail</button>
+      <button class="toggle" id="togSound" aria-pressed="true">Sound</button>
+      <button class="toggle" id="togHaptics" aria-pressed="true">Haptics</button>
+      <button class="toggle" id="togAutosave" aria-pressed="true">Autosave</button>
+      <button class="toggle" id="togFocus" aria-pressed="false">Focus mode</button>
+    </div>
+  </section>
+</header>
+
+<main class="layout">
+  <section class="surface card" id="mazeCard" aria-labelledby="mazeTitle">
+    <div class="cardHead"><h2 id="mazeTitle">Maze</h2><div class="meta"><span class="kv" id="statSteps">Steps 0</span><span class="kv" id="statTime">00:00</span><span class="kv" id="statNodes">Nodes 0/0</span><span class="kv" id="statEff">Efficiency —</span></div></div>
+    <div id="mazeWrap"><div class="mazeFrame"><div id="maze" class="maze" role="grid" aria-label="Cognitive Labyrinth maze" tabindex="0"></div></div></div>
+    <div class="progressStrip" title="Progress along shortest start-to-end distance"><div class="progressTrack"><div class="progressFill" id="progressFill"></div></div></div>
+    <div id="winMessage" role="status" aria-live="polite"></div>
+  </section>
+
+  <aside class="side" aria-label="Reflection and controls">
+    <section class="surface card wide" id="reflectionCard">
+      <div class="cardHead"><h2>Adaptive reflection</h2><div class="meta"><span class="kv" id="posLabel">(0,0)</span><span class="kv" id="phaseLabel">Phase: Plan</span></div></div>
+      <div class="body">
+        <div class="promptBox" id="promptBox"><div class="promptTop"><span class="tag" id="promptTag">Start</span><span class="subtle" id="promptReason">Session setup</span></div><div id="promptText">Set a session intention, then start exploring.</div></div>
+        <div style="height:9px"></div>
+        <div class="grid2">
+          <div class="field"><label for="sessionGoal">Session intention / goal</label><input id="sessionGoal" placeholder="What would make this session useful?"></div>
+          <div class="field"><label for="profileSelect">Prompt profile</label><select id="profileSelect"><option value="general">General</option><option value="project" selected>Project / Build</option><option value="study">Study / Learning</option><option value="creative">Creative work</option></select></div>
+        </div>
+        <div style="height:9px"></div>
+        <label for="response">Your reflection</label>
+        <textarea id="response" placeholder="Write what you notice, remember, predict, plan, or will do next..."></textarea>
+        <div class="grid3" style="margin-top:9px"><button class="btn good" id="btnCoach"><span class="icon">✓</span>Save + coach</button><button class="btn secondary" id="btnSaveOnly">Save only</button><button class="btn secondary" id="btnNewPrompt">New prompt</button></div>
+        <div class="coachResult" id="coachResult" aria-live="polite" style="margin-top:9px"></div>
+        <div class="note" id="statusNote" style="margin-top:9px">Local Coach runs entirely in your browser. Remote coaching only uses the proxy endpoint you configure.</div>
+      </div>
+    </section>
+
+    <section class="surface card" id="controlsCard">
+      <div class="cardHead"><h3>Move</h3><span class="kv">Arrows / WASD / Swipe</span></div>
+      <div class="body">
+        <div class="controls"><button class="moveBtn blank" tabindex="-1"></button><button class="moveBtn" data-move="up" aria-label="Move up">↑</button><button class="moveBtn blank" tabindex="-1"></button><button class="moveBtn" data-move="left" aria-label="Move left">←</button><button class="moveBtn" data-move="down" aria-label="Move down">↓</button><button class="moveBtn" data-move="right" aria-label="Move right">→</button></div>
+        <div class="moveActions"><button class="btn secondary small" id="btnUndo">↶ Undo</button><button class="btn secondary small" id="btnHint">? Hint</button><button class="btn secondary small" id="btnSolution">⌁ Solution</button></div>
+        <div class="moveActions"><button class="btn secondary small" id="btnReset">Reset run</button><button class="btn secondary small" id="btnPause">Pause timer</button><button class="btn secondary small" id="btnCenter">Center maze</button></div>
+      </div>
+    </section>
+
+    <section class="surface card" id="analyticsCard">
+      <div class="cardHead"><h3>Run analytics</h3><span class="kv" id="bestLabel">Best: —</span></div>
+      <div class="body">
+        <div class="metricGrid">
+          <div class="metric"><strong id="mOptimal">—</strong><span>optimal steps</span></div>
+          <div class="metric"><strong id="mWallHits">0</strong><span>wall hits</span></div>
+          <div class="metric"><strong id="mCoverage">0%</strong><span>coverage</span></div>
+          <div class="metric"><strong id="mRevisit">0%</strong><span>revisit rate</span></div>
+          <div class="metric"><strong id="mHints">0</strong><span>hints</span></div>
+          <div class="metric"><strong id="mComplexity">—</strong><span>structure index</span></div>
+        </div>
+        <canvas id="historyChart" width="620" height="160" aria-label="Recent run efficiency chart"></canvas>
+        <div class="subtle" style="margin-top:6px">The structure index is a transparent maze heuristic, not a cognitive or clinical score.</div>
+      </div>
+    </section>
+
+    <section class="surface card wide" id="journalCard">
+      <div class="cardHead"><h3>Journal</h3><span class="kv" id="journalCount">0 entries</span></div>
+      <div class="body">
+        <div class="journalTools"><input id="journalSearch" placeholder="Filter journal…" aria-label="Filter journal"><button class="btn secondary small" id="btnExportJson">JSON</button><button class="btn secondary small" id="btnExportMd">Markdown</button></div>
+        <div class="journal" id="journal"></div>
+      </div>
+    </section>
+
+    <section class="surface card wide" id="settingsCard">
+      <div class="cardHead"><h3>Settings & data</h3><span class="kv" id="saveStateLabel">Saved locally</span></div>
+      <div class="body" style="display:flex;flex-direction:column;gap:9px">
+        <details open><summary><span>Maze & adaptive prompting</span><span>⌄</span></summary><div class="detailsBody">
+          <div class="grid3"><div class="field"><label for="loopsInput">Loopiness 0–60%</label><input id="loopsInput" type="number" min="0" max="60" step="5" value="10"></div><div class="field"><label for="visionInput">Fog radius 1–6</label><input id="visionInput" type="number" min="1" max="6" value="2"></div><div class="field"><label for="finishRule">Finish rule</label><select id="finishRule"><option value="end">Reach end</option><option value="nodesEnd" selected>Nodes + end</option></select></div></div>
+          <div class="grid3"><div class="field"><label for="promptMode">Prompt adaptation</label><select id="promptMode"><option value="adaptive" selected>Adaptive</option><option value="cycle">Balanced cycle</option><option value="random">Seeded random</option></select></div><div class="field"><label for="zoomInput">Maze zoom</label><input id="zoomInput" type="range" min="0.75" max="1.6" step="0.05" value="1"></div><div class="field"><label for="themeSelect">Theme</label><select id="themeSelect"><option value="auto" selected>System</option><option value="dark">Dark</option><option value="light">Light</option><option value="contrast">High contrast</option></select></div></div>
+          <button class="btn secondary small" id="btnApplyMaze">Apply maze settings & regenerate</button>
+        </div></details>
+
+        <details><summary><span>Coach connection</span><span>⌄</span></summary><div class="detailsBody">
+          <div class="grid3"><div class="field"><label for="coachMode">Coach mode</label><select id="coachMode"><option value="local" selected>Local Coach</option><option value="proxy">OpenAI via secure proxy</option></select></div><div class="field"><label for="modelSelect">Model</label><select id="modelSelect"><option value="gpt-5.6-luna" selected>GPT-5.6 Luna</option><option value="gpt-5.6-terra">GPT-5.6 Terra</option><option value="gpt-5.6-sol">GPT-5.6 Sol</option><option value="gpt-6-astra">GPT-6 Astra</option></select></div><div class="field"><label for="reasoningSelect">Reasoning effort</label><select id="reasoningSelect"><option value="none">None</option><option value="low" selected>Low</option><option value="medium">Medium</option><option value="high">High</option></select></div></div>
+          <div class="grid3"><div class="field"><label for="proxyUrl">Proxy endpoint</label><input id="proxyUrl" placeholder="https://your-domain.example/openai"></div><div class="field"><label for="proxyBearer">Proxy bearer (not saved)</label><input id="proxyBearer" type="password" autocomplete="off" placeholder="Optional"></div><div class="field"><label for="maxTokens">Max output tokens</label><input id="maxTokens" type="number" min="100" max="1500" value="420"></div></div>
+          <div class="switchRow"><button class="toggle" id="togRemoteMemory" aria-pressed="false">Remote conversation memory</button></div>
+          <div class="note">For security, this app does not offer browser-side OpenAI API-key mode. Configure a server-side proxy instead. Proxy bearer values are never persisted.</div>
+          <button class="btn secondary small" id="btnApplyCoach">Apply coach settings</button>
+        </div></details>
+
+        <details><summary><span>Import / export / privacy</span><span>⌄</span></summary><div class="detailsBody">
+          <div class="grid3"><button class="btn secondary small" id="btnExportAll">Export session</button><label class="btn secondary small" for="importFile" style="margin:0">Import session</label><button class="btn danger small" id="btnDeleteData">Delete local data</button></div>
+          <input class="srOnly" id="importFile" type="file" accept="application/json,.json">
+          <div class="note">Session state and journal entries are stored locally using IndexedDB when available, with localStorage as a fallback. Secrets are excluded from saves and exports.</div>
+        </div></details>
+
+        <details><summary><span>Secure proxy examples</span><span>⌄</span></summary><div class="detailsBody"><div class="subtle">Cloudflare Worker</div><pre class="codeBox" id="workerCode"></pre><div class="subtle">Node.js 22+ (no framework)</div><pre class="codeBox" id="nodeCode"></pre></div></details>
+      </div>
+    </section>
+  </aside>
+</main>
+<div class="statusbar"><span id="liveStatus" role="status" aria-live="polite">Ready.</span><span id="versionLabel">v4.0.0</span></div>
+</div>
+
+<script>
+(() => {
+"use strict";
+const APP_VERSION="4.0.0", SCHEMA_VERSION=4, DB_NAME="cognitive-labyrinth-v4", SAVE_KEY="session", HISTORY_KEY="history";
+const N=1,E=2,S=4,W=8,ALL=15;
+const DIRS={up:{dx:0,dy:-1,bit:N,opp:S},right:{dx:1,dy:0,bit:E,opp:W},down:{dx:0,dy:1,bit:S,opp:N},left:{dx:-1,dy:0,bit:W,opp:E}};
+const $=id=>document.getElementById(id); const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+const keyXY=(x,y)=>`${x},${y}`; const nowISO=()=>new Date().toISOString();
+const fmtTime=ms=>{const s=Math.max(0,Math.floor(ms/1000));return `${String(Math.floor(s/60)).padStart(2,"0")}:${String(s%60).padStart(2,"0")}`};
+function debounce(fn,wait=220){let t;return(...a)=>{clearTimeout(t);t=setTimeout(()=>fn(...a),wait)}}
+function xmur3(str){let h=1779033703^str.length;for(let i=0;i<str.length;i++){h=Math.imul(h^str.charCodeAt(i),3432918353);h=h<<13|h>>>19}return()=>{h=Math.imul(h^h>>>16,2246822507);h=Math.imul(h^h>>>13,3266489909);return(h^=h>>>16)>>>0}}
+function mulberry32(a){return()=>{let t=a+=0x6D2B79F5;t=Math.imul(t^t>>>15,t|1);t^=t+Math.imul(t^t>>>7,t|61);return((t^t>>>14)>>>0)/4294967296}}
+function seeded(seed){const h=xmur3(seed);return mulberry32(h())}
+function shuffled(arr,rng){for(let i=arr.length-1;i>0;i--){const j=Math.floor(rng()*(i+1));[arr[i],arr[j]]=[arr[j],arr[i]]}return arr}
+function download(name,text,type="application/json"){const blob=new Blob([text],{type});const u=URL.createObjectURL(blob);const a=document.createElement("a");a.href=u;a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(u),600)}
+
+class LocalStore{
+  constructor(){this.db=null;this.fallback=false}
+  async init(){try{this.db=await new Promise((resolve,reject)=>{const r=indexedDB.open(DB_NAME,1);r.onupgradeneeded=()=>{if(!r.result.objectStoreNames.contains("kv"))r.result.createObjectStore("kv")};r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error)});return true}catch(e){this.fallback=true;return false}}
+  async get(k){if(this.fallback){try{return JSON.parse(localStorage.getItem(`${DB_NAME}:${k}`)||"null")}catch{return null}}return new Promise((resolve,reject)=>{const tx=this.db.transaction("kv","readonly");const r=tx.objectStore("kv").get(k);r.onsuccess=()=>resolve(r.result??null);r.onerror=()=>reject(r.error)})}
+  async set(k,v){if(this.fallback){localStorage.setItem(`${DB_NAME}:${k}`,JSON.stringify(v));return}return new Promise((resolve,reject)=>{const tx=this.db.transaction("kv","readwrite");tx.objectStore("kv").put(v,k);tx.oncomplete=()=>resolve();tx.onerror=()=>reject(tx.error)})}
+  async del(k){if(this.fallback){localStorage.removeItem(`${DB_NAME}:${k}`);return}return new Promise((resolve,reject)=>{const tx=this.db.transaction("kv","readwrite");tx.objectStore("kv").delete(k);tx.oncomplete=()=>resolve();tx.onerror=()=>reject(tx.error)})}
+  async clear(){if(this.fallback){Object.keys(localStorage).filter(k=>k.startsWith(DB_NAME+":")).forEach(k=>localStorage.removeItem(k));return}return new Promise((resolve,reject)=>{const tx=this.db.transaction("kv","readwrite");tx.objectStore("kv").clear();tx.oncomplete=()=>resolve();tx.onerror=()=>reject(tx.error)})}
+}
+const store=new LocalStore();
+
+class MazeEngine{
+  static idx(x,y,size){return y*size+x}
+  static xy(i,size){return{x:i%size,y:Math.floor(i/size)}}
+  static neighbors(i,size){const{x,y}=this.xy(i,size),out=[];if(y>0)out.push({to:i-size,dir:DIRS.up});if(x<size-1)out.push({to:i+1,dir:DIRS.right});if(y<size-1)out.push({to:i+size,dir:DIRS.down});if(x>0)out.push({to:i-1,dir:DIRS.left});return out}
+  static carve(walls,a,b,dir){walls[a]&=~dir.bit;walls[b]&=~dir.opp}
+  static backtracker(size,rng){const total=size*size,walls=new Uint8Array(total);walls.fill(ALL);const seen=new Uint8Array(total),stack=[0];seen[0]=1;while(stack.length){const cur=stack[stack.length-1],choices=this.neighbors(cur,size).filter(n=>!seen[n.to]);if(!choices.length){stack.pop();continue}const pick=choices[Math.floor(rng()*choices.length)];this.carve(walls,cur,pick.to,pick.dir);seen[pick.to]=1;stack.push(pick.to)}return walls}
+  static prim(size,rng){const total=size*size,walls=new Uint8Array(total);walls.fill(ALL);const seen=new Uint8Array(total),front=[];const add=i=>{seen[i]=1;for(const n of this.neighbors(i,size))if(!seen[n.to])front.push({from:i,...n})};add(0);while(front.length){const j=Math.floor(rng()*front.length),edge=front[j];front[j]=front[front.length-1];front.pop();if(seen[edge.to])continue;this.carve(walls,edge.from,edge.to,edge.dir);add(edge.to)}return walls}
+  static addLoops(walls,size,rng,percent){const cand=[];for(let y=0;y<size;y++)for(let x=0;x<size;x++){const i=this.idx(x,y,size);if(x<size-1&&(walls[i]&E))cand.push({a:i,b:i+1,dir:DIRS.right});if(y<size-1&&(walls[i]&S))cand.push({a:i,b:i+size,dir:DIRS.down})}shuffled(cand,rng);const count=Math.floor(cand.length*clamp(percent,0,60)/100);for(let i=0;i<count;i++)this.carve(walls,cand[i].a,cand[i].b,cand[i].dir)}
+  static openNeighbors(i,walls,size){const{x,y}=this.xy(i,size),w=walls[i],out=[];if(!(w&N)&&y>0)out.push(i-size);if(!(w&E)&&x<size-1)out.push(i+1);if(!(w&S)&&y<size-1)out.push(i+size);if(!(w&W)&&x>0)out.push(i-1);return out}
+  static bfs(start,walls,size){const total=size*size,dist=new Int32Array(total);dist.fill(-1);const parent=new Int32Array(total);parent.fill(-1);const q=new Int32Array(total);let head=0,tail=0;q[tail++]=start;dist[start]=0;while(head<tail){const cur=q[head++];for(const n of this.openNeighbors(cur,walls,size))if(dist[n]===-1){dist[n]=dist[cur]+1;parent[n]=cur;q[tail++]=n}}return{dist,parent}}
+  static path(start,goal,walls,size){const{dist,parent}=this.bfs(start,walls,size);if(dist[goal]<0)return[];const p=[];for(let cur=goal;cur!==-1;cur=parent[cur]){p.push(cur);if(cur===start)break}return p.reverse()}
+  static generate({size,seed,algorithm,loops,nodes}){const rng=seeded(`${seed}|${size}|${algorithm}|${loops}|${nodes}|v4`);const walls=algorithm==="prim"?this.prim(size,rng):this.backtracker(size,rng);this.addLoops(walls,size,rng,loops);const{dist}=this.bfs(0,walls,size);let end=0,max=-1;for(let i=0;i<dist.length;i++)if(dist[i]>max){max=dist[i];end=i}const solution=this.path(0,end,walls,size);const nodeSet=new Set();const count=Math.min(nodes,Math.max(0,solution.length-2));for(let n=0;n<count;n++){const base=Math.round((n+1)*(solution.length-1)/(count+1));const jitter=Math.floor(rng()*5)-2;const at=clamp(base+jitter,1,solution.length-2);nodeSet.add(solution[at])}if(nodeSet.size<count){for(const i of shuffled([...Array(size*size).keys()].filter(i=>i!==0&&i!==end),rng)){nodeSet.add(i);if(nodeSet.size>=count)break}}
+    let dead=0,junc=0,edges=0;for(let i=0;i<size*size;i++){const deg=this.openNeighbors(i,walls,size).length;edges+=deg;if(deg===1)dead++;if(deg>=3)junc++}edges/=2;const cycles=Math.max(0,edges-(size*size-1));const pathRatio=max/Math.max(1,size*size-1),deadRatio=dead/(size*size),juncRatio=junc/(size*size),cycleRatio=cycles/Math.max(1,size*size);const complexity=Math.round(clamp((pathRatio*1.7+deadRatio*1.2+juncRatio*.8+cycleRatio*.55)*100,0,100));
+    return{size,seed,algorithm,loops,walls:Array.from(walls),end,nodes:[...nodeSet],solution,metrics:{optimal:max,deadEnds:dead,junctions:junc,cycles,complexity}}
+  }
+}
+
+const PROMPTS={
+  general:{
+    plan:["What outcome would make the next part of this session worthwhile? Name one observable result.","Before moving on, predict the next obstacle you are most likely to meet and how you will notice it."],
+    retrieve:["Without looking anything up, write the three most important things you currently know about the problem.","Recall the last decision you made. What evidence or assumption drove it?"],
+    explain:["Explain your current approach as if you had to teach it to someone in two minutes.","Why should your current approach work? State the mechanism, not just the intention."],
+    monitor:["Compare what you expected with what has actually happened so far. What is the biggest mismatch?","What signal tells you that you are making progress rather than just staying busy?"],
+    obstacle:["You are meeting friction. Identify the first controllable point where the process breaks down.","What is the smallest experiment that would distinguish between your two most likely explanations for the blocker?"],
+    transfer:["Where else could the idea you just used apply? Name one different context and the necessary adjustment.","What pattern from this session is reusable beyond this exact task?"],
+    implement:["Convert your next action into an if–then plan: ‘If ___ happens, then I will ___.’","Specify when, where, and what you will do next so the action can start without another planning step."],
+    adapt:["What will you keep, stop, and change for the next cycle? Give one item for each.","Based on the evidence from this run, what should your next strategy be—and what would make you abandon it?"]
+  },
+  project:{
+    plan:["Define the smallest vertical slice you can finish and verify today. What exactly will exist when it is done?","Which dependency or unknown has the highest chance of blocking the build? How can you test it early?"],
+    retrieve:["From memory, list the current system constraints, interfaces, and failure modes that matter most.","What did the last working version do correctly that the current version must preserve?"],
+    explain:["Describe the data flow through your current feature from input to output. Where can state become inconsistent?","Explain why your chosen architecture is simpler than the nearest alternative."],
+    monitor:["What measurable evidence says this implementation is improving rather than only getting larger?","Which assumption in the build has the weakest evidence right now?"],
+    obstacle:["Reduce the blocker to a reproducible case: expected result, actual result, and the smallest input that triggers it.","Which layer owns this failure: data, logic, rendering, integration, or environment? What test would prove it?"],
+    transfer:["Which piece of this solution should become a reusable utility or pattern—and which should stay local?","What did this bug or design decision teach you that should change your next project?"],
+    implement:["Write an if–then implementation plan for the next likely blocker: ‘If ___ fails, then I will test ___.’","Name the next commit-sized change, its acceptance test, and the condition that means it is finished."],
+    adapt:["What should be refactored now, and what should deliberately wait? Justify the boundary.","Choose one metric—correctness, latency, maintainability, UX, or robustness—to optimize next. Why that one?"]
+  },
+  study:{
+    plan:["What should you be able to recall or explain without notes by the end of this session?","Predict which concept will be hardest to retrieve later and why."],
+    retrieve:["Close the notes mentally: write everything you can recall about the current topic before checking anything.","Answer your own likely exam question from memory, then mark the part you are least certain about."],
+    explain:["Explain the concept in plain language, then add the technical detail that the simple explanation leaves out.","Connect this idea to one prior concept. What is the causal or logical link between them?"],
+    monitor:["What can you genuinely retrieve unaided, and what only feels familiar when you see it?","Which error in your understanding is most important to correct before adding more material?"],
+    obstacle:["Identify the exact step in the explanation where understanding breaks. What prerequisite is missing?","What example would expose whether you understand the rule or have only memorized the wording?"],
+    transfer:["Apply the concept to a new example you have not seen before. What changes and what stays invariant?","How would this knowledge help solve a problem from a different module or context?"],
+    implement:["Create an if–then study plan: ‘If I cannot retrieve ___, then I will ___ for 10 minutes and retest.’","When will you next retrieve this material from memory, and what will count as success?"],
+    adapt:["Which study strategy produced the best evidence of learning today? What will you change next time?","What should be spaced for later retrieval versus resolved immediately?"]
+  },
+  creative:{
+    plan:["Define the creative constraint for this pass. What are you intentionally not trying to solve yet?","What single visual, emotional, or interactive quality should this iteration make unmistakable?"],
+    retrieve:["Without reopening references, list the core shapes, motifs, rules, or feelings you want the design to retain.","What was the strongest idea from the previous iteration, and why did it work?"],
+    explain:["Explain the design hierarchy: what should be noticed first, second, and third—and how do the forms enforce that?","What is the visual or experiential rule tying the parts together?"],
+    monitor:["Which part currently looks intentional, and which part still looks accidental?","Is added detail increasing clarity or only density? Point to one element you would remove first."],
+    obstacle:["Turn the creative block into a constraint: what would you make if you could change only one variable?","Generate two deliberately opposite solutions to the same design problem. What does each reveal?"],
+    transfer:["Borrow one principle—not an exact form—from a different medium and adapt it here.","What reusable style rule emerged from this iteration that can guide the rest of the piece?"],
+    implement:["Create an if–then creative rule: ‘If the design becomes visually noisy, then I will ___.’","Name the next 15-minute experiment and the exact comparison you will make afterward."],
+    adapt:["Which constraint should be tightened for the next pass, and which should be relaxed?","What is the highest-leverage change you can make without rebuilding the whole piece?"]
+  }
+};
+
+class PromptEngine{
+  static phase(ctx){const p=ctx.progress;if(ctx.wallHitRate>.22&&ctx.steps>6)return"obstacle";if(ctx.hints>0&&ctx.steps%5===0)return"monitor";if(ctx.nodesDone===0&&p<.25)return"plan";if(ctx.nodesDone>=ctx.nodesTotal-1&&ctx.nodesTotal>0)return"implement";if(p>.78)return ctx.steps%2?"adapt":"transfer";return ctx.steps%2?"retrieve":"explain"}
+  static pick(ctx,force=false){const profile=PROMPTS[ctx.profile]||PROMPTS.general;let kind=state.settings.promptMode==="adaptive"?this.phase(ctx):state.settings.promptMode==="cycle"?["plan","retrieve","explain","monitor","obstacle","transfer","implement","adapt"][ctx.promptIndex%8]:Object.keys(profile)[Math.floor(state.rng()*8)];if(force&&kind===state.currentPrompt.kind)kind=Object.keys(profile).find(k=>k!==kind)||kind;const arr=profile[kind]||PROMPTS.general[kind];const text=arr[Math.floor(state.rng()*arr.length)];state.promptIndex++;return{kind,text,reason:this.reason(kind,ctx)}}
+  static reason(kind,ctx){const m={plan:"Define a clear target before acting",retrieve:"Active retrieval strengthens access to knowledge",explain:"Self-explanation exposes gaps and assumptions",monitor:"Compare prediction with evidence",obstacle:"Trigger a targeted prompt when friction rises",transfer:"Generalize beyond the current example",implement:"Turn intention into a concrete cue–action plan",adapt:"Use evidence to update the next strategy"};return m[kind]||"Adaptive prompt"}
+}
+
+class LocalCoach{
+  static coach(text,ctx){const t=text.trim(),lower=t.toLowerCase(),words=t.split(/\s+/).filter(Boolean);const blocked=/(stuck|blocked|can't|cannot|confus|hard|difficult|error|fail|broken|overwhelm)/.test(lower),planning=/(plan|next|later|tomorrow|milestone|task|step|deadline)/.test(lower),uncertain=/(maybe|perhaps|not sure|uncertain|guess|think)/.test(lower),evidence=/(test|measure|evidence|result|because|observ|compare)/.test(lower);let insight,question,action,ifThen,tag;
+    if(blocked){tag="debug";insight="Your reflection contains a concrete friction signal; isolating the earliest failing step will make the next action more diagnostic.";question="What is the first observable point where expected and actual behavior diverge?";action="Spend 12 minutes creating the smallest reproducible case and record expected versus actual output.";ifThen="If the failure still appears in the minimal case, then test one layer at a time from input toward output."}
+    else if(words.length<18){tag="specificity";insight="The reflection is concise, but it may be too underspecified to guide the next decision.";question="What evidence, constraint, or example would make this statement testable?";action="Add three bullets: current state, desired state, and the next observable check.";ifThen="If you cannot name an observable check, then shrink the goal until you can."}
+    else if(planning&&!evidence){tag="execution";insight="You have a plan, but the success condition is not yet explicit.";question="What result will tell you the next step worked?";action="Turn the next task into one deliverable plus one acceptance check, then start a 20-minute work block.";ifThen="If the acceptance check fails, then revise the method rather than merely extending the time."}
+    else if(uncertain){tag="hypothesis";insight="You are expressing uncertainty, which is useful when it is converted into competing hypotheses.";question="What are the two most plausible explanations, and what observation would separate them?";action="Write two hypotheses and run the cheapest discriminating test first.";ifThen="If both hypotheses survive, then gather one new observation before choosing a direction."}
+    else{tag="progress";insight="Your reflection is specific enough to convert into a short feedback loop rather than another round of planning.";question="What single action would produce the most information or progress in the next 20 minutes?";action="Choose that action, timebox it for 20 minutes, and capture one artifact or observation at the end.";ifThen="If the action produces no useful signal, then reduce its scope and test the smallest uncertain assumption."}
+    if(ctx.currentPromptKind==="implement"&&!/\bif\b.*\bthen\b/.test(lower)){question="Can you rewrite your next action explicitly as ‘If [cue], then I will [action]’?";ifThen="If the cue occurs, then begin the action immediately without reopening the planning decision."}
+    return{tag,insight,question,action,if_then:ifThen}}
+}
+
+const state={
+  maze:null,player:0,visited:new Set(),visitCounts:new Map(),pathStack:[],steps:0,wallHits:0,revisits:0,hints:0,nodesDone:new Set(),journal:[],history:[],showSolution:false,solutionOverlay:[],hintCell:null,win:false,
+  elapsedMs:0,timerStartedAt:0,timerRunning:false,timerId:null,promptIndex:0,currentPrompt:{kind:"start",text:"Set a session intention, then start exploring.",reason:"Session setup"},rng:Math.random,lastNode:null,
+  settings:{size:20,nodes:5,algorithm:"backtracker",loops:10,vision:2,finishRule:"nodesEnd",promptMode:"adaptive",theme:"auto",zoom:1,profile:"project",fog:false,trail:true,sound:true,haptics:true,autosave:true,focus:false,coachMode:"local",model:"gpt-5.6-luna",reasoning:"low",proxyUrl:"",maxTokens:420,remoteMemory:false,prevResponseId:null,sessionGoal:""}
+};
+
+const els={app:$("app"),maze:$("maze"),mazeWrap:$("mazeWrap"),seed:$("seedInput"),size:$("sizeSelect"),nodes:$("nodesSelect"),algo:$("algorithmSelect"),loops:$("loopsInput"),vision:$("visionInput"),finish:$("finishRule"),promptMode:$("promptMode"),theme:$("themeSelect"),zoom:$("zoomInput"),profile:$("profileSelect"),goal:$("sessionGoal"),response:$("response"),promptText:$("promptText"),promptTag:$("promptTag"),promptReason:$("promptReason"),coachResult:$("coachResult"),journal:$("journal"),journalSearch:$("journalSearch"),status:$("liveStatus"),statusNote:$("statusNote"),win:$("winMessage"),progress:$("progressFill"),coachMode:$("coachMode"),model:$("modelSelect"),reasoning:$("reasoningSelect"),proxyUrl:$("proxyUrl"),proxyBearer:$("proxyBearer"),maxTokens:$("maxTokens")};
+let cellEls=[];let audioCtx=null;
+function announce(msg){els.status.textContent=msg}
+function haptic(p=[12]){if(state.settings.haptics&&navigator.vibrate)try{navigator.vibrate(p)}catch{}}
+function beep(freq=420,d=.045,type="sine",gain=.035){if(!state.settings.sound)return;try{audioCtx||=new(window.AudioContext||window.webkitAudioContext)();if(audioCtx.state==="suspended")audioCtx.resume();const o=audioCtx.createOscillator(),g=audioCtx.createGain(),t=audioCtx.currentTime;o.type=type;o.frequency.setValueAtTime(freq,t);g.gain.setValueAtTime(.0001,t);g.gain.exponentialRampToValueAtTime(gain,t+.008);g.gain.exponentialRampToValueAtTime(.0001,t+d);o.connect(g).connect(audioCtx.destination);o.start(t);o.stop(t+d+.015)}catch{}}
+
+function applyTheme(){let t=state.settings.theme;if(t==="auto")t=matchMedia("(prefers-color-scheme: light)").matches?"light":"dark";document.documentElement.dataset.theme=t;els.app.dataset.theme=t;document.documentElement.style.setProperty("--mazeZoom",String(state.settings.zoom));els.app.classList.toggle("focusMode",state.settings.focus)}
+function setToggle(id,val){$(id).setAttribute("aria-pressed",String(!!val))}
+function syncControls(){els.size.value=state.settings.size;els.nodes.value=state.settings.nodes;els.algo.value=state.settings.algorithm;els.loops.value=state.settings.loops;els.vision.value=state.settings.vision;els.finish.value=state.settings.finishRule;els.promptMode.value=state.settings.promptMode;els.theme.value=state.settings.theme;els.zoom.value=state.settings.zoom;els.profile.value=state.settings.profile;els.goal.value=state.settings.sessionGoal;els.coachMode.value=state.settings.coachMode;els.model.value=state.settings.model;els.reasoning.value=state.settings.reasoning;els.proxyUrl.value=state.settings.proxyUrl;els.maxTokens.value=state.settings.maxTokens;setToggle("togFog",state.settings.fog);setToggle("togTrail",state.settings.trail);setToggle("togSound",state.settings.sound);setToggle("togHaptics",state.settings.haptics);setToggle("togAutosave",state.settings.autosave);setToggle("togFocus",state.settings.focus);setToggle("togRemoteMemory",state.settings.remoteMemory);applyTheme();updatePills()}
+function updatePills(){$("pillSeed").textContent=`Seed: ${state.maze?.seed||"—"}`;$("pillMode").textContent=state.settings.coachMode==="local"?"Local Coach":`Proxy · ${state.settings.model}`;$("modeDot").className="dot "+(state.settings.coachMode==="local"?"":"good");$("pillFog").textContent=`Fog: ${state.settings.fog?"On":"Off"}`;$("fogDot").className="dot "+(state.settings.fog?"good":"warn");$("pillComplexity").textContent=`Complexity: ${state.maze?.metrics?.complexity??"—"}`}
+
+function newMaze(seed,opts={}){const s=(seed||"").trim()||`kai-${Math.floor(Math.random()*1e9)}`;els.seed.value=s;state.rng=seeded(`${s}|prompts|v4`);state.maze=MazeEngine.generate({size:state.settings.size,seed:s,algorithm:state.settings.algorithm,loops:state.settings.loops,nodes:state.settings.nodes});resetRun(false);renderMaze();updateURL();updatePills();announce(`Generated ${state.settings.size} by ${state.settings.size} maze.`);scheduleSave(true)}
+function resetRun(rerender=true){stopTimer();state.player=0;state.visited=new Set([0]);state.visitCounts=new Map([[0,1]]);state.pathStack=[];state.steps=0;state.wallHits=0;state.revisits=0;state.hints=0;state.nodesDone=new Set();state.showSolution=false;state.solutionOverlay=[];state.hintCell=null;state.win=false;state.elapsedMs=0;state.promptIndex=0;state.lastNode=null;state.settings.prevResponseId=null;els.win.style.display="none";els.win.textContent="";state.currentPrompt={kind:"plan",text:"Set a concrete session intention, then move through the maze. At reflection nodes, answer from memory or current evidence before seeking more information.",reason:"Start with a clear target"};renderPrompt();startTimer();if(rerender&&state.maze)renderMaze();updateAllStats();renderJournal();}
+
+function renderMaze(){if(!state.maze)return;const m=state.maze;els.maze.style.gridTemplateColumns=`repeat(${m.size},1fr)`;els.maze.innerHTML="";cellEls=new Array(m.size*m.size);const nodeSet=new Set(m.nodes);const frag=document.createDocumentFragment();for(let i=0;i<m.size*m.size;i++){const{x,y}=MazeEngine.xy(i,m.size),c=document.createElement("div");c.className="cell"+(i%2?" alt":"");const w=m.walls[i];if(w&N)c.classList.add("wN");if(w&E)c.classList.add("wE");if(w&S)c.classList.add("wS");if(w&W)c.classList.add("wW");c.dataset.i=i;c.setAttribute("role","gridcell");c.setAttribute("aria-label",`Cell ${x+1}, ${y+1}`);if(nodeSet.has(i)){const mark=document.createElement("span");mark.className="marker node";mark.setAttribute("aria-hidden","true");c.appendChild(mark)}if(i===m.end){const mark=document.createElement("span");mark.className="marker end";mark.setAttribute("aria-hidden","true");c.appendChild(mark)}cellEls[i]=c;frag.appendChild(c)}els.maze.appendChild(frag);refreshAllCells();updateAllStats()}
+function refreshAllCells(){for(let i=0;i<cellEls.length;i++)refreshCell(i);updateFog()}
+function refreshCell(i){const c=cellEls[i];if(!c)return;c.classList.toggle("current",i===state.player);c.classList.toggle("visited",state.settings.trail&&state.visited.has(i));c.classList.toggle("solution",state.showSolution&&state.solutionOverlay.includes(i));c.classList.toggle("hint",state.hintCell===i);if(i===state.player)c.setAttribute("aria-current","location");else c.removeAttribute("aria-current");const mark=c.querySelector(".marker.node");if(mark)mark.classList.toggle("done",state.nodesDone.has(i));}
+function updateFog(){if(!state.maze)return;const size=state.maze.size,{x:px,y:py}=MazeEngine.xy(state.player,size),r=state.settings.vision;for(let i=0;i<cellEls.length;i++){if(!state.settings.fog){cellEls[i].classList.remove("hidden");continue}const{x,y}=MazeEngine.xy(i,size),visible=state.visited.has(i)||(Math.abs(x-px)+Math.abs(y-py)<=r);cellEls[i].classList.toggle("hidden",!visible)}}
+function clearOverlays(){if(state.hintCell!=null){const old=state.hintCell;state.hintCell=null;refreshCell(old)}if(state.showSolution){const old=state.solutionOverlay.slice();state.solutionOverlay=MazeEngine.path(state.player,state.maze.end,Uint8Array.from(state.maze.walls),state.maze.size);for(const i of new Set([...old,...state.solutionOverlay]))refreshCell(i)}}
+function canMove(dir){const d=DIRS[dir];if(!d)return null;if(state.maze.walls[state.player]&d.bit)return null;const{x,y}=MazeEngine.xy(state.player,state.maze.size),nx=x+d.dx,ny=y+d.dy;if(nx<0||ny<0||nx>=state.maze.size||ny>=state.maze.size)return null;return MazeEngine.idx(nx,ny,state.maze.size)}
+function move(dir){if(!state.maze||state.win)return;const next=canMove(dir);if(next==null){state.wallHits++;beep(130,.06,"square",.05);haptic([8]);announce("Wall.");updateAllStats();scheduleSave();return}const prev=state.player;state.pathStack.push(prev);state.player=next;state.steps++;if(state.visited.has(next))state.revisits++;state.visited.add(next);state.visitCounts.set(next,(state.visitCounts.get(next)||0)+1);clearOverlays();refreshCell(prev);refreshCell(next);updateFog();beep(270,.025,"sine",.022);handleArrival(next);updateAllStats();scheduleSave()}
+function handleArrival(i){if(i===state.maze.end){const remaining=state.maze.nodes.length-state.nodesDone.size;if(state.settings.finishRule==="nodesEnd"&&remaining>0){state.currentPrompt={kind:"monitor",text:`You found the exit, but ${remaining} reflection node${remaining===1?" remains":"s remain"}. What information from the route will help you explore deliberately rather than randomly?`,reason:"Finish rule requires reflection nodes"};renderPrompt();announce(`Exit found; ${remaining} reflection nodes remain.`);beep(520,.06,"triangle",.04);return}winRun();return}if(state.maze.nodes.includes(i)&&!state.nodesDone.has(i)){state.lastNode=i;state.currentPrompt=PromptEngine.pick(promptContext());renderPrompt();els.response.focus({preventScroll:true});beep(590,.065,"triangle",.045);haptic([14]);announce(`Reflection node: ${state.currentPrompt.kind}.`)}else{const p=progressRatio();if(p>.82)announce("Near the farthest region of the maze.");else announce("Moved.")}}
+function undo(){if(!state.pathStack.length){announce("Nothing to undo.");return}const prev=state.player;state.player=state.pathStack.pop();state.steps=Math.max(0,state.steps-1);clearOverlays();refreshCell(prev);refreshCell(state.player);updateFog();updateAllStats();beep(220,.04,"triangle",.03);scheduleSave();announce("Undid one move.")}
+function showHint(){if(state.win)return;const p=MazeEngine.path(state.player,state.maze.end,Uint8Array.from(state.maze.walls),state.maze.size);if(p.length<2){announce("No hint available.");return}clearOverlays();state.hints++;state.hintCell=p[1];refreshCell(state.hintCell);updateAllStats();beep(520,.05,"triangle",.04);haptic([15]);scheduleSave();announce("Highlighted the next shortest-path cell.")}
+function toggleSolution(){if(state.win)return;const previously=[...state.solutionOverlay];state.showSolution=!state.showSolution;state.solutionOverlay=state.showSolution?MazeEngine.path(state.player,state.maze.end,Uint8Array.from(state.maze.walls),state.maze.size):[];for(const i of new Set([...previously,...state.solutionOverlay]))refreshCell(i);$("btnSolution").textContent=state.showSolution?"⌁ Hide":"⌁ Solution";state.hints+=state.showSolution?1:0;updateAllStats();announce(state.showSolution?"Shortest path shown from current position.":"Solution hidden.");scheduleSave()}
+function progressRatio(){if(!state.maze)return 0;const{dist}=MazeEngine.bfs(0,Uint8Array.from(state.maze.walls),state.maze.size),optimal=state.maze.metrics.optimal||1;return clamp((dist[state.player]||0)/optimal,0,1)}
+function efficiency(){if(!state.maze||state.steps<=0)return null;return clamp(state.maze.metrics.optimal/state.steps,0,1)}
+function promptContext(){return{progress:progressRatio(),steps:state.steps,wallHitRate:state.wallHits/Math.max(1,state.steps+state.wallHits),hints:state.hints,nodesDone:state.nodesDone.size,nodesTotal:state.maze.nodes.length,profile:state.settings.profile,promptIndex:state.promptIndex,currentPromptKind:state.currentPrompt.kind}}
+function renderPrompt(){els.promptTag.textContent=state.currentPrompt.kind;els.promptReason.textContent=state.currentPrompt.reason||"Adaptive prompt";els.promptText.textContent=state.currentPrompt.text;$("phaseLabel").textContent=`Phase: ${state.currentPrompt.kind[0].toUpperCase()+state.currentPrompt.kind.slice(1)}`}
+function newPrompt(){state.currentPrompt=PromptEngine.pick(promptContext(),true);renderPrompt();announce(`New ${state.currentPrompt.kind} prompt.`);scheduleSave()}
+
+function renderCoach(obj){els.coachResult.innerHTML="";const rows=[["Insight",obj.insight],["Question",obj.question],["Next action",obj.action],["If–then",obj.if_then]];for(const[label,text]of rows){if(!text)continue;const d=document.createElement("div");d.className="coachRow"+(label==="If–then"?" ifthen":"");const b=document.createElement("b");b.textContent=label;const s=document.createElement("span");s.textContent=text;d.append(b,s);els.coachResult.appendChild(d)}els.coachResult.classList.add("show")}
+function coachAsText(c){return[`Insight: ${c.insight||""}`,`Question: ${c.question||""}`,`Next action: ${c.action||""}`,`If–then: ${c.if_then||""}`].join("\n")}
+async function remoteCoach(text){const url=state.settings.proxyUrl.trim();if(!url)throw new Error("Set a proxy endpoint first.");const schema={type:"object",additionalProperties:false,properties:{tag:{type:"string"},insight:{type:"string"},question:{type:"string"},action:{type:"string"},if_then:{type:"string"}},required:["tag","insight","question","action","if_then"]};const ctx=promptContext();const body={model:state.settings.model,instructions:"You are a concise reflective learning/project coach. Help the user regulate their own work: identify the strongest evidence in their reflection, ask one useful question, give one concrete timeboxed action, and provide one specific if-then implementation intention. Do not diagnose health conditions. Do not inflate confidence. Keep each field short and practical.",input:[{role:"user",content:`Prompt type: ${state.currentPrompt.kind}\nPrompt: ${state.currentPrompt.text}\nSession goal: ${state.settings.sessionGoal||"not set"}\nReflection: ${text}\nMaze context: steps=${ctx.steps}, progress=${Math.round(ctx.progress*100)}%, nodes=${ctx.nodesDone}/${ctx.nodesTotal}, hints=${ctx.hints}.`}],reasoning:{effort:state.settings.reasoning},max_output_tokens:state.settings.maxTokens,text:{format:{type:"json_schema",name:"coach_response",strict:true,schema},verbosity:"low"},truncation:"auto",store:state.settings.remoteMemory};if(state.settings.remoteMemory&&state.settings.prevResponseId)body.previous_response_id=state.settings.prevResponseId;const headers={"Content-Type":"application/json"};const token=els.proxyBearer.value.trim();if(token)headers.Authorization=`Bearer ${token}`;const ctrl=new AbortController(),timer=setTimeout(()=>ctrl.abort(),35000);let res;try{res=await fetch(url,{method:"POST",headers,body:JSON.stringify(body),signal:ctrl.signal})}finally{clearTimeout(timer)}const raw=await res.text();let data;try{data=JSON.parse(raw)}catch{throw new Error("Proxy returned non-JSON data.")}if(!res.ok)throw new Error(data?.error?.message||`Proxy HTTP ${res.status}`);if(state.settings.remoteMemory&&typeof data.id==="string")state.settings.prevResponseId=data.id;const parts=[];for(const item of data.output||[])if(item?.type==="message")for(const c of item.content||[])if(c?.type==="output_text"&&typeof c.text==="string")parts.push(c.text);const out=parts.join("\n").trim();if(!out)throw new Error("No coach text returned.");try{return JSON.parse(out)}catch{return{tag:"coach",insight:out,question:"What part of that response is most actionable?",action:"Choose one concrete next step and timebox it.",if_then:"If you stall, then reduce the next step until it can begin immediately."}}}
+async function saveReflection(withCoach=true){const text=els.response.value.trim();if(!text){announce("Write a reflection first.");els.response.focus();beep(150,.06,"square",.05);return}const btn=$("btnCoach");btn.disabled=true;let coach=null;let remoteFallback=false;try{if(withCoach){announce("Generating coach response…");if(state.settings.coachMode==="local")coach=LocalCoach.coach(text,{...promptContext(),currentPromptKind:state.currentPrompt.kind});else{try{coach=await remoteCoach(text)}catch(e){remoteFallback=true;coach=LocalCoach.coach(text,{...promptContext(),currentPromptKind:state.currentPrompt.kind});els.statusNote.textContent=`Remote coach unavailable (${e.message||e}). Saved with Local Coach fallback.`}}renderCoach(coach)}const wasNode=state.maze.nodes.includes(state.player)&&!state.nodesDone.has(state.player);if(wasNode){state.nodesDone.add(state.player);refreshCell(state.player);state.lastNode=null}state.journal.unshift({id:crypto.randomUUID?crypto.randomUUID():`${Date.now()}-${Math.random()}`,time:nowISO(),seed:state.maze.seed,pos:MazeEngine.xy(state.player,state.maze.size),kind:state.currentPrompt.kind,prompt:state.currentPrompt.text,user:text,coach:coach?coachAsText(coach):"",coachMode:withCoach?(remoteFallback?"local-fallback":state.settings.coachMode):"none"});if(state.journal.length>300)state.journal.length=300;els.response.value="";renderJournal();updateAllStats();scheduleSave(true);beep(650,.055,"triangle",.04);announce(wasNode?"Reflection saved; node completed.":remoteFallback?"Reflection saved with Local Coach fallback.":"Reflection saved.");if(state.player===state.maze.end&&state.settings.finishRule==="nodesEnd"&&state.nodesDone.size===state.maze.nodes.length)winRun()}catch(e){announce(`Save error: ${e.message||e}`);els.statusNote.textContent=`Save error: ${e.message||e}`;beep(130,.08,"square",.05)}finally{btn.disabled=false}}
+
+function startTimer(){if(state.timerRunning||state.win)return;state.timerRunning=true;state.timerStartedAt=performance.now();clearInterval(state.timerId);state.timerId=setInterval(updateTimer,250);$("btnPause").textContent="Pause timer"}
+function stopTimer(){if(state.timerRunning){state.elapsedMs+=performance.now()-state.timerStartedAt;state.timerRunning=false}clearInterval(state.timerId);state.timerId=null;updateTimer()}
+function toggleTimer(){state.timerRunning?stopTimer():startTimer();$("btnPause").textContent=state.timerRunning?"Pause timer":"Resume timer";announce(state.timerRunning?"Timer resumed.":"Timer paused.");scheduleSave()}
+function elapsed(){return state.elapsedMs+(state.timerRunning?performance.now()-state.timerStartedAt:0)}
+function updateTimer(){$("statTime").textContent=fmtTime(elapsed())}
+function winRun(){if(state.win)return;state.win=true;stopTimer();const eff=efficiency(),result={time:nowISO(),seed:state.maze.seed,size:state.maze.size,algorithm:state.maze.algorithm,steps:state.steps,optimal:state.maze.metrics.optimal,efficiency:eff??0,elapsedMs:state.elapsedMs,hints:state.hints,wallHits:state.wallHits,nodes:state.nodesDone.size};state.history.unshift(result);state.history=state.history.slice(0,40);els.win.style.display="block";els.win.textContent=`Completed. ${state.steps} steps · optimal ${state.maze.metrics.optimal} · ${Math.round((eff||0)*100)}% route efficiency · ${fmtTime(state.elapsedMs)} · ${state.nodesDone.size}/${state.maze.nodes.length} nodes.`;beep(880,.1,"triangle",.055);setTimeout(()=>beep(660,.09,"triangle",.045),100);haptic([25,45,25]);announce("Maze completed.");updateAllStats();drawHistory();scheduleSave(true)}
+
+function updateAllStats(){if(!state.maze)return;const eff=efficiency(),coverage=state.visited.size/(state.maze.size*state.maze.size),rev=state.steps?state.revisits/state.steps:0;$("statSteps").textContent=`Steps ${state.steps}`;$("statNodes").textContent=`Nodes ${state.nodesDone.size}/${state.maze.nodes.length}`;$("statEff").textContent=`Efficiency ${eff==null?"—":Math.round(eff*100)+"%"}`;$("posLabel").textContent=`(${MazeEngine.xy(state.player,state.maze.size).x},${MazeEngine.xy(state.player,state.maze.size).y})`;els.progress.style.width=`${Math.round(progressRatio()*100)}%`;$("mOptimal").textContent=state.maze.metrics.optimal;$("mWallHits").textContent=state.wallHits;$("mCoverage").textContent=`${Math.round(coverage*100)}%`;$("mRevisit").textContent=`${Math.round(rev*100)}%`;$("mHints").textContent=state.hints;$("mComplexity").textContent=state.maze.metrics.complexity;const same=state.history.filter(h=>h.seed===state.maze.seed&&h.size===state.maze.size);const best=same.length?Math.max(...same.map(h=>h.efficiency)):null;$("bestLabel").textContent=best==null?"Best: —":`Best: ${Math.round(best*100)}%`;updateTimer();updatePills()}
+function drawHistory(){const c=$("historyChart"),ctx=c.getContext("2d"),dpr=Math.max(1,devicePixelRatio||1),cssW=c.clientWidth||620,cssH=120;c.width=Math.round(cssW*dpr);c.height=Math.round(cssH*dpr);ctx.setTransform(dpr,0,0,dpr,0,0);ctx.clearRect(0,0,cssW,cssH);ctx.strokeStyle=getComputedStyle(els.app).getPropertyValue("--stroke2");ctx.lineWidth=1;for(let i=1;i<4;i++){const y=i*cssH/4;ctx.beginPath();ctx.moveTo(8,y);ctx.lineTo(cssW-8,y);ctx.stroke()}const vals=state.history.slice(0,12).reverse().map(h=>h.efficiency*100);if(vals.length<1)return;ctx.strokeStyle=getComputedStyle(els.app).getPropertyValue("--accent2").trim();ctx.lineWidth=2;ctx.beginPath();vals.forEach((v,i)=>{const x=12+i*(cssW-24)/Math.max(1,vals.length-1),y=cssH-12-v*(cssH-24)/100;i?ctx.lineTo(x,y):ctx.moveTo(x,y)});ctx.stroke();ctx.fillStyle=getComputedStyle(els.app).getPropertyValue("--good").trim();vals.forEach((v,i)=>{const x=12+i*(cssW-24)/Math.max(1,vals.length-1),y=cssH-12-v*(cssH-24)/100;ctx.beginPath();ctx.arc(x,y,2.8,0,Math.PI*2);ctx.fill()})}
+function renderJournal(){const q=els.journalSearch.value.trim().toLowerCase();const list=state.journal.filter(e=>!q||[e.kind,e.prompt,e.user,e.coach].join(" ").toLowerCase().includes(q));$("journalCount").textContent=`${state.journal.length} entr${state.journal.length===1?"y":"ies"}`;els.journal.innerHTML="";if(!list.length){els.journal.innerHTML='<div class="empty">No matching journal entries.</div>';return}for(const e of list){const d=document.createElement("article");d.className="entry";const top=document.createElement("div");top.className="entryTop";top.textContent=`${new Date(e.time).toLocaleString()} · ${e.kind||"reflection"} · (${e.pos?.x??"?"},${e.pos?.y??"?"})`;const p=document.createElement("div");p.className="entryPrompt";p.textContent=e.prompt||"";const u=document.createElement("div");u.className="entryUser";u.textContent=e.user||"";d.append(top,p,u);if(e.coach){const a=document.createElement("div");a.className="entryCoach";a.textContent=e.coach;d.appendChild(a)}els.journal.appendChild(d)}}
+
+function snapshot(){return{schema:SCHEMA_VERSION,appVersion:APP_VERSION,savedAt:nowISO(),settings:{...state.settings,prevResponseId:null},seed:state.maze?.seed||els.seed.value,maze:state.maze,run:{player:state.player,visited:[...state.visited],visitCounts:[...state.visitCounts],pathStack:state.pathStack,steps:state.steps,wallHits:state.wallHits,revisits:state.revisits,hints:state.hints,nodesDone:[...state.nodesDone],journal:state.journal,elapsedMs:elapsed(),promptIndex:state.promptIndex,currentPrompt:state.currentPrompt,win:state.win},history:state.history}}
+function validateImport(data){if(!data||typeof data!=="object")throw new Error("Invalid JSON object.");if(data.schema!==SCHEMA_VERSION)throw new Error(`Unsupported schema ${data.schema}; expected ${SCHEMA_VERSION}.`);if(!data.maze||!Number.isInteger(data.maze.size)||!Array.isArray(data.maze.walls))throw new Error("Missing maze data.");if(data.maze.size<5||data.maze.size>64||data.maze.walls.length!==data.maze.size*data.maze.size)throw new Error("Invalid maze dimensions.");if(!data.run||!Array.isArray(data.run.visited)||!Array.isArray(data.run.nodesDone))throw new Error("Invalid run state.");return true}
+async function persist(force=false){if(!state.settings.autosave&&!force)return;try{await store.set(SAVE_KEY,snapshot());await store.set(HISTORY_KEY,state.history);$("saveStateLabel").textContent=`Saved ${new Date().toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"})}`}catch(e){$("saveStateLabel").textContent="Save failed";announce(`Local save failed: ${e.message||e}`)}}
+const scheduleSave=debounce(persist,260);
+function restore(data){validateImport(data);state.settings={...state.settings,...data.settings,prevResponseId:null};state.settings.size=data.maze.size;state.settings.nodes=Array.isArray(data.maze.nodes)?data.maze.nodes.length:state.settings.nodes;state.settings.algorithm=data.maze.algorithm||state.settings.algorithm;state.settings.loops=Number.isFinite(Number(data.maze.loops))?Number(data.maze.loops):state.settings.loops;state.maze=data.maze;state.rng=seeded(`${data.maze.seed}|prompts|v4`);const r=data.run;state.player=clamp(Number(r.player)||0,0,data.maze.size*data.maze.size-1);state.visited=new Set(r.visited||[0]);state.visitCounts=new Map(r.visitCounts||[[0,1]]);state.pathStack=Array.isArray(r.pathStack)?r.pathStack:[];state.steps=Number(r.steps)||0;state.wallHits=Number(r.wallHits)||0;state.revisits=Number(r.revisits)||0;state.hints=Number(r.hints)||0;state.nodesDone=new Set(r.nodesDone||[]);state.journal=Array.isArray(r.journal)?r.journal.slice(0,300):[];state.elapsedMs=Number(r.elapsedMs)||0;state.promptIndex=Number(r.promptIndex)||0;state.currentPrompt=r.currentPrompt||state.currentPrompt;state.win=!!r.win;state.history=Array.isArray(data.history)?data.history.slice(0,40):state.history;els.seed.value=data.maze.seed;syncControls();renderMaze();renderPrompt();renderJournal();drawHistory();state.win?stopTimer():startTimer();if(state.win){els.win.style.display="block";els.win.textContent="Loaded a completed run."}updateAllStats()}
+function exportAll(){const s=snapshot();download(`cognitive-labyrinth-v4_${s.seed}_${Date.now()}.json`,JSON.stringify(s,null,2));announce("Exported session JSON.")}
+function exportMarkdown(){const lines=[`# Cognitive Labyrinth Journal`,"",`Seed: ${state.maze?.seed||""}`,`Exported: ${new Date().toLocaleString()}`,""];for(const e of [...state.journal].reverse()){lines.push(`## ${new Date(e.time).toLocaleString()} — ${e.kind||"reflection"}`,"",`**Prompt:** ${e.prompt||""}`,"",e.user||"","");if(e.coach)lines.push("**Coach:**",e.coach,"")}download(`cognitive-labyrinth-journal_${Date.now()}.md`,lines.join("\n"),"text/markdown");announce("Exported journal Markdown.")}
+async function importFile(file){if(!file)return;if(file.size>2_500_000){announce("Import rejected: file exceeds 2.5 MB.");return}try{const data=JSON.parse(await file.text());restore(data);await persist(true);announce("Imported session successfully.")}catch(e){announce(`Import failed: ${e.message||e}`)}}
+
+function updateURL(){if(!state.maze)return;const p=new URLSearchParams();p.set("seed",state.maze.seed);p.set("size",state.settings.size);p.set("nodes",state.settings.nodes);p.set("algo",state.settings.algorithm);p.set("loops",state.settings.loops);history.replaceState(null,"",`${location.pathname}?${p}`)}
+function hasShareParams(){const p=new URLSearchParams(location.search);return p.has("seed")||p.has("size")||p.has("nodes")||p.has("algo")||p.has("loops")}
+function readShareParams(){const p=new URLSearchParams(location.search);if(p.has("size"))state.settings.size=clamp(Number(p.get("size"))||20,5,64);if(p.has("nodes"))state.settings.nodes=clamp(Number(p.get("nodes"))||5,1,20);if(p.has("algo")&&["backtracker","prim"].includes(p.get("algo")))state.settings.algorithm=p.get("algo");if(p.has("loops"))state.settings.loops=clamp(Number(p.get("loops"))||0,0,60);return p.get("seed")||""}
+async function copyShare(){updateURL();try{await navigator.clipboard.writeText(location.href);announce("Share link copied.")}catch{announce("Could not access clipboard; copy the address bar URL.")}}
+
+function applyMazeSettings(){state.settings.size=clamp(Number(els.size.value)||20,5,64);state.settings.nodes=clamp(Number(els.nodes.value)||5,1,20);state.settings.algorithm=els.algo.value;state.settings.loops=clamp(Number(els.loops.value)||0,0,60);state.settings.vision=clamp(Number(els.vision.value)||2,1,6);state.settings.finishRule=els.finish.value;state.settings.promptMode=els.promptMode.value;state.settings.theme=els.theme.value;state.settings.zoom=clamp(Number(els.zoom.value)||1,.75,1.6);state.settings.profile=els.profile.value;state.settings.sessionGoal=els.goal.value.trim();applyTheme();newMaze(els.seed.value||state.maze?.seed);drawHistory()}
+function applyCoachSettings(){state.settings.coachMode=els.coachMode.value;state.settings.model=els.model.value;state.settings.reasoning=els.reasoning.value;state.settings.proxyUrl=els.proxyUrl.value.trim();state.settings.maxTokens=clamp(Number(els.maxTokens.value)||420,100,1500);state.settings.prevResponseId=null;updatePills();els.statusNote.textContent=state.settings.coachMode==="local"?"Local Coach is active; reflections stay in this browser.":"Proxy Coach is active. Reflections are sent only to your configured endpoint when you press Save + coach.";scheduleSave(true);announce("Coach settings applied.")}
+function toggleSetting(name,id){state.settings[name]=!state.settings[name];setToggle(id,state.settings[name]);if(name==="fog")updateFog();if(name==="trail")refreshAllCells();if(name==="focus")applyTheme();if(name==="autosave"&&state.settings.autosave)persist(true);scheduleSave();updatePills()}
+
+function proxySnippets(){
+$("workerCode").textContent=`// Cloudflare Worker — set OPENAI_API_KEY and ALLOWED_ORIGIN as secrets/vars.
+const ALLOWED_MODELS = new Set(["gpt-5.6-luna","gpt-5.6-terra","gpt-5.6-sol","gpt-6-astra"]);
 export default {
   async fetch(request, env) {
-    const origin = request.headers.get("Origin") || "*";
-    // Basic CORS: allow your site (tighten this in production)
+    const origin = request.headers.get("Origin") || "";
+    const allowed = origin === env.ALLOWED_ORIGIN;
     const cors = {
-      "Access-Control-Allow-Origin": origin,
+      "Access-Control-Allow-Origin": allowed ? origin : env.ALLOWED_ORIGIN,
       "Access-Control-Allow-Methods": "POST, OPTIONS",
       "Access-Control-Allow-Headers": "Content-Type, Authorization",
-      "Access-Control-Max-Age": "86400"
+      "Vary": "Origin"
     };
-
-    if (request.method === "OPTIONS") {
-      return new Response(null, { headers: cors });
-    }
-
-    if (request.method !== "POST") {
-      return new Response("Method Not Allowed", { status: 405, headers: cors });
-    }
-
-    const bodyText = await request.text();
-    let body;
-    try { body = JSON.parse(bodyText); } catch {
-      return new Response(JSON.stringify({ error: { message: "Invalid JSON" } }), {
-        status: 400, headers: { ...cors, "Content-Type":"application/json" }
-      });
-    }
-
-    const r = await fetch("https://api.openai.com/v1/responses", {
-      method: "POST",
-      headers: {
-        "Content-Type":"application/json",
-        "Authorization": \`Bearer \${env.OPENAI_API_KEY}\`
-      },
-      body: JSON.stringify(body)
+    if (request.method === "OPTIONS") return new Response(null,{status:204,headers:cors});
+    if (!allowed) return new Response("Forbidden",{status:403,headers:cors});
+    if (request.method !== "POST") return new Response("Method Not Allowed",{status:405,headers:cors});
+    const len = Number(request.headers.get("content-length") || 0);
+    if (len > 200000) return new Response("Payload too large",{status:413,headers:cors});
+    let body; try { body = await request.json(); } catch { return Response.json({error:{message:"Invalid JSON"}},{status:400,headers:cors}); }
+    if (!ALLOWED_MODELS.has(body.model)) return Response.json({error:{message:"Model not allowed"}},{status:400,headers:cors});
+    body.max_output_tokens = Math.min(Number(body.max_output_tokens)||420,1500);
+    const r = await fetch("https://api.openai.com/v1/responses",{
+      method:"POST",headers:{"Content-Type":"application/json","Authorization":\`Bearer \${env.OPENAI_API_KEY}\`},body:JSON.stringify(body)
     });
-
-    const out = await r.text();
-    return new Response(out, {
-      status: r.status,
-      headers: { ...cors, "Content-Type":"application/json" }
-    });
+    return new Response(await r.text(),{status:r.status,headers:{...cors,"Content-Type":"application/json","Cache-Control":"no-store"}});
   }
 };`;
+$("nodeCode").textContent=`// Node.js 22+ secure-ish personal proxy; set OPENAI_API_KEY, ALLOWED_ORIGIN, PORT.
+import http from "node:http";
+const models = new Set(["gpt-5.6-luna","gpt-5.6-terra","gpt-5.6-sol","gpt-6-astra"]);
+const key = process.env.OPENAI_API_KEY, allowed = process.env.ALLOWED_ORIGIN;
+if (!key || !allowed) throw new Error("Set OPENAI_API_KEY and ALLOWED_ORIGIN");
+http.createServer((req,res)=>{
+  const origin=req.headers.origin||"";
+  res.setHeader("Vary","Origin");
+  if(origin===allowed)res.setHeader("Access-Control-Allow-Origin",origin);
+  res.setHeader("Access-Control-Allow-Methods","POST, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers","Content-Type, Authorization");
+  res.setHeader("Cache-Control","no-store");
+  if(req.method==="OPTIONS"){res.writeHead(origin===allowed?204:403);return res.end()}
+  if(origin!==allowed){res.writeHead(403);return res.end("Forbidden")}
+  if(req.method!=="POST"||req.url!=="/openai"){res.writeHead(405);return res.end("Method Not Allowed")}
+  let raw="";req.on("data",c=>{raw+=c;if(raw.length>200000)req.destroy()});req.on("end",async()=>{
+    try{const body=JSON.parse(raw);if(!models.has(body.model))throw new Error("Model not allowed");body.max_output_tokens=Math.min(Number(body.max_output_tokens)||420,1500);
+      const r=await fetch("https://api.openai.com/v1/responses",{method:"POST",headers:{"Content-Type":"application/json","Authorization":\`Bearer \${key}\`},body:JSON.stringify(body)});
+      res.writeHead(r.status,{"Content-Type":"application/json"});res.end(await r.text());
+    }catch(e){res.writeHead(400,{"Content-Type":"application/json"});res.end(JSON.stringify({error:{message:String(e.message||e)}}))}
+  });
+}).listen(Number(process.env.PORT)||8787);`;
+}
 
-    proxyNodeCodeEl.textContent =
-`// Node.js + Express proxy (server-side). Keeps key off the browser.
-// npm i express
-// set OPENAI_API_KEY in your environment
-import express from "express";
+function wire(){document.querySelectorAll("[data-move]").forEach(b=>b.addEventListener("click",()=>move(b.dataset.move)));$("btnUndo").onclick=undo;$("btnHint").onclick=showHint;$("btnSolution").onclick=toggleSolution;$("btnReset").onclick=()=>{resetRun(true);announce("Run reset.");scheduleSave(true)};$("btnPause").onclick=toggleTimer;$("btnCenter").onclick=()=>{els.mazeWrap.scrollTo({left:Math.max(0,(els.mazeWrap.scrollWidth-els.mazeWrap.clientWidth)/2),top:Math.max(0,(els.mazeWrap.scrollHeight-els.mazeWrap.clientHeight)/2),behavior:matchMedia("(prefers-reduced-motion: reduce)").matches?"auto":"smooth"});announce("Maze view centered.")};$("btnNew").onclick=()=>{state.settings.size=Number(els.size.value);state.settings.nodes=Number(els.nodes.value);state.settings.algorithm=els.algo.value;state.settings.loops=clamp(Number(els.loops.value)||0,0,50);newMaze(els.seed.value)};$("btnDaily").onclick=()=>{const d=new Date(),ds=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;newMaze(`daily-${ds}`)};$("btnShare").onclick=copyShare;$("btnCoach").onclick=()=>saveReflection(true);$("btnSaveOnly").onclick=()=>saveReflection(false);$("btnNewPrompt").onclick=newPrompt;$("btnApplyMaze").onclick=applyMazeSettings;$("btnApplyCoach").onclick=applyCoachSettings;$("btnExportAll").onclick=exportAll;$("btnExportJson").onclick=exportAll;$("btnExportMd").onclick=exportMarkdown;$("importFile").onchange=e=>{importFile(e.target.files?.[0]);e.target.value=""};$("btnDeleteData").onclick=async()=>{if(!confirm("Delete all Cognitive Labyrinth local saves and run history?"))return;await store.clear();state.journal=[];state.history=[];newMaze(els.seed.value||`kai-${Math.floor(Math.random()*1e9)}`);renderJournal();drawHistory();announce("Local data deleted.")};els.journalSearch.oninput=renderJournal;els.goal.oninput=()=>{state.settings.sessionGoal=els.goal.value; scheduleSave()};els.profile.onchange=()=>{state.settings.profile=els.profile.value;newPrompt()};els.zoom.oninput=()=>{state.settings.zoom=Number(els.zoom.value);applyTheme()};els.theme.onchange=()=>{state.settings.theme=els.theme.value;applyTheme();drawHistory();scheduleSave()};
+  [["togFog","fog"],["togTrail","trail"],["togSound","sound"],["togHaptics","haptics"],["togAutosave","autosave"],["togFocus","focus"],["togRemoteMemory","remoteMemory"]].forEach(([id,n])=>$(id).onclick=()=>toggleSetting(n,id));
+  document.addEventListener("keydown",e=>{if(e.target.matches("input,textarea,select")){if((e.ctrlKey||e.metaKey)&&e.key==="Enter"){e.preventDefault();saveReflection(true)}return}const k=e.key.toLowerCase(),map={arrowup:"up",w:"up",arrowdown:"down",s:"down",arrowleft:"left",a:"left",arrowright:"right",d:"right"};if(map[k]){e.preventDefault();move(map[k])}else if(k==="h"){e.preventDefault();showHint()}else if(k==="u"){e.preventDefault();undo()}else if(k==="q"){e.preventDefault();toggleSolution()}});
+  let px=null,py=null;els.maze.addEventListener("pointerdown",e=>{px=e.clientX;py=e.clientY;try{els.maze.setPointerCapture(e.pointerId)}catch{}});els.maze.addEventListener("pointerup",e=>{if(px==null)return;const dx=e.clientX-px,dy=e.clientY-py,ax=Math.abs(dx),ay=Math.abs(dy);px=py=null;if(Math.max(ax,ay)<24){const cell=e.target.closest(".cell");if(cell){const target=Number(cell.dataset.i),cur=state.player;for(const[d,info]of Object.entries(DIRS)){const n=canMove(d);if(n===target){move(d);break}}}return}move(ax>ay?(dx>0?"right":"left"):(dy>0?"down":"up"))});
+  document.addEventListener("visibilitychange",()=>{if(document.hidden){if(state.timerRunning){stopTimer();state._resumeOnVisible=true}persist()}else if(state._resumeOnVisible&&!state.win){state._resumeOnVisible=false;startTimer()}});window.addEventListener("beforeunload",()=>{if(state.settings.autosave){try{localStorage.setItem(`${DB_NAME}:emergency`,JSON.stringify(snapshot()))}catch{}}});window.addEventListener("resize",debounce(drawHistory,120));matchMedia("(prefers-color-scheme: light)").addEventListener?.("change",()=>{if(state.settings.theme==="auto"){applyTheme();drawHistory()}})
+}
 
-const app = express();
-app.use(express.json({ limit: "2mb" }));
-
-app.use((req,res,next)=>{
-  res.setHeader("Access-Control-Allow-Origin", req.headers.origin || "*");
-  res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
-  if(req.method === "OPTIONS") return res.sendStatus(204);
-  next();
-});
-
-app.post("/openai", async (req,res)=>{
-  try{
-    const r = await fetch("https://api.openai.com/v1/responses", {
-      method: "POST",
-      headers: {
-        "Content-Type":"application/json",
-        "Authorization": \`Bearer \${process.env.OPENAI_API_KEY}\`
-      },
-      body: JSON.stringify(req.body)
-    });
-    const text = await r.text();
-    res.status(r.status).type("application/json").send(text);
-  }catch(e){
-    res.status(500).json({ error: { message: String(e?.message || e) } });
-  }
-});
-
-app.listen(8787, ()=>console.log("Proxy listening on http://localhost:8787/openai"));`;
-
-    // ---------- Init ----------
-    function init(){
-      // 1) URL params
-      const seedParam = URL_PARAMS.get("seed") || "";
-      const sizeParam = URL_PARAMS.get("size");
-      const nodesParam = URL_PARAMS.get("nodes");
-      const loopsParam = URL_PARAMS.get("loops");
-      const themeParam = URL_PARAMS.get("theme");
-
-      if(themeParam) setTheme(themeParam);
-      themeSelectEl.value = state.theme;
-
-      if(sizeParam){
-        const s = clamp(Number(sizeParam) || state.size, 10, 32);
-        state.size = s;
-      }else{
-        state.size = isMobile ? 10 : 20;
-      }
-      sizeSelectEl.value = String(state.size);
-
-      if(nodesParam){
-        state.nodesWanted = clamp(Number(nodesParam) || state.nodesWanted, 1, 12);
-      }else{
-        state.nodesWanted = isMobile ? 3 : 5;
-      }
-      nodesSelectEl.value = String(state.nodesWanted);
-
-      if(loopsParam){
-        state.loopsPercent = clamp(Number(loopsParam) || 0, 0, 60);
-      }
-      loopsInputEl.value = String(state.loopsPercent);
-      difficultyLabelEl.textContent = `Loops: ${state.loopsPercent}%`;
-
-      // 2) load autosave (preferred), otherwise generate from params/default
-      const loaded = loadSave();
-
-      if(loaded){
-        seedInputEl.value = state.seed;
-        sizeSelectEl.value = String(state.size);
-        nodesSelectEl.value = String(state.nodesWanted);
-        loopsInputEl.value = String(state.loopsPercent);
-        visionInputEl.value = String(state.visionRadius);
-        llmModeEl.value = state.llm.mode;
-        modelSelectEl.value = state.llm.model;
-        tempInputEl.value = String(state.llm.temperature);
-        maxOutInputEl.value = String(state.llm.maxOutputTokens);
-        proxyUrlEl.value = state.llm.proxyUrl || "";
-        setTheme(state.theme);
-        setSeed(state.seed || seedParam || `kai-${Math.floor(Math.random()*1e9)}`);
-        applySettingsFromUI();
-
-        renderMaze();
-        updateStats();
-        statHintsEl.textContent = `Hints: ${state.hintCount}`;
-        renderJournal();
-        startTimer();
-
-        if(state.win) setWin();
-        promptTextEl.textContent = "Loaded your autosaved session. Continue exploring (or press New Maze).";
-      }else{
-        seedInputEl.value = seedParam || `kai-${Math.floor(Math.random()*1e9)}`;
-        setSeed(seedInputEl.value);
-        applySettingsFromUI();
-        generateMaze();
-        resetRun(true);
-        renderJournal();
-        promptTextEl.textContent = "New session ready. Move through the maze and reflect at nodes.";
-      }
-
-      // sync toggles
-      btnAutosave.textContent = state.autosave ? "Autosave: On" : "Autosave: Off";
-      btnFog.textContent = state.fog ? "Fog: On" : "Fog: Off";
-      updateVisibility(true);
-
-      setModeLabel();
-      setSeedLabel();
-      statHintsEl.textContent = `Hints: ${state.hintCount}`;
-    }
-
-    init();
-  </script>
+async function init(){await store.init();proxySnippets();wire();$("versionLabel").textContent=`v${APP_VERSION}`;let restored=false;if(hasShareParams()){const seed=readShareParams();syncControls();newMaze(seed||`kai-${Math.floor(Math.random()*1e9)}`);announce("Opened deterministic shared maze; local autosave was intentionally not substituted.")}else{let saved=await store.get(SAVE_KEY);if(!saved){try{saved=JSON.parse(localStorage.getItem(`${DB_NAME}:emergency`)||"null")}catch{}}if(saved){try{restore(saved);restored=true;announce("Restored local session.")}catch(e){announce(`Saved session could not be restored: ${e.message||e}`)}}if(!restored){state.history=(await store.get(HISTORY_KEY))||[];syncControls();newMaze(`kai-${Math.floor(Math.random()*1e9)}`)}}syncControls();renderPrompt();renderJournal();drawHistory();updateAllStats();announce(restored?"Session restored.":els.status.textContent||"Ready.")}
+init().catch(e=>announce(`Initialization error: ${e.message||e}`));
+})();
+</script>
 </body>
 </html>
