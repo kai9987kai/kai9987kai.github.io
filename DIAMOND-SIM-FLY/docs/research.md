@@ -1,0 +1,67 @@
+# Research, implementation and limits
+
+Reviewed September 2026. Primary sources below informed this work. These are educational browser simulations, with no claim of reproducing the papers' architectures or benchmark scores.
+
+Two labs are covered. [World Lab](#world-lab-model) is a reward-field planning sandbox; the [Fly Lab](#fly-lab-drosophila-circuit-models) models named *Drosophila* neuropils. They share no code.
+
+| Source | Relevant idea | What this project implements |
+| --- | --- | --- |
+| [DIAMOND — Diffusion for World Modeling: Visual Details Matter in Atari](https://diamond-wm.github.io/) (NeurIPS 2024) | Action-conditioned world prediction, with attention to rollout error | An inspectable reward-map learning loop. Grid-field diffusion is spatial averaging, not learned image generation or a diffusion world model. |
+| [TD-MPC2](https://www.tdmpc2.com/) (ICLR 2024) | Planning with learned predictions and terminal values | A discrete beam search with a terminal tabular Q estimate, virtual visit counts, single-use energy pickups and observation-confidence penalty. No latent encoder, continuous-action optimizer or neural ensemble. |
+| [Dreamer 4 — Training Agents Inside of Scalable World Models](https://danijar.com/project/dreamer4/) ([2025 paper](https://arxiv.org/abs/2509.24527)) | Train behavior in imagination, then evaluate in the real environment | Separate imagined paths from executed transitions and independently evaluate candidate/baseline runs. This lab does not train video models or implement Dreamer's policy training. |
+| [Deep RL at the Edge of the Statistical Precipice](https://arxiv.org/abs/2108.13264), [rliable](https://github.com/google-research/rliable) (NeurIPS 2021) | Account for uncertainty across runs instead of relying on a single score | Paired seeds, raw observations, deterministic percentile bootstrap intervals and explicit partial/cancelled results. A lightweight implementation, not the rliable package or its full multi-task evaluation suite. |
+
+## Fly Lab: *Drosophila* circuit models
+
+The Fly Lab (`src/fly-brain-engine.js`, `src/fly-lif-circuit.js`) simulates 16 specialised neuropil models sharing one connectome. Where a circuit is named after a fly structure, it now implements the mechanism that structure is known for; the previous behaviour of each is retained as a selectable `"legacy"` preset so an upgrade can be measured rather than asserted.
+
+| Source | Relevant idea | What this project implements |
+| --- | --- | --- |
+| [A *Drosophila* computational brain model reveals sensorimotor processing](https://www.nature.com/articles/s41586-024-07763-9) (Shiu et al., Nature 634:210–219, 2024) | Leaky integrate-and-fire dynamics over connectome-derived weights, with transmitter identity setting each connection's sign | `src/fly-lif-circuit.js` uses that paper's neuron parameters (−52 mV rest and reset, −45 mV threshold, 20 ms membrane and 5 ms synaptic time constants, 2.2 ms refractory period, 1.8 ms spike-to-PSP delay, 0.275 mV per synapse) and its transmitter convention: acetylcholine excites, GABA and glutamate inhibit. Integration is explicit forward Euler, not their Brian2 setup, and the circuit is a reduced mushroom body of ~83 neurons, not the paper's 125,000-neuron whole brain. |
+| [Sexual dimorphism in the complete connectome of the *Drosophila* male central nervous system](https://www.biorxiv.org/content/10.1101/2025.10.09.680999v1) (Janelia FlyEM, MRC LMB and collaborators, 2025); [Male CNS Connectome](https://male-cns.janelia.org/) | A finished connectome of an entire male CNS: brain, optic lobes and ventral nerve cord | The neuropil names, roles and rough connectivity motifs the 16 brains are organised around. The bundled `malecns/` R package is the upstream data-access package for that dataset; this project reads no connectome data at runtime and its synthetic 16×16×4 commissures are not measured connectivity. |
+| [From the fly connectome to exact ring attractor dynamics](https://www.biorxiv.org/content/10.1101/2024.11.01.621596v1.full) (2024); [From Synapses to Dynamics](https://proceedings.neurips.cc/paper_files/paper/2025/hash/ba5c33f0d4fd94bb522d83d255377717-Abstract-Conference.html) (NeurIPS 2025) | Heading is held by recurrent attractor dynamics, and angular velocity is integrated by an offset projection (the P-EN contribution) | The navigator brain runs an 8-wedge E-PG ring attractor: local excitation, pooled inhibition, and angular velocity entering as a rotation of the recurrent kernel. Measured velocity gain is 0.99–1.01 over ±0.4 rad per tick; heading persists through idle ticks and drifts slowly, and a weak anchor on a fixed reference cuts accumulated drift from 0.17 to 0.004 rad without dragging the bump across the ring. Anchoring only works on something that holds still: the circadian sun angle sweeps a full circle every period and is measurably worse than no anchor, so the graft supplies a fixed per-world sky azimuth instead. It is an idealised symmetric ring, not a connectome-constrained fit to measured E-PG/P-EN/Δ7 connectivity. The drift is the point of the difference from the legacy mode, which is handed the fly's heading and reproduces it exactly. |
+| [Sparse, decorrelated odor coding in the mushroom body enhances learned odor discrimination](https://www.nature.com/articles/nn.3660) (Lin et al., Nat Neurosci 2014); [Localized inhibition in the *Drosophila* mushroom body](https://elifesciences.org/articles/56954) (eLife 2020) | The APL neuron pools Kenyon-cell output and feeds inhibition back, which is what makes the code sparse and decorrelated | Kenyon-cell activity is settled against a feedback APL term, divisive and subtractive, by damped iteration. Sparseness emerges from gain control rather than a fixed fraction: 18.8% of cells active at weak drive, 6.3% at 15× stronger drive. The spiking circuit shows the same effect (64% → 36% active with APL engaged). Sparseness in the reduced circuit is looser than in the animal because 4 claws of 14 glomeruli oversamples; at the fly's ratio of roughly 7 of 58 it reaches 21%. APL here is a single global pool, not the spatially localised inhibition the 2020 work describes. |
+| [Learning with reinforcement prediction errors in a model of the *Drosophila* mushroom body](https://www.nature.com/articles/s41467-021-22592-4) (Nat Commun 2021); dopamine-dependent presynaptic depression at KC terminals | Learning at KC→MBON synapses is expressed predominantly as depression, gated by coincident dopaminergic input, and the readout is the difference between output channels | Punishment (PPL1) depresses the channel that was taken; reward (PAM) depresses the channels that were not, with a smaller potentiation of the taken one. Depressed synapses recover slowly toward baseline, which gives the model a forgetting term. The four outputs here are action channels, not the anatomical valence compartments, so the mapping is by analogy. |
+| [Deep RL at the Edge of the Statistical Precipice](https://arxiv.org/abs/2108.13264), [rliable](https://github.com/google-research/rliable) (NeurIPS 2021) | Report uncertainty across runs instead of a single score | The connectome benchmark reports paired percentile bootstrap intervals over seed-level differences, probability of improvement and an interquartile mean, alongside every raw per-seed observation. A lightweight implementation, not the rliable package. |
+
+### Descending control
+
+Sixteen neuropils do not vote as equals in an animal, and treating them that way was measurably worse than using fewer of them: with one fixed weight per role, the forager's odour gradient was one vote in sixteen and the exploratory and postural biases outvoted it. The descending vote is now redistributed by state — threat to the escape circuits, an appetitive gradient to the goal-directed ones, otherwise exploration — with hunger amplifying a weak gradient. Total weight is conserved, so this reallocates the vote rather than raising the gain. This is a gain-control heuristic motivated by neuromodulatory gating of descending pathways, not a model of identified descending neurons.
+
+### What the Fly Lab is not
+
+Neurogenesis, the tri-neuromodulator titres, the circadian PDF term and the inter-brain commissures are heuristics with biological names, not measured circuits. The chemical field is a two-dimensional diffusion grid, not a fluid simulation of an odour plume. Sixteen brains sharing one set of learned synapses while keeping separate per-individual registers is a modelling convenience, not a claim about how flies relate to each other. No connectome data is read at runtime.
+
+### Determinism
+
+Every run is reproducible from its world seed: neurogenesis draws from a stream forked off that seed, and nothing in the engine calls `Math.random` or stamps state with wall-clock time. Version 7 snapshots carry both generator states, the mechanism selection, the ring state and every fly's registers, so a saved run resumes exactly and a legacy run resumes on the legacy circuit.
+
+## World Lab model
+
+The environment is a 60 × 60 grid. Agents sense and learn a scalar reward field through local exponential averaging. Their tabular Q values also receive imagined one-step updates. Actual visit counts produce `1 / sqrt(visits + 1)` novelty. The displayed uncertainty decreases with observations; it is a confidence heuristic and is not a calibrated probability, Bayesian posterior or ensemble disagreement estimate.
+
+Geometry, current hazard locations and energy locations are available to planning. Reward values use learned beliefs. Future hazard motion and reward pulses are not predicted. Agents act sequentially and can overlap; a resource consumed by an earlier agent is unavailable to later agents in that tick. Distance-weighted reward sharing excludes the sender's own observations. It is not a graph attention network.
+
+Beam search retains a bounded set of candidate paths at every depth. Within each path, revisits reduce novelty and each energy pickup can be collected once. Lower energy increases the value of a pickup. A path ends when its imagined energy is depleted, so it cannot claim pickups past a respawn boundary. The model-caution setting penalizes uncertain reward predictions. The original random-shooting planner and greedy/Q policy remain selectable, along with random legal actions. The displayed trajectory is the path actually scored, including the already-executed first move.
+
+The beam budget is retained paths per depth; the shooting budget is approximate sampled trajectories plus the existing Dyna updates. Equal numeric budgets are **not equal compute**. Both planners use a terminal/immediate-value heuristic, and neither guarantees optimal actions or greater reward on every seed.
+
+## Experiments
+
+Each candidate/baseline pair uses the same seed, agent count, learning settings and number of executed ticks. Runs start fresh; no live-world learning or random state leaks into them. Resource interaction can cause their future environment randomness to diverge, so matching seeds guarantee identical initial conditions, not identical future events under different actions.
+
+The main outcome is cumulative extrinsic reward divided by agent count. Curiosity is reported separately and is not counted as task reward. Per-seed coverage, hazard hits, collisions, respawns, remaining energy and whole-grid model MAE expose tradeoffs. Coverage is the mean fraction of cells sensed per agent, not union coverage. MAE includes unseen cells.
+
+The 95% percentile interval resamples whole paired-seed reward differences 2,000 times, using a separate seeded generator. Fewer than two completed seeds produce no interval. Cancellation keeps only complete pairs. Five seeds are preliminary; wider seed sets and different horizons are needed for stronger conclusions. Seed sets used during development are not held-out evaluation.
+
+## Snapshot contracts
+
+World Lab v3 preserves every random generator, environment phase, ordered replay-state list, model array, agent path, counters, parameters and rolling history. Validation checks shapes, finite values, IDs, legal positions and consistency before replacing the live run. Files over 16 MB are rejected. Version 2 lacks random state and cannot guarantee exact continuation; it is rejected with a specific explanation.
+
+Nexus uses a separate browser-local checkpoint format. It retains the existing checkpoint functionality but is not an exact replay mechanism: random state, optimizer state and several transient models are not checkpointed. Its learning networks and heuristic features are not PPO, GRPO, MCTS or RLAIF implementations despite historical names in the source.
+
+## Performance and portability
+
+World Lab runs offline with classic scripts and no build step. Node tests use the same engine as the browser. Rendering is separated from simulation ticks, and live batches yield at a frame budget. Experiments yield between short chunks, but a single high-budget tick can still be expensive; twelve agents with the maximum beam width/horizon is a deliberate stress setting.
+
+Nexus loads pinned TensorFlow.js and Chart.js from their public CDN. Neural training remains substantially heavier and less reproducible than World Lab. Runtime tests distinguish fallback operation from actual TensorFlow training.
