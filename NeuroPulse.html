@@ -848,7 +848,31 @@
                 display: none;
             }
         }
-    </style>
+    
+        /* v3: overflow-safe visualization grid and accessible focus affordances. */
+        .right { min-width:0; }
+        .viz {
+            min-height:0;
+            overflow-y:auto;
+            overflow-x:hidden;
+            grid-template-columns:repeat(2,minmax(0,1fr));
+            grid-template-rows:none;
+            grid-auto-rows:minmax(200px,240px);
+            align-content:start;
+            scrollbar-width:thin;
+            scrollbar-color:rgba(122,166,255,.35) transparent;
+        }
+        .card { min-width:0; }
+        .card .canvasWrap { min-height:125px; }
+        .card.view-muted { opacity:.73;filter:saturate(.82); }
+        button:focus-visible,select:focus-visible,input:focus-visible {
+            outline:2px solid #a6c4ff; outline-offset:2px;
+        }
+        @media (max-width:1200px) {
+            .viz { grid-template-columns:1fr;grid-auto-rows:minmax(200px,260px); }
+            .right {min-height:700px;}
+        }
+</style>
 </head>
 
 <body>
@@ -921,11 +945,12 @@
                                 <option value="rk2" selected>RK2 (Heun) — stable & fast</option>
                                 <option value="euler">Euler — fastest (rough)</option>
                                 <option value="rk4">RK4 — best (slow)</option>
+                                <option value="rush_larsen">Rush–Larsen gates + Euler V — stable gates</option>
                             </select>
                         </div>
                         <div class="control">
                             <label>dt (ms) <span class="value" id="valDt">0.025</span></label>
-                            <input id="rngDt" type="range" min="0.005" max="0.08" step="0.001" value="0.025" />
+                            <input id="rngDt" type="range" min="0.001" max="0.08" step="0.001" value="0.025" />
                         </div>
                     </div>
                     <div class="grid2" style="margin-top:10px;">
@@ -1005,6 +1030,24 @@
                             </div>
                         </div>
                     </div>
+                </div>
+
+
+                <div class="section" id="sectionVerification">
+                    <h2>Scientific Verification <span class="mini">isolated numerical tests / provenance</span></h2>
+                    <div class="smallNote">Simulation-only laboratory. Run a non-destructive reproducibility and convergence test; this is not NEURON/Brian2 cross-validation or medical validation. The axial stability indicator is only a necessary explicit-solver check.</div>
+                    <div class="grid2" style="margin-top:10px">
+                        <div class="control"><label for="diagDuration">Test duration (ms)</label><input id="diagDuration" type="number" value="40" min="5" max="200" step="5"></div>
+                        <div class="control"><label for="diagCurrent">Test current (µA/cm²)</label><input id="diagCurrent" type="number" value="8" min="-20" max="60" step="1"></div>
+                    </div>
+                    <div class="tinyRow">
+                        <button id="btnSelfTest" type="button" class="primary">Run self-tests</button>
+                        <button id="btnConvergence" type="button">Compare dt / dt÷2</button>
+                        <button id="btnReportExport" type="button">Export report JSON</button>
+                    </div>
+                    <div class="tinyRow"><button id="btnLiveTrace" type="button">Export live trace CSV</button><button id="btnSnapshotDiag" type="button">Export complete state JSON</button></div>
+                    <div id="numericStatus" class="smallNote" role="status" aria-live="polite" style="margin-top:10px">Ready — no numerical alerts.</div>
+                    <pre id="diagReport" class="mono" aria-label="Verification output" style="max-height:210px;min-height:90px;overflow:auto;white-space:pre-wrap;word-break:break-word;background:rgba(0,0,0,.28);padding:10px;border:1px solid rgba(255,255,255,.08);border-radius:10px;font-size:11px">Click Run self-tests to generate evidence.</pre>
                 </div>
 
                 <div class="section">
@@ -1469,7 +1512,15 @@
                             <button id="btnGaba" class="synBtn inh">GABA</button>
                             <button id="btnSynAll" class="synBtn">All Excit.</button>
                         </div>
-                        <div class="smallNote">I<sub>syn</sub>=g(t)·(V−E<sub>rev</sub>). NMDA has Mg²⁺ block.</div>
+                        <div class="smallNote">I<sub>syn</sub>=g(t)·(V−E<sub>rev</sub>). NMDA has Mg²⁺ block. Stimulation and synapses are simulation-only.</div>
+                        <div class="grid2" style="margin-top:8px">
+                            <div class="control"><label for="selSTDP">Synaptic plasticity</label>
+                                <select id="selSTDP"><option value="off">Off</option><option value="on">Pair-based STDP (experimental)</option></select></div>
+                            <div class="control"><label for="selChannelNoise">Channel noise</label>
+                                <select id="selChannelNoise"><option value="off">Off</option><option value="on">On (heuristic noise)</option></select></div>
+                        </div>
+                        <div class="control" style="margin-top:8px"><label for="rngChannelDensity">Noise channel-density scale <span class="value" id="valChannelDensity">2.0</span></label>
+                            <input id="rngChannelDensity" type="range" min="0.1" max="20" step="0.1" value="2"></div>
                     </div>
                 </div>
 
@@ -1551,7 +1602,6 @@
                 </div>
                 You’re literally watching the HH spike become a traveling wave.
             </div>
-        </div>
 
         <div class="viz">
             <div class="card">
@@ -1720,7 +1770,7 @@
             function vtrap(x, y) {
                 // stable x / (1 - exp(-x/y)) near x=0
                 if (Math.abs(x) < 1e-7) return y;
-                return x / (1 - Math.exp(-x / y));
+                return x / (-Math.expm1(-x / y));
             }
 
             const $ = (id) => document.getElementById(id);
@@ -1761,6 +1811,10 @@
             // Global parameters / state
             // -----------------------------
             let running = false;
+            let numericIssues = 0;
+            let lastDiagnostic = null;
+            let liveTrace = [];
+            const MAX_LIVE_TRACE = 10000;
             let integrator = "rk2"; // euler | rk2 | rk4
             let dt = 0.025;         // ms
             let stepsPerFrame = 64; // increased default for smoothness
@@ -1954,10 +2008,12 @@
             function computeProbeCurrents(idx) {
                 const Vi = V[idx], mi = m[idx], hi = h[idx], ni = n[idx], wi = w[idx];
                 const ph = getPhi(idx);
-                const iNa = scaleNa * gNa * (mi * mi * mi) * hi * (Vi - ENa);
-                const iK = scaleK * gK * (ni * ni * ni * ni) * (Vi - EK);
-                const iL = gL * (Vi - EL);
-                const iM = gM * wi * (Vi - EK);
+                const ais = $("selAIS")?.value === "on" && idx > 0 && idx < 4;
+                const my = myelinFactor(idx);
+                const iNa = my.channelScale * scaleNa * gNa * (ais ? 5 : 1) * (mi * mi * mi) * hi * (Vi - ENa);
+                const iK = my.channelScale * scaleK * gK * (ais ? 2 : 1) * (ni * ni * ni * ni) * (Vi - EK);
+                const iL = my.glScale * gL * (Vi - EL);
+                const iM = my.channelScale * gM * wi * (Vi - EK);
                 return { INa: iNa, IK: iK, IL: iL, IM: iM };
             }
 
@@ -2497,11 +2553,11 @@
                 if (!stdpOn) return;
                 if (isPre) {
                     const dt = t - lastPostSpikeTime[i];
-                    if (dt > 0 && dt < 50) synWeights[i] = Math.min(2.0, synWeights[i] + 0.1 * Math.exp(-dt / 20));
+                    if (dt > 0 && dt < 50) synWeights[i] = Math.max(0.1, synWeights[i] - 0.05 * Math.exp(-dt / 20));
                     lastPreSpikeTime[i] = t;
                 } else {
                     const dt = t - lastPreSpikeTime[i];
-                    if (dt > 0 && dt < 50) synWeights[i] = Math.max(0.1, synWeights[i] - 0.05 * Math.exp(-dt / 20));
+                    if (dt > 0 && dt < 50) synWeights[i] = Math.min(2.0, synWeights[i] + 0.1 * Math.exp(-dt / 20));
                     lastPostSpikeTime[i] = t;
                 }
             }
@@ -2643,6 +2699,11 @@
                 spikeTimes = [];
                 rbVt.clear(); rbI0.clear(); rbRate.clear();
                 rbVel.clear(); rbSyn.clear(); rbEnergy.clear(); rbISI.clear();
+                rbIClamp.clear(); rbDV.clear(); rbRaster = [];
+                lastSpatialV = Float32Array.from(V);
+                numericIssues = 0;
+                liveTrace = [];
+                if ($("numericStatus")) $("numericStatus").textContent = "Ready — no numerical alerts.";
 
                 const [a, b] = velPoints();
                 prevV_a = V[a]; prevV_b = V[b];
@@ -2695,11 +2756,14 @@
                         gK_loc *= 2.0;
                     }
 
+                    // Phenomenological myelin: reduce inter-nodal channels/leak and capacitance.
+                    // Not a calibrated morphological saltatory-conduction model.
+                    const my = myelinFactor(i);
                     // Ionic Currents with Pharmacology scale
-                    const iNa = scaleNa * gNa_loc * (msrc[i] * msrc[i] * msrc[i]) * hsrc[i] * (Vi - ENa);
-                    const iK = scaleK * gK_loc * (nsrc[i] * nsrc[i] * nsrc[i] * nsrc[i]) * (Vi - EK);
-                    const iL = gL * (Vi - EL);
-                    const iM = gM * wsrc[i] * (Vi - EK);
+                    const iNa = my.channelScale * scaleNa * gNa_loc * (msrc[i] * msrc[i] * msrc[i]) * hsrc[i] * (Vi - ENa);
+                    const iK = my.channelScale * scaleK * gK_loc * (nsrc[i] * nsrc[i] * nsrc[i] * nsrc[i]) * (Vi - EK);
+                    const iL = my.glScale * gL * (Vi - EL);
+                    const iM = my.channelScale * gM * wsrc[i] * (Vi - EK);
 
                     if (out_INa) out_INa[i] = iNa;
                     if (out_IK) out_IK[i] = iK;
@@ -2718,7 +2782,9 @@
                     }
 
                     // Total injected stimulus current (DSL + manual)
-                    const I_stim = IinjSrc[i] * (synWeights ? synWeights[i] : 1.0);
+                    // Apply synaptic drive DURING integration, not after the frame.
+                    const I_stim = IinjSrc[i]
+                        + (synWeights ? synWeights[i] : 1.0) * computeSynapticCurrent(i, Vi, t_ms);
 
                     // Voltage Clamp at probeIdx
                     if (vClampOn && i === probeIdx) {
@@ -2730,13 +2796,12 @@
                         // However, we just record the balancing current in simStep later or here.
                     } else {
                         // Standard Passive/Active Cable Equation
-                        out_dV[i] = (I_stim + I_axial - I_ion) / Cm;
+                        out_dV[i] = (I_stim + I_axial - I_ion) / (Cm * my.cmScale);
                     }
 
                     // Plasticity Detection (Post-synaptic spike)
-                    if (Vi > thresh && Vsrc[i] <= thresh) {
-                        if (typeof updateSTDP === "function") updateSTDP(i, false, t_ms);
-                    }
+                    // Spike-triggered STDP is handled once per crossed threshold
+                    // in simStep's raster detector, not on each RK derivative stage.
                 }
             }
 
@@ -2816,10 +2881,34 @@
                 }
             }
 
+            function applyStepRushLarsen() {
+                // Operator split: explicit voltage, analytical (frozen-V) HH gates.
+                // Preserves [0,1] for gating variables and improves gate stability;
+                // voltage/cable dynamics remain EXPLICIT and need small dt.
+                computeDerivs(V, m, h, n, w, Iinj, dV1, dm1, dh1, dn1, dw1, INa_arr, IK_arr, IL_arr);
+                for (let i = 0; i < N; i++) {
+                    const r = rates(V[i]);
+                    const p = getPhi(i);
+                    function gate(x, a, b) {
+                        const rate = p * (a + b);
+                        return rate > 0 ? clamp(a / (a + b) + (x - a / (a + b)) * Math.exp(-rate * dt), 0, 1) : x;
+                    }
+                    const om=m[i], oh=h[i], on=n[i];
+                    m[i] = clamp(gate(om, r.am, r.bm) + dt*(dm1[i]-p*(r.am*(1-om)-r.bm*om)),0,1);
+                    h[i] = clamp(gate(oh, r.ah, r.bh) + dt*(dh1[i]-p*(r.ah*(1-oh)-r.bh*oh)),0,1);
+                    n[i] = clamp(gate(on, r.an, r.bn) + dt*(dn1[i]-p*(r.an*(1-on)-r.bn*on)),0,1);
+                    w[i] = clamp(r.wInf + (w[i] - r.wInf) * Math.exp(-p * dt / r.tauW), 0, 1);
+                    V[i] += dt * dV1[i];
+                }
+            }
+
             function applyIntegratorStep() {
                 if (integrator === "euler") applyStepEuler();
                 else if (integrator === "rk4") applyStepRK4();
+                else if (integrator === "rush_larsen") applyStepRushLarsen();
                 else applyStepRK2();
+                // An ideal voltage clamp constrains the electrode potential.
+                if (vClampOn) V[probeIdx] = vClampTarget;
             }
 
             // -----------------------------
@@ -2841,6 +2930,18 @@
                 }
             }
 
+            // Retain recent data without discarding the physical simulation state.
+            function resizeTraceHistory() {
+                cap = Math.max(200, Math.min(300000, Math.ceil(windowMs / dt)));
+                const preserve = old => {
+                    const next = new Ring(cap);
+                    const values = [];
+                    old.forEach(value => values.push(value));
+                    values.slice(-cap).forEach(value => next.push(value));
+                    return next;
+                };
+                rbVt=preserve(rbVt);rbI0=preserve(rbI0);rbRate=preserve(rbRate);
+            }
             // -----------------------------
             // Probe rate (sliding window)
             // -----------------------------
@@ -2918,7 +3019,7 @@
             // -----------------------------
             // Probe readouts (currents, gates)
             // -----------------------------
-            function computeProbeCurrents(i) {
+            function computeProbeCurrentsLegacyUnused(i) {
                 const Vi = V[i];
                 const mi = m[i], hi = h[i], ni = n[i];
                 const gNa_t = gNa * (mi * mi * mi) * hi;
@@ -3825,7 +3926,7 @@
                     runId,
                     runStartedAt,
                     exportedAt: new Date().toISOString(),
-                    engine: { integrator, dt, stepsPerFrame, windowMs },
+                    engine: { integrator, dt, stepsPerFrame, windowMs, modelVersion: "3.0.0", platform: "browser-cpu" },
                     cable: { N, gAx, dx_um, bc },
                     stimulus: { stimIdx, stimSigma, probeIdx, useDSL, loopProto },
                     rng: { rngSeed, rngMode, reseedOnReset },
@@ -3869,7 +3970,7 @@
                 })();
 
                 return {
-                    version: 2,
+                    version: 3,
                     engine: { integrator, dt, stepsPerFrame, windowMs, thresh },
                     cable: { N, gAx, dx_um, bc },
                     hh: { Cm, gNa, gK, gL, gM, ENa, EK, EL, T, Q10, Tref },
@@ -3886,6 +3987,9 @@
                     autopilot: { autoMode, targetHz, rateWinMs, Kp, Ki, Kd, ctlMax },
                     aud: { mode: audMode, gain: audGain, baseHz: audBaseHz, spanOct: audSpanOct, click: audClick, lpf: audLPF, drive: audDrive },
                     innovation: innovationState,
+                    advanced: { scaleNa, scaleK, vClampOn, vClampTarget, T_start, T_end,
+                        stochasticOn, channelDensity, stdpOn, AIS: $("selAIS")?.value || "off",
+                        rngState, noiseState, synWeights: Array.from(synWeights) },
                     state: {
                         t_ms,
                         runId,
@@ -3988,9 +4092,24 @@
 
                 bifMaxI = st.innovation?.bifurcation?.bifMaxI ?? bifMaxI;
                 bifPrecision = st.innovation?.bifurcation?.bifPrecision ?? bifPrecision;
+                scaleNa = st.advanced?.scaleNa ?? scaleNa;
+                scaleK = st.advanced?.scaleK ?? scaleK;
+                vClampOn = st.advanced?.vClampOn ?? vClampOn;
+                vClampTarget = st.advanced?.vClampTarget ?? vClampTarget;
+                T_start = st.advanced?.T_start ?? T_start;
+                T_end = st.advanced?.T_end ?? T_end;
+                stochasticOn = st.advanced?.stochasticOn ?? stochasticOn;
+                channelDensity = st.advanced?.channelDensity ?? channelDensity;
+                stdpOn = st.advanced?.stdpOn ?? stdpOn;
+                if (st.advanced?.AIS && $("selAIS")) $("selAIS").value=st.advanced.AIS;
 
                 // allocate arrays with new N
                 allocArrays();
+
+                if (Array.isArray(st.advanced?.synWeights) && st.advanced.synWeights.length === N)
+                    synWeights.set(st.advanced.synWeights.map(x=>clamp(Number(x)||1,0.1,2)));
+                if (Number.isInteger(st.advanced?.rngState)) rngState = st.advanced.rngState >>> 0;
+                if (Number.isFinite(st.advanced?.noiseState)) noiseState = st.advanced.noiseState;
 
                 // load state vectors if present
                 if (st.state?.V && st.state.V.length === N) {
@@ -4062,6 +4181,15 @@
                 $("rngLPF").value = audLPF; $("rngLPF").dispatchEvent(new Event("input"));
                 $("rngDrive").value = audDrive; $("rngDrive").dispatchEvent(new Event("input"));
 
+                if ($("rngScaleNa")) {$("rngScaleNa").value=scaleNa;$("rngScaleNa").dispatchEvent(new Event("input"));}
+                if ($("rngScaleK")) {$("rngScaleK").value=scaleK;$("rngScaleK").dispatchEvent(new Event("input"));}
+                if ($("selClampMode")) {$("selClampMode").value=vClampOn?"vc":"ic";$("selClampMode").dispatchEvent(new Event("change"));}
+                if ($("inpVTarget")) {$("inpVTarget").value=vClampTarget;$("inpVTarget").dispatchEvent(new Event("change"));}
+                if ($("rngTStart")) {$("rngTStart").value=T_start;$("rngTStart").dispatchEvent(new Event("input"));}
+                if ($("rngTEnd")) {$("rngTEnd").value=T_end;$("rngTEnd").dispatchEvent(new Event("input"));}
+                if ($("selChannelNoise")) $("selChannelNoise").value=stochasticOn?"on":"off";
+                if ($("selSTDP")) $("selSTDP").value=stdpOn?"on":"off";
+                if ($("rngChannelDensity")) {$("rngChannelDensity").value=channelDensity;$("valChannelDensity").textContent=channelDensity.toFixed(1);}
                 // v2 controls (safe even before v2 listeners are wired)
                 $("rngGAmpa").value = synGAmpa; $("valGAmpa").textContent = synGAmpa.toFixed(2); $("rngGAmpa").dispatchEvent(new Event("input"));
                 $("rngGNmda").value = synGNmda; $("valGNmda").textContent = synGNmda.toFixed(2); $("rngGNmda").dispatchEvent(new Event("input"));
@@ -4153,12 +4281,12 @@ block 400ms off
             // Integrator
             $("selIntegrator").addEventListener("change", (e) => {
                 integrator = e.target.value;
-                $("valIntegrator").textContent = (integrator === "rk4" ? "RK4" : integrator === "euler" ? "Euler" : "RK2 (Heun)");
+                $("valIntegrator").textContent = (integrator === "rk4" ? "RK4" : integrator === "euler" ? "Euler" : integrator === "rush_larsen" ? "Rush–Larsen" : "RK2 (Heun)");
             });
 
-            bindRange("rngDt", "valDt", x => x.toFixed(3), x => { dt = x; allocArrays(); });
+            bindRange("rngDt", "valDt", x => x.toFixed(3), x => { dt = x; resizeTraceHistory(); });
             bindRange("rngSteps", "valSteps", x => String(x | 0), x => { stepsPerFrame = x | 0; });
-            bindRange("rngWindow", "valWindow", x => String(x | 0), x => { windowMs = x; allocArrays(); });
+            bindRange("rngWindow", "valWindow", x => String(x | 0), x => { windowMs = x; resizeTraceHistory(); });
 
             // Cable
             bindRange("rngN", "valN", x => String(x | 0), x => {
@@ -4592,6 +4720,26 @@ block 400ms off
                 if ($("btnCinema").classList) $("btnCinema").classList.toggle("primary", isC);
             }
 
+
+            function drawControlAnalytics() {
+                const canvas = $("cvControl");
+                fitCanvas(canvas);
+                const ctx = canvas.getContext("2d"), ww = canvas.width, hh = canvas.height;
+                drawGrid(ctx,ww,hh);
+                const [lo,hi] = ringMinMax(rbI0,-10,10,0.1);
+                drawLineSeriesRect(ctx,rbI0,10,32,ww-20,Math.max(2,hh-43),lo,hi,"#7aa6ff",2);
+                drawText(ctx,ww,hh,["Stimulus / control history", `I(t) ${lo.toFixed(2)}...${hi.toFixed(2)} µA/cm²`]);
+            }
+            function drawSpikeAnalytics() {
+                const canvas = $("cvEvents");
+                fitCanvas(canvas);
+                const ctx = canvas.getContext("2d"), ww = canvas.width, hh = canvas.height;
+                drawGrid(ctx,ww,hh);
+                const [lo,hi] = ringMinMax(rbRate,0,20,0.1);
+                drawLineSeriesRect(ctx,rbRate,10,32,ww-20,Math.max(2,hh-43),Math.max(0,lo),hi,"#74f6c6",2);
+                const latestISI = rbISI.length() ? rbISI.last().toFixed(2) : "n/a";
+                drawText(ctx,ww,hh,["Probe spike-rate trajectory", `Last ISI: ${latestISI} ms | window ${rateWinMs} ms`]);
+            }
             // -----------------------------
             // Simulation loop
             // -----------------------------
@@ -4615,6 +4763,12 @@ block 400ms off
 
                     // integrate one dt
                     applyIntegratorStep();
+                    if ((k & 7) === 0 && !sampleFiniteState()) {
+                        running = false;
+                        updateSimUI();
+                        reportNumericAlert("Non-finite or runaway membrane potential detected; simulation paused. Reduce dt, stimulus amplitude or axial coupling.");
+                        break;
+                    }
 
                     // Record Voltage Clamp current
                     if (vClampOn) {
@@ -4627,7 +4781,7 @@ block 400ms off
                         let Iax = gAx * ((Vim1 - vp) + (Vip1 - vp));
                         if (bc === "clamped" && (probeIdx === 0 || probeIdx === N - 1)) Iax += (gAx * 2.5) * (Vrest - vp);
 
-                        const Istim = I0 * (synWeights ? synWeights[probeIdx] : 1.0);
+                        const Istim = Iinj[probeIdx] + synWeights[probeIdx] * computeSynapticCurrent(probeIdx, vp, t_ms);
                         const Ic = (INa + IK + IL + IM) - Iax - Istim;
                         rbIClamp.push(Ic);
                     } else {
@@ -4655,6 +4809,7 @@ block 400ms off
                     for (let i = 0; i < N; i++) {
                         if (V[i] >= thresh && lastSpatialV[i] < thresh) {
                             rbRaster.push({ t: t_ms, x: i });
+                            if (stdpOn) updateSTDP(i, false, t_ms);
                             if (rbRaster.length > 5000) rbRaster.shift();
                         }
                         lastSpatialV[i] = V[i];
@@ -4693,6 +4848,8 @@ block 400ms off
                 const synProbeNow = computeSynapticCurrent(probeIdx, V[probeIdx], t_ms);
                 rbSyn.push(synProbeNow);
                 rbEnergy.push(computeCableGradientRMS());
+                if (liveTrace.length >= MAX_LIVE_TRACE) liveTrace.shift();
+                liveTrace.push([t_ms.toFixed(3), V[probeIdx].toFixed(4), rateHz.toFixed(4), I0.toFixed(4)]);
 
                 // update UI
                 $("badgeRate").textContent = `rate: ${rateHz.toFixed(1)} Hz`;
@@ -5175,7 +5332,9 @@ block 400ms off
 
             function fireSynapse(type) {
                 const gMap = { ampa: synGAmpa, nmda: synGNmda, gaba: synGGaba };
-                synEvents.push(new SynapticEvent(type, t_ms, gMap[type] || 0.5, clamp(synIdx, 0, N - 1)));
+                const site = clamp(synIdx, 0, N-1);
+                synEvents.push(new SynapticEvent(type, t_ms, gMap[type] || 0.5, site));
+                if (stdpOn) updateSTDP(site, true, t_ms);
             }
 
             function computeSynapticCurrent(compartIdx, Vi, tNow) {
@@ -5370,6 +5529,218 @@ block 400ms off
                 }
             }
 
+
+            // ==========================================================
+            // v3 scientific validation — isolated, deterministic cable.
+            // Supports current clamp, HH + M gates, pharmacology, AIS, myelin,
+            // temperature gradient and sealed/clamped ends. Excludes synapses,
+            // stochastic channel noise, PID, DSL, plasticity and voltage clamp.
+            // This narrow scope is stated in reports; never imply clinical fidelity.
+            // ==========================================================
+            function reportNumericAlert(message) {
+                numericIssues++;
+                if ($("numericStatus")) $("numericStatus").textContent = message;
+                if ($("diagReport")) $("diagReport").textContent = `Numerical warning: ${message}`;
+                console.warn("NeuroPulse diagnostic:", message);
+            }
+            function sampleFiniteState() {
+                for (let i = 0; i < N; i++) {
+                    if (!Number.isFinite(V[i]) || Math.abs(V[i]) > 1000 ||
+                        !Number.isFinite(m[i]) || !Number.isFinite(h[i]) ||
+                        !Number.isFinite(n[i]) || !Number.isFinite(w[i])) return false;
+                }
+                return true;
+            }
+            function axialStepIndex() {
+                const smallestCmScale = myelinated ? 0.02 : 1;
+                return 2 * gAx * dt / (Cm * smallestCmScale);
+            }
+            function safeNumericalStatus() {
+                const q = axialStepIndex();
+                const hint = myelinated ? " (effective internodal Cm ÷50)" : "";
+                const message = `Explicit axial stability index = ${q.toFixed(3)}${hint}; desirable ≤1. This is NOT an ionic stability guarantee. Run convergence test for accuracy.`;
+                if ($("numericStatus") && numericIssues === 0) {
+                    $("numericStatus").textContent = (q > 1 ? "WARNING: " : "INFO: ") + message;
+                }
+            }
+            function isolatedCableExperiment({ current = 8, settle = 0, measure = 40, h = 0.025, method = "rk4", initial = null }) {
+                const len = N;
+                if (!Number.isFinite(h) || h <= 0 || h > 0.1) throw new Error("Sandbox dt must lie in (0, 0.1] ms");
+                const actualSteps = Math.ceil((settle + measure) / h);
+                if (actualSteps * len > 120000000) throw new Error("Experiment exceeds the sandbox computation limit");
+                // Float64 reduces roundoff for numerical convergence comparisons.
+                const xs = {
+                    V: initial ? Float64Array.from(initial.V) : new Float64Array(len).fill(Vrest),
+                    m: initial ? Float64Array.from(initial.m) : new Float64Array(len),
+                    h: initial ? Float64Array.from(initial.h) : new Float64Array(len),
+                    n: initial ? Float64Array.from(initial.n) : new Float64Array(len),
+                    w: initial ? Float64Array.from(initial.w) : new Float64Array(len)
+                };
+                if (!initial) {
+                    const r = rates(Vrest);
+                    xs.m.fill(r.am / (r.am+r.bm)); xs.h.fill(r.ah / (r.ah+r.bh));
+                    xs.n.fill(r.an / (r.an+r.bn)); xs.w.fill(r.wInf);
+                }
+                const buffers = [0,1,2,3].map(() => [0,1,2,3,4].map(() => new Float64Array(len)));
+                const temp = [0,1,2,3,4].map(() => new Float64Array(len));
+                const at = clamp(stimIdx|0, 0, len-1);
+                const probe = clamp(probeIdx|0,0,len-1);
+                const gaussian = new Float64Array(len);
+                const sigma = Math.max(0, stimSigma);
+                for(let i=0;i<len;i++) gaussian[i] = sigma === 0 ? (i === at ? 1 : 0) : Math.exp(-0.5 * ((i-at)/sigma)**2);
+                const phiArr = new Float64Array(len);
+                for(let i=0;i<len;i++) phiArr[i] = getPhi(i);
+                const aisOn = $("selAIS")?.value === "on";
+                const slopes = (state, out) => {
+                    const [sv,sm,sh,sn,sw] = state;
+                    const [dv,dm,dh,dn,dw] = out;
+                    for(let i=0;i<len;i++) {
+                        const Vi=sv[i], r=rates(Vi), p=phiArr[i], internodal = myelinated && (i%nodeSpacing!==0);
+                        const myC=internodal?0.02:1, myL=internodal?0.02:1, myG=internodal?0:1;
+                        dm[i]=p*(r.am*(1-sm[i])-r.bm*sm[i]);
+                        dh[i]=p*(r.ah*(1-sh[i])-r.bh*sh[i]);
+                        dn[i]=p*(r.an*(1-sn[i])-r.bn*sn[i]);
+                        dw[i]=p*(r.wInf-sw[i])/r.tauW;
+                        const ais=aisOn && i>0 && i<4;
+                        const INa=scaleNa*myG*gNa*(ais?5:1)*sm[i]**3*sh[i]*(Vi-ENa);
+                        const IK=scaleK*myG*gK*(ais?2:1)*sn[i]**4*(Vi-EK);
+                        const IL=myL*gL*(Vi-EL);
+                        const IM=myG*gM*sw[i]*(Vi-EK);
+                        const left=i===0?(bc==="sealed"?sv[0]:Vrest):sv[i-1];
+                        const right=i===len-1?(bc==="sealed"?sv[len-1]:Vrest):sv[i+1];
+                        let Ia=gAx*(left+right-2*Vi);
+                        if(bc==="clamped"&&(i===0||i===len-1))Ia+=2.5*gAx*(Vrest-Vi);
+                        dv[i]=(gaussian[i]*current+Ia-INa-IK-IL-IM)/(Cm*myC);
+                    }
+                };
+                const base = [xs.V,xs.m,xs.h,xs.n,xs.w];
+                let spikes=0, prev=xs.V[probe];
+                const settleSteps = Math.ceil(settle/h);
+                for(let t=0;t<actualSteps;t++) {
+                    slopes(base,buffers[0]);
+                    if (method==="euler" || method==="rush_larsen") {
+                        for(let z=0;z<5;z++) {
+                            for(let i=0;i<len;i++) {
+                                if(method==="rush_larsen" && z>0) {
+                                    const r = rates(xs.V[i]), p=phiArr[i];
+                                    const ratesPair = z===1?[r.am,r.bm]:z===2?[r.ah,r.bh]:z===3?[r.an,r.bn]:null;
+                                    if(z===4) {
+                                        xs.w[i]=r.wInf+(xs.w[i]-r.wInf)*Math.exp(-p*h/r.tauW);
+                                    } else {
+                                        const a=ratesPair[0], b=ratesPair[1];
+                                        const steady=a/(a+b);
+                                        base[z][i]=steady+(base[z][i]-steady)*Math.exp(-p*(a+b)*h);
+                                    }
+                                } else base[z][i]+=h*buffers[0][z][i];
+                            }
+                        }
+                    } else {
+                        for(let z=0;z<5;z++)for(let i=0;i<len;i++)temp[z][i]=base[z][i]+h*(method==="rk4"?0.5:1)*buffers[0][z][i];
+                        slopes(temp,buffers[1]);
+                        if(method==="rk4") {
+                            for(let z=0;z<5;z++)for(let i=0;i<len;i++)temp[z][i]=base[z][i]+h*0.5*buffers[1][z][i];
+                            slopes(temp,buffers[2]);
+                            for(let z=0;z<5;z++)for(let i=0;i<len;i++)temp[z][i]=base[z][i]+h*buffers[2][z][i];
+                            slopes(temp,buffers[3]);
+                        }
+                        for(let z=0;z<5;z++)for(let i=0;i<len;i++) {
+                            const deriv=method==="rk4"?
+                                (buffers[0][z][i]+2*buffers[1][z][i]+2*buffers[2][z][i]+buffers[3][z][i])/6:
+                                (buffers[0][z][i]+buffers[1][z][i])*0.5;
+                            base[z][i]+=h*deriv;
+                        }
+                    }
+                    for (let z=1;z<5;z++)for(let i=0;i<len;i++)base[z][i]=clamp(base[z][i],0,1);
+                    const v=xs.V[probe];
+                    if (t>=settleSteps && prev < thresh && v>=thresh)spikes++;
+                    prev=v;
+                    if ((t&127)===0)for(let i=0;i<len;i++) {
+                        if(!Number.isFinite(xs.V[i])||Math.abs(xs.V[i])>1000) throw new Error(`Sandbox unstable at t=${(t*h).toFixed(3)} ms; use a smaller dt`);
+                    }
+                }
+                return {spikes, voltage:Array.from(xs.V), probeVoltage:xs.V[probe], state:xs, steps:actualSteps, dt:h, current, duration:measure, method};
+            }
+            function runNumericalSelfTests() {
+                const tests=[];
+                const check=(name, ok, detail)=>tests.push({name, pass:Boolean(ok), detail});
+                check("Rate singularity at V=-40 mV", Object.values(rates(-40)).every(Number.isFinite), "vtrap remains finite at 0");
+                check("Rate singularity at V=-55 mV", Object.values(rates(-55)).every(Number.isFinite), "vtrap remains finite at 0");
+                check("Finite active state", sampleFiniteState(), `compartments=${N}`);
+                check("Protocol engine compiled", Boolean(proto.compiled), `segments=${proto.segs.length}`);
+                check("Reproducible seeded generator", (()=>{
+                    const a=createSignedNoiseSampler("seeded",rngSeed), b=createSignedNoiseSampler("seeded",rngSeed);
+                    return Array.from({length:32},()=>a()).every(x=>x===b());
+                })(), `seed=${rngSeed}`);
+                const hashBefore=simpleHash(JSON.stringify(exportState().state));
+                const x=isolatedCableExperiment({current:0,measure:12,h:0.02,method:"rk4"});
+                const y=isolatedCableExperiment({current:0,measure:12,h:0.02,method:"rk4"});
+                check("Deterministic isolated integration",x.voltage.every((z,i)=>z===y.voltage[i]),"same configuration/same output");
+                check("Sandbox non-destructive",hashBefore===simpleHash(JSON.stringify(exportState().state)),"active state hash unchanged");
+                check("Finite isolated HH trajectory",x.voltage.every(Number.isFinite),"12 ms / zero injected current");
+                check("Gating variables bounded",[x.state.m,x.state.h,x.state.n,x.state.w].every(a=>a.every(z=>z>=0&&z<=1)),"all compartments in [0,1]");
+                check("Synaptic event kernel",new SynapticEvent("ampa",0,0.5,0).g(1)>0,"AMPA conductance positive at 1ms");
+                return {kind:"self-tests",testedAt:new Date().toISOString(),scope:"In-browser deterministic test, NOT external validation",results:tests,passed:tests.filter(t=>t.pass).length,total:tests.length};
+            }
+            function runConvergenceTest() {
+                const duration=clamp(Number($("diagDuration").value)||40,5,200);
+                const current=clamp(Number($("diagCurrent").value)||8,-20,60);
+                const h=Math.min(dt,0.04);
+                const a=isolatedCableExperiment({current,measure:duration,h,method:"rk4"});
+                const b=isolatedCableExperiment({current,measure:duration,h:h/2,method:"rk4"});
+                const rmse=Math.sqrt(a.voltage.reduce((sum,x,i)=>sum+(x-b.voltage[i])**2,0)/N);
+                return {kind:"dt-convergence",testedAt:new Date().toISOString(),comparison:"RK4 at dt and dt/2; single final voltage snapshot",duration_ms:duration,current_uA_cm2:current,dt_ms:h,dt_half_ms:h/2,spikes_coarse:a.spikes,spikes_fine:b.spikes,voltage_rmse_mV:rmse,probe_deviation_mV:Math.abs(a.probeVoltage-b.probeVoltage),
+                    caveat:"A small final-state difference is not proof of model validity. Time-step convergence may require trajectory and event-time comparison. Excludes synapses, stochastic effects, PID and DSL."};
+            }
+            function showDiagnostics(result) {
+                lastDiagnostic={ ...result,simulationVersion:"3.0.0", runId, model:"HH spatial cable, phenomenological gAx", config:{ integrator, dt, N, gAx, dx_um, bc, T_start, T_end, gNa, gK, gL, gM, Cm, scaleNa, scaleK, myelinated, nodeSpacing, ais:$("selAIS")?.value } };
+                $("diagReport").textContent=JSON.stringify(lastDiagnostic,null,2);
+                if(result.kind==="self-tests") $("numericStatus").textContent=`Self-tests: ${result.passed}/${result.total} passed.`;
+                if(result.kind==="dt-convergence") $("numericStatus").textContent=`dt halving comparison: ${result.voltage_rmse_mV.toFixed(5)} mV final-state RMS difference.`;
+            }
+            function wireVerificationUI() {
+                // Internodal Cm is 50x smaller; reduce explicit dt to honor the
+                // axial diffusion bound or pause with an actionable warning.
+                const retune = () => {
+                    if (!myelinated || !(gAx > 0)) {safeNumericalStatus();return;}
+                    const bound = 0.85 * Cm * 0.02 / (2 * gAx);
+                    if (bound < 0.001) {
+                        running=false;updateSimUI();
+                        reportNumericAlert("Myelination + this axial coupling/capacitance requires dt below 0.001ms; reduce gAx or raise Cm before running.");
+                    } else if (dt > bound) {
+                        const next=Math.max(0.001,Math.floor(bound*1000)/1000);
+                        $("rngDt").value=String(next);
+                        $("rngDt").dispatchEvent(new Event("input"));
+                        $("numericStatus").textContent=`Automatically reduced dt to ${next.toFixed(3)}ms for the phenomenological myelin capacitance. Verify convergence.`;
+                    } else safeNumericalStatus();
+                };
+                $("selMyelin")?.addEventListener("change",retune);
+                ["rngGAx","rngCm"].forEach(id=>$(id)?.addEventListener("input",retune));
+                retune();
+                $("selChannelNoise")?.addEventListener("change",e=>{stochasticOn=e.target.value==="on";});
+                $("selSTDP")?.addEventListener("change",e=>{stdpOn=e.target.value==="on";});
+                $("rngChannelDensity")?.addEventListener("input",e=>{
+                    channelDensity=Math.max(0.1,Number(e.target.value)||2);
+                    $("valChannelDensity").textContent=channelDensity.toFixed(1);
+                });
+                $("btnSelfTest")?.addEventListener("click",()=>{
+                    try {showDiagnostics(runNumericalSelfTests());} catch(e){reportNumericAlert(e.message);}
+                });
+                $("btnConvergence")?.addEventListener("click",()=>{
+                    try {showDiagnostics(runConvergenceTest());} catch(e){reportNumericAlert(e.message);}
+                });
+                $("btnReportExport")?.addEventListener("click",()=>{
+                    const data=lastDiagnostic||runNumericalSelfTests();
+                    downloadBlob(new Blob([JSON.stringify(data,null,2)],{type:"application/json"}),"neuropulse_validation_report.json");
+                });
+                $("btnSnapshotDiag")?.addEventListener("click",()=>downloadBlob(new Blob([JSON.stringify(exportState(),null,2)],{type:"application/json"}),"neuropulse_complete_state.json"));
+                $("btnLiveTrace")?.addEventListener("click",()=>{
+                    const csv="t_ms,V_probe_mV,rate_Hz,stim_uA_cm2\n"+liveTrace.map(x=>x.join(",")).join("\n");
+                    downloadBlob(new Blob([csv],{type:"text/csv"}),"neuropulse_trace.csv");
+                });
+                ["rngDt","rngGAx","rngCm","selMyelin","rngNodeSpc"].forEach(id => $(id)?.addEventListener("input",safeNumericalStatus));
+                safeNumericalStatus();
+            }
+
             // ==========================================================
             // INNOVATIONS v2: F-I Curve Generator
             // ==========================================================
@@ -5380,72 +5751,30 @@ block 400ms off
             async function runFICurve() {
                 if (fiRunning) return;
                 fiRunning = true;
-                if ($("fiStatus")) $("fiStatus").textContent = "Running F-I sweep...";
-                if ($("badgeFI")) $("badgeFI").textContent = "sweeping...";
+                const button = $("btnFIRun");
+                if (button) button.disabled = true;
                 fiData = [];
-                const wasRunning = running;
-                running = false;
-
-                const stepSize = (fiEndI - fiStartI) / Math.max(1, fiSteps - 1);
-
-                for (let s = 0; s < fiSteps; s++) {
-                    const Idc = fiStartI + s * stepSize;
-                    // Reset cable
-                    for (let i = 0; i < N; i++) {
-                        V[i] = Vrest;
-                        const { an, bn, am, bm, ah, bh } = rates(Vrest);
-                        m[i] = am / (am + bm); h[i] = ah / (ah + bh); n[i] = an / (an + bn);
+                try {
+                    // Each point starts from independent resting initial conditions;
+                    // live simulation, controller, RNG and audio are untouched.
+                    for (let j = 0; j < fiSteps; j++) {
+                        const I = fiStartI + (fiEndI - fiStartI) * j / Math.max(1, fiSteps - 1);
+                        const result = isolatedCableExperiment({ current: I, settle: fiSettleMs,
+                            measure: fiHoldMs, h: dt, method: integrator });
+                        fiData.push({ I, rate: result.spikes / (fiHoldMs * 0.001) });
+                        if ($("fiStatus")) $("fiStatus").textContent = `Step ${j+1}/${fiSteps}, I=${I.toFixed(2)} µA/cm², ${fiData.at(-1).rate.toFixed(2)} Hz`;
+                        drawFICurve();
+                        // Give the browser an opportunity to paint every point.
+                        await new Promise(resolve => setTimeout(resolve, 0));
                     }
-                    let localT = 0;
-                    let localSpikes = 0;
-                    const dtLocal = dt;
-
-                    // Settle phase
-                    while (localT < fiSettleMs) {
-                        Iinj.fill(0);
-                        Iinj[clamp(stimIdx, 0, N - 1)] = Idc;
-                        applyIntegratorStep();
-                        localT += dtLocal;
-                    }
-
-                    // Measure phase
-                    let prevV = V[clamp(probeIdx, 0, N - 1)];
-                    const measureStart = localT;
-                    while (localT < fiSettleMs + fiHoldMs) {
-                        Iinj.fill(0);
-                        Iinj[clamp(stimIdx, 0, N - 1)] = Idc;
-                        applyIntegratorStep();
-                        localT += dtLocal;
-                        const Vp = V[clamp(probeIdx, 0, N - 1)];
-                        if (prevV < thresh && Vp >= thresh) localSpikes++;
-                        prevV = Vp;
-                    }
-
-                    const rateHz = localSpikes / (fiHoldMs * 1e-3);
-                    fiData.push({ I: Idc, rate: rateHz });
-                    if ($("fiStatus")) $("fiStatus").textContent = `Step ${s + 1}/${fiSteps}: I=${Idc.toFixed(1)} \u2192 ${rateHz.toFixed(1)} Hz`;
-
-                    // Yield to UI
-                    if (s % 3 === 0) await new Promise(r => setTimeout(r, 0));
+                    if ($("fiStatus")) $("fiStatus").textContent = `Completed ${fiData.length} isolated sweep points (no live-state mutation).`;
+                    if ($("badgeFI")) $("badgeFI").textContent = `${fiData.length} points`;
+                } catch (err) {
+                    reportNumericAlert(`F-I sweep failed: ${err.message}`);
+                } finally {
+                    fiRunning = false;
+                    if (button) button.disabled = false;
                 }
-
-                // Classify excitability type
-                let smooth = true;
-                for (let i = 2; i < fiData.length; i++) {
-                    if (fiData[i].rate > 0 && fiData[i - 1].rate === 0) {
-                        if (fiData[i].rate > 15) smooth = false;
-                    }
-                }
-                const typeStr = smooth ? "Type I (smooth onset)" : "Type II (discontinuous)";
-
-                // Restore cable
-                resetCable();
-                running = wasRunning;
-                fiRunning = false;
-
-                if ($("fiStatus")) $("fiStatus").textContent = `Done. ${fiData.length} points. ${typeStr}`;
-                if ($("badgeFI")) $("badgeFI").textContent = typeStr;
-                drawFICurve();
             }
 
             function drawFICurve() {
@@ -5520,56 +5849,34 @@ block 400ms off
             let bifMaxI = 30, bifPrecision = 0.05;
 
             async function runBifurcation() {
-                if ($("bifStatus")) $("bifStatus").textContent = "Scanning...";
-                let lo = 0, hi = bifMaxI;
-
-                function testI(Idc) {
-                    // Quick sim: run for ~300ms at given DC
-                    const tempV = new Float32Array(N);
-                    const tempM = new Float32Array(N);
-                    const tempH = new Float32Array(N);
-                    const tempN = new Float32Array(N);
-                    for (let i = 0; i < N; i++) {
-                        tempV[i] = Vrest;
-                        const { an, bn, am, bm, ah, bh } = rates(Vrest);
-                        tempM[i] = am / (am + bm); tempH[i] = ah / (ah + bh); tempN[i] = an / (an + bn);
+                const button = $("btnBifScan");
+                if (button?.disabled) return;
+                if (button) button.disabled = true;
+                try {
+                    const testI = I => isolatedCableExperiment({current:I, settle:200, measure:300,
+                        h:dt, method:integrator}).spikes > 0;
+                    let lo = 0, hi = bifMaxI;
+                    const lowSpikes = testI(lo);
+                    const highSpikes = testI(hi);
+                    if (lowSpikes || !highSpikes) {
+                        $("bifStatus").textContent = lowSpikes
+                            ? "Already spiking at 0 µA/cm²; no positive threshold bracketed."
+                            : `No spikes by ${hi.toFixed(2)} µA/cm²; increase Max I or run a longer measurement.`;
+                        return;
                     }
-
-                    let spiked = false, prevVp = Vrest;
-                    const stim = clamp(stimIdx, 0, N - 1);
-                    for (let step = 0; step < 300 / dt; step++) {
-                        Iinj.fill(0);
-                        Iinj[stim] = Idc;
-                        // Quick Euler for speed
-                        computeDerivs(tempV, tempM, tempH, tempN, Iinj, dV1, dm1, dh1, dn1, null, null, null);
-                        for (let i = 0; i < N; i++) {
-                            tempV[i] += dt * dV1[i];
-                            tempM[i] = clamp(tempM[i] + dt * dm1[i], 0, 1);
-                            tempH[i] = clamp(tempH[i] + dt * dh1[i], 0, 1);
-                            tempN[i] = clamp(tempN[i] + dt * dn1[i], 0, 1);
-                        }
-                        const Vp = tempV[clamp(probeIdx, 0, N - 1)];
-                        if (prevVp < thresh && Vp >= thresh) spiked = true;
-                        prevVp = Vp;
+                    let iters = 0;
+                    while (hi - lo > bifPrecision && iters++ < 35) {
+                        const mid = (lo + hi) * 0.5;
+                        if (testI(mid)) hi = mid;
+                        else lo = mid;
+                        if (iters % 2 === 0) await new Promise(resolve => setTimeout(resolve, 0));
                     }
-                    return spiked;
+                    $("bifStatus").textContent = `Operational spike-onset threshold ≈ ${hi.toFixed(3)} µA/cm² (${iters} iterations; fixed 200+300 ms, isolated simulation).`;
+                } catch (err) {
+                    $("bifStatus").textContent = `Scan failed: ${err.message}`;
+                } finally {
+                    if (button) button.disabled = false;
                 }
-
-                // Binary search
-                let iterations = 0;
-                while ((hi - lo) > bifPrecision && iterations < 50) {
-                    const mid = (lo + hi) / 2;
-                    if (testI(mid)) hi = mid;
-                    else lo = mid;
-                    iterations++;
-                    if (iterations % 5 === 0) {
-                        if ($("bifStatus")) $("bifStatus").textContent = `Scanning: ${lo.toFixed(2)}\u2013${hi.toFixed(2)} \u00b5A/cm\u00b2...`;
-                        await new Promise(r => setTimeout(r, 0));
-                    }
-                }
-
-                const rheobase = (lo + hi) / 2;
-                if ($("bifStatus")) $("bifStatus").textContent = `Rheobase \u2248 ${rheobase.toFixed(3)} \u00b5A/cm\u00b2 (${iterations} iterations)`;
             }
 
             // ==========================================================
@@ -5771,13 +6078,6 @@ block 400ms off
                     // Cleanup old synapse events
                     if (synEvents.length > 50) cleanupSynapses();
 
-                    // Add synaptic currents directly to Iinj for next step
-                    for (let i = 0; i < N; i++) {
-                        let isyn = computeSynapticCurrent(i, V[i], t_ms);
-                        if (isyn !== 0) {
-                            Iinj[i] += isyn;
-                        }
-                    }
                 }
 
                 if (!document.hidden) {
@@ -5808,7 +6108,7 @@ block 400ms off
                 resetPhase();
 
                 // apply saved preset if present
-                const saved = localStorage.getItem("cablelab_preset");
+                const saved = (() => { try { return localStorage.getItem("cablelab_preset"); } catch { return null; } })();
                 if (saved) {
                     if ($("txtJSON")) $("txtJSON").value = saved;
                     try { applyState(JSON.parse(saved)); } catch (e) { /* ignore */ }
@@ -5828,6 +6128,7 @@ block 400ms off
                 initParticles();
                 initCollapsible();
                 wireInnovationUI();
+                wireVerificationUI();
                 drawColorbar();
                 drawFICurve();
 
