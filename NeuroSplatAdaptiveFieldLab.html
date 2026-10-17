@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#060916">
+<title>NeuroSplat — Adaptive Neural Field Laboratory</title>
+<style>
+:root{color-scheme:dark;--bg:#060916;--panel:rgba(10,18,36,.87);--line:rgba(155,197,248,.16);--text:#eaf6ff;--muted:#8fa6c2;--cyan:#62e5ef;--violet:#ad92ff;--good:#72e9b3;--bad:#ff8eaa}
+*{box-sizing:border-box}html,body{width:100%;height:100%;margin:0;overflow:hidden;background:var(--bg);color:var(--text);font:13px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif}
+#render{display:block;position:fixed;inset:0;width:100%;height:100%;touch-action:none;cursor:grab}#render:active{cursor:grabbing}
+#veil{pointer-events:none;position:fixed;inset:0;background:radial-gradient(circle at 53% 40%,transparent 28%,rgba(2,5,15,.35) 80%,rgba(2,4,12,.68) 100%)}
+#hud{position:fixed;z-index:5;top:16px;left:16px;width:min(362px,calc(100vw - 32px));max-height:calc(100dvh - 32px);overflow-y:auto;scrollbar-width:thin;background:var(--panel);border:1px solid var(--line);border-radius:20px;box-shadow:0 25px 80px #0009;backdrop-filter:blur(20px);transition:transform .2s}
+#hud.collapsed{transform:translateX(calc(-100% - 25px))}#toggleHUD{position:fixed;z-index:9;top:24px;left:calc(min(362px,100vw - 32px) + 25px);width:34px;height:34px;border-radius:10px}body.hud-off #toggleHUD{left:12px}
+.header{padding:17px 18px 13px;border-bottom:1px solid var(--line);background:radial-gradient(ellipse at top left,#29436777,transparent 65%)}
+.brand{display:flex;justify-content:space-between;align-items:center;gap:10px}.logo{display:flex;align-items:center;gap:10px}.glyph{width:35px;height:35px;display:grid;place-items:center;background:linear-gradient(140deg,#53d9f32b,#9b7cf74a);border:1px solid #89cffb5b;border-radius:12px;font-size:22px}h1{font-size:19px;letter-spacing:-.04em;margin:0}p{margin:0}.sub{font-size:11.5px;color:var(--muted);margin-top:6px}
+.tag{color:var(--cyan);background:#3fe8f210;border:1px solid #3fe8f23d;border-radius:999px;padding:3px 7px;white-space:nowrap;font-size:10px;font-weight:700}
+.section{padding:12px 17px 15px;border-bottom:1px solid var(--line)}.section h2{font-size:11px;color:#d6ebff;text-transform:uppercase;letter-spacing:.13em;margin:0 0 10px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:7px}.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:7px}
+button,select,input{font:inherit}button,select{border:1px solid #c2d9fb2a;border-radius:10px;background:#b5d8ff0c;color:var(--text);padding:8px 9px;min-height:35px}button{cursor:pointer;transition:background .15s,border-color .15s}button:hover{background:#9ddafc22;border-color:#93dafb88}button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--cyan);outline-offset:2px}
+button.primary{background:linear-gradient(115deg,#206b7f,#594c9f);border-color:#89c8fd60}button.active{border-color:var(--good);background:#2fc8912b}button:disabled{opacity:.45;cursor:not-allowed}
+select{width:100%;outline:none;background:#17233b}option{background:#17233b}
+.field{display:flex;flex-direction:column;gap:5px;margin:11px 0}.fieldhead{display:flex;align-items:center;justify-content:space-between;gap:10px;color:var(--muted)}output{font-variant-numeric:tabular-nums;color:#d3e8ff}input[type=range]{width:100%;height:18px;accent-color:#71e5ef;cursor:pointer}
+.check{display:flex;align-items:center;gap:9px;padding:5px 0;cursor:pointer;color:#cadaea}.check input{accent-color:#7adfe9;width:16px;height:16px}
+.statrow{display:grid;grid-template-columns:repeat(3,1fr);gap:7px}.stat{padding:8px 9px;background:#7083c111;border:1px solid #bfdafa17;border-radius:10px}.stat b{display:block;color:#ebfaff;font-size:15px;font-variant-numeric:tabular-nums}.stat small{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
+#chart{display:block;width:100%;height:85px;background:#020713;border:1px solid #d3e5fa22;border-radius:10px;margin-top:9px}.note{font-size:10.5px;color:var(--muted);margin-top:8px;line-height:1.55}
+#topstats{position:fixed;top:16px;right:16px;z-index:2;display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;max-width:min(630px,calc(100vw - 430px))}.chip{background:#050b1ab8;border:1px solid #abc3ed2a;backdrop-filter:blur(12px);padding:7px 11px;border-radius:999px;font-size:11px;color:#c2d1e5}.chip b{color:#eaffff;font-variant-numeric:tabular-nums}
+#legend{position:fixed;z-index:2;bottom:15px;right:16px;background:#071226a8;border:1px solid var(--line);border-radius:13px;padding:10px 13px;max-width:min(340px,calc(100vw - 30px));color:#bdd6ed;font-size:11px;backdrop-filter:blur(12px)}#legend strong{color:#e3f8ff}
+#error{position:fixed;inset:auto 15px 15px auto;max-width:min(600px,calc(100vw - 30px));z-index:20;white-space:pre-wrap;padding:20px;background:#28101b;border:1px solid #ff729f;box-shadow:0 10px 65px #000d;border-radius:13px;color:#ffe6eb;display:none;max-height:60vh;overflow:auto}
+#toast{position:fixed;z-index:15;top:17px;left:50%;transform:translateX(-50%);background:#0c2332e8;border:1px solid #6ddde87a;box-shadow:0 9px 40px #0007;color:#e4ffff;padding:9px 14px;border-radius:12px;opacity:0;pointer-events:none;transition:opacity .25s;text-align:center;max-width:60vw}
+footer{padding:12px 17px;color:var(--muted);font-size:10px}a{color:#8fdafa}#importFile{display:none}
+@media(max-width:810px){#hud{top:10px;left:10px;max-height:calc(100dvh - 20px);width:min(332px,calc(100vw - 20px));background:rgba(8,16,33,.94)}#toggleHUD{top:18px;left:min(352px,calc(100vw - 10px))}#topstats{top:auto;bottom:13px;right:10px;max-width:calc(100vw - 20px)}#legend{top:10px;bottom:auto;right:10px;max-width:210px;font-size:10px}body:not(.hud-off) #legend{display:none}}
+@media(max-width:520px){#topstats{gap:4px}.chip{padding:5px 7px}#legend{max-width:calc(100vw - 65px)}body:not(.hud-off) #topstats{display:none}}
+</style>
+</head>
+<body>
+<canvas id="render" aria-label="Interactive GPU ray-marched neural field, drag to orbit and scroll to zoom"></canvas>
+<div id="veil"></div>
+<aside id="hud" aria-label="Experiment controls">
+ <header class="header"><div class="brand"><div class="logo"><div class="glyph" aria-hidden="true">◈</div><div><h1>NEURO<span style="color:var(--cyan)">SPLAT</span></h1><div style="font-size:10px;letter-spacing:.17em;color:#9aabd2">ADAPTIVE FIELD LAB</div></div></div><span class="tag">WebGL 2</span></div><p class="sub">Train a compact neural appearance field inside a real-time signed-distance scene with Gaussian appearance kernels and an adaptive rendering budget.</p></header>
+ <section class="section"><h2>Experiment</h2><div class="grid2"><button id="train" class="primary">Train network · T</button><button id="pause">Pause motion · Space</button></div><div class="grid2" style="margin-top:7px"><button id="reset">Reset network</button><button id="reseed">New seed · R</button></div><div class="field"><div class="fieldhead"><label for="viewMode">Field visualisation</label></div><select id="viewMode"><option value="split">Reference / learned split</option><option value="learned">Learned approximation</option><option value="reference">Analytic reference</option><option value="error">Absolute error heatmap</option></select></div><div class="field"><div class="fieldhead"><label for="shape">Geometry family</label></div><select id="shape"><option value="0">Bio-organic fusion</option><option value="1">Fractal crystal</option><option value="2">Gyroid organism</option><option value="3">Orbital torus</option></select></div><div class="field"><div class="fieldhead"><label for="palette">Surface palette</label></div><select id="palette"><option value="0">Abyssal cyan / violet</option><option value="1">Solar ember / gold</option><option value="2">Bioluminescent forest</option><option value="3">Iridescent ceramic</option></select></div></section>
+ <section class="section"><h2>Appearance &amp; geometry</h2>
+  <div class="field"><div class="fieldhead"><label for="neural">Neural colour influence</label><output id="neuralVal"></output></div><input id="neural" type="range" min="0" max="1" step="0.01" value="0.82"></div>
+  <div class="field"><div class="fieldhead"><label for="gaussian">Gaussian kernel strength</label><output id="gaussianVal"></output></div><input id="gaussian" type="range" min="0" max="1.8" step="0.02" value="0.78"></div>
+  <div class="field"><div class="fieldhead"><label for="warp">Geometry deformation</label><output id="warpVal"></output></div><input id="warp" type="range" min="0" max="1" step="0.01" value="0.34"></div>
+  <div class="field"><div class="fieldhead"><label for="roughness">Roughness</label><output id="roughnessVal"></output></div><input id="roughness" type="range" min="0.05" max="1" step="0.01" value="0.32"></div>
+  <div class="field"><div class="fieldhead"><label for="exposure">Exposure</label><output id="exposureVal"></output></div><input id="exposure" type="range" min="0.4" max="2.4" step="0.02" value="1.12"></div>
+ </section>
+ <section class="section"><h2>Rendering scheduler</h2>
+  <div class="field"><div class="fieldhead"><label for="steps">Maximum sphere-tracing steps</label><output id="stepsVal"></output></div><input id="steps" type="range" min="32" max="120" step="4" value="76"></div>
+  <div class="field"><div class="fieldhead"><label for="scale">Resolution cap</label><output id="scaleVal"></output></div><input id="scale" type="range" min="0.35" max="1" step="0.05" value="0.8"></div>
+  <label class="check"><input id="adaptive" type="checkbox" checked> Adaptive resolution (target ~45 FPS)</label>
+  <label class="check"><input id="accumulate" type="checkbox" checked> Temporal accumulation while static</label>
+  <label class="check"><input id="animate" type="checkbox" checked> Animate scene</label>
+  <p class="note">Drag to orbit, wheel to zoom. The adaptive scheduler adjusts internal pixel resolution; it does not claim neural GPU speedups. Accumulation is reset on scene changes to avoid ghosting.</p>
+ </section>
+ <section class="section"><h2>Training / diagnostics</h2><div class="statrow"><div class="stat"><small>Holdout MSE</small><b id="mse">—</b></div><div class="stat"><small>Adam steps</small><b id="iterations">0</b></div><div class="stat"><small>Params</small><b id="parameters">81</b></div></div>
+ <canvas id="chart" width="640" height="170" aria-label="Held-out mean squared error trend"></canvas>
+ <div class="field"><div class="fieldhead"><label for="batches">Training batches per tick</label><output id="batchesVal"></output></div><input id="batches" type="range" min="1" max="10" step="1" value="3"></div>
+ <p class="note">Actual CPU-trained <strong>3→16→1 tanh MLP</strong> (81 trainable parameters), with GLSL inference. Training targets are procedural colour-field samples; this does <strong>not</strong> train a NeRF, learn full scene geometry, or reconstruct real Gaussian splats.</p></section>
+ <section class="section"><h2>Export &amp; reproducibility</h2><div class="grid2"><button id="screenshot">Save image · S</button><button id="export">Export preset JSON</button><button id="import" style="grid-column:span 2">Import preset JSON</button></div><input type="file" id="importFile" accept="application/json,.json"><p class="note" id="status" role="status" aria-live="polite">Initialising GPU...</p></section>
+ <footer>Research-inspired educational renderer · fully local · no external libraries · <a href="https://github.com/kai9987kai/Rendering-experiments" target="_blank" rel="noopener noreferrer">Rendering-experiments</a></footer>
+</aside>
+<button id="toggleHUD" aria-label="Hide or show controls" title="Hide / show controls (H)">☰</button>
+<div id="topstats"><span class="chip">FPS <b id="fps">—</b></span><span class="chip">Resolution <b id="resolution">—</b></span><span class="chip">GPU <b id="backend">—</b></span><span class="chip">Samples <b id="history">1</b></span></div>
+<div id="legend"><strong>REFERENCE / LEARNED</strong><div>Left: analytic appearance target · Right: on-device MLP prediction. Train to reduce the held-out MSE.</div></div>
+<div id="error" role="alert"></div><div id="toast" role="status"></div>
+<script>
+(()=>{'use strict';
+ const $=id=>document.getElementById(id),canvas=$('render'),gl=canvas.getContext('webgl2',{alpha:false,antialias:false,preserveDrawingBuffer:true,powerPreference:'high-performance'});
+ const notice=(message)=>{const x=$('toast');x.textContent=message;x.style.opacity='1';clearTimeout(notice.timer);notice.timer=setTimeout(()=>x.style.opacity='0',2600)};
+ function fail(message){const el=$('error');el.style.display='block';el.textContent='NeuroSplat renderer could not start:\n'+message+'\nTry enabling WebGL 2 in Chrome, Edge, or Firefox.';$('status').textContent='Renderer error';}
+ if(!gl){fail('WebGL 2 is not supported or GPU access is disabled.');return;}
+ const MAX_HIDDEN=16;
+ const state={viewMode:'split',shape:0,palette:0,neural:.82,gaussian:.78,warp:.34,roughness:.32,exposure:1.12,steps:76,scale:.8,adaptive:true,accumulate:true,animate:true,batches:3,training:false,time:0,seed:13579};
+ const cam={azimuth:.38,elevation:.19,radius:5.25,drag:false,lastX:0,lastY:0};
+ let currentScale=state.scale,clock=performance.now(),fpsSmooth=60,fpsTimer=0,chartHistory=[],holdoutMSE=NaN,dirty=true,historyFrames=0,sceneTarget=null,historyTargets=[],historyIndex=0,sceneProgram=null,mixProgram=null,copyProgram=null,quadVAO=null,latestTraining=0,contextAlive=true;
+ function rngFactory(seed){let a=(seed>>>0)||1;return ()=>{a+=0x6D2B79F5;let t=a;t=Math.imul(t^(t>>>15),t|1);t^=t+Math.imul(t^(t>>>7),t|61);return ((t^(t>>>14))>>>0)/4294967296;};}
+ let random=rngFactory(state.seed),net=null;
+ function createNetwork(seed){random=rngFactory(seed);const w1=new Float32Array(48),b1=new Float32Array(16),w2=new Float32Array(16);for(let i=0;i<48;i++)w1[i]=(random()*2-1)*.72;for(let i=0;i<16;i++){b1[i]=(random()*2-1)*.12;w2[i]=(random()*2-1)*.36;}return {w1,b1,w2,b2:0,step:0,m:new Float64Array(81),v:new Float64Array(81)};}
+ function targetField(x,y,z){return .52*Math.sin(2.15*x+.27*Math.sin(1.3*z))*Math.cos(2.4*y-.4*z)+.32*Math.sin(3.1*z+1.7*x)+.16*Math.cos(4.3*y-2.2*z);}
+ function predict(x,y,z,hidden){let sum=net.b2;for(let i=0;i<16;i++){let j=i*3;const h=Math.tanh(net.w1[j]*x*.55+net.w1[j+1]*y*.55+net.w1[j+2]*z*.55+net.b1[i]);hidden[i]=h;sum+=net.w2[i]*h;}return Math.tanh(sum);}
+ function gradientBatch(size=64){const grad=new Float64Array(81),hidden=new Float64Array(16),dHidden=new Float64Array(16),inputs=new Float64Array(3);for(let n=0;n<size;n++){
+  const x=(random()*2-1)*1.65,y=(random()*2-1)*1.65,z=(random()*2-1)*1.65;inputs[0]=x*.55;inputs[1]=y*.55;inputs[2]=z*.55;
+  const pred=predict(x,y,z,hidden),truth=targetField(x,y,z),g=2*(pred-truth)*(1-pred*pred);
+  for(let i=0;i<16;i++){grad[64+i]+=g*hidden[i];dHidden[i]=g*net.w2[i]*(1-hidden[i]*hidden[i]);}
+  grad[80]+=g;
+  for(let i=0;i<16;i++){grad[48+i]+=dHidden[i];for(let j=0;j<3;j++)grad[i*3+j]+=dHidden[i]*inputs[j];}
+ }
+ const inv=1/size,lr=.011,b1c=.9,b2c=.999,eps=1e-8;net.step++;const corr1=1-Math.pow(b1c,net.step),corr2=1-Math.pow(b2c,net.step);
+ for(let k=0;k<81;k++){const g=Math.max(-3,Math.min(3,grad[k]*inv));net.m[k]=b1c*net.m[k]+(1-b1c)*g;net.v[k]=b2c*net.v[k]+(1-b2c)*g*g;const change=lr*(net.m[k]/corr1)/(Math.sqrt(net.v[k]/corr2)+eps);
+  if(k<48)net.w1[k]-=change;else if(k<64)net.b1[k-48]-=change;else if(k<80)net.w2[k-64]-=change;else net.b2-=change;
+ }
+ }
+ const holdout=(()=>{const r=rngFactory(0xC0FFEE),pts=[];for(let i=0;i<256;i++)pts.push([(r()*2-1)*1.65,(r()*2-1)*1.65,(r()*2-1)*1.65]);return pts;})();
+ function measure(){const hidden=new Float64Array(16);let loss=0;for(const p of holdout){let d=predict(...p,hidden)-targetField(...p);loss+=d*d;}holdoutMSE=loss/holdout.length;chartHistory.push(holdoutMSE);if(chartHistory.length>110)chartHistory.shift();$('mse').textContent=holdoutMSE.toFixed(4);$('iterations').textContent=net.step.toLocaleString();drawChart();}
+ function drawChart(){const c=$('chart'),ctx=c.getContext('2d'),w=c.width,h=c.height;ctx.clearRect(0,0,w,h);ctx.fillStyle='#020713';ctx.fillRect(0,0,w,h);ctx.strokeStyle='#26445a';ctx.lineWidth=1;for(let n=1;n<5;n++){const y=n*h/5;ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(w,y);ctx.stroke();}if(chartHistory.length<2)return;const max=Math.max(.01,...chartHistory)*1.1,min=0;ctx.strokeStyle='#6ddde8';ctx.lineWidth=3;ctx.beginPath();chartHistory.forEach((v,i)=>{const x=12+i*(w-24)/(Math.max(109,chartHistory.length-1)),y=h-12-(v-min)/(max-min)*(h-24);i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);});ctx.stroke();ctx.fillStyle='#a5b8c7';ctx.font='18px system-ui';ctx.fillText('held-out MSE  ·  lower is better',16,25);}
+ function shader(type,source){const s=gl.createShader(type);gl.shaderSource(s,source);gl.compileShader(s);if(!gl.getShaderParameter(s,gl.COMPILE_STATUS)){const err=gl.getShaderInfoLog(s);gl.deleteShader(s);throw Error(err+'\n'+source.split('\n').map((x,i)=>`${i+1} ${x}`).join('\n').slice(0,12000));}return s;}
+ function program(fragment){const v=shader(gl.VERTEX_SHADER,`#version 300 es\nprecision highp float;out vec2 vUV;void main(){vec2 p=vec2((gl_VertexID<<1)&2,gl_VertexID&2);vUV=p;gl_Position=vec4(p*2.0-1.0,0.0,1.0);}`);
+ const f=shader(gl.FRAGMENT_SHADER,fragment),p=gl.createProgram();gl.attachShader(p,v);gl.attachShader(p,f);gl.linkProgram(p);gl.deleteShader(v);gl.deleteShader(f);if(!gl.getProgramParameter(p,gl.LINK_STATUS)){let msg=gl.getProgramInfoLog(p);gl.deleteProgram(p);throw Error(msg);}return p;}
+ const sceneSource=`#version 300 es
+precision highp float;
+precision highp int;
+out vec4 outColor;
+uniform vec2 uResolution;uniform vec3 uCamera;uniform float uTime,uScreenShift;
+uniform int uShape,uMode,uPalette,uSteps;
+uniform float uNeural,uGaussian,uWarp,uRoughness,uExposure;
+uniform float uW1[48],uB1[16],uW2[16],uBias;
+uniform float uJitter;
+#define PI 3.141592653589793
+float sat(float x){return clamp(x,0.0,1.0);}
+float smin(float a,float b,float k){float h=sat(.5+.5*(b-a)/k);return mix(b,a,h)-k*h*(1.0-h);}
+mat2 rot(float a){float c=cos(a),s=sin(a);return mat2(c,-s,s,c);}
+float sdBox(vec3 p,vec3 b){vec3 q=abs(p)-b;return length(max(q,0.0))+min(max(q.x,max(q.y,q.z)),0.0);}
+float sdTorus(vec3 p,vec2 t){return length(vec2(length(p.xz)-t.x,p.y))-t.y;}
+float terrain(vec3 p){vec3 q=p;q.xz*=rot(uTime*.10);float d=0.0;
+ if(uShape==0){float core=length(q)-1.08;vec3 v=q;v.xz*=rot(.52);float ring=sdTorus(v,vec2(1.14,.18));d=smin(core,ring,.32);d+=uWarp*.07*sin(q.x*5.0+uTime*.45)*sin(q.y*6.0)*sin(q.z*5.0);}
+ else if(uShape==1){vec3 v=q;v.xy*=rot(.65);float box=sdBox(v,vec3(.83));float crystal=max(abs(v.x)+abs(v.y)+abs(v.z)-1.87,box*.78);d=min(crystal,length(v-vec3(.52,.76,.26))-.49);d+=uWarp*.05*sin(9.0*q.x)*sin(9.0*q.y)*sin(9.0*q.z);}
+ else if(uShape==2){float sph=length(q)-1.20;float gy=sin(q.x*5.0)*cos(q.y*5.0)+sin(q.y*5.0)*cos(q.z*5.0)+sin(q.z*5.0)*cos(q.x*5.0);d=sph+uWarp*.12*gy;}
+ else{q.xy*=rot(.4);d=sdTorus(q,vec2(1.06,.36));vec3 b=q;b.xz*=rot(1.0);d=smin(d,sdTorus(b,vec2(1.05,.17)),.13);d+=uWarp*.06*sin(q.x*7.0+uTime*.5)*sin(q.z*7.0);}
+ return d;
+}
+float scene(vec3 p){return min(terrain(p),p.y+1.65);}
+vec3 normalAt(vec3 p){vec2 e=vec2(.002,0.0);return normalize(vec3(scene(p+e.xyy)-scene(p-e.xyy),scene(p+e.yxy)-scene(p-e.yxy),scene(p+e.yyx)-scene(p-e.yyx)));}
+float softShadow(vec3 ro,vec3 rd){float result=1.0,t=.025;for(int i=0;i<20;i++){float h=scene(ro+rd*t);if(h<.002)return .04;result=min(result,15.0*h/t);t+=clamp(h,.025,.23);if(t>7.0)break;}return sat(result);}
+float ao(vec3 p,vec3 n){float acc=0.0,weight=1.0;for(int i=1;i<=4;i++){float h=float(i)*.11;acc+=(h-scene(p+n*h))*weight;weight*=.65;}return sat(1.0-1.45*acc);}
+float targetField(vec3 p){return .52*sin(2.15*p.x+.27*sin(1.3*p.z))*cos(2.4*p.y-.4*p.z)+.32*sin(3.1*p.z+1.7*p.x)+.16*cos(4.3*p.y-2.2*p.z);}
+float learnedField(vec3 p){float a=uBias;vec3 x=p*.55;for(int i=0;i<16;i++){int k=i*3;float v=dot(vec3(uW1[k],uW1[k+1],uW1[k+2]),x)+uB1[i];a+=uW2[i]*tanh(v);}return tanh(a);}
+float gauss(vec3 p){float total=0.0;for(int i=0;i<12;i++){float a=6.2831853*(float(i)+.29)/12.0;vec3 c=vec3(1.04*cos(a),.47*sin(a*2.33),1.04*sin(a));c.xz*=rot(uTime*.10);vec3 q=p-c;float d=dot(q,q);total+=exp(-d/(.15+.04*sin(a*3.0)));}return total;}
+vec3 paletteA(){if(uPalette==1)return vec3(.21,.036,.052);if(uPalette==2)return vec3(.025,.10,.07);if(uPalette==3)return vec3(.1,.11,.18);return vec3(.035,.10,.21);}
+vec3 paletteB(){if(uPalette==1)return vec3(1.0,.45,.075);if(uPalette==2)return vec3(.20,1.0,.57);if(uPalette==3)return vec3(.66,.48,1.0);return vec3(.19,.90,.99);}
+vec3 paletteC(){if(uPalette==1)return vec3(1.0,.85,.37);if(uPalette==2)return vec3(.65,1.0,.25);if(uPalette==3)return vec3(.29,.97,1.0);return vec3(.74,.35,1.0);}
+vec3 background(vec3 rd){float v=sat(rd.y*.5+.5);vec3 col=mix(vec3(.011,.014,.052),vec3(.01,.06,.11),v);float star=fract(sin(dot(floor(rd.xy*280.0),vec2(12.9898,78.233)))*43758.5453);col+=pow(star,60.0)*.28;return col;}
+void main(){vec2 uv=((gl_FragCoord.xy+vec2(uJitter,-uJitter))/uResolution)*2.0-1.0;uv.x=uv.x*(uResolution.x/uResolution.y)-uScreenShift;vec3 ro=uCamera,ww=normalize(-ro),uu=normalize(cross(ww,vec3(0,1,0))),vv=cross(uu,ww);vec3 rd=normalize(ww*1.68+uv.x*uu+uv.y*vv);
+ float t=0.0;bool hit=false;vec3 pos=ro;int steps=0;
+ for(int i=0;i<128;i++){if(i>=uSteps)break;pos=ro+rd*t;float d=scene(pos);steps=i;if(d<.0015*(1.0+.15*t)){hit=true;break;}t+=max(.003,d*.78);if(t>17.0)break;}
+ vec3 col=background(rd);
+ if(hit){vec3 n=normalAt(pos);bool floorHit=pos.y< -1.63;vec3 light=normalize(vec3(-.65,1.0,.7));float diff=max(dot(n,light),0.0);float sha=softShadow(pos+n*.014,light);float occ=ao(pos,n);float rim=pow(1.0-sat(dot(n,-rd)),2.0);
+  if(floorHit){float gridx=abs(fract(pos.x*.43)-.5),gridz=abs(fract(pos.z*.43)-.5);float grid=1.0-smoothstep(.008,.025,min(gridx,gridz));col=mix(vec3(.018,.028,.055),vec3(.046,.13,.18),grid*.5);col*=.33+.47*diff*sha+.12*occ;}
+  else{
+   float truth=targetField(pos),pred=learnedField(pos),fld=truth;
+   if(uMode==1)fld=pred;else if(uMode==3&&gl_FragCoord.x>=uResolution.x*(.5+uScreenShift/(2.0*(uResolution.x/uResolution.y))))fld=pred;
+   float err=abs(pred-truth);
+   float v=sat(.5+.5*fld*uNeural);float spl=uGaussian*gauss(pos);
+   vec3 base=mix(paletteA(),paletteB(),smoothstep(.06,.83,v));base=mix(base,paletteC(),smoothstep(.68,1.0,v)*.48);
+   base+=spl*paletteC()*.12;
+   vec3 h=normalize(light-rd);float spec=pow(max(dot(n,h),0.0),mix(7.0,120.0,1.0-uRoughness));
+   col=base*(.19+.70*diff*sha)*occ+spec*(.18+.55*(1.0-uRoughness))*sha+rim*paletteB()*.14;
+   col+=spl*paletteB()*.15;
+   if(uMode==2){float heat=sat(err*1.5);vec3 hot=mix(vec3(.012,.08,.22),vec3(.96,.12,.19),smoothstep(.10,.73,heat));hot=mix(hot,vec3(1.0,.88,.3),smoothstep(.70,1.0,heat));col=mix(col*.22,hot,.82);}
+  }
+  col=mix(col,background(rd),1.0-exp(-.010*t*t));
+ }
+ col=vec3(1.0)-exp(-col*uExposure);col=pow(max(col,vec3(0.0)),vec3(.83));
+ if(uMode==3&&abs(gl_FragCoord.x-uResolution.x*(.5+uScreenShift/(2.0*(uResolution.x/uResolution.y))))<1.2)col=vec3(.76,.94,1.0);
+ outColor=vec4(col,1.0);
+}`;
+ const mixSource=`#version 300 es
+precision highp float;uniform sampler2D uCurrent,uPrevious;uniform float uBlend;uniform vec2 uResolution;out vec4 outColor;void main(){vec2 uv=gl_FragCoord.xy/uResolution;outColor=mix(texture(uPrevious,uv),texture(uCurrent,uv),uBlend);}`;
+ const copySource=`#version 300 es
+precision highp float;uniform sampler2D uTex;uniform vec2 uResolution;out vec4 outColor;void main(){outColor=texture(uTex,gl_FragCoord.xy/uResolution);}`;
+ function locs(prog,names){const r={};for(const n of names)r[n]=gl.getUniformLocation(prog,n);return r;}
+ let sl,ml,cl;
+ function texTarget(w,h){const texture=gl.createTexture();gl.bindTexture(gl.TEXTURE_2D,texture);gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA8,w,h,0,gl.RGBA,gl.UNSIGNED_BYTE,null);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.LINEAR);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.LINEAR);const fbo=gl.createFramebuffer();gl.bindFramebuffer(gl.FRAMEBUFFER,fbo);gl.framebufferTexture2D(gl.FRAMEBUFFER,gl.COLOR_ATTACHMENT0,gl.TEXTURE_2D,texture,0);if(gl.checkFramebufferStatus(gl.FRAMEBUFFER)!==gl.FRAMEBUFFER_COMPLETE)throw Error('Framebuffer incomplete');gl.bindFramebuffer(gl.FRAMEBUFFER,null);return {texture,fbo};}
+ function freeTarget(target){if(target){gl.deleteTexture(target.texture);gl.deleteFramebuffer(target.fbo);}}
+ function recreateTargets(w,h){freeTarget(sceneTarget);historyTargets.forEach(freeTarget);sceneTarget=texTarget(w,h);historyTargets=[texTarget(w,h),texTarget(w,h)];historyIndex=0;historyFrames=0;dirty=true;}
+ function resize(){const dpr=Math.min(window.devicePixelRatio||1,1.8);const w=Math.max(2,Math.min(1920,Math.round(canvas.clientWidth*dpr*currentScale))),h=Math.max(2,Math.min(1200,Math.round(canvas.clientHeight*dpr*currentScale)));if(canvas.width!==w||canvas.height!==h){canvas.width=w;canvas.height=h;recreateTargets(w,h);$('resolution').textContent=w+'×'+h;}}
+ function bindProgram(p){gl.useProgram(p);gl.bindVertexArray(quadVAO);}
+ function setTexture(unit,texture,uniform){gl.activeTexture(gl.TEXTURE0+unit);gl.bindTexture(gl.TEXTURE_2D,texture);gl.uniform1i(uniform,unit);}
+ function render(dt){resize();const w=canvas.width,h=canvas.height;
+  let az=cam.azimuth,el=cam.elevation;const eye=[cam.radius*Math.cos(el)*Math.sin(az),cam.radius*Math.sin(el),cam.radius*Math.cos(el)*Math.cos(az)];
+  gl.bindFramebuffer(gl.FRAMEBUFFER,sceneTarget.fbo);gl.viewport(0,0,w,h);bindProgram(sceneProgram);gl.uniform2f(sl.uResolution,w,h);gl.uniform1f(sl.uScreenShift,document.body.classList.contains('hud-off')?0:Math.min(360,canvas.clientWidth*.40)/Math.max(1,canvas.clientHeight));gl.uniform3fv(sl.uCamera,eye);gl.uniform1f(sl.uTime,state.time);gl.uniform1i(sl.uShape,state.shape);gl.uniform1i(sl.uMode,['reference','learned','error','split'].indexOf(state.viewMode));gl.uniform1i(sl.uPalette,state.palette);gl.uniform1i(sl.uSteps,state.steps);gl.uniform1f(sl.uNeural,state.neural);gl.uniform1f(sl.uGaussian,state.gaussian);gl.uniform1f(sl.uWarp,state.warp);gl.uniform1f(sl.uRoughness,state.roughness);gl.uniform1f(sl.uExposure,state.exposure);
+  gl.uniform1fv(sl['uW1[0]'],net.w1);gl.uniform1fv(sl['uB1[0]'],net.b1);gl.uniform1fv(sl['uW2[0]'],net.w2);gl.uniform1f(sl.uBias,net.b2);
+  const accumulate=state.accumulate&&!state.animate&&!state.training;
+  if(dirty||!accumulate)historyFrames=0;
+  const jitter=accumulate?(((historyFrames*7)%13)/13-.5)*.8:0;
+  gl.uniform1f(sl.uJitter,jitter);gl.drawArrays(gl.TRIANGLES,0,3);
+  const next=(historyIndex+1)%2,prev=historyTargets[historyIndex],target=historyTargets[next];
+  gl.bindFramebuffer(gl.FRAMEBUFFER,target.fbo);bindProgram(mixProgram);setTexture(0,sceneTarget.texture,ml.uCurrent);setTexture(1,prev.texture,ml.uPrevious);gl.uniform2f(ml.uResolution,w,h);gl.uniform1f(ml.uBlend,accumulate?1/Math.min(historyFrames+1,48):1);gl.drawArrays(gl.TRIANGLES,0,3);
+  gl.bindFramebuffer(gl.FRAMEBUFFER,null);gl.viewport(0,0,w,h);bindProgram(copyProgram);setTexture(0,target.texture,cl.uTex);gl.uniform2f(cl.uResolution,w,h);gl.drawArrays(gl.TRIANGLES,0,3);
+  historyIndex=next;historyFrames=accumulate?Math.min(48,historyFrames+1):1;dirty=false;$('history').textContent=String(historyFrames);
+ }
+ function setStatus(s){$('status').textContent=s;}
+ const num=(id)=>Number($(id).value);
+ function control(id,key,asInt=false){const input=$(id),val=$(id+'Val');const update=()=>{state[key]=asInt?Math.round(num(id)):num(id);if(val)val.textContent=asInt?String(state[key]):state[key].toFixed(2);if(id==='scale'){if(!state.adaptive)currentScale=state.scale;else currentScale=Math.min(currentScale,state.scale);resize();}dirty=true;};input.addEventListener('input',update);update();}
+ ['neural','gaussian','warp','roughness','exposure','scale','steps','batches'].forEach(id=>control(id,id,id==='steps'||id==='batches'));
+ ['viewMode','shape','palette'].forEach(id=>$(id).addEventListener('change',()=>{state[id]=id==='viewMode'?$(id).value:Number($(id).value);dirty=true;updateLegend();}));
+ function updateLegend(){const x=$('legend');const notes={split:'Left: analytic appearance target · Right: on-device MLP prediction.',learned:'Neural-network approximation only. Train to improve matching.',reference:'Analytic procedural target, no neural colour prediction.',error:'Difference between neural prediction and procedural reference. Warm colours indicate greater error.'};x.innerHTML='<strong>'+state.viewMode.toUpperCase().replace('SPLIT','REFERENCE / LEARNED')+'</strong><div>'+notes[state.viewMode]+'</div>';}
+ ['adaptive','accumulate','animate'].forEach(key=>$(key).addEventListener('change',()=>{state[key]=$(key).checked;if(key==='adaptive'&&!state.adaptive)currentScale=state.scale;dirty=true;}));
+ function setTraining(active){state.training=active;$('train').textContent=active?'Stop training · T':'Train network · T';$('train').classList.toggle('active',active);dirty=true;setStatus(active?'Training locally: CPU Adam mini-batches; GPU field inference.':'Training stopped.');}
+ function pauseMotion(){state.animate=!state.animate;$('animate').checked=state.animate;$('pause').textContent=state.animate?'Pause motion · Space':'Resume motion · Space';dirty=true;}
+ function resetNetwork(newSeed){setTraining(false);if(newSeed)state.seed=(Math.random()*0xffffffff)>>>0;net=createNetwork(state.seed);chartHistory=[];measure();dirty=true;setStatus('Network initialised (seed '+state.seed+').');}
+ function saveBlob(content,name,type){const blob=new Blob([content],{type}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);}
+ function screenshot(){render(0);canvas.toBlob(blob=>{if(!blob){notice('Screenshot unavailable');return;}const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download='NeuroSplat-'+Date.now()+'.png';a.click();setTimeout(()=>URL.revokeObjectURL(url),2000);notice('Screenshot saved');},'image/png');}
+ function exportPreset(){const weights={w1:[...net.w1],b1:[...net.b1],w2:[...net.w2],b2:net.b2,step:net.step};saveBlob(JSON.stringify({schema:'neurosplat-preset-v1',state:{...state,training:false},camera:{azimuth:cam.azimuth,elevation:cam.elevation,radius:cam.radius},weights,holdoutMSE},null,2),'neurosplat-preset-'+state.seed+'.json','application/json');notice('Preset and neural weights exported');}
+ function safeImport(parsed){if(parsed?.schema!=='neurosplat-preset-v1')throw Error('Unknown preset schema');const s=parsed.state||{},numeric={shape:[0,3],palette:[0,3],neural:[0,1],gaussian:[0,1.8],warp:[0,1],roughness:[.05,1],exposure:[.4,2.4],steps:[32,120],scale:[.35,1],batches:[1,10],time:[0,1e6]};
+  for(const [k,[low,high]] of Object.entries(numeric)){if(typeof s[k]==='number'&&Number.isFinite(s[k])){state[k]=Math.min(high,Math.max(low,s[k]));if(['shape','palette','steps','batches'].includes(k))state[k]=Math.round(state[k]);}}
+  if(['split','reference','learned','error'].includes(s.viewMode))state.viewMode=s.viewMode;
+  for(const k of ['adaptive','accumulate','animate'])if(typeof s[k]==='boolean')state[k]=s[k];
+  state.seed=Number.isInteger(s.seed)?(s.seed>>>0):state.seed;setTraining(false);net=createNetwork(state.seed);
+  const a=parsed.weights;if(a&&[a.w1?.length,a.b1?.length,a.w2?.length].join(',')==='48,16,16'){
+   for(const [key,len] of [['w1',48],['b1',16],['w2',16]]){if(!a[key].every(v=>Number.isFinite(v)&&Math.abs(v)<100))throw Error('Preset neural weights invalid');net[key].set(a[key]);}
+   if(!Number.isFinite(a.b2)||Math.abs(a.b2)>=100)throw Error('Preset bias invalid');net.b2=a.b2;net.step=0;
+  }
+  const c=parsed.camera||{};for(const [key,min,max] of [['azimuth',-1e6,1e6],['elevation',-1.35,1.35],['radius',2.9,11]])if(typeof c[key]==='number'&&Number.isFinite(c[key]))cam[key]=Math.max(min,Math.min(max,c[key]));
+  for(const key of ['viewMode','shape','palette','neural','gaussian','warp','roughness','exposure','steps','scale','batches','adaptive','accumulate','animate']){$(key).value=['adaptive','accumulate','animate'].includes(key)?'on':state[key];if($(key).type==='checkbox')$(key).checked=state[key];const out=$(key+'Val');if(out)out.textContent=['steps','batches'].includes(key)?String(state[key]):state[key].toFixed(2);}
+  $('pause').textContent=state.animate?'Pause motion · Space':'Resume motion · Space';currentScale=state.scale;chartHistory=[];measure();dirty=true;resize();updateLegend();notice('Preset imported');
+ }
+ $('train').addEventListener('click',()=>setTraining(!state.training));$('pause').addEventListener('click',pauseMotion);$('reset').addEventListener('click',()=>resetNetwork(false));$('reseed').addEventListener('click',()=>resetNetwork(true));$('screenshot').addEventListener('click',screenshot);$('export').addEventListener('click',exportPreset);$('import').addEventListener('click',()=>$('importFile').click());
+ $('importFile').addEventListener('change',async e=>{const f=e.target.files?.[0];if(!f)return;try{const data=JSON.parse(await f.text());safeImport(data);}catch(err){notice('Import failed: '+err.message);}finally{e.target.value='';}});
+ $('toggleHUD').addEventListener('click',()=>{document.body.classList.toggle('hud-off');$('hud').classList.toggle('collapsed');});
+ const pointers=new Set();canvas.addEventListener('pointerdown',e=>{canvas.setPointerCapture(e.pointerId);pointers.add(e.pointerId);cam.drag=true;cam.lastX=e.clientX;cam.lastY=e.clientY;});canvas.addEventListener('pointermove',e=>{if(!cam.drag||!pointers.has(e.pointerId))return;cam.azimuth-=(e.clientX-cam.lastX)*.007;cam.elevation=Math.max(-1.26,Math.min(1.26,cam.elevation+(e.clientY-cam.lastY)*.006));cam.lastX=e.clientX;cam.lastY=e.clientY;dirty=true;});
+ const stopDrag=e=>{pointers.delete(e.pointerId);cam.drag=pointers.size>0;};canvas.addEventListener('pointerup',stopDrag);canvas.addEventListener('pointercancel',stopDrag);canvas.addEventListener('wheel',e=>{e.preventDefault();cam.radius=Math.min(10,Math.max(3,cam.radius*Math.exp(e.deltaY*.001)));dirty=true;},{passive:false});
+ document.addEventListener('keydown',e=>{if(e.target instanceof HTMLInputElement||e.target instanceof HTMLSelectElement)return;const key=e.key.toLowerCase();if(key===' '){e.preventDefault();pauseMotion();}else if(key==='t')setTraining(!state.training);else if(key==='s')screenshot();else if(key==='r')resetNetwork(true);else if(key==='h')$('toggleHUD').click();});
+ canvas.addEventListener('webglcontextlost',e=>{e.preventDefault();contextAlive=false;fail('WebGL context lost. Reload the page to restore GPU resources.');});
+ try{
+  sceneProgram=program(sceneSource);mixProgram=program(mixSource);copyProgram=program(copySource);quadVAO=gl.createVertexArray();gl.bindVertexArray(quadVAO);
+  sl=locs(sceneProgram,['uResolution','uCamera','uTime','uScreenShift','uShape','uMode','uPalette','uSteps','uNeural','uGaussian','uWarp','uRoughness','uExposure','uW1[0]','uB1[0]','uW2[0]','uBias','uJitter']);
+  ml=locs(mixProgram,['uCurrent','uPrevious','uBlend','uResolution']);cl=locs(copyProgram,['uTex','uResolution']);
+  net=createNetwork(state.seed);measure();resize();updateLegend();$('backend').textContent='WebGL 2';$('pause').textContent='Pause motion · Space';setStatus('Ready. Train the network and compare against the analytic target.');
+ }catch(err){fail(err.message);console.error(err);return;}
+ function frame(now){if(!contextAlive)return;const dt=Math.min((now-clock)/1000,.07);clock=now;fpsSmooth=fpsSmooth*.9+.1*(1/Math.max(.001,dt));
+  if(state.animate)state.time+=dt*.55;
+  if(state.training&&now-latestTraining>95){for(let i=0;i<state.batches;i++)gradientBatch();measure();dirty=true;latestTraining=now;}
+  fpsTimer+=dt;if(fpsTimer>2.5){const score=fpsSmooth;if(state.adaptive){const old=currentScale;if(score<35)currentScale=Math.max(.35,currentScale-.08);else if(score>53)currentScale=Math.min(state.scale,currentScale+.05);if(Math.abs(old-currentScale)>.001){dirty=true;resize();}}
+   $('fps').textContent=score.toFixed(0);$('resolution').textContent=canvas.width+'×'+canvas.height;fpsTimer=0;}
+  try{render(dt);}catch(err){contextAlive=false;fail(err.message);console.error(err);return;}requestAnimationFrame(frame);
+ }
+ requestAnimationFrame(t=>{clock=t;requestAnimationFrame(frame);});
+})();
+</script>
+</body>
+</html>
